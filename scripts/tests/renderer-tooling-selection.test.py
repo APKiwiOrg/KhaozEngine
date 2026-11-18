@@ -25,8 +25,9 @@ class SelectionTests(unittest.TestCase):
                      'KhaozEngine.Render.Tests/Gpu/BackendProviderScope.cs',
                      'test-shared/AllocationMeasurement.cs', '.testhealth-baseline']:
             self.assertEqual(len(self.select('--event', 'push', '--ref', A, '--changed', path)['include']), 3)
-        self.assertEqual(self.select('--event', 'pull_request', '--ref', A,
-                                     '--changed', 'KhaozEngine.Audio/AudioBus.cs'), {'include': []})
+        for path in ['KhaozEngine.Audio/AudioBus.cs', 'scripts/check-dashes.sh']:
+            self.assertEqual(self.select('--event', 'pull_request', '--ref', A,
+                                         '--changed', path), {'include': []})
 
     def test_call_validates_both_immutable_refs_and_deduplicates_equal_refs(self):
         rows = self.select('--event', 'workflow_call', '--suite', 'renderer', '--ref', B, '--trusted-ref', A)['include']
@@ -184,14 +185,14 @@ class SelectionTests(unittest.TestCase):
                                         cwd=directory, capture_output=True, text=True, check=False)
                 self.assertEqual(result.returncode == 0, success, result.stderr)
 
-    def test_workflow_push_and_pr_watch_every_cpu_selector_input(self):
+    def test_workflow_push_and_pr_watch_every_selector_input(self):
         spec = importlib.util.spec_from_file_location('selector', SCRIPT)
         selector = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(selector)
         workflow = (ROOT / '.github/workflows/tooling-validation.yml').read_text()
         push = workflow.split('  push:\n', 1)[1].split('  pull_request:\n', 1)[0]
         pr = workflow.split('  pull_request:\n', 1)[1].split('  workflow_dispatch:\n', 1)[0]
-        for suite in ['items', 'nav', 'coverage']:
+        for suite in ['renderer', 'items', 'nav', 'coverage']:
             for pattern in selector.watched_paths(suite):
                 self.assertIn(f"      - '{pattern}'", push)
                 self.assertIn(f"      - '{pattern}'", pr)

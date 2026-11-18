@@ -320,6 +320,10 @@ resolved roots include this exact project, also build the offline verifier requi
 Canonical project selection uses actual file identity, never a basename match. Ordinary engine CI and
 native engine shards never run or discover the tooling suite. `tooling-validation.yml` owns its free
 three-OS validation and the prerequisite gate for separately authorized renderer campaigns.
+Its five-minute selector watches the inputs of the four free tooling suites on main pushes and pull
+requests. An update to the same pull request cancels its older run. Main pushes, manual dispatches
+and reusable calls each have their own run group so newer events cannot interrupt a renderer
+prerequisite. Product CI runs the generic script and hook fixtures when their inputs change.
 
 Product CI includes solution projects and the tracked projects outside the solution in one Linux
 Release build. The outside inventory comes from `scripts/outside-solution-projects.py`, which also
@@ -345,8 +349,9 @@ remain in Movement.Tests and default engine CI. Fixture validation authorizes no
 
 The outside-solution `Coverage.Verify` executable and `Coverage.Verify.Tests` project own synthetic
 recession-table construction, replay, depth and CLI process verification. The free tooling workflow selects
-suite `coverage` on hosted Ubuntu, explicitly builds both projects and requires a nonempty inventory,
-executed process tests and zero skips. Coverage formats, carry code, the FloatUlp template and targets that
+suite `coverage` on hosted Ubuntu and builds the test project once. Its project reference builds the
+verifier that the CLI process tests launch. The suite requires a nonempty inventory, executed process tests
+and zero skips. Coverage formats, carry code, the FloatUlp template and targets that
 Coverage.Verify compiles with, and the tooling itself trigger this suite. `KE_GPU_TESTS=0` stays explicit. Native correctness and the Diagnostic body-size cost fact remain
 separately approved units, outside this headless validation.
 The cost fact also requires `KE_COVERAGE_COST_UNIT` equal to its exact method name. The hosted bench

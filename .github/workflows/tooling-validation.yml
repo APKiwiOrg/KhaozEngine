@@ -101,6 +101,7 @@ on:
       - 'KhaozEngine.Render.Tests/Gpu/RecordingGpuCommandList.Reads.cs'
       - 'KhaozEngine.Render.Tests/Gpu/RecordingGpuCommandList.cs'
       - 'KhaozEngine.Render.Tests/Gpu/ShippedShaderPrograms.Visibility.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/ShippedShaderPrograms.TemporalDetail.cs'
       - 'KhaozEngine.Render.Tests/Gpu/ShippedShaderPrograms.cs'
       - 'KhaozEngine.Render.Tests/Gpu/SpyGpuDevice.cs'
       - 'KhaozEngine.Render.Tests/Gpu/SubmissionTestDevice.cs'
@@ -210,6 +211,7 @@ on:
       - 'KhaozEngine.Render.Tests/Gpu/RecordingGpuCommandList.Reads.cs'
       - 'KhaozEngine.Render.Tests/Gpu/RecordingGpuCommandList.cs'
       - 'KhaozEngine.Render.Tests/Gpu/ShippedShaderPrograms.Visibility.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/ShippedShaderPrograms.TemporalDetail.cs'
       - 'KhaozEngine.Render.Tests/Gpu/ShippedShaderPrograms.cs'
       - 'KhaozEngine.Render.Tests/Gpu/SpyGpuDevice.cs'
       - 'KhaozEngine.Render.Tests/Gpu/SubmissionTestDevice.cs'
@@ -245,9 +247,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  # Use a dedicated prefix because a reusable workflow sees the caller's github.workflow.
+  group: ${{ github.event_name == 'pull_request' && inputs.trusted-ref == '' && format('tooling-validation-pr-{0}', github.event.pull_request.number) || format('tooling-validation-run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && inputs.trusted-ref == '' }}
+
 jobs:
   select:
     runs-on: ubuntu-26.04
+    timeout-minutes: 5
     outputs:
       matrix: ${{ steps.select.outputs.matrix }}
       renderer: ${{ steps.select.outputs.renderer }}
@@ -264,6 +272,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - id: select
+        name: Scope
         shell: bash
         env:
           SELECTION_EVENT: ${{ (inputs.ref != '' || inputs.trusted-ref != '') && 'workflow_call' || github.event_name }}
@@ -336,18 +345,18 @@ jobs:
           test -n "$icd" && test -f "$icd"
           echo "VK_DRIVER_FILES=$icd" >> "$GITHUB_ENV"
           echo "VK_ICD_FILENAMES=$icd" >> "$GITHUB_ENV"
-      - name: Build renderer tooling and offline verifier
+      - name: Build
         shell: bash
         run: |
           mkdir -p local-feed
           sh scripts/build-release-tests.sh tools/Renderer.Perf.Tooling.Tests/Renderer.Perf.Tooling.Tests.csproj
-      - name: Run complete headless renderer tooling suite
+      - name: 'Test: renderer-headless'
         shell: pwsh
         run: |
           Remove-Item Env:KE_GPU_TESTS, Env:KE_RENDERER_PERF_UNIT -ErrorAction SilentlyContinue
           & dotnet test tools/Renderer.Perf.Tooling.Tests/Renderer.Perf.Tooling.Tests.csproj -c Release --no-build --logger 'trx;LogFileName=headless.trx' --results-directory TestResults
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Run free native FFT bound correctness fact with no skips
+      - name: 'Test: renderer-fft'
         shell: pwsh
         run: |
           Remove-Item Env:KE_RENDERER_PERF_UNIT -ErrorAction SilentlyContinue
@@ -383,12 +392,12 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: '10.0.x'
-      - name: Build Items benchmark acceptance
+      - name: Build
         shell: bash
         run: |
           mkdir -p local-feed
           sh scripts/build-release-tests.sh tools/Items.Benchmark.Tests/Items.Benchmark.Tests.csproj
-      - name: Run Items benchmark acceptance in its own process
+      - name: 'Test: items'
         shell: pwsh
         run: |
           & dotnet test tools/Items.Benchmark.Tests/Items.Benchmark.Tests.csproj -c Release --no-build --logger 'trx;LogFileName=items.trx' --results-directory TestResults
@@ -428,12 +437,12 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: '10.0.x'
-      - name: Build navigation capture research
+      - name: Build
         shell: bash
         run: |
           mkdir -p local-feed
           sh scripts/build-release-tests.sh tools/NavCapture.Research.Tests/NavCapture.Research.Tests.csproj
-      - name: Run synthetic navigation research fixtures
+      - name: 'Test: nav'
         shell: pwsh
         run: |
           & dotnet test tools/NavCapture.Research.Tests/NavCapture.Research.Tests.csproj -c Release --no-build --logger 'trx;LogFileName=nav.trx' --results-directory TestResults
@@ -482,11 +491,10 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: '10.0.x'
-      - name: Build synthetic coverage tooling outside the engine solution
+      - name: Build
         shell: bash
         run: |
           mkdir -p local-feed
-          dotnet build tools/Coverage.Verify/Coverage.Verify.csproj -c Release
           dotnet build tools/Coverage.Verify.Tests/Coverage.Verify.Tests.csproj -c Release
       - name: Require nonempty coverage inventory including CLI process tests
         shell: pwsh
@@ -496,7 +504,7 @@ jobs:
           $names = @($inventory | Where-Object { $_ -match '^\s+KhaozEngine\.Tests\.' })
           if ($names.Count -eq 0 -or -not ($names -match 'CoverageVerifyProcessTests')) { throw 'Coverage inventory must include synthetic CLI process tests' }
           $inventory | Set-Content coverage-inventory.txt
-      - name: Run every headless synthetic coverage tool and process test
+      - name: 'Test: coverage'
         shell: pwsh
         run: |
           & dotnet test tools/Coverage.Verify.Tests/Coverage.Verify.Tests.csproj -c Release --no-build --logger 'trx;LogFileName=coverage.trx' --results-directory TestResults

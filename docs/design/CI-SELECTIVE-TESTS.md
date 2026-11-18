@@ -254,8 +254,13 @@ Release and local test setup use `scripts/build-release-tests.sh`. The explicit 
 process prerequisite. Other solution files acquire that prerequisite only when their resolved roots
 include this checkout's actual tooling project. Product CI includes the verifier as a compile-only
 root without calling that setup script. `tooling-validation.yml` owns test execution for the renderer
-tooling suite. Its explicit path inventory, manual and reusable entrypoints keep that validation
-separate and gate paid renderer allocation.
+tooling suite. Its five-minute Scope step selects suites independently from the changed paths. The
+automatic push and pull request filters cover every selector input, including sources linked by
+`RendererPerfShared.props`. General scripts and hooks select Product CI's tooling stage. Changes to
+the tooling workflow itself select all four suites. Manual dispatch and the reusable prerequisite
+validate the requested suite. Pull request runs supersede older runs for the same pull request.
+Main pushes, manual dispatches and reusable calls use run-specific groups to preserve each result
+and protect the renderer prerequisite for paid runs.
 
 The same selector routes Items benchmark inputs to the explicit outside-solution
 `tools/Items.Benchmark.Tests/Items.Benchmark.Tests.csproj` suite on hosted Ubuntu. Dispatch selects
@@ -272,3 +277,8 @@ also accepts `nav`. All three named Release facts must pass with zero skips befo
 approved capture or restoration campaign. The seven SupportQueryCapture methods and both enabled
 and disabled theory rows stay in Movement.Tests and default engine CI. Other production Movement
 edits retain their ordinary engine tests without automatically selecting the research suite.
+
+The `coverage` route builds `Coverage.Verify.Tests` once on hosted Ubuntu. The project reference
+builds `Coverage.Verify` and makes its executable assembly available to the synthetic CLI process
+tests. The workflow checks the inventory and verifies the TRX contains passing process tests and
+zero skips.

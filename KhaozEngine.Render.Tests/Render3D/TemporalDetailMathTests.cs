@@ -7,17 +7,18 @@ namespace KhaozEngine.Tests.Render3D;
 public sealed class TemporalDetailMathTests
 {
     [Theory]
-    [InlineData(128u, true, TemporalHistoryDetail.Fine, 8, TemporalHistoryDetail.Fine, 64, 48)]
-    [InlineData(128u, true, TemporalHistoryDetail.Fine, 6, TemporalHistoryDetail.Fine, 64, 48)]
-    [InlineData(128u, true, TemporalHistoryDetail.Display, 5, TemporalHistoryDetail.Fine, 64, 48)]
-    [InlineData(127u, true, TemporalHistoryDetail.Display, 8, TemporalHistoryDetail.Fine, 64, 48)]
-    [InlineData(0u, true, TemporalHistoryDetail.Display, 8, TemporalHistoryDetail.Fine, 64, 48)]
-    [InlineData(128u, false, TemporalHistoryDetail.Display, 8, TemporalHistoryDetail.Fine, 64, 48)]
-    [InlineData(16384u, true, TemporalHistoryDetail.Fine, 8, null, 2560, 1440)]
-    [InlineData(16384u, true, TemporalHistoryDetail.Display, 8, null, 3840, 2160)]
-    [InlineData(16384u, false, TemporalHistoryDetail.Display, 8, null, 2560, 1440)]
+    [InlineData(128u, true, TemporalHistoryDetail.Fine, 8, TemporalHistoryDetail.Fine, 64, 48, TemporalHistoryDetailFallback.None)]
+    [InlineData(128u, true, TemporalHistoryDetail.Fine, 6, TemporalHistoryDetail.Fine, 64, 48, TemporalHistoryDetailFallback.None)]
+    [InlineData(128u, true, TemporalHistoryDetail.Display, 5, TemporalHistoryDetail.Fine, 64, 48, TemporalHistoryDetailFallback.ColorAttachments)]
+    [InlineData(127u, true, TemporalHistoryDetail.Display, 8, TemporalHistoryDetail.Fine, 64, 48, TemporalHistoryDetailFallback.TextureSize)]
+    [InlineData(0u, true, TemporalHistoryDetail.Display, 8, TemporalHistoryDetail.Fine, 64, 48, TemporalHistoryDetailFallback.TextureSize)]
+    [InlineData(128u, false, TemporalHistoryDetail.Display, 8, TemporalHistoryDetail.Fine, 64, 48, TemporalHistoryDetailFallback.NoResolve)]
+    [InlineData(16384u, true, TemporalHistoryDetail.Fine, 8, null, 2560, 1440, TemporalHistoryDetailFallback.None)]
+    [InlineData(16384u, true, TemporalHistoryDetail.Display, 8, null, 3840, 2160, TemporalHistoryDetailFallback.PixelBudget)]
+    [InlineData(16384u, false, TemporalHistoryDetail.Display, 8, null, 2560, 1440, TemporalHistoryDetailFallback.NoResolve)]
     public void The_scene_latches_the_admitted_history_before_creating_fine_targets(uint dimensionLimit, bool resolves,
-        TemporalHistoryDetail expected, int attachments, TemporalHistoryDetail? requested, int width, int height)
+        TemporalHistoryDetail expected, int attachments, TemporalHistoryDetail? requested, int width, int height,
+        TemporalHistoryDetailFallback reason)
     {
         using var rig = new HeadlessSceneRig(maxColorAttachments: attachments,
             maxRenderTexture2DDimension: dimensionLimit, historyDetail: requested);
@@ -26,6 +27,7 @@ public sealed class TemporalDetailMathTests
         rig.Frame(width, height);
         Assert.Equal(resolves, rig.Scene.ResolvedLastRenderForTests);
         Assert.Equal(expected, rig.Scene.TemporalHistoryDetailInEffect);
+        Assert.Equal(reason, rig.Scene.TemporalHistoryDetailFallback);
         Assert.Equal(expected == TemporalHistoryDetail.Fine, rig.Scene.TemporalHistory.DetailStore is not null);
     }
 

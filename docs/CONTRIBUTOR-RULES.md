@@ -24,6 +24,10 @@ can absorb another contributor's staged files. Never use the shared stash for wo
 - `AppWindow` in `KhaozEngine.Windowing` is the only class that touches Silk.NET or GLFW input
   statics. All other code reads the immutable `InputState` snapshot through `InputManager` and
   `Pointer`. Hit testing uses their bounds helpers.
+- Render resource creation failures propagate when the frame needs the resource to draw. An optional tier
+  or reconfiguration with a correct working image tries its own creation at one boundary, releases the
+  candidate on failure and keeps the working path. Latch the refusal until the request changes, expose it
+  to consumers and log it once, as described in [Render resource creation failures](RENDER-PIPELINE.md#render-resource-creation-failures).
 - A refusal a caller may need to tell apart carries structured members on its exception: a public reason
   enum and the identifiers its docs promise (an entry id, the offending index, a path), filled at every throw
   site. The type belongs to the refusal family that owns the check, a validator or policy, and derives from

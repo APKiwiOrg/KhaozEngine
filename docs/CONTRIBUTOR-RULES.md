@@ -384,7 +384,7 @@ forces a FULL selective CI run.
 `Product CI` handles main pushes, pull requests into main, the nightly schedule and manual
 validation. Its dependency map selects Release build roots and the corresponding headless, live SQL
 Server and water tests. The Linux job runs convention and doc-version guards even on a prose-only
-change. It shares its build with the selected tests. The ARM64 water differential has its own native
+change. The selected Linux suites share its Release outputs. The ARM64 water differential has its own native
 build. `CI passed` reports the verdict. A main push or nightly can reuse a recent compatible full pass
 on the exact tree. A manual Product CI run forces full validation.
 

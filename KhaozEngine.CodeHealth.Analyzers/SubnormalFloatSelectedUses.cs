@@ -82,9 +82,9 @@ namespace KhaozEngine.CodeHealth.Analyzers
             if (resources is IVariableDeclarationGroupOperation group)
             {
                 foreach (var declaration in group.Declarations)
-                foreach (var resource in declaration.Declarators)
-                    _genericUses.RecordUse(resource.Symbol.Type, resource.Syntax,
-                        OperandType((resource.Initializer ?? declaration.Initializer)?.Value));
+                    foreach (var resource in declaration.Declarators)
+                        _genericUses.RecordUse(resource.Symbol.Type, resource.Syntax,
+                            OperandType((resource.Initializer ?? declaration.Initializer)?.Value));
             }
             else
                 _genericUses.RecordUse(resources.Type, syntax, OperandType(resources));

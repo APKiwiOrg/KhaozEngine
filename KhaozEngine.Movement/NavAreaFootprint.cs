@@ -64,14 +64,19 @@ internal sealed class NavAreaFootprint
 
     internal bool Accepts(Vector3 feet) => AcceptsSegment(feet, feet);
 
-    internal bool AcceptsSegment(Vector3 from, Vector3 to) => AcceptsSegment(from, to, onlyExclusions: false);
+    internal bool AcceptsSegment(Vector3 from, Vector3 to) => AcceptsSegment(from, to, onlyExclusions: false, out _);
+
+    /// <summary>Counts calls to the exact geometry predicate, up to and including the first refused column.</summary>
+    internal bool AcceptsSegmentForTests(Vector3 from, Vector3 to, out long candidates)
+        => AcceptsSegment(from, to, onlyExclusions: false, out candidates);
 
     // The graph already owns support and clearance proofs, including non-walking links. Applying those
     // checks to a link's straight chord would reject an otherwise permitted dry Drop or Hop.
-    internal bool AcceptsExclusions(Vector3 from, Vector3 to) => AcceptsSegment(from, to, onlyExclusions: true);
+    internal bool AcceptsExclusions(Vector3 from, Vector3 to) => AcceptsSegment(from, to, onlyExclusions: true, out _);
 
-    private bool AcceptsSegment(Vector3 from, Vector3 to, bool onlyExclusions)
+    private bool AcceptsSegment(Vector3 from, Vector3 to, bool onlyExclusions, out long candidates)
     {
+        candidates = 0;
         if (!Finite(from) || !Finite(to)) return false;
         double minX = Math.Min(from.X, to.X) - _radius, maxX = Math.Max(from.X, to.X) + _radius;
         double minZ = Math.Min(from.Z, to.Z) - _radius, maxZ = Math.Max(from.Z, to.Z) + _radius;
@@ -80,14 +85,23 @@ internal sealed class NavAreaFootprint
         int x0 = Cell(minX, _options.MinX), x1 = Cell(maxX, _options.MinX);
         int z0 = Cell(minZ, _options.MinZ), z1 = Cell(maxZ, _options.MinZ);
         double lowY = Math.Min(from.Y, to.Y), highY = Math.Max(from.Y, to.Y);
+        var rows = new NavFootprintRows(from, to, _options, _radius, x0, x1, z0, z1);
         for (int z = z0; z <= z1; z++)
-            for (int x = x0; x <= x1; x++)
+        {
+            double bottom = _options.MinZ + z * (double)_options.CellSize;
+            (int first, int last) = rows.At(bottom, x0, x1);
+            for (int x = first; x <= last; x++)
             {
                 double left = _options.MinX + x * (double)_options.CellSize;
-                double bottom = _options.MinZ + z * (double)_options.CellSize;
                 if (!NavFootprintGeometry.Touches(from, to, left, bottom, _options.CellSize, _radius)) continue;
-                if (!AcceptsColumn(x, z, lowY, highY, onlyExclusions)) return false;
+                if (!AcceptsColumn(x, z, lowY, highY, onlyExclusions))
+                {
+                    candidates += (long)x - first + 1;
+                    return false;
+                }
             }
+            candidates += (long)last - first + 1;
+        }
         return true;
     }
 

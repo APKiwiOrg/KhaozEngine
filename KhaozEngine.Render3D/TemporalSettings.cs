@@ -21,6 +21,25 @@ namespace KhaozEngine.Render3D
     /// </summary>
     public sealed class TemporalSettings
     {
+        /// <summary>The colour history grid, <see cref="TemporalHistoryDetail.Fine"/> by default. Fine keeps an
+        /// additional colour pair at twice the display on each axis for admitted moving history. The frame's first
+        /// render admits Fine when the temporal resolve runs and the device limits and <see cref="HistoryDetailPixelLimit"/>
+        /// allow it. Otherwise the selection is <see cref="TemporalHistoryDetail.Display"/>, which also serves as the
+        /// explicit opt-out and the selection for unknown values. Read <see cref="Scene3D.TemporalHistoryDetailInEffect"/>
+        /// for the latched selection. A change of it resets history for one frame, reported as
+        /// <see cref="TemporalResetReason.HistoryDetail"/> unless a higher-ranking reason such as a resize applies to
+        /// the same frame. If the pair or its scratch fails to allocate, each resolving frame throws for as long as
+        /// Fine stays admitted and the allocation keeps failing.</summary>
+        public TemporalHistoryDetail HistoryDetail = TemporalHistoryDetail.Fine;
+
+        /// <summary>Inclusive display pixel budget for Fine, default 3,686,400 (2560 by 1440). Its extra RGBA16F
+        /// colour pair uses 225 MiB at that size, plus 116.02 MiB of display-grid scratch (341.02 MiB total).
+        /// A 3840 by 2160 colour pair would need 506.25 MiB and falls back to
+        /// Display by default. Zero and negative values disable Fine. The device's 2D render texture dimension
+        /// limit and a minimum of six colour attachments also apply. A change that leaves the mode in effect
+        /// unchanged does not reset history.</summary>
+        public long HistoryDetailPixelLimit = 2560L * 1440;
+
         /// <summary>The largest distance, in metres, the camera eye may move between two frames and still continue the
         /// previous one. Default 16. <see cref="float.PositiveInfinity"/> turns the distance check off. A render origin
         /// jump the previous frame cannot be rebased across is still a cut, see

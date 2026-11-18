@@ -19,6 +19,39 @@ namespace KhaozEngine.Tests.Gpu
     /// </summary>
     public sealed class TemporalFollowCameraRuns
     {
+        readonly TemporalHistoryDetail _detail;
+        readonly TemporalDetailGate _gate;
+        readonly TemporalHistoryVariants<TemporalFollowCameraRuns> _variants;
+        readonly Dictionary<TemporalDetailGate, TemporalFollowCameraRuns> _gates = new();
+
+        public TemporalFollowCameraRuns() : this(TemporalHistoryDetail.Display) { }
+
+        TemporalFollowCameraRuns(TemporalHistoryDetail detail, TemporalHistoryVariants<TemporalFollowCameraRuns>? variants = null,
+            TemporalDetailGate gate = TemporalDetailGate.Production)
+        {
+            _detail = detail;
+            _gate = gate;
+            _variants = variants ?? new TemporalHistoryVariants<TemporalFollowCameraRuns>(this, detail,
+                (mode, pool) => new(mode, pool, gate));
+        }
+
+        internal TemporalFollowCameraRuns For(TemporalHistoryDetail detail) => _variants.For(detail);
+
+        internal TemporalFollowCameraRuns ForGate(TemporalDetailGate gate)
+        {
+            if (gate == TemporalDetailGate.Production) return For(TemporalHistoryDetail.Fine);
+            if (!_gates.TryGetValue(gate, out var source))
+                _gates.Add(gate, source = new TemporalFollowCameraRuns(TemporalHistoryDetail.Fine, gate: gate));
+            return source;
+        }
+
+        void Detail(Scene3D scene)
+        {
+            scene.Post.Temporal.HistoryDetail = _detail;
+            if (_detail == TemporalHistoryDetail.Fine && _gate != TemporalDetailGate.Production)
+                scene.InstallTemporalResolveForTests(source => TemporalDetailGateVariants.Rewrite(source, _gate));
+        }
+
         public const int W = 320, H = 180, StillFrames = 16, WalkFrames = 23, Last = StillFrames + WalkFrames;
 
         /// <summary>The box's left edge on screen and its size, in display pixels.</summary>
@@ -49,7 +82,7 @@ namespace KhaozEngine.Tests.Gpu
             var (wall, floors) = Walls(walk, preset, phase);
             byte[] frame;
             int last = walk.Last;
-            using (var fx = new TemporalFixture(W, H, s => walk.Setup(s, preset)))
+            using (var fx = new TemporalFixture(W, H, s => { walk.Setup(s, preset); Detail(s); }))
             {
                 fx.SkipPhases(phase);
                 fx.Frames(last, walk.Draw);
@@ -94,7 +127,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             var key = (preset, walk.Speed, walk.Still);
             if (phase == 0 && _walls.TryGetValue(key, out var cached)) return cached;
-            Action<Scene3D> setup = s => walk.Setup(s, preset);
+            Action<Scene3D> setup = s => { walk.Setup(s, preset); Detail(s); };
             byte[] wall;
             using (var fx = new TemporalFixture(W, H, setup))
             {

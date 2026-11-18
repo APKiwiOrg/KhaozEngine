@@ -16,7 +16,7 @@ namespace KhaozEngine.Tests.Gpu
     /// ships, against acceptance 3 and against the short-hold fact's bound, and assert only that each trail region
     /// measured something. The cells over their bounds are the open finding, not a regression guard.
     /// </summary>
-    public sealed class TemporalLongHoldFollowGpuTests(TemporalFollowCameraRuns ortho,
+    public sealed partial class TemporalLongHoldFollowGpuTests(TemporalFollowCameraRuns ortho,
         TemporalPerspectiveFollowRuns perspective, ITestOutputHelper output)
         : IClassFixture<TemporalFollowCameraRuns>, IClassFixture<TemporalPerspectiveFollowRuns>
     {

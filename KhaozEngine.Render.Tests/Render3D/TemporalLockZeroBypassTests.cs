@@ -27,7 +27,7 @@ public sealed class TemporalLockZeroBypassTests
             "TemporalAccumulateAtDisplaySize", "TemporalAccumulateAtDisplaySizeHalf",
         ];
         Assert.Equal(expected.SelectMany(name => new[] { name, name + "FullyLit" })
-                .OrderBy(name => name, StringComparer.Ordinal),
+                .Concat(TemporalLockReleaseSpirv.DetailIncluders).OrderBy(name => name, StringComparer.Ordinal),
             ReleasePrograms().Select(row => (string)row[0]).OrderBy(name => name, StringComparer.Ordinal));
     }
 
@@ -61,17 +61,24 @@ public sealed class TemporalLockZeroBypassTests
             .Select(i => i.Words[2]).ToHashSet();
         int[] barriers = Enumerable.Range(0, instructions.Length).Where(n => instructions[n].Op == 197
             && (shifts.Contains(instructions[n].Words[3]) || shifts.Contains(instructions[n].Words[4]))).ToArray();
-        Assert.Equal(12, barriers.Length);
-        int label = Array.FindLastIndex(instructions, barriers[0], i => i.Op == 248);
-        int nextLabel = Array.FindIndex(instructions, label + 1, i => i.Op == 248);
-        Assert.True(barriers.All(n => n > label && n < nextLabel), program.Name + " barriers escaped their block");
-        Assert.Equal(247, instructions[label - 2].Op); // OpSelectionMerge
-        Assert.Equal(2u, instructions[label - 2].Words[2]); // SelectionControl DontFlatten
-        Assert.Equal(250, instructions[label - 1].Op); // OpBranchConditional
-        uint fallback = instructions[label].Words[1], merge = instructions[label - 2].Words[1];
-        uint[] branch = instructions[label - 1].Words;
-        Assert.True(branch[2] == fallback && branch[3] == merge || branch[3] == fallback && branch[2] == merge,
-            program.Name + " does not branch around the entire ordered release");
+        int releases = TemporalLockReleaseSpirv.Releases(program.Name);
+        Assert.Equal(12 * releases, barriers.Length);
+        // Each release's twelve barriers share one block, and that block is the whole fallback of its own branch.
+        var blocks = barriers.GroupBy(n => Array.FindLastIndex(instructions, n, i => i.Op == 248)).ToArray();
+        Assert.Equal(releases, blocks.Length);
+        foreach (var block in blocks)
+        {
+            int label = block.Key;
+            int nextLabel = Array.FindIndex(instructions, label + 1, i => i.Op == 248);
+            Assert.True(block.Count() == 12 && block.All(n => n < nextLabel), program.Name + " barriers escaped their block");
+            Assert.Equal(247, instructions[label - 2].Op); // OpSelectionMerge
+            Assert.Equal(2u, instructions[label - 2].Words[2]); // SelectionControl DontFlatten
+            Assert.Equal(250, instructions[label - 1].Op); // OpBranchConditional
+            uint fallback = instructions[label].Words[1], merge = instructions[label - 2].Words[1];
+            uint[] branch = instructions[label - 1].Words;
+            Assert.True(branch[2] == fallback && branch[3] == merge || branch[3] == fallback && branch[2] == merge,
+                program.Name + " does not branch around the entire ordered release");
+        }
     }
 
     [Theory]
@@ -82,8 +89,10 @@ public sealed class TemporalLockZeroBypassTests
         Assert.StartsWith("#version 450\n#extension GL_EXT_control_flow_attributes : require\n", program.FragmentGlsl,
             StringComparison.Ordinal);
         string hlsl = SpirvCrossCompile.GlslPairToHlsl(program.VertexGlsl, program.FragmentGlsl, program.Name).FragmentSource;
-        Match branch = Assert.Single(Regex.Matches(hlsl, @"\[branch\]\s+if\s*\([^{}]*\)\s*\{(?<release>[^{}]*)\}"));
-        Assert.Equal(12, Regex.Matches(branch.Groups["release"].Value, @"(?<!\|)\|(?!\|)").Count);
+        MatchCollection branches = Regex.Matches(hlsl, @"\[branch\]\s+if\s*\([^{}]*\)\s*\{(?<release>[^{}]*)\}");
+        Assert.Equal(TemporalLockReleaseSpirv.Releases(program.Name), branches.Count);
+        foreach (Match branch in branches)
+            Assert.Equal(12, Regex.Matches(branch.Groups["release"].Value, @"(?<!\|)\|(?!\|)").Count);
         string unhinted = program.FragmentGlsl.Replace("[[dont_flatten]] ", "", StringComparison.Ordinal);
         Assert.DoesNotContain("[branch]", SpirvCrossCompile.GlslPairToHlsl(program.VertexGlsl, unhinted,
             program.Name + " unhinted").FragmentSource, StringComparison.Ordinal);

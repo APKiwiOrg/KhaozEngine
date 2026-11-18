@@ -159,7 +159,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>The most any frame from the turn on reads over its control past the lead and the rounding, as a
         /// share of the control's error, with each frame over its bound added to <paramref name="over"/>.</summary>
         internal static double Worst(StopRun r, string set, StopMeasure m, StopMeasure control, double lead,
-            List<string> over)
+            List<string> over, Action<int, double, bool>? observe = null)
         {
             double rounding = RoundingSteps / (255.0 * m.Pixels);
             double share = Share(r, set);
@@ -168,7 +168,9 @@ namespace KhaozEngine.Tests.Gpu
             {
                 double kept = control.Errors[k];
                 double bound = kept + lead + rounding + share * kept;
-                worst = Math.Max(worst, (m.Errors[k] - kept - lead - rounding) / kept);
+                double margin = (m.Errors[k] - kept - lead - rounding) / kept;
+                worst = Math.Max(worst, margin);
+                observe?.Invoke(k - 1, margin, m.Errors[k] > bound);
                 if (m.Errors[k] > bound)
                     over.Add($"{r.Name}, {set}: frame +{k - 1} {m.Errors[k]:0.00000} against {bound:0.00000}");
             }

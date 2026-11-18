@@ -25,5 +25,7 @@ namespace KhaozEngine.Render3D
         /// <summary>The scene rebuilt its colour targets and every pipeline that draws into them for a colour-format
         /// change, which today is the HDR chain being toggled.</summary>
         DeviceReset,
+        /// <summary>The colour history grid in effect changed between Display and Fine.</summary>
+        HistoryDetail,
     }
 }

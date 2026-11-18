@@ -433,6 +433,43 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   single-sample and never combines with MSAA. Moving draws
   pass a `MotionKey` through `RigidInstanceDraw` or `SkinnedInstanceDraw`, camera jumps call `Scene3D.CameraCut()`,
   and `Scene3D.DebugView`, `Scene3D.RequestTemporalCounts()` and `LastTemporalDiagnostics` show what the resolve did.
+  `Post.Temporal.HistoryDetail` defaults to `TemporalHistoryDetail.Fine`. It takes effect on resolving frames within
+  the limits below. Set `Post.Temporal.HistoryDetail = TemporalHistoryDetail.Display` to use the display-sized history.
+  Fine keeps an extra RGBA16F colour pair at twice the display on each axis. Moving pixels can read its four
+  reprojected texels, retain bounded sub-pixel deviations and preserve the resolved mean. Still and distrusted pixels use the
+  original display history and replicate the resolved colour. A pixel is still when its stored motion is below a
+  128th of a display pixel. A still surface can store a few least motion steps of rounding. With camera-relative
+  rendering in force the most measured is a quarter of that gate at the default budget's 2560 by 1440, and it can
+  reach the gate only on a display above about 7,000 pixels a side. With the render origin opted out, a still view
+  about 1,000 m or more along a horizontal axis from the world origin can store more than the gate at 2560 by
+  1440, and nearer in proportion on a larger display. Where it does, the still guarantee does not apply, as
+  Display's own reprojection carries the same residual. The measurements are in the
+  [resolve design](../docs/design/TEMPORAL-RESOLVE.md#the-still-gate). A still frame runs Display's expressions
+  through a different compiled program, so its colour and state are byte for byte Display's wherever the device
+  computes the two programs alike.
+  The suite asserts that exactly on every hardware device, except that a certified frame on hardware NVIDIA
+  Direct3D 11 is reported, not asserted. On the software rasterizers it follows the rules Display's own program
+  pairs keep there: llvmpipe's entry pair rules for colour and the shimmer record, and WARP's certificate rule on
+  a certified frame.
+  Both paths present the resolve directly, before
+  distortion, bloom and tonemapping. `Scene3D.TemporalHistoryDetailInEffect` reports the selection
+  latched on the frame's first render. Fine requires the temporal resolve, at least six colour attachments,
+  a device texture dimension that fits twice the display, and a display pixel count within
+  `Post.Temporal.HistoryDetailPixelLimit` (default 3,686,400). A resolving frame uses Display if the device or
+  pixel limits refuse Fine. At 3840 by 2160 the resolve uses Display under the default budget. At 2560 by 1440,
+  Fine adds 341.02 MiB of mode-specific targets (97 bytes a display pixel): 225 MiB for the pair and 116.02 MiB
+  of display-grid scratch. Nonpositive budgets disable Fine and unknown enum values mean Display.
+  A change of the latched mode resets history once, reported as `TemporalResetReason.HistoryDetail` unless a
+  higher-ranking reason such as a resize applies to the same frame. Later renders and captures leave the pair
+  untouched. If the admitted pair or its scratch fails to allocate, each resolving frame throws for as long as
+  Fine stays admitted and the allocation keeps failing.
+  Fine costs about 7.6 to 8.3 ms more GPU time a frame than the Display split resolve at 1440p, Native and
+  Quality, fully lit and shadowed, on an Apple M2 Max (2026-11-16 UTC), about 2.9 to 3.5 times the Display
+  split resolve's cost. A game frame with sun shadows takes the path of the shadowed measurement. The
+  measured gap exceeds the report-only 3 ms target at Native. The suite asserts its moving-detail protocols
+  for Display and reports them for Fine.
+  The passes, their measured times and the precision reasons for their structure are in the
+  [resolve design](../docs/design/TEMPORAL-RESOLVE.md#cost-capture).
   Lit rigid/skinned, foliage and ground paths export final key-shadow visibility to an R8 attachment. Transparent
   writers preserve it and cutout/dissolve discards expose the receiver below. Depth-qualified current/history
   means use relative tolerance 0.02 and finite reference/sample depths. A stored R8 difference strictly above 0.1

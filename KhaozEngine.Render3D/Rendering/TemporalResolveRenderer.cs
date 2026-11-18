@@ -51,6 +51,7 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuResourceSet?[] _resolveSets = new IGpuResourceSet?[2];
         readonly IGpuResourceSet?[] _fullyLitResolveSets = new IGpuResourceSet?[2];
         IGpuResourceSet? _storeSet;
+        IGpuResourceLayout? _detailLayout;
         TemporalResolveInputs _boundInputs;
         int _boundTargets = int.MinValue;
         TemporalHistory? _boundHistory;
@@ -165,6 +166,15 @@ namespace KhaozEngine.Render3D.Rendering
             }
             _storeSet = f.CreateResourceSet(new GpuResourceSetDescription(_storeLayout,
                 inputs.SceneDepth, inputs.Motion, _clampSampler, _storeBuffer));
+            try
+            {
+                if (history.DetailStore is { } detail)
+                {
+                    _detailLayout ??= f.CreateResourceLayout(new GpuResourceLayoutDescription(T("DetailColor"), T("DetailClassification")));
+                    detail.BindResolve(history, _resolveLayout, _detailLayout, _fragmentSourceForTests);
+                }
+            }
+            catch { FreeSets(retired); throw; }
             _boundInputs = inputs;
             _boundTargets = history.TargetGeneration;
             _boundHistory = history;
@@ -208,15 +218,28 @@ namespace KhaozEngine.Render3D.Rendering
             if (_storeSet is null)
                 throw new InvalidOperationException("TemporalResolveRenderer.Run was called before BindInputs.");
             LastCurrentVisibilityFullyLit = _fullyLitFallback || currentVisibilityFullyLit;
-            LastVisibilityDecisionSkipped = LastCurrentVisibilityFullyLit && _readVisibilityFullyLit;
-            bool usesVisibility = Entry == TemporalResolveEntry.Split
+            // The detail history never skips the decision: one checked program serves every certificate state. Its
+            // pipelines are built over the full layout, so it takes the full set whatever Display's programs use.
+            LastVisibilityDecisionSkipped = history.DetailStore is null && LastCurrentVisibilityFullyLit && _readVisibilityFullyLit;
+            bool usesVisibility = history.DetailStore is not null || (Entry == TemporalResolveEntry.Split
                 ? _split!.UsesVisibility(TemporalSplitResolve.Upscales(LastUniforms), LastVisibilityDecisionSkipped)
-                : _resolvePrograms!.UsesVisibility(LastVisibilityDecisionSkipped);
+                : _resolvePrograms!.UsesVisibility(LastVisibilityDecisionSkipped));
             IGpuResourceSet set = (usesVisibility ? _resolveSets : _fullyLitResolveSets)[history.ReadIndex]
                 ?? throw new InvalidOperationException("TemporalResolveRenderer.Run was called before BindInputs.");
             CurrentSet = set;
-            LastEntry = Entry;
-            if (!RunSplit(cl, history))
+            LastEntry = history.DetailStore is null ? Entry : TemporalResolveEntry.Fused;
+            if (history.DetailStore is { } detail)
+            {
+                detail.Resolve(cl, set, history.WriteIndex, Profiling);
+                using (Profiling?.Pass(cl, "temporal.depth-store", 0) ?? default)
+                {
+                    cl.SetFramebuffer(history.PreviousDepthFramebuffer(history.WriteIndex));
+                    cl.SetPipeline(_storePipeline!);
+                    cl.SetGraphicsResourceSet(0, _storeSet!);
+                    cl.Draw(3);
+                }
+            }
+            else if (!RunSplit(cl, history))
             {
                 using (Profiling?.Pass(cl, "temporal.resolve", 0) ?? default)
                 {
@@ -274,6 +297,7 @@ namespace KhaozEngine.Render3D.Rendering
             _resolveBuffer.Dispose();
             _storeBuffer.Dispose();
             _clampSampler.Dispose();
+            _detailLayout?.Dispose();
         }
     }
 }

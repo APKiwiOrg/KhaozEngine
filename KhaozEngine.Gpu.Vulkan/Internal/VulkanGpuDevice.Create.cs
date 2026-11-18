@@ -423,7 +423,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 timestamps: new VulkanTimestampSupport(read.TimestampValidBits, read.TimestampPeriodNanoseconds),
                 maxFragmentStorageBuffers: (int)Math.Min(read.Facts.MaxPerStageDescriptorStorageBuffers, int.MaxValue),
                 maxStorageBufferRangeBytes: read.MaxStorageBufferRangeBytes,
-                signedZeroInfNanPreserveFloat32: read.SignedZeroInfNanPreserveFloat32);
+                signedZeroInfNanPreserveFloat32: read.SignedZeroInfNanPreserveFloat32,
+                maxRenderTexture2DDimension: read.MaxRenderTexture2DDimension);
 
         static PhysicalDevice[] EnumeratePhysicalDevices(Vk vk, Instance instance)
         {

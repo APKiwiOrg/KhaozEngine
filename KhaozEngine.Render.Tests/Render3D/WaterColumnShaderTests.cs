@@ -94,6 +94,7 @@ public sealed class WaterColumnShaderTests
         using var commands = new RecordingGpuCommandList(new NullGpuCommandList()) { CapturePayloads = true };
         scene.Post.Water.WaterColumnLight = true;
         scene.Post.Water.SwellAmplitude = 0f;
+        scene.Post.Temporal.HistoryDetail = TemporalHistoryDetail.Display;
         scene.Post.Quality.AntiAliasing = temporal ? AntiAliasing.Temporal : AntiAliasing.Off;
         scene.ForceTemporalForTests = motionOnly;
         scene.Begin();

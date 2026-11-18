@@ -12,9 +12,11 @@ namespace KhaozEngine.Tests.Gpu
     /// also bound raw change. Moving rims report raw change against the reference, since better tracking can raise it
     /// legitimately. Rim checks use the separate bilinear-input control and retain this table as point-PCF history.
     /// The half unit in the last printed place covers rounding of the stored six-decimal figures.</summary>
-    internal static class TemporalReviewBaseline
+    internal static partial class TemporalReviewBaseline
     {
-        const double Tolerance = 0.1, Rounding = 0.0000005;
+        const double Tolerance = 0.1, Rounding = 0.0000005, ReferenceTolerance = 2 * Rounding;
+        // The one limit a figure may reach against its stored baseline: asserted by Check, printed by ReportLimits.
+        static double Limit(double baseline) => (baseline + Rounding) * (1 + Tolerance);
         // Hosted v21.2.0 accumulate at a82078bdb, run 39069066431. Windows figures are from the same shader
         // at 12a720403, run 39069733082, whose missing-baseline failures expose the measured-case output.
         static readonly Dictionary<(string Device, string Kind, string Name), TemporalReviewFigures> Before = new()
@@ -280,12 +282,12 @@ namespace KhaozEngine.Tests.Gpu
             CheckValue("error", figures.Error, before.Error);
             CheckValue("temporal error", figures.Temporal, before.Temporal);
             if (kind == "diagonal") CheckValue("change", figures.Change, before.Change);
-            if (Math.Abs(figures.Reference - before.Reference) > 2 * Rounding)
+            if (Math.Abs(figures.Reference - before.Reference) > ReferenceTolerance)
                 failures.Add($"{name}: reference changed from {before.Reference:0.000000} to {figures.Reference:0.000000}");
 
             void CheckValue(string metric, double actual, double baseline)
             {
-                if (!double.IsFinite(actual) || actual < 0 || actual > (baseline + Rounding) * (1 + Tolerance))
+                if (!double.IsFinite(actual) || actual < 0 || actual > Limit(baseline))
                     failures.Add($"{name}: {metric} {actual:0.000000} above {source} {baseline:0.000000} plus a tenth");
             }
         }

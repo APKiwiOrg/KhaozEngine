@@ -11,6 +11,7 @@ namespace KhaozEngine.Tests.Gpu
         public static int Channels(GpuPixelFormat format) => format switch
         {
             GpuPixelFormat.R16G16B16A16Float => 4,
+            GpuPixelFormat.R32G32B32A32Float => 4,
             GpuPixelFormat.R16G16Float => 2,
             GpuPixelFormat.R32Float => 1,
             _ => throw new ArgumentOutOfRangeException(nameof(format), format, "not a float format the temporal tests read"),
@@ -20,7 +21,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             Assert(values.Length == texture.Width * texture.Height * Channels(texture.Format), "value count");
             byte[] bytes;
-            if (texture.Format == GpuPixelFormat.R32Float)
+            if (texture.Format is GpuPixelFormat.R32Float or GpuPixelFormat.R32G32B32A32Float)
             {
                 bytes = MemoryMarshal.AsBytes(values.AsSpan()).ToArray();
             }
@@ -49,7 +50,7 @@ namespace KhaozEngine.Tests.Gpu
             MappedData map = gd.Map(staging, GpuMapMode.Read);
             try
             {
-                bool single = texture.Format == GpuPixelFormat.R32Float;
+                bool single = texture.Format is GpuPixelFormat.R32Float or GpuPixelFormat.R32G32B32A32Float;
                 for (int y = 0; y < h; y++)
                 {
                     IntPtr row = map.Data + (int)(y * map.RowPitch);

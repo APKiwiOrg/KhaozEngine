@@ -46,6 +46,19 @@ namespace KhaozEngine.Tests.Gpu
     /// </summary>
     public sealed partial class TemporalStabilityRuns
     {
+        readonly TemporalHistoryDetail _detail;
+        readonly TemporalHistoryVariants<TemporalStabilityRuns> _variants;
+
+        public TemporalStabilityRuns() : this(TemporalHistoryDetail.Display) { }
+
+        TemporalStabilityRuns(TemporalHistoryDetail detail, TemporalHistoryVariants<TemporalStabilityRuns>? variants = null)
+        {
+            _detail = detail;
+            _variants = variants ?? new TemporalHistoryVariants<TemporalStabilityRuns>(this, detail, (mode, pool) => new(mode, pool));
+        }
+
+        internal TemporalStabilityRuns For(TemporalHistoryDetail detail) => _variants.For(detail);
+
         public const int W = 320, H = 180;
 
         /// <summary>Frames rendered before the window and frames measured in it, on every pan.</summary>
@@ -186,6 +199,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             _fence.Stage.Setup(s, aa, preset);
             s.Post.Hdr.Enabled = false;
+            s.Post.Temporal.HistoryDetail = _detail;
         };
 
         Action<Scene3D> YardSetup(AntiAliasing aa, TemporalUpscale preset) => s =>
@@ -193,12 +207,14 @@ namespace KhaozEngine.Tests.Gpu
             _yard.Setup(s, aa);
             s.Post.Temporal.Upscale = preset;
             s.Post.Hdr.Enabled = false;
+            s.Post.Temporal.HistoryDetail = _detail;
         };
 
         Action<Scene3D> PropSetup(AntiAliasing aa, TemporalUpscale preset) => s =>
         {
             _prop.Stage.Setup(s, aa, preset);
             s.Post.Hdr.Enabled = false;
+            s.Post.Temporal.HistoryDetail = _detail;
         };
 
         StabilityPath Cached<TKey>(Dictionary<TKey, StabilityPath> cache, TKey key, Func<StabilityPath> measure)

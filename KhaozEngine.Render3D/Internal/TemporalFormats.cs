@@ -33,6 +33,9 @@ namespace KhaozEngine.Render3D.Internal
         /// <summary>The two internal-resolution previous depth targets: linear view depth, background at 1e30.</summary>
         public const GpuPixelFormat PreviousDepth = GpuPixelFormat.R32Float;
 
+        /// <summary>The fine detail path's display-resolution validity code.</summary>
+        public const GpuPixelFormat DetailClassification = GpuPixelFormat.R8UNorm;
+
         public const int HistoryColorBytesPerPixel = 8;
         public const int HistoryConfidenceBytesPerPixel = 8;
         public const int PreviousDepthBytesPerPixel = 4;

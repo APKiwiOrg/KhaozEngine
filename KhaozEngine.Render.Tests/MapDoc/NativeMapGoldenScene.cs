@@ -53,6 +53,8 @@ public sealed class NativeMapGoldenScene : IDisposable
             GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
         _framebuffer = device.Factory.CreateFramebuffer(null, _target); _commands = device.Factory.CreateCommandList();
         _scene = new(device, _framebuffer.Outputs, Shadows());
+        // Keep the native map goldens on the display-grid history.
+        _scene.Post.Temporal.HistoryDetail = TemporalHistoryDetail.Display;
     }
     public Render3DCapture Capture(string variant, bool omitFeature = false, bool farOrigin = false) =>
         Capture(variant, omitFeature, farOrigin, MapRoofMode.AlwaysHidden, null);

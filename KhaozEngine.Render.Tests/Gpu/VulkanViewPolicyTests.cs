@@ -260,6 +260,7 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData(GpuPixelFormat.R8G8B8A8UNorm, false, Format.R8G8B8A8Unorm)]
         [InlineData(GpuPixelFormat.B8G8R8A8UNorm, false, Format.B8G8R8A8Unorm)]
         [InlineData(GpuPixelFormat.R16G16B16A16Float, false, Format.R16G16B16A16Sfloat)]
+        [InlineData(GpuPixelFormat.R32G32B32A32Float, false, Format.R32G32B32A32Sfloat)]
         [InlineData(GpuPixelFormat.R32Float, false, Format.R32Sfloat)]
         [InlineData(GpuPixelFormat.R32Float, true, Format.D32Sfloat)]
         [InlineData(GpuPixelFormat.D24UNormS8UInt, true, Format.D24UnormS8Uint)]

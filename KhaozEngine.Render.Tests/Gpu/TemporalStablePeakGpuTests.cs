@@ -26,7 +26,7 @@ namespace KhaozEngine.Tests.Gpu
     /// change by 100 and 39 percent at Quality, flat and textured, and by 52 percent at Native flat.
     /// </para>
     /// </summary>
-    public sealed class TemporalStablePeakGpuTests(ITestOutputHelper output)
+    public sealed partial class TemporalStablePeakGpuTests(ITestOutputHelper output)
     {
         const int W = 320, H = 180, FirstMeasured = 80, Measured = 8, Spacing = 16, Margin = 8;
         const float OrthoSize = 1.5f;
@@ -87,6 +87,7 @@ namespace KhaozEngine.Tests.Gpu
                 {
                     stage.Setup(s, AntiAliasing.Temporal, preset);
                     s.Post.AmbientColor = Ambient;
+                    Detail(s);
                 }
 
                 byte[][] reference = TemporalAcceptance.ReferenceSequence(W, H, s => Setup(s, TemporalUpscale.Native),
@@ -96,15 +97,18 @@ namespace KhaozEngine.Tests.Gpu
 
                 (double change, double referenceChange, double error, double contrast) =
                     Measure(stage, peaks, frames, reference);
+                _reported[c] = (change, error);
                 (double baseChange, double baseError) = Baseline[c];
                 output.WriteLine($"{TemporalDeviceClass.Name} {c.Name}: {peaks.Count} peaks, frame-to-frame change {change:0.00000} (reference "
                     + $"{referenceChange:0.00000}), error {error:0.00000}, reference peak contrast {contrast:0.000}");
+                if (!_reportOnly)
                 Assert.True(contrast > 0.1, $"{c.Name}: the reference shows no peaks, contrast {contrast:0.000}");
                 if (change > baseChange * (1 + Tolerance))
                     failures.Add($"{c.Name}: change {change:0.00000} above {baseChange:0.00000} plus a tenth");
                 if (error > baseError * (1 + Tolerance))
                     failures.Add($"{c.Name}: error {error:0.00000} above {baseError:0.00000} plus a tenth");
             }
+            if (!_reportOnly)
             Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
         }
 

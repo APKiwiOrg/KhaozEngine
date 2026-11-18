@@ -6,7 +6,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
 {
     /// <summary>
     /// <c>MTLPixelFormat</c>, an <c>NSUInteger</c> and therefore <c>ulong</c>. THE MEMBERS THIS ENGINE CAN NAME,
-    /// and deliberately not the whole enum: <see cref="GpuPixelFormat"/> has eight members, the swapchain adds the
+    /// and deliberately not the whole enum: <see cref="GpuPixelFormat"/> has nine members, the swapchain adds the
     /// sRGB pair of one of them, and a format nothing can ask for would be a row nothing can test.
     /// <para>
     /// THE NUMBERS ARE THE HEADER'S AND NOT A SEQUENCE. Metal's values are sparse, so an implicitly numbered enum
@@ -49,6 +49,9 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
 
         /// <summary><c>MTLPixelFormatRGBA16Float</c>: the HDR internal colour target.</summary>
         RGBA16Float = 115,
+        /// <summary><c>MTLPixelFormatRGBA32Float</c>: four 32-bit float channels. Filterable only where the device
+        /// reports <c>supports32BitFloatFiltering</c>.</summary>
+        RGBA32Float = 125,
 
         /// <summary><c>MTLPixelFormatDepth32Float</c>: what <see cref="GpuPixelFormat.R32Float"/> becomes on a
         /// texture that declares depth usage.</summary>

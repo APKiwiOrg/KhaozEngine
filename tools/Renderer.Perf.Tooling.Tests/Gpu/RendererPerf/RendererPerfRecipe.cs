@@ -373,8 +373,9 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
             MaxPenumbraTexels = 6f,
         };
         post.Temporal.Upscale = TemporalUpscale.Native;
-        // Frozen workloads retain the historical hold when the engine's temporal default changes.
+        // Frozen workloads retain their historical shadow hold and display-grid history.
         post.Temporal.ShadowLightHoldTexels = 1f;
+        post.Temporal.HistoryDetail = TemporalHistoryDetail.Display;
         post.Hdr.Enabled = active;
         post.Bloom.Enabled = active;
         post.Atmosphere.Enabled = active;

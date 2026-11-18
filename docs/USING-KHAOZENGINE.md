@@ -4928,6 +4928,52 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   loss at `Performance` is open in [#1212](https://github.com/APKiwiOrg/KhaozEngine/issues/1212). A pixel just after a
   reset takes the rebuild at the internal resolution, and a moving pixel shifts towards it, wholly at 2 display pixels
   a frame, so fast motion reads softer until it settles.
+- **History grid.** `Post.Temporal.HistoryDetail` defaults to `TemporalHistoryDetail.Fine`. Set
+  `Post.Temporal.HistoryDetail = TemporalHistoryDetail.Display` to use the display-sized history. Fine
+  allocates an extra RGBA16F colour pair at exactly twice the display on each axis. Admitted moving pixels
+  resolve from the mean of four reprojected fine-history fetches. Their finite, nonnegative deviations survive
+  into the next generation while their stored mean stays within one binary16 step of the display result.
+  Still pixels and distrusted footprints use the original display-history expressions and replicate their
+  stored result exactly. A pixel is still when its stored motion is below a 128th of a display pixel. A still
+  surface's motion is not always exactly zero, since the motion target stores whole steps of 2^-24 UV and its
+  two clip positions can round apart. With camera-relative rendering in force (the default render origin) the
+  most measured is about a dozen steps, a quarter of the gate at the default budget's 2560 by 1440. It can reach
+  the gate only when `HistoryDetailPixelLimit` is raised for a display above about 7,000 pixels a side and a still
+  orthographic view sits far from its render origin. With `RenderOrigin = Vector3.Zero`, or a camera without
+  `IRenderOriginAware`, a still view about 1,000 m or more along a horizontal axis from the world origin can store
+  more than the gate at 2560 by 1440, and nearer in proportion on a larger display. Where stored motion reaches
+  the gate the still guarantee does not apply. Display's own reprojection carries the same residual there, so
+  keep camera-relative rendering on for a world far from the origin. The measurements are in the
+  [resolve design](design/TEMPORAL-RESOLVE.md#the-still-gate).
+  A still frame runs Display's expressions through a different compiled program, so its colour and state are byte
+  for byte Display's wherever the device computes the two programs alike. The suite asserts that exactly on every
+  hardware device, except that a fully lit certified frame on hardware NVIDIA Direct3D 11 is reported, not
+  asserted. On the software rasterizers they follow the rules Display's own program pairs keep there:
+  on llvmpipe the entry pair's rules for colour and the shimmer record, on WARP the certificate rule on a fully
+  lit certified frame. There is no new presentation filter. The update runs before distortion, bloom and
+  tonemapping. Fine requires the temporal resolve, at least six colour attachments, a device 2D render texture
+  dimension that fits twice the display, and a display pixel count within the inclusive
+  `Post.Temporal.HistoryDetailPixelLimit`. When the device or pixel limits refuse Fine, the resolve uses Display.
+  The budget defaults to 3,686,400, so 3840 by 2160 uses Display. At 2560 by 1440, Fine adds 225 MiB for the
+  pair and 116.02 MiB of display-grid scratch, 341.02 MiB total (97 bytes a display pixel, excluding ordinary
+  Display targets and driver overhead). Nonpositive budgets disable Fine and unknown enum values mean Display. If the admitted pair or its
+  scratch fails to allocate, each resolving frame throws for as long as Fine stays admitted and the allocation
+  keeps failing.
+  Read `Scene3D.TemporalHistoryDetailInEffect` for the selection latched by the last frame's first render.
+  It reports Display before rendering and on frames without a resolve. Those frames allocate no fine store.
+  A change of that selection resets history for one frame, reported as `TemporalResetReason.HistoryDetail`
+  unless a higher-ranking reason such as a resize applies to the same frame.
+  A settings change within the frame waits for the next frame.
+  Resizes recreate the pair with history, and cuts and other resets re-seed its write side. A later render
+  inside the frame, including an offscreen capture, neither reads nor advances it.
+  Temporal debug views and on-request counts replay the selected mode's own history fetch and trust gate.
+  Fine costs about 7.6 to 8.3 ms more GPU time a frame than the Display split resolve at 1440p, Native and
+  Quality, fully lit and shadowed, on an Apple M2 Max (2026-11-16 UTC), about 2.9 to 3.5 times the Display
+  split resolve's cost. A game frame with sun shadows takes the path of the shadowed measurement. The
+  measured gap exceeds the report-only 3 ms target at Native. The suite asserts its moving-detail protocols
+  for Display and reports them for Fine. The passes, their measured times and the precision reasons for their
+  structure are in the
+  [resolve design](design/TEMPORAL-RESOLVE.md#cost-capture).
 - **Sharpening.** A contrast adaptive sharpen runs after the tonemap at display resolution.
   `Post.Temporal.Sharpness` runs from 0 (the pass does not run) to 1, default 0.25, and a value outside that range is
   clamped. It limits each pixel by its four neighbours, so it leaves an edge already at full contrast alone and
@@ -5004,7 +5050,8 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   rigid and skinned draws and key collisions, whether history was valid and why it was last reset, the internal and
   display sizes, the preset and the effective `UpscaleRatio`. `LastReset` is a `TemporalResetReason`: `None`,
   `FirstFrame`, `Resize`, `RenderScale`, `AntiAliasing`, `CameraCutRequested` for a `CameraCut()` call,
-  `CameraCutDetected` for a move or turn past the thresholds or an origin jump, and `DeviceReset` for the HDR toggle,
+  `CameraCutDetected` for a move or turn past the thresholds or an origin jump, `DeviceReset` for the HDR toggle,
+  and `HistoryDetail` for a change of the colour history grid in effect,
   and a frame with both a call and a detected cut reports the call. `scene.RequestTemporalCounts()` samples
   disoccluded, reactive and clipped pixel counts on a 32 by 18 grid on the next frame that runs the resolve, and they
   land at the following `PrepareFrame` with `CountsFrameIndex` naming the frame they came from. Reading them back
@@ -9624,7 +9671,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="24.0.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="24.1.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -10230,7 +10277,7 @@ See the [Movement arrival contract](../KhaozEngine.Movement/README.md#range-stee
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="24.0.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="24.1.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -11149,7 +11196,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="24.0.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="24.1.0" />
 ```
 
 ```csharp
@@ -21174,7 +21221,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="24.0.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="24.1.0" />
 ```
 
 ```csharp
@@ -21210,7 +21257,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="24.0.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="24.1.0" />
 ```
 
 ```csharp
@@ -21461,7 +21508,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="24.0.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="24.1.0" />
 ```
 
 ```csharp
@@ -26407,7 +26454,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="24.0.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="24.1.0" />
 </ItemGroup>
 ```
 

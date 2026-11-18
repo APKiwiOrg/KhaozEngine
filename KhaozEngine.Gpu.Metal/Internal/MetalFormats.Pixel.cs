@@ -43,6 +43,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             GpuPixelFormat.R8UNorm => MTLPixelFormat.R8Unorm,
             GpuPixelFormat.R32Float => depthFormat ? MTLPixelFormat.Depth32Float : MTLPixelFormat.R32Float,
             GpuPixelFormat.R16G16Float => MTLPixelFormat.RG16Float,
+            GpuPixelFormat.R32G32B32A32Float => MTLPixelFormat.RGBA32Float,
             GpuPixelFormat.R8G8B8A8UNorm => MTLPixelFormat.RGBA8Unorm,
             GpuPixelFormat.B8G8R8A8UNorm => MTLPixelFormat.BGRA8Unorm,
             GpuPixelFormat.R16G16B16A16Float => MTLPixelFormat.RGBA16Float,

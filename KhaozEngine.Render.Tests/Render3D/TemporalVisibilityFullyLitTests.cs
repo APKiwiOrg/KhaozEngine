@@ -14,9 +14,11 @@ namespace KhaozEngine.Tests.Render3D;
 public sealed class TemporalVisibilityFullyLitTests
 {
     [Theory]
-    [InlineData(0)]
-    [InlineData(1)]
-    public void ReceiverEvidenceRequiresBothCurrentAndReadIndexToBeFullyLit(int choice)
+    [InlineData(0, TemporalHistoryDetail.Display)]
+    [InlineData(1, TemporalHistoryDetail.Display)]
+    [InlineData(0, TemporalHistoryDetail.Fine)]
+    [InlineData(1, TemporalHistoryDetail.Fine)]
+    public void ReceiverEvidenceRequiresBothCurrentAndReadIndexToBeFullyLit(int choice, TemporalHistoryDetail detail)
     {
         using var device = new FakeGpuDevice();
         using IGpuTexture image = device.Factory.CreateTexture(GpuTextureDescription.Texture2D(
@@ -25,6 +27,7 @@ public sealed class TemporalVisibilityFullyLitTests
         using var scene = new Scene3D(device, target.Outputs);
         scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
         scene.Post.Temporal.Upscale = TemporalUpscale.Quality;
+        scene.Post.Temporal.HistoryDetail = detail;
         scene.TemporalResolveEntryForTests = (TemporalResolveEntry)choice;
         MeshHandle box = scene.LoadMesh(MeshPrimitives.Box(1f));
         using IGpuCommandList commands = device.Factory.CreateCommandList();
@@ -44,7 +47,9 @@ public sealed class TemporalVisibilityFullyLitTests
             scene.PrepareFrame();
             using (GpuRecording.Open(device, commands, nameof(TemporalVisibilityFullyLitTests)))
                 scene.RenderInternal(commands, 160, 90, target);
-            Assert.Equal(frame.Skip, DecisionIsAbsent(scene.TemporalResolveRendererForTests!));
+            // The detail history keeps one checked program for every certificate state, so it never drops the decision.
+            Assert.Equal(frame.Skip && detail == TemporalHistoryDetail.Display,
+                DecisionIsAbsent(scene.TemporalResolveRendererForTests!));
         }
     }
 
@@ -120,11 +125,14 @@ public sealed class TemporalVisibilityFullyLitTests
     }
 
     [Theory]
-    [InlineData(0)]
-    [InlineData(1)]
-    public void ResolveDebugAndCountUseCachedProgramsForTheSameCertificate(int choice)
+    [InlineData(0, TemporalHistoryDetail.Display)]
+    [InlineData(1, TemporalHistoryDetail.Display)]
+    [InlineData(0, TemporalHistoryDetail.Fine)]
+    [InlineData(1, TemporalHistoryDetail.Fine)]
+    public void ResolveDebugAndCountUseCachedProgramsForTheSameCertificate(int choice, TemporalHistoryDetail detail)
     {
         using var rig = new HeadlessSceneRig();
+        rig.Scene.Post.Temporal.HistoryDetail = detail;
         rig.Scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
         rig.Scene.Post.Temporal.Upscale = TemporalUpscale.Quality;
         rig.Scene.Post.Quality.Shadows.Mode = ShadowMode.ShadowMap;
@@ -143,12 +151,15 @@ public sealed class TemporalVisibilityFullyLitTests
             commands.Clear();
             commands.CommandTrace!.Clear();
             rig.Frame(commands: commands);
-            bool skip = frame is 0 or 3;
+            // Frames 0 and 3 are certified. Display skips the decision there. The detail history's resolve, count and
+            // debug view keep the checked program in both certificate states.
+            bool skip = frame is 0 or 3 && detail == TemporalHistoryDetail.Display;
             var renderer = rig.Scene.TemporalResolveRendererForTests!;
             Assert.Equal(skip, renderer.LastVisibilityDecisionSkipped);
             string[] actual = commands.CommandTrace!.Where(c => c.Kind == "draw")
                 .Select(c => (c.Pipeline as FakePipeline)?.Request?.FragmentGlsl)
-                .Where(s => s is not null && s.Contains("bool visibilityReleased = ", StringComparison.Ordinal))
+                .Where(s => s is not null && !s.Contains("out vec4 oClassification;", StringComparison.Ordinal)
+                    && s.Contains("bool visibilityReleased = ", StringComparison.Ordinal))
                 .Select(s => s!).ToArray();
             Assert.Equal(3, actual.Length); // Resolve, sampled count and debug re-evaluation.
             Assert.All(actual, source => Assert.Equal(skip,

@@ -246,7 +246,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// its <c>Outputs</c> and what a pipeline built against it is validated on.
         /// <para>
         /// TWO FORMATS ARE EXPRESSIBLE AND THE REST REFUSE, which is honest rather than restrictive.
-        /// <c>GpuPixelFormat</c> has eight members and none of them is an sRGB one, so a swapchain created in an
+        /// <c>GpuPixelFormat</c> has nine members and none of them is an sRGB one, so a swapchain created in an
         /// sRGB format could not describe itself to the seam at all and every pipeline built against it would be
         /// validated against the wrong description. That is a silent wrong-colours defect, so it throws here
         /// instead, at creation, naming the format the surface offered.

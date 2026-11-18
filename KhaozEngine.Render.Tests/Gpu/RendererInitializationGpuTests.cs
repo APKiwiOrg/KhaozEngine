@@ -69,6 +69,7 @@ public sealed class RendererInitializationGpuTests(ITestOutputHelper log)
         using var device = new FrameOutputDevice(gd, output);
         using var scene = new Scene3D(gd, output.Framebuffer.Outputs);
         scene.Post.RenderScale = RenderScale.MatchViewport;
+        scene.Post.Temporal.HistoryDetail = TemporalHistoryDetail.Display;
         scene.Post.Quality.AntiAliasing = temporal ? AntiAliasing.Temporal : AntiAliasing.Off;
         scene.Post.Temporal.Upscale = TemporalUpscale.Native;
         scene.Post.Starfield = false;

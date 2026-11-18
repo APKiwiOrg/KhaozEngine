@@ -60,14 +60,28 @@ namespace KhaozEngine.Render3D.Rendering
 
         /// <summary><see cref="EntryFragments"/> for the entry point, the device's precision and the uniforms of the
         /// last <see cref="Run"/>. For tests.</summary>
-        internal string[] LastEntryFragmentsForTests() => EntryFragments(
-            LastEntry ?? throw new System.InvalidOperationException("the resolve recorded no entry point"),
-            TemporalResolvePrecisionPolicy.For(_gd), TemporalSplitResolve.Upscales(LastUniforms), _gd.Backend, LastVisibilityDecisionSkipped);
+        internal string[] LastEntryFragmentsForTests()
+        {
+            if (_boundHistory?.DetailStore is null) return EntryFragments(
+                LastEntry ?? throw new System.InvalidOperationException("the resolve recorded no entry point"),
+                TemporalResolvePrecisionPolicy.For(_gd), TemporalSplitResolve.Upscales(LastUniforms), _gd.Backend, LastVisibilityDecisionSkipped);
+            TemporalResolvePrecision precision = TemporalResolvePrecisionPolicy.For(_gd);
+            string detailResolve = ShaderSources.TemporalDetailResolveFragment(precision,
+                _boundHistory.CaptureDetailPathForTests);
+            return [TemporalVisibilityGatherPolicy.ForBackend(ShaderSources.TemporalDetailClassifyFragment(precision), _gd.Backend),
+                TemporalVisibilityGatherPolicy.ForBackend(detailResolve, _gd.Backend), ShaderSources.TemporalDepthStoreFrag];
+        }
 
         // BindInputs builds the chosen entry point's own objects after aligning visibility. A renderer used outside a scene, which
         // never selects, retires nothing, so the fused entry point there releases the split's targets by draining.
         void BindEntry(in TemporalResolveInputs inputs, TemporalHistory history, GpuRetireQueue? retired)
         {
+            if (history.DetailStore is not null)
+            {
+                _split?.ReleaseTargets(retired);
+                EnsureFused();
+                return;
+            }
             if (Entry == TemporalResolveEntry.Split)
             {
                 _split ??= new TemporalSplitResolve(_gd, _fragmentSourceForTests);

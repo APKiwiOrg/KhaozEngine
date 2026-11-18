@@ -286,6 +286,8 @@ public sealed class RendererPerfGeometryTraceTests
             Scene = new Scene3D(_device, _target.Outputs, shadows) { UseGpuSkinning = gpu, FrustumCulling = false };
             Scene.Post.Atmosphere = AtmosphereSettings.Earth(); Scene.Post.Atmosphere.Enabled = true;
             Scene.Post.Background = BackgroundMode.Sky;
+            // Keep the recorded geometry trace on the display-grid workload.
+            Scene.Post.Temporal.HistoryDetail = TemporalHistoryDetail.Display;
             Scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
             _box = Scene.LoadMesh(MeshPrimitives.Box(.5f));
             var splat = Scene.LoadSplatMaterial(1, 1, Enumerable.Range(0, 5).Select(_ => new SplatLayerImage

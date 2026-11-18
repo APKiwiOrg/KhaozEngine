@@ -210,7 +210,8 @@ namespace KhaozEngine.Tests.Gpu
     /// same device class (<see cref="TemporalDeviceClass"/>).
     /// </para>
     /// </summary>
-    public sealed class TemporalMovingShadeLagGpuTests(ITestOutputHelper output)
+    public sealed partial class TemporalMovingShadeLagGpuTests(TemporalShadowLagScene scene, ITestOutputHelper output)
+        : IClassFixture<TemporalShadowLagScene>
     {
         const int W = 320, H = 180;
         const int FirstMeasured = 80, Measured = 8;
@@ -305,9 +306,21 @@ namespace KhaozEngine.Tests.Gpu
             }
         }
 
-        [GpuFact]
-        public void Shadow_edge_lag_on_moving_pixels_and_fast_shadows_stays_within_its_bounds()
+        [GpuTheory, TemporalHistoryModeData]
+        public void Shadow_edge_lag_on_moving_pixels_and_fast_shadows_stays_within_its_bounds(TemporalHistoryDetail detail)
         {
+            _detail = detail;
+            string key = $"MovingShade/{detail}/{_gate}";
+            if (scene.TryGet<Measurements>(key, out var cached))
+            {
+                _reported = cached!.Values;
+                _contrasts = cached.Contrasts;
+                _controlValidity = cached.ControlValidity;
+                if (!_reportOnly) AssertCaptureValidity();
+                _paired = cached.Controls;
+                if (!_reportOnly) AssertBounds(_reported, _paired, liveOnly: detail == TemporalHistoryDetail.Fine);
+                return;
+            }
             output.WriteLine($"{W}x{H}, device class {TemporalDeviceClass.Name}. Band {ShadowEdgeMeasure.BandPixels} px, "
                 + $"tail to {ShadowEdgeMeasure.TailPixels} px behind, control {ShadowEdgeMeasure.FarPixels} px ahead and "
                 + $"beyond, frames {FirstMeasured} to {FirstMeasured + Measured - 1}.");
@@ -320,15 +333,15 @@ namespace KhaozEngine.Tests.Gpu
                 var stage = new MovingShadeStage(W, H, c.Kind, c.Shadow, c.Motion, FirstMeasured);
                 if (!references.TryGetValue((c.Kind, c.Shadow, c.Motion), out byte[][]? reference))
                 {
-                    reference = TemporalAcceptance.ReferenceSequence(W, H,
+                    reference = scene.Capture(
                         s => stage.Setup(s, AntiAliasing.Temporal, TemporalUpscale.Native, holdTexels: 0f), stage.Draw,
-                        FirstMeasured, Measured);
+                        FirstMeasured, Measured, TemporalUpscale.Native, reference: true);
                     references[(c.Kind, c.Shadow, c.Motion)] = reference;
                 }
 
-                byte[][] frames = TemporalAcceptance.Sequence(W, H,
+                byte[][] frames = scene.Capture(
                     s => stage.Setup(s, AntiAliasing.Temporal, c.Preset, holdTexels: 1f), stage.Draw, FirstMeasured,
-                    Measured);
+                    Measured, c.Preset, _detail, _gate);
                 var m = new ShadowEdgeMeasure(W, H, stage.Receiver(), c.Sign, frames, reference, FirstMeasured);
 
                 output.WriteLine($"{c.Name}: edge travel over the receiver about {c.RelativeTravel:0.0} px a frame, "
@@ -337,12 +350,14 @@ namespace KhaozEngine.Tests.Gpu
                 output.WriteLine("  region          pixels   mean     p95      bias     grain out  grain ref  err grain  "
                     + "change   chg ref  chg err");
                 var r = new Dictionary<string, ShadowEdgeRegion>();
+                _contrasts[c] = m.ReferenceContrast;
                 foreach ((string name, ShadowEdgeRegion region) in m.Regions)
                 {
                     output.WriteLine($"  {name,-15} {region.Count,6}   {region.Mean:0.0000}   {region.P95:0.0000}   "
                         + $"{region.Bias,7:0.0000}  {region.GrainOut:0.0000}     {region.GrainRef:0.0000}     "
                         + $"{region.ErrorGrain:0.0000}     {region.Change:0.0000}   {region.ChangeRef:0.0000}   "
                         + $"{region.ChangeError:0.0000}");
+                    if (!_reportOnly)
                     Assert.True(region.Count > 0, $"{c.Name}: the {name} region holds no pixels");
                     r[name] = region;
                 }
@@ -353,9 +368,10 @@ namespace KhaozEngine.Tests.Gpu
                     + $"|{r["band textured"].GrainRef:R}|{r["band textured"].ChangeError:R}");
                 if (c.Kind == MovingShadeKind.Shadow && (MathF.Abs(c.Shadow) == 1f || MathF.Abs(c.Shadow) == 8f))
                 {
-                    byte[][] control = TemporalBilinearShadowControl.Sequence(W, H,
+                    byte[][] control = scene.Capture(
                         s => stage.Setup(s, AntiAliasing.Temporal, c.Preset, holdTexels: 1f), stage.Draw,
-                        FirstMeasured, Measured);
+                        FirstMeasured, Measured, c.Preset, bilinear: true);
+                    _controlValidity[c] = (scene.ControlValid, scene.ControlJitter);
                     var baseline = new ShadowEdgeMeasure(W, H, stage.Receiver(), c.Sign, control, reference, FirstMeasured);
                     var controlRegions = new Dictionary<string, ShadowEdgeRegion>();
                     foreach ((string name, ShadowEdgeRegion region) in baseline.Regions) controlRegions[name] = region;
@@ -369,6 +385,7 @@ namespace KhaozEngine.Tests.Gpu
                     + $"{ShadowEdgeMeasure.ProfileAhead - span} (behind) to {ShadowEdgeMeasure.ProfileAhead} (ahead)";
                 output.WriteLine($"  textured signed error x1000, {bins}: {m.Profile(flat: false)}");
                 output.WriteLine($"  flat signed error x1000, {bins}: {m.Profile(flat: true)}");
+                if (!_reportOnly)
                 Assert.True(m.ReferenceContrast > 0.05,
                     $"{c.Name}: the reference shows no shadow edge, contrast {m.ReferenceContrast:0.000}");
                 summary.Add($"{c.Name,-38} {r["band textured"].Mean:0.0000} {r["tail textured"].Mean:0.0000} "
@@ -387,79 +404,24 @@ namespace KhaozEngine.Tests.Gpu
                 + "chgT   chRefT chErrT  chgF   chRefF chErrF");
             foreach (string line in summary) output.WriteLine(line);
             output.WriteLine($"device class {TemporalDeviceClass.Name}");
-            AssertBounds(measured, controls);
+            _reported = measured;
+            _paired = controls;
+            scene.Remember(key, new Measurements(measured, controls, _contrasts, _controlValidity));
+            if (!_reportOnly)
+            {
+                AssertCaptureValidity();
+                AssertBounds(measured, controls, liveOnly: detail == TemporalHistoryDetail.Fine);
+            }
         }
 
         static void AssertBounds(Dictionary<Case, Dictionary<string, ShadowEdgeRegion>> measured,
-            Dictionary<Case, Dictionary<string, ShadowEdgeRegion>> controls)
+            Dictionary<Case, Dictionary<string, ShadowEdgeRegion>> controls, bool liveOnly = false)
         {
             var failures = new List<string>();
-            foreach ((Case c, Dictionary<string, ShadowEdgeRegion> r) in measured)
-            {
-                ShadowEdgeRegion band = r["band textured"];
-                if (c.Kind == MovingShadeKind.Shadow ? MathF.Abs(c.Shadow) > 1f : c.Motion >= 1f)
-                    Check(band.GrainOut <= BandGrainRatio * band.GrainRef,
-                        $"{c.Name}: textured band grain {band.GrainOut:0.0000} above {BandGrainRatio} times the "
-                        + $"reference's {band.GrainRef:0.0000}");
-                double tail = r["tail textured"].Mean;
-                if (c.Kind == MovingShadeKind.Shadow && MathF.Abs(c.Shadow) > 1f)
-                {
-                    Case slow = c with
-                    {
-                        Name = c.Name.Replace($"{MathF.Abs(c.Shadow):0.0} px", "1.0 px"),
-                        Shadow = c.Sign
-                    };
-                    double slowTail = measured[slow]["tail textured"].Mean;
-                    if (MathF.Abs(c.Shadow) == 8f)
-                        foreach (string region in new[] { "tail textured", "tail flat" })
-                        {
-                            double actual = r[region].Mean, before = controls[c][region].Mean;
-                            // Owner accepted on 2026-10-19 after real-scene clips: the visibility lock release removes held shadow
-                            // sparkle, and this synthetic value is the measured cost of that release. No large-change response ships.
-                            // Owner accepted per driver on 2026-10-19 after hosted run 39215298727: WARP and lavapipe show the same lock-release costs.
-                            double baseline = OwnerAcceptedTailBaseline.TryGetValue((TemporalDeviceClass.Name, c.Name, region), out double accepted)
-                                ? accepted : before;
-                            Check(double.IsFinite(actual) && actual <= baseline + 0.0000005,
-                                $"{c.Name}: absolute {region} {actual:R} above baseline {baseline:R}, paired bilinear control {before:R}, "
-                                + $"1 px denominator {measured[slow][region].Mean:R}, control {controls[slow][region].Mean:R}");
-                        }
-                    // Owner ruling 2026-10-29, precision-safe chroma floor. Only this Native advancing case
-                    // takes its measured per-driver ratio. Other speeds, directions and presets keep FastTailRatio.
-                    double fastTailRatio = c.Name == "Native S 8.0 px advancing"
-                        ? TemporalDeviceClass.Name switch
-                        {
-                            // Metal: 0.004814773364462807 / 0.0029890602170812297, 7.39 percent above D.
-                            "hardware" => 1.610798383033032,
-                            // WARP: 0.004802969203941581 / 0.0029910308436487004, 7.05 percent above D.
-                            "WARP" => 1.605790596957714,
-                            // Lavapipe: 0.0047991955092875314 / 0.0030566843860575796, 4.67 percent above D.
-                            "lavapipe" => 1.570065765107464,
-                            _ => FastTailRatio,
-                        } : FastTailRatio;
-                    Check(tail <= fastTailRatio * slowTail,
-                        $"{c.Name}: textured tail {tail:0.0000} above {fastTailRatio} times the 1 px tail {slowTail:0.0000}");
-                }
-                else if (c.Kind == MovingShadeKind.Object && c.Motion >= 1f)
-                {
-                    double far = r["far textured"].Mean;
-                    Check(tail <= far + MovingTailExcess,
-                        $"{c.Name}: textured tail {tail:0.0000} more than {MovingTailExcess} above its control {far:0.0000}");
-                }
-                else if (c.Kind == MovingShadeKind.Pan)
-                {
-                    (double before, double beforeTail) = Control[c.Name];
-                    Check(band.Mean <= (1 + ControlTolerance) * before,
-                        $"{c.Name}: textured band {band.Mean:0.0000} above {before:0.0000} plus a tenth");
-                    Check(tail <= (1 + ControlTolerance) * beforeTail,
-                        $"{c.Name}: textured tail {tail:0.0000} above {beforeTail:0.0000} plus a tenth");
-                }
-            }
+            foreach (var bound in EvaluateBounds(measured, controls))
+                if ((!liveOnly || bound.Live) && !bound.Passed) failures.Add(bound.Failure);
             Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
-
-            void Check(bool ok, string failure)
-            {
-                if (!ok) failures.Add(failure);
-            }
         }
+
     }
 }

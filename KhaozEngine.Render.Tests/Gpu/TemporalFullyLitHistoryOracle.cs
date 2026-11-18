@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Internal;
+using KhaozEngine.Render3D.Rendering;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -11,15 +12,21 @@ namespace KhaozEngine.Tests.Gpu;
 // Measure the whole walk before asserting. A colour mismatch must not hide later state or later frames.
 internal sealed class TemporalFullyLitHistoryOracle(ITestOutputHelper output, bool softwareVulkan, bool warp = false, bool nvidia = false)
 {
+    /// <summary>The owner with the certified-against-checked rule it selects for <paramref name="device"/>.</summary>
+    internal static TemporalFullyLitHistoryOracle For(ITestOutputHelper output, IGpuDevice device) => new(output,
+        TemporalDeviceClass.IsLavapipe(device), TemporalDeviceClass.IsWarp(device), TemporalDeviceClass.IsHardwareNvidiaD3D11(device));
+
     internal sealed record Snapshot(int Width, int InternalWidth, byte[] Colour, byte[] State, byte[] Visibility, byte[] Depth)
     {
         internal static Snapshot Read(TemporalFixture fx)
+            => Read(fx.Device, fx.Scene.TemporalHistory, fx.Scene.TemporalResolveRendererForTests!);
+
+        internal static Snapshot Read(IGpuDevice device, TemporalHistory h, TemporalResolveRenderer renderer)
         {
-            TemporalHistory h = fx.Scene.TemporalHistory;
-            byte[] ReadTexture(IGpuTexture texture) => TemporalVisibilityFullyLitGpuTests.Bytes(fx.Device, texture);
+            byte[] ReadTexture(IGpuTexture texture) => TemporalVisibilityFullyLitGpuTests.Bytes(device, texture);
             return new((int)h.Color(h.WriteIndex).Width, (int)h.PreviousDepth(h.WriteIndex).Width, ReadTexture(h.Color(h.WriteIndex)),
                 ReadTexture(h.Confidence(h.WriteIndex)),
-                ReadTexture(fx.Scene.TemporalResolveRendererForTests!.VisibilityHistory.Texture(h.WriteIndex)),
+                ReadTexture(renderer.VisibilityHistory.Texture(h.WriteIndex)),
                 ReadTexture(h.PreviousDepth(h.WriteIndex)));
         }
 
@@ -73,6 +80,24 @@ internal sealed class TemporalFullyLitHistoryOracle(ITestOutputHelper output, bo
     }
 
     enum Rule { Exact, SoftwareBound, SoftwareRecordBound, NvidiaReport }
+
+    static readonly string[] Channels = ["colour", "confidence", "lock", "mark", "drift", "swing", "R8", "depth"];
+
+    /// <summary>Whether a certified program and a checked one store every byte alike on this device: the rule
+    /// <see cref="Report"/> applies to every channel of a certified-against-checked pair is exact.</summary>
+    internal bool HoldsCertifiedAgainstCheckedExact => Array.TrueForAll(Channels, name => RuleFor(name, false) == Rule.Exact);
+
+    // The one selection of each channel's rule on this device, for a certified-against-checked pair or, with
+    // entryComparison, the two entry points of one program.
+    Rule RuleFor(string name, bool entryComparison)
+    {
+        bool record = name is "drift" or "swing";
+        bool arithmetic = name is "colour" or "confidence" || record;
+        return !entryComparison && nvidia && arithmetic ? Rule.NvidiaReport
+            : entryComparison && softwareVulkan && record ? Rule.SoftwareRecordBound
+            : !entryComparison && warp && arithmetic
+                || softwareVulkan && entryComparison && name == "colour" ? Rule.SoftwareBound : Rule.Exact;
+    }
     readonly Dictionary<(string Pair, string Channel, Rule Rule), Difference> _totals = [];
     readonly TemporalNvidiaHistoryOracle? _nvidia = nvidia ? new(output) : null;
 
@@ -106,13 +131,9 @@ internal sealed class TemporalFullyLitHistoryOracle(ITestOutputHelper output, bo
                     bytes == 2 && !mark);
             }
             output.WriteLine($"history-frame {frame} {pair} {name}: {difference}");
-            bool record = name is "drift" or "swing";
-            bool arithmetic = name is "colour" or "confidence" || record;
-            Rule rule = !entryComparison && nvidia && arithmetic ? Rule.NvidiaReport
-                : entryComparison && softwareVulkan && record ? Rule.SoftwareRecordBound
-                : !entryComparison && warp && arithmetic
-                    || softwareVulkan && entryComparison && name == "colour" ? Rule.SoftwareBound : Rule.Exact;
-            var key = (pair, name, rule);
+            // A channel the exactness property does not know about would leave it stale.
+            if (Array.IndexOf(Channels, name) < 0) throw new InvalidOperationException($"unlisted channel {name}");
+            var key = (pair, name, RuleFor(name, entryComparison));
             if (!_totals.TryGetValue(key, out Difference? total)) _totals.Add(key, total = new());
             total.Include(difference);
         }

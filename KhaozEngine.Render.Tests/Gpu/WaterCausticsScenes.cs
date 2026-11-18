@@ -257,6 +257,8 @@ public sealed class WaterCausticsScenes : IDisposable
         _commands = device.Factory.CreateCommandList();
         _scene = new Scene3D(device, _target.Outputs,
             new ShadowSettings { ShadowCascadeCount = 1, ShadowMapResolution = 2048 }, requestLitVisibility: true);
+        // Keep the temporal water captures on the display-grid history.
+        _scene.Post.Temporal.HistoryDetail = TemporalHistoryDetail.Display;
         _plane = _scene.LoadMesh(MeshPrimitives.Plane());
         _box = _scene.LoadMesh(MeshPrimitives.Box());
     }

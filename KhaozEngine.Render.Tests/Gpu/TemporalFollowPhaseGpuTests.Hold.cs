@@ -9,8 +9,13 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>Every cell of a table within its bound from every start phase run. The bounds are the follow
         /// facts' own, set from the worst over the phases (#1207), so a cell over one is a regression, not a
         /// phase.</summary>
-        static void Hold(IReadOnlyList<PhaseSweep> sweeps, string family)
+        void Hold(IReadOnlyList<PhaseSweep> sweeps, string family)
         {
+            if (_reportOnly)
+            {
+                _reported.AddRange(sweeps.Select(sweep => (Family: family, Sweep: sweep)));
+                return;
+            }
             string[] over = sweeps.Where(s => s.Over > 0)
                 .Select(s => $"{s.Cell}: worst {s.Worst} at phase {s.WorstPhase}, {s.Over} of {s.Phases.Length} "
                     + $"phases over {(s.AtLeast ? s.Bounds.Max() : s.Bounds.Min())}")

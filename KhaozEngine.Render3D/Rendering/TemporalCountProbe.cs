@@ -29,12 +29,14 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuDevice _gd;
         readonly IGpuTexture _target, _staging;
         readonly IGpuFramebuffer _framebuffer;
-        readonly TemporalVisibilityPipelinePair _programs;
+        readonly TemporalVisibilityPipelinePair? _programs;
+        readonly IGpuShaderSet? _detailShaders;
+        readonly IGpuPipeline? _detailPipeline;
         readonly byte[] _row = new byte[GridWidth * 4];
         bool _recorded;
 
         public TemporalCountProbe(IGpuDevice gd, IGpuResourceLayout resolveLayout, IGpuResourceLayout fullyLitLayout,
-            Func<string, string>? rewrite = null)
+            Func<string, string>? rewrite = null, IGpuResourceLayout? detailLayout = null)
         {
             _gd = gd;
             IGpuResourceFactory f = gd.Factory;
@@ -43,9 +45,18 @@ namespace KhaozEngine.Render3D.Rendering
             _framebuffer = f.CreateFramebuffer(null, _target);
             _staging = f.CreateTexture(GpuTextureDescription.Texture2D(GridWidth, GridHeight,
                 GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Staging));
-            _programs = new TemporalVisibilityPipelinePair(gd,
-                ShaderSources.TemporalProbeFragment(TemporalResolvePrecisionPolicy.For(gd)),
-                [resolveLayout], [fullyLitLayout], _framebuffer.Outputs, rewrite);
+            if (detailLayout is null)
+                _programs = new TemporalVisibilityPipelinePair(gd,
+                    ShaderSources.TemporalProbeFragment(TemporalResolvePrecisionPolicy.For(gd)),
+                    [resolveLayout], [fullyLitLayout], _framebuffer.Outputs, rewrite);
+            else
+            {
+                string source = ShaderSources.TemporalDetailProbeFragment(TemporalResolvePrecisionPolicy.For(gd));
+                _detailShaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert,
+                    TemporalVisibilityGatherPolicy.ForBackend(rewrite?.Invoke(source) ?? source, gd.Backend));
+                _detailPipeline = TemporalResolveRenderer.Fullscreen(f, _detailShaders,
+                    [resolveLayout, detailLayout], _framebuffer.Outputs);
+            }
         }
 
         /// <summary>How many times the grid has been mapped for reading. For tests.</summary>
@@ -53,11 +64,13 @@ namespace KhaozEngine.Render3D.Rendering
 
         /// <summary>Record the probe over this frame's resolve set and copy the grid into the staging
         /// texture.</summary>
-        public void Record(IGpuCommandList cl, IGpuResourceSet resolveSet, bool withoutVisibility = false)
+        public void Record(IGpuCommandList cl, IGpuResourceSet resolveSet, bool withoutVisibility = false,
+            IGpuResourceSet? detailSet = null)
         {
             cl.SetFramebuffer(_framebuffer);
-            cl.SetPipeline(_programs.Select(withoutVisibility));
+            cl.SetPipeline(_detailPipeline ?? _programs!.Select(withoutVisibility));
             cl.SetGraphicsResourceSet(0, resolveSet);
+            if (detailSet is not null) cl.SetGraphicsResourceSet(1, detailSet);
             cl.Draw(3);
             cl.CopyTexture(_target, _staging);
             _recorded = true;
@@ -98,7 +111,9 @@ namespace KhaozEngine.Render3D.Rendering
 
         public void Dispose()
         {
-            _programs.Dispose();
+            _programs?.Dispose();
+            _detailPipeline?.Dispose();
+            _detailShaders?.Dispose();
             _framebuffer.Dispose();
             _staging.Dispose();
             _target.Dispose();

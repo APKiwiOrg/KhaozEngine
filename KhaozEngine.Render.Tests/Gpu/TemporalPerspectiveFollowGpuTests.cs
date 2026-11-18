@@ -16,7 +16,7 @@ namespace KhaozEngine.Tests.Gpu
     /// frame the box uncovered the pixel. HDR is off, the sharpen is at its default, and the measured values in the
     /// comments are Metal on Apple silicon.
     /// </summary>
-    public sealed class TemporalPerspectiveFollowGpuTests(TemporalPerspectiveFollowRuns runs,
+    public sealed partial class TemporalPerspectiveFollowGpuTests(TemporalPerspectiveFollowRuns runs,
         ITestOutputHelper output) : IClassFixture<TemporalPerspectiveFollowRuns>
     {
         /// <summary>The boot pitch and the low one, in radians.</summary>
@@ -231,9 +231,9 @@ namespace KhaozEngine.Tests.Gpu
 
         // Every walk of the table, or with the table switch off the walks the table always prints: the boot pitch
         // walking away at Native and Quality.
-        static IEnumerable<(float Pitch, FollowHeading Heading, float Speed, TemporalUpscale Preset)> TableWalks()
+        static IEnumerable<(float Pitch, FollowHeading Heading, float Speed, TemporalUpscale Preset)> TableWalks(bool? fullOverride = null)
         {
-            bool full = TemporalStabilityRuns.FullTable;
+            bool full = fullOverride ?? TemporalStabilityRuns.FullTable;
             TemporalUpscale[] presets = full ? Presets : new[] { TemporalUpscale.Native, TemporalUpscale.Quality };
             foreach (float pitch in full ? new[] { BootPitch, LowPitch } : new[] { BootPitch })
                 foreach (FollowHeading heading in full ? Headings : new[] { FollowHeading.Away })
@@ -311,9 +311,9 @@ namespace KhaozEngine.Tests.Gpu
         // with no ground past the reach is left out, and at UltraPerformance each walk in PastTheReach. With the table
         // switch off, the boot pitch walking away at 1 and 2 display pixels a frame on Quality and at 1.5 and 2 on
         // UltraPerformance.
-        static IEnumerable<(float Pitch, FollowHeading Heading, float Speed, TemporalUpscale Preset)> ReachWalks()
+        static IEnumerable<(float Pitch, FollowHeading Heading, float Speed, TemporalUpscale Preset)> ReachWalks(bool? fullOverride = null)
         {
-            bool full = TemporalStabilityRuns.FullTable;
+            bool full = fullOverride ?? TemporalStabilityRuns.FullTable;
             foreach (TemporalUpscale preset in new[] { Q, P })
                 foreach (float pitch in new[] { BootPitch, LowPitch })
                     foreach (FollowHeading heading in Headings)

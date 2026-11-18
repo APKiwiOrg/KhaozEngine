@@ -42,6 +42,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             GpuPixelFormat.R8UNorm => Format.R8_UNorm,
             GpuPixelFormat.R16G16B16A16Float => Format.R16G16B16A16_Float,
             GpuPixelFormat.R16G16Float => Format.R16G16_Float,
+            GpuPixelFormat.R32G32B32A32Float => Format.R32G32B32A32_Float,
             GpuPixelFormat.R32Float => depthStencil ? Format.R32_Typeless : Format.R32_Float,
             GpuPixelFormat.D24UNormS8UInt => Format.R24G8_Typeless,
             GpuPixelFormat.D32FloatS8UInt => Format.R32G8X24_Typeless,
@@ -61,6 +62,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             Format.R8_UNorm => Format.R8_Typeless,
             Format.R16G16B16A16_Float => Format.R16G16B16A16_Typeless,
             Format.R16G16_Float => Format.R16G16_Typeless,
+            Format.R32G32B32A32_Float => Format.R32G32B32A32_Typeless,
             Format.R32_Float => Format.R32_Typeless,
             _ => format,   // already typeless (the two combined depth formats arrive that way)
         };
@@ -70,6 +72,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         internal static Format ToViewFormat(Format format) => format switch
         {
             Format.R32_Typeless => Format.R32_Float,
+            Format.R32G32B32A32_Typeless => Format.R32G32B32A32_Float,
             Format.R32G8X24_Typeless => Format.R32_Float_X8X24_Typeless,
             Format.R24G8_Typeless => Format.R24_UNorm_X8_Typeless,
             Format.R16_Typeless => Format.R16_UNorm,

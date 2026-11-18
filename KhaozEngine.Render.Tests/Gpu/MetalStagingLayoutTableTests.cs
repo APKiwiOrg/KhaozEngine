@@ -30,7 +30,7 @@ namespace KhaozEngine.Tests.Gpu
     /// <see cref="GpuTextureDescription"/> has no depth parameter, and no row is block-compressed because
     /// <see cref="GpuPixelFormat"/> has no compressed member.</para>
     ///
-    /// <para><b>THE SPREAD IS CHOSEN RATHER THAN CONVENIENT.</b> All eight seam formats, including the five-byte
+    /// <para><b>THE SPREAD IS CHOSEN RATHER THAN CONVENIENT.</b> All eight legacy formats, including the five-byte
     /// <see cref="GpuPixelFormat.D32FloatS8UInt"/> that is the one value a reader doubts. A 1x1 texture, an odd
     /// non-power-of-two (17x5), a rectangular power-of-two (256x128), a full mip chain that reaches 1x1
     /// (64x64 at 7 levels), a non-power-of-two chain whose halving truncates (100x60 at 3 levels), a layered
@@ -46,6 +46,14 @@ namespace KhaozEngine.Tests.Gpu
         readonly ITestOutputHelper _output;
 
         public MetalStagingLayoutTableTests(ITestOutputHelper output) => _output = output;
+
+        [Fact]
+        public void Full_float_transport_has_a_sixteen_byte_stride()
+        {
+            var shape = new MetalStagingShape(4, 4, 1, 1, GpuPixelFormat.R32G32B32A32Float);
+            Assert.Equal(16u, MetalStagingLayout.BytesPerTexel(shape.Format));
+            Assert.Equal(256UL, MetalStagingLayout.TotalBytes(shape));
+        }
 
         /// <summary>One expected row: the shape, the whole buffer's size, and one subresource's layout.</summary>
         /// <param name="Format">The seam pixel format.</param>

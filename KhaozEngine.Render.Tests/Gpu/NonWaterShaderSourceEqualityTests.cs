@@ -37,8 +37,8 @@ public sealed class NonWaterShaderSourceEqualityTests
             .Where(line => line.Length > 0 && !line.StartsWith('#'))
             .Select(line => line.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries))
             .ToDictionary(parts => parts[0], parts => parts[1], StringComparer.Ordinal);
-        // 294 includes the eight tile-ground relief programs' sixteen stages.
-        Assert.Equal(294, expected.Count);
+        // 312 includes the eighteen temporal detail stages. 294 includes the eight tile-ground relief programs' sixteen stages.
+        Assert.Equal(312, expected.Count);
         Assert.Equal(expected.Keys.Order(StringComparer.Ordinal), actual.Keys.Order(StringComparer.Ordinal));
 
         string[] mismatches = actual.OrderBy(row => row.Key, StringComparer.Ordinal)

@@ -1,5 +1,6 @@
 using System;
 using KhaozEngine.Gpu;
+using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
 using Xunit;
 
@@ -89,6 +90,39 @@ namespace KhaozEngine.Tests.Gpu
                 retired.Dispose();   // outside any recording: drains once and frees what the history retired
             }
             Assert.Equal(0, retired.PendingCount);
+        }
+
+        [GpuFact]
+        public void Fine_targets_share_the_history_generation_and_retire_once_with_their_bindings()
+        {
+            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
+            IGpuDevice gd = gpu.GpuDevice;
+            var history = new TemporalHistory();
+            using GpuRetireQueue retired = GpuRetireQueue.Create(gd);
+            try
+            {
+                Assert.True(history.EnsureTargets(gd, 96, 54, 64, 36, retired, TemporalHistoryDetail.Fine));
+                int generation = history.TargetGeneration;
+                var detail = history.DetailStore;
+                Assert.NotNull(detail);
+                AssertTexture(detail.Color(0), 192, 108, TemporalFormats.HistoryColor);
+                AssertTexture(detail.Color(1), 192, 108, TemporalFormats.HistoryColor);
+                Assert.NotSame(detail.Color(0), detail.Color(1));
+                Assert.False(history.EnsureTargets(gd, 96, 54, 64, 36, retired, TemporalHistoryDetail.Fine));
+                Assert.Equal(generation, history.TargetGeneration);
+                // The unchanged ten history resources, plus two fine textures, two framebuffers, two borrowed
+                // source sets and the replication program, layout, pipeline, sampler and parameter buffer.
+                Assert.True(history.EnsureTargets(gd, 96, 54, 80, 45, retired, TemporalHistoryDetail.Fine));
+                Assert.Equal(21, retired.PendingCount);
+                Assert.Equal(generation + 1, history.TargetGeneration);
+                Assert.NotSame(detail, history.DetailStore);
+                history.ReleaseTargets(retired);
+                Assert.Equal(42, retired.PendingCount);
+                Assert.Null(history.DetailStore);
+                history.ReleaseTargets(retired);
+                Assert.Equal(42, retired.PendingCount);
+            }
+            finally { history.ReleaseTargets(); }
         }
 
         // The colour and confidence targets share a format, so each texture's size comes with the figure's own term.

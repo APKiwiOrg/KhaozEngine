@@ -119,6 +119,7 @@ public sealed class SceneReplacementRetirementTests
             Scene = new(Device, target.Outputs, new ShadowSettings { ShadowMapResolution = 256, ShadowCascadeCount = 1 });
             Scene.Post.RenderWidth = 32; Scene.Post.RenderHeight = 16;
             Scene.Post.Hdr.Enabled = false;
+            Scene.Post.Temporal.HistoryDetail = TemporalHistoryDetail.Display;
             Scene.Post.Quality.AntiAliasing = path == "temporal-resize" ? AntiAliasing.Temporal : AntiAliasing.Off;
             var point = Scene.Post.Quality.Shadows.PointShadows;
             point.FaceResolution = 64; point.MaxShadowedLights = 4; point.MaxDynamicLightsPerFrame = 0;

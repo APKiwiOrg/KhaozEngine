@@ -29,6 +29,10 @@ namespace KhaozEngine.Gpu
         /// <summary>Two-channel 16-bit-float (red + green). The screen-space distortion offset target: signed
         /// per-pixel UV offsets accumulate here at half or quarter res, re-sampled by the post apply pass.</summary>
         R16G16Float,
+        /// <summary>Four 32-bit float channels, 16 bytes a texel: a colour target and sampled texture for values a half
+        /// float cannot hold exactly. Linear filtering of it is not guaranteed on every device, so sample it with a
+        /// point sampler or by texel load.</summary>
+        R32G32B32A32Float,
     }
 
     /// <summary>How a GPU texture may be used. Flags so a texture can be both a render target and sampled,

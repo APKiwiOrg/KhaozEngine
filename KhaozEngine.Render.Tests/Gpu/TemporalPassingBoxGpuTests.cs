@@ -26,12 +26,13 @@ namespace KhaozEngine.Tests.Gpu
         const double MinShareOfStill = 0.85;
 
         [GpuTheory]
-        [InlineData(TemporalUpscale.Native, 1)]
-        [InlineData(TemporalUpscale.Native, -1)]
-        [InlineData(TemporalUpscale.Quality, 1)]
-        [InlineData(TemporalUpscale.Quality, -1)]
-        public void A_still_sub_texel_line_holds_while_a_keyed_box_slides_past_it(TemporalUpscale preset, int side)
+        [TemporalHistoryModeData(TemporalUpscale.Native, 1)]
+        [TemporalHistoryModeData(TemporalUpscale.Native, -1)]
+        [TemporalHistoryModeData(TemporalUpscale.Quality, 1)]
+        [TemporalHistoryModeData(TemporalUpscale.Quality, -1)]
+        public void A_still_sub_texel_line_holds_while_a_keyed_box_slides_past_it(TemporalUpscale preset, int side, TemporalHistoryDetail detail)
         {
+            runs = runs.For(detail);
             // Measured: the worst frame keeps 0.987 at Native on both sides, and 0.993 and 0.994 at Quality with the
             // box right and left. While step 6 released the lock at every moving edge, the line fell to 0.010 at Native
             // and to 0.248 and 0.000 at Quality, and was still at 0.43 to 0.69 sixteen frames after the box passed. The
@@ -40,6 +41,7 @@ namespace KhaozEngine.Tests.Gpu
             PassingBoxRun r = runs.Run(preset, side);
             string message = Describe(r, preset, side, 0);
             output.WriteLine(message);
+            output.WriteLine($"ACCEPT|passing box|{detail}|{preset}|{side}|value={r.Worst:R}|bound={MinShareOfStill:R}");
             Assert.True(r.Pixels > 0, $"the line covered nothing. {message}");
             Assert.True(r.Worst >= MinShareOfStill, $"the line blinks out beside the box. {message}");
         }
@@ -52,17 +54,18 @@ namespace KhaozEngine.Tests.Gpu
         /// whose lock holds the line takes none of it and keeps its own history.
         /// </summary>
         [GpuTheory]
-        [InlineData(TemporalUpscale.Native, 1, 1)]
-        [InlineData(TemporalUpscale.Native, -1, 1)]
-        [InlineData(TemporalUpscale.Quality, 1, 1)]
-        [InlineData(TemporalUpscale.Quality, -1, 1)]
-        [InlineData(TemporalUpscale.Native, 1, 2)]
-        [InlineData(TemporalUpscale.Native, -1, 2)]
-        [InlineData(TemporalUpscale.Quality, 1, 2)]
-        [InlineData(TemporalUpscale.Quality, -1, 2)]
+        [TemporalHistoryModeData(TemporalUpscale.Native, 1, 1)]
+        [TemporalHistoryModeData(TemporalUpscale.Native, -1, 1)]
+        [TemporalHistoryModeData(TemporalUpscale.Quality, 1, 1)]
+        [TemporalHistoryModeData(TemporalUpscale.Quality, -1, 1)]
+        [TemporalHistoryModeData(TemporalUpscale.Native, 1, 2)]
+        [TemporalHistoryModeData(TemporalUpscale.Native, -1, 2)]
+        [TemporalHistoryModeData(TemporalUpscale.Quality, 1, 2)]
+        [TemporalHistoryModeData(TemporalUpscale.Quality, -1, 2)]
         public void A_still_sub_texel_line_holds_while_a_narrow_keyed_passer_slides_past_it(TemporalUpscale preset,
-            int side, int passerTexels)
+            int side, int passerTexels, TemporalHistoryDetail detail)
         {
+            runs = runs.For(detail);
             // Measured: the worst frame keeps 0.912 to 0.945 at Native and 0.937 to 0.954 at Quality. While the line's
             // held pixels took the passer's colour and stored no confidence, the next frame showed the raw sample and
             // the line blinked out on the frames the jitter missed it: 0.017 and 0.010 at Native with the one texel
@@ -70,6 +73,7 @@ namespace KhaozEngine.Tests.Gpu
             PassingBoxRun r = runs.Run(preset, side, passerTexels);
             string message = Describe(r, preset, side, passerTexels);
             output.WriteLine(message);
+            output.WriteLine($"ACCEPT|passing box|{detail}|{preset}|{side}|value={r.Worst:R}|bound={MinShareOfStill:R}");
             Assert.True(r.Pixels > 0, $"the line covered nothing. {message}");
             Assert.True(r.Worst >= MinShareOfStill, $"the line blinks out beside the passer. {message}");
         }
@@ -86,9 +90,11 @@ namespace KhaozEngine.Tests.Gpu
         /// the passer, while its lowest frame stays over 0.9.
         /// </summary>
         [Trait("Category", "Diagnostic")]
-        [GpuFact]
-        public void A_quarter_texel_line_missed_five_frames_running_prints_its_worst_frame_beside_a_narrow_passer()
+        [GpuTheory]
+        [TemporalHistoryModeData]
+        public void A_quarter_texel_line_missed_five_frames_running_prints_its_worst_frame_beside_a_narrow_passer(TemporalHistoryDetail detail)
         {
+            runs = runs.For(detail);
             const float Texels = 0.25f, Offset = 0.2f;
             int[] hits = TemporalPassingBoxRuns.HitPhases(Texels, Offset);
             output.WriteLine($"the jitter's samples fall on the line on phases {string.Join(", ", hits)} of "
@@ -129,6 +135,19 @@ namespace KhaozEngine.Tests.Gpu
     /// </summary>
     public sealed class TemporalPassingBoxRuns
     {
+        readonly TemporalHistoryDetail _detail;
+        readonly TemporalHistoryVariants<TemporalPassingBoxRuns> _variants;
+
+        public TemporalPassingBoxRuns() : this(TemporalHistoryDetail.Display) { }
+
+        TemporalPassingBoxRuns(TemporalHistoryDetail detail, TemporalHistoryVariants<TemporalPassingBoxRuns>? variants = null)
+        {
+            _detail = detail;
+            _variants = variants ?? new TemporalHistoryVariants<TemporalPassingBoxRuns>(this, detail, (mode, pool) => new(mode, pool));
+        }
+
+        internal TemporalPassingBoxRuns For(TemporalHistoryDetail detail) => _variants.For(detail);
+
         public const int W = 320, H = 180, Warm = 16, Total = 64, PassFrame = 36;
         const int RowsTop = 84, RowsBottom = 96, ColumnsLeft = 150, ColumnsRight = 170;
         const float OrthoSize = 4.5f, LineTexels = 0.375f, LineOffsetPixels = 0.3f, LineZ = -1f, BoxPixels = 30f;
@@ -151,7 +170,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             var key = (preset, side, passerTexels, lineTexels, lineOffsetPixels);
             if (_runs.TryGetValue(key, out PassingBoxRun? cached)) return cached;
-            var scene = new Passing(preset, lineTexels, lineOffsetPixels);
+            var scene = new Passing(preset, lineTexels, lineOffsetPixels, _detail);
             StillLine still = Still(scene);
             byte[][] with = scene.Frames(side, passerTexels);
             var shares = new double[with.Length];
@@ -222,10 +241,12 @@ namespace KhaozEngine.Tests.Gpu
         {
             readonly FrontStage _stage = new(W, H, OrthoSize);
             readonly float _factor, _lineWidth, _lineLeft, _box;
+            readonly TemporalHistoryDetail _detail;
 
-            public Passing(TemporalUpscale preset, float lineTexels, float lineOffsetPixels)
+            public Passing(TemporalUpscale preset, float lineTexels, float lineOffsetPixels, TemporalHistoryDetail detail)
             {
                 Preset = preset;
+                _detail = detail;
                 LineTexels = lineTexels;
                 LineOffsetPixels = lineOffsetPixels;
                 float factor = TemporalSettings.DisplayOverInternal(preset), pw = _stage.PixelWorld;
@@ -264,6 +285,7 @@ namespace KhaozEngine.Tests.Gpu
             {
                 _stage.Setup(s, aa, Preset);
                 s.Post.Hdr.Enabled = false;
+                s.Post.Temporal.HistoryDetail = _detail;
             };
 
             public byte[][] Frames(int side, int passerTexels) => TemporalAcceptance.Sequence(W, H,

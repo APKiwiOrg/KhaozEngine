@@ -17,7 +17,8 @@ namespace KhaozEngine.Tests.Gpu
     /// The GPU receives point samples, camera-consistent motion and real jitter. The reference uses 16x16 sub-pixel
     /// samples and no temporal resolve. All figures use weighted luma, the space in which the release decides.
     /// </summary>
-    public sealed class TemporalDiagonalDetailGpuTests(ITestOutputHelper output) : TemporalResolveGpuFacts
+    public sealed partial class TemporalDiagonalDetailGpuTests(TemporalDiagonalScene scene, ITestOutputHelper output)
+        : TemporalResolveGpuFacts, IClassFixture<TemporalDiagonalScene>
     {
         const int W = 120, H = 90, Warm = 80, Measured = 24, Margin = 8, ReferenceSide = 16;
         const float GroundMean = 0.12f, TextureAmplitude = 0.025f, Spacing = 13.7f;
@@ -35,12 +36,35 @@ namespace KhaozEngine.Tests.Gpu
                             string name = $"{preset} {angle}deg {contrast}h pan{pan:0.0}";
                             TemporalReviewFigures figures = Run(preset, angle, contrast, pan);
                             output.WriteLine($"DIAGONAL {TemporalDeviceClass.Name}|{name}|{figures}");
-                            TemporalReviewBaseline.Check("diagonal", name, figures, failures);
+                            _reported[name] = figures;
+                            if (!_reportOnly) TemporalReviewBaseline.Check("diagonal", name, figures, failures);
                         }
+            if (!_reportOnly)
             Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
         }
 
         TemporalReviewFigures Run(TemporalUpscale preset, int angle, int contrast, float pan)
+        {
+            var measured = scene.Measure($"{preset}/{angle}/{contrast}/{pan}/{_detail}/{_gate}", () =>
+            {
+                var figures = Capture(preset, angle, contrast, pan);
+                return new TemporalDiagonalScene.Measurement(figures, _missed, _halfWidth);
+            });
+            int missed = measured.Missed;
+            float halfWidth = measured.HalfWidth;
+            if (!_reportOnly)
+            {
+                Assert.True(missed > 100, $"{preset} {angle} {contrast} {pan}: no carried, missed line samples");
+                Assert.True(halfWidth > 0.005f, "the textured ground must pass the carried-lock flat exemption");
+            }
+            return measured.Figures;
+        }
+
+        int _missed;
+        float _halfWidth;
+
+        TemporalReviewFigures Capture(TemporalUpscale preset, int angle, int contrast, float pan,
+            Action<float[], float[]>? observe = null)
         {
             float factor = TemporalSettings.DisplayOverInternal(preset), width = 0.375f * factor;
             float nominalHalfWidth = preset == TemporalUpscale.Quality ? 0.012f : 0.009f;
@@ -55,7 +79,7 @@ namespace KhaozEngine.Tests.Gpu
             float ndc = NdcDepth(projection, SceneMetres);
             float step = pan * SceneMetres / (projection.M11 * W * 0.5f);
             float[] motion = Pairs(iw, ih, (_, _) => new Vector2(-pan / W, 0f));
-            using var rig = new Rig(iw, ih, W, H, ndc);
+            TemporalResolveRig rig = scene.Borrow(iw, ih, W, H, ndc, _detail, _gate);
             float[]? previous = null;
             double error = 0, change = 0, referenceChange = 0, temporal = 0;
             int pixels = 0, changes = 0, missed = 0;
@@ -72,6 +96,7 @@ namespace KhaozEngine.Tests.Gpu
                 rig.Resolve(TemporalResolveMath.BuildUniforms(now, then, jitter, iw, ih, W, H, n > 0));
                 if (n < Warm) continue;
                 float[] color = rig.ReadColor(), state = rig.ReadState(), reference = new float[W * H];
+                observe?.Invoke(color, state);
                 for (int y = Margin; y < H - Margin; y++)
                     for (int x = Margin; x < W - Margin; x++)
                     {
@@ -130,11 +155,11 @@ namespace KhaozEngine.Tests.Gpu
                 previous = color;
             }
             extents.Sort();
-            Assert.True(missed > 100, $"{preset} {angle} {contrast} {pan}: no carried, missed line samples");
-            float halfWidth = extents[extents.Count / 2];
+            float halfWidth = extents.Count == 0 ? float.NaN : extents[extents.Count / 2];
             output.WriteLine($"  missed locked samples {missed}, ground half-width median {halfWidth:0.000000}, "
                 + $"line contrast {contrast * nominalHalfWidth:0.000000} ({contrast * nominalHalfWidth / halfWidth:0.00} half-widths)");
-            Assert.True(halfWidth > 0.005f, "the textured ground must pass the carried-lock flat exemption");
+            _missed = missed;
+            _halfWidth = halfWidth;
             return new(error / pixels, change / changes, temporal / changes, referenceChange / changes);
         }
 

@@ -140,6 +140,358 @@ follow that owner's read/write indices and target generation. A separate 16-byte
 jitter and readiness without changing the 256-byte resolve uniform contract. Amendment 35 specifies the
 copy, invalidation and retirement rules.
 
+### Fine colour store
+
+`Post.Temporal.HistoryDetail` defaults to `TemporalHistoryDetail.Fine`. Set
+`Post.Temporal.HistoryDetail = TemporalHistoryDetail.Display` to opt out. Fine adds a pair of colour
+targets at exactly twice the display on each axis, in the history's RGBA16F format. `TemporalDetailStore`
+belongs to `TemporalHistory`, shares its target generation and read/write indices, and exists only while
+Fine is in effect. State, previous depth, visibility, jitter and internal size keep their original grids.
+The resolve keeps its original reconstruction, clipping, releases and weights. Only its central history
+colour fetch changes on admitted moving pixels. Display composes and runs the original shader programs.
+The suite asserts the moving-detail protocols for Display and reports them for Fine.
+
+The first render latches `Scene3D.TemporalHistoryDetailInEffect`. Fine requires the temporal resolve,
+at least six `GpuCapabilities.MaxColorAttachments`, an extent within
+`GpuCapabilities.MaxRenderTexture2DDimension`, and a display pixel count at or below
+`Post.Temporal.HistoryDetailPixelLimit`. A resolving frame uses Display when the device limits refuse Fine,
+when they are unknown, or when the display exceeds its pixel budget. A frame without a resolve reports Display
+and allocates no fine store. The budget defaults to 3,686,400, so 2560 by 1440 can run Fine and 3840 by 2160
+runs Display. The additional pair would cost 225 MiB and 506.25 MiB respectively.
+Nonpositive budgets disable Fine. Unknown enum values resolve to Display.
+A failure to allocate the admitted pair or its scratch is not a fallback. The pair is created in
+`TemporalHistory.EnsureTargets` and the scratch with the fine pass when the resolve binds, and either failure
+throws from the render, as a failure of the display-sized history does. The latch still reads Fine, so each
+later frame retries: a history whose pair failed has no recorded display size and is released and rebuilt,
+and a store without its pass builds it again. That continues on every resolving frame for as long as Fine
+stays admitted and the allocation keeps failing: a change of the setting or the display size ends it only if
+Fine is then no longer admitted or the allocation then succeeds. Catching the failure and latching Display
+with its own reason would be a behaviour change with its own fact.
+
+Fine computes validity on the display grid, resolves on that grid, and stores the fine grid immediately
+afterward, before distortion, bloom or tonemapping. It presents the resolve's R directly. There is no new
+presentation filter. Validity shares the resolve's reprojection, state, depth and strict finite-history
+checks. The finite check still fetches the candidate history, including its format-maximum refusal, but
+performs no colour accumulation, lock calculation or scene-colour neighbourhood work. The shared
+resolve resource layout remains live through bounded texture-dimension queries and its readiness bit,
+without extra colour samples. Their contribution is below float32 spacing at the biased R8 code.
+
+The resolve gathers the one-pixel Chebyshev validity halo. No neighbour's decision is inferred from the
+centre. A still or distrusted pixel takes the coarse path once. Otherwise the resolve fetches its fine
+candidate. Only motion above the still epsilon and no farther than the still interval needs a separate
+candidate-lock evaluation before choosing fine or coarse. The shared lock prefix evaluates that
+candidate without repeating neighbourhood preparation or the complete colour accumulation. The full
+accumulation runs once. No candidate lock crosses the production pass boundary. R8 UNORM stores validity with a quarter-code
+bias that preserves the code under truncating and nearest writes. Diagnostic gate variants and
+attribution retain the complete observation replay without changing the production gate.
+
+Display retains its emitted rule text. Fine wraps the literal lock rules in one evaluator shared by
+candidate and final lock checks. The visibility decision remains one source block because program
+specialization and diagnostic rewrites require one complete decision. A scoped shader alias preserves
+the selected visibility result's diagnostic name.
+
+Fine retains its fused entry, with no unused ordinary split targets. Its resolve, debug views and count
+probes run one compiled program, the checked one, in every certificate state, with the full input set.
+The renderer still tracks the owned fully-lit certificate, because Display and the visibility history use
+it, but Fine never skips the visibility decision.
+
+One program is a precision contract, not a convenience. The retention reads the current reconstruction
+and its current weight as float32 values, and a separately compiled certified program does not reproduce
+those values bit for bit on every compiler. On Direct3D 11 WARP, hosted run 43844224166 (2026-11-16) found
+the checked and certified resolves agreeing on the chosen UV and path flag at every pixel while the
+retention differed on 13 to 1,338 pixels a frame. Its inputs already differed by one to two float32 steps:
+the current weight (`sampleWeight / (accumulated + sampleWeight)`) and the current colour come out of the
+shared accumulation that way. Display hides such differences because it stores only the rounded result.
+Fine stores a function of them, and the retention's projection can turn one step into a half step in a
+child or, where the projection is ill-conditioned, into a much larger change. Ordering the mode's own
+arithmetic cannot make inputs exact that the shared accumulation produces, and ordering that code would
+change Display. Quantising them only makes a flip rarer. One program for both certificate states is
+exact by construction on every backend.
+
+The price is the fully lit saving of a certified specialization, on fully lit frames only. In the capture
+below the fully lit Native Fine resolve takes 8.663 ms. The certified program measured 6.400 ms for that fully
+lit scene earlier the same day, in the last capture taken before the certified detail programs were removed,
+on build `b240b4d52`, on the same shared machine with the same four warm and eight measured frames. A frame
+with sun shadows takes the checked program in both modes. The lever back to that saving is one program that
+skips the decision through a uniform rather than by compilation: it keeps a single compiled program and so
+stays exact, but it changes the checked program's source, so it can move Metal values and needs
+re-establishing the reference, it needs a slot in a uniform block the mode shares with Display, and it gains
+nothing on a shadowed frame.
+
+The resolve computes each display pixel's four children once, from the four fine fetches it already
+holds. Hbar stays a float32 local through retention and transport. Rounding it to binary16 would move
+three children by `-k e` and the remainder by `+3 k e` every frame for a mean error `e`. The
+`mean-between-halves` row of `TemporalDetailUpdateGpuTests` guards this precision in the transport helper.
+No mean or reprojection target crosses the production pass boundary.
+
+The resolve writes six attachments: display colour R, state, and four display-sized RGBA16F child
+textures. The fine-grid store selects one child by texel parity and point-loads it without transport
+arithmetic. The copy keeps its interpolant live through a branch outside the nonnegative fullscreen UV
+domain, leaving the stored child unchanged. Adding an epsilon would make an exact zero inexact, allowing a
+different half under [Vulkan format conversion](https://docs.vulkan.org/spec/latest/chapters/fundamentals.html#fundamentals-fp-conversion).
+
+A pixel that retains no detail sends the same float32 R to colour and all four child targets.
+Their identical format conversion preserves exact replication without predicting the backend's rounding.
+A pixel that retains detail explicitly truncates R toward zero to a representable binary16 value, in both
+precision entries on every backend, and writes that value to colour and uses it to balance the children.
+Every value the transport relies on is therefore stored unchanged. Retention keeps its original nearest-even
+projection, which is a separate scalar limit.
+
+On a backend whose attachment rounds to nearest, detail-bearing pixels truncate while their still neighbours
+round to nearest. The paths can differ in tone by the half-float accumulation stall described by
+[`TemporalFormats`](../../KhaozEngine.Render3D/Internal/TemporalFormats.cs). This consequence is measured rather
+than hidden by another backend guess. The report-only `TemporalDetailResultGpuTests` row records the running
+backend and device's attachment rule over normal and subnormal half boundaries. Replication and moving-mean
+facts also vary the local rule through the test source seam, so neither contract relies on that observation.
+On 2026-11-16 every device it has run on truncated toward zero on all 4,096 boundary values: Direct3D 11
+WARP, Vulkan llvmpipe (LLVM 20.1.2) and the hosted Apple Paravirtual device in run 43844224166, and an Apple
+M2 Max on MetalNative. No measured device yet shows the nearest-rounding tone difference above.
+
+The fine pair and scratch targets retain the history generation's lifetime. A test-only extra RGBA32F
+output can observe the live chosen UV, retention and path flag when explicitly requested, so attribution
+and path parity still compare against the actual resolve. Production draws have no full-float attachment.
+
+Each display pixel takes one of two paths:
+
+- Coarse fetches the display-sized colour history at the shipped position with the shipped expressions.
+  Its four child outputs replicate stored R without deviation or remainder arithmetic.
+- Fine fetches the four fine texel centres, a quarter display pixel either side of the pixel centre on each
+  axis, shifted by the chosen reprojection. Each fetch uses the shipped five-tap Catmull-Rom and its
+  nearest-four clamp, in fine coordinates. Their mean Hbar replaces the central history colour. Every
+  downstream resolve rule is shared with Display. The resolve transports the surviving deviations around
+  stored R once and the fine-grid store copies the completed children.
+
+A pixel goes coarse for any of these reasons:
+
+- Chosen motion below a 128th of a display pixel, the still gate (`TemporalDetailMath.StillEpsilon`, whose
+  value the shader's `DetailStillEpsilon` is written from). See the still gate below.
+- Invalid, reset, offscreen or disoccluded history at the pixel or within one display pixel. Such a footprint
+  cannot transport trustworthy detail from the preceding frame.
+- A positive lock with motion at or below the existing quarter-pixel still interval. This preserves the
+  jitter-only thin-detail contract on slowly moving locked coverage. Removing this rule fails four Native
+  Fine rows in `JitterOnlyVisibilityDoesNotReleaseThinDetail`.
+
+Followed and band marks do not reject otherwise valid fine colour history. In the measured damped stop
+(Native, perspective Away at pitch 0.35, one display pixel a frame, Apple M2 Max with MetalNative, 2026-11-15
+UTC, every figure below measured again with the same value on 2026-11-17 UTC), the original mark rule sends
+all 114 inner pixels coarse on the turn frame. The largest error margin, 0.23997294, arrives one frame later
+while every inner pixel is fine again. Retaining the lock rule and removing mark rejection reduces that margin
+to 0.00607964, against Display's 0.00915282 and the existing report-only control margin 0.01. Locks first send
+54 of 120 inner pixels coarse at frame +6. These counts come from the live classifier and match the live
+transport flags exactly, so the earlier mark rejection is observable rather than inferred from the later
+error. Existing resolve rules still consume the marks.
+
+Variance clipping, a visibility release and reactive state do not independently force coarse. They retain
+their original effects on R, the current weight and state.
+
+#### The still gate
+
+A pixel whose stored motion is below a 128th of a display pixel a frame is still and takes the coarse path,
+Display's own expressions. The threshold is set by what the coarse path loses, not by any residual: one
+Catmull-Rom resample at that offset keeps 99.964 percent of a pattern that alternates every pixel, so nothing
+the fine path exists for lies below it, and the gate stays far below the quarter-pixel still interval. The CPU
+mirror holds the value (`TemporalDetailMath.StillEpsilon`) and the shader's `DetailStillEpsilon` is written
+from it.
+
+Whether a still frame is Display's then depends on what a still surface's stored motion holds, which is not
+always zero. The motion target is RG16F, so it stores whole least steps of 2^-24 UV. A still surface's current
+and previous clip positions come from two vertex products that can round apart by a few float32 steps of their
+largest term, and then it stores that many steps or more. A step is a fixed share of the display, so in
+display pixels it grows with the display, and the largest term grows with the scene's render-relative
+coordinates. A gate of 2^-14 display pixels, which the mode first used, lies below a single step on any
+display wider or taller than 1024 pixels. The residual cannot be removed at its source, since the motion
+programs are Display's.
+
+Measured with `TemporalDetailStillResidualProbeGpuTests` on an Apple M2 Max on Metal at 1591 by 1027
+(2026-11-16 and 2026-11-17 UTC): with camera-relative rendering in force and the scene at its render origin,
+the default isometric view of a box field stores one step an axis on 2,900 to 8,200 texels a frame, at the
+world origin and 4,096 m along each horizontal axis from it alike, and the still identity fact's front
+orthographic fence stage up to four on about 5,100 texels at Native. The engine's default origin is the frame
+grid point nearest the eye, which can leave a scene well off it. With the box field 68 m and 95 m from that
+point on both axes, the second being the farthest the default isometric eye offset allows, the same view
+stores 12 and 13 steps an axis on 11,000 to 41,000 texels a frame, and 8 at 2560 by 1440, at most 0.0014
+display pixels. A still perspective camera stores none, at its origin or 60 m to 70 m off it. On the hosted
+devices of runs 43993423746 and 44013257225 (2026-11-17) WARP and Vulkan llvmpipe store none for the fence
+stage either, while the hosted Apple paravirtual device stores the same four steps, so the residual depends on
+how a compiler evaluates the two products. A consumer capture at 1591 by 1027 on the same machine
+(2026-11-16), camera still for 120 frames with the effect clock frozen, measured stored motion from 0 to
+0.000291 display pixels, three steps on one axis and one on the other. There 179,734 pixels were at or above
+the 2^-14 gate and 110,638 took the fine path, and the presented still frame differed from Display by one or
+two steps of 255 in 1,133 to 4,173 pixels against a repeat floor of one. Pixels below the gate differed too: a
+pixel that took the fine path on an earlier frame keeps its slightly different R in the display history, and
+later coarse frames and neighbouring Catmull-Rom fetches read it.
+
+So the still guarantee holds under a condition: the stored steps stay below the gate. A 128th of a pixel holds
+51 steps on an axis at the default budget's 2560 by 1440, sixteen at 8192, the largest extent admission
+accepts on a device with 16384 texels a side, and eight at 16384, the largest on a device with 32768. With
+camera-relative rendering in force, the default `Scene3D.RenderOrigin`, the most measured is 13 steps an axis,
+a quarter of the gate at 2560 by 1440, where the measured 0.0014 display pixels is under a fifth of it.
+Thirteen steps reach the gate at about 10,000 pixels a side on one axis and about 7,100 on both, so only a
+consumer who raises `HistoryDetailPixelLimit` for a display above that can see a still orthographic view far
+from its render origin take the fine path. With the render origin opted out (`RenderOrigin = Vector3.Zero`, or
+a consumer camera without `IRenderOriginAware`) the largest term is the absolute coordinate. The probe's
+opted-out isometric view (2026-11-17) stores 32 steps an axis 256 m along each horizontal axis from the world
+origin, 64 at 1,024 m, 153 at 2,048 m and 309 at 4,096 m. At 1,024 m that is 0.0072 display pixels at 1591 by
+1027, just under the gate, and 0.011 at 2560 by 1440, where about 8,800 texels a frame reach it. So from about
+1,000 m on an axis, a still view opted out of camera-relative rendering can store more than the gate at 2560
+by 1440, and the distance shrinks in proportion on a larger display: the 32 steps of 256 m equal the gate at
+4,096 pixels a side. Where stored motion reaches the gate the still guarantee does not apply. The same
+residual is in Display's own reprojection there, so the remedy is the one the consumer guide gives for
+precision far from the origin: keep camera-relative rendering on. The threshold is not raised to chase either
+configuration, since its reason does not depend on the residual.
+
+`TemporalDetailStoreGpuTests.Fine_presents_every_still_fence_frame_identically_and_replicates_history` runs
+the fence stage at 1591 by 1027 for six frames at Native and Quality, printing the motion target's still
+residual each frame, beside its 96 by 64 rows. With the 2^-14 gate both large rows failed on Metal on the
+first frame with history (2026-11-16). Those rows exercise the gate only where the motion target stores a
+residual, so two more rows pan the 96 by 64 stage by a 256th of a display pixel a frame, real motion every
+backend stores, and hold that frame to Display's as a still one, and
+`Fine_takes_its_fine_path_for_a_pan_just_above_the_still_gate` pans it by three 256ths and requires the fine
+path on every frame with history, read through the live path flags (a share of 0.33 to 0.84 at Native and
+Quality on every backend of hosted run 44035806221, 2026-11-17), with every coarse pixel still replicating R.
+On Metal (2026-11-17) the pan rows failed against a 2^-14 gate and the fine path fact against a 64th, each set
+by a test-only shader seam. Raising the gate moved no value of the report-only capture: on 2026-11-17 all
+5,134 protocol records and 36 rig cells matched the capture taken under 2^-14, so no value those scenes report
+depends on a pixel whose motion lies between the two gates.
+`A_measured_still_residual_takes_the_coarse_path_at_the_display_sizes_it_was_cleared_for` holds the gate
+against the step patterns measured at the render origin at 96 by 64, 1591 by 1027, 2560 by 1440 and the
+largest admitted square, and against those measured off it at the sizes within the default budget, and
+`Adding_distrust_never_admits_a_fine_pixel` pins it inclusive at its threshold.
+
+#### Bounded transport and the stored mean
+
+The scalar retention is `clamp(dot(R-c,Hbar-c)/dot(Hbar-c,Hbar-c),0,1-w)` in history colour space.
+For this scalar, R uses the resolve's original nearest-even binary16 projection, c is the current
+reconstruction and w its current weight. The channel transport chooses a representable R by truncation
+toward zero and writes it to the colour target. A zero denominator keeps `1-w`. Rejected history retains zero.
+The quotient compares R, already rounded to binary16, with the current colour and Hbar. Where Hbar lies within
+about half a binary16 step of the current colour, that rounding dominates the numerator and the retention lands
+at either end of its clamp. A last-bit difference in the current colour or weight can then become a large
+retention difference, which is how WARP's certified and checked programs came to store different detail. The
+formula is left as it is, since changing it would move every stored value. For each channel, alpha included,
+limit retention by `R / -deviation` for every negative deviation, and by
+`(65504-R) / deviation` for every positive deviation. This is the greatest admissible retention up to the
+scalar value that keeps the unrounded children inside the finite nonnegative binary16 range.
+
+Float32 division can round the limiting quotient outward. When evaluating the four children detects that
+case, retention takes the next smaller float. The fourth deviation implied by the first three is also
+constrained: rounding the four-fetch mean can otherwise leave a residual in the independent deviations,
+especially when the reconstructed R is very small. This extra constraint protects the actual remainder.
+A non-finite R, fetch or Hbar, or R outside the store range, instead point-copies R to all four children.
+Zero retention bypasses every multiplication. If no channel retains a deviation, preserve the original
+float32 R for all five targets as on the coarse path.
+
+Round the first three children to binary16, including subnormals. Store the fourth as rounded
+`clamp(4*R-((a+b)+c),0,65504)`, using the three already-rounded values. No child can be negative or overflow.
+The stored mean differs from stored R by at most one binary16 step at R, using the larger adjacent spacing
+at powers of two. Both limiting directions matter. Limiting only below zero can still overflow the format
+when R is bright. An unrestricted scalar projection can retain a large deviation in a channel the resolve
+removed, making cancellation depend on the spacing of a much larger remainder.
+
+For the bound, let U be the binary16 step at R and x the four nonnegative, finite unrounded children whose
+sum is 4R. If the remainder q after the first three roundings is in range, the only remaining mean error is
+`(round(q)-q)/4`. Since q is at most 4R, its spacing is at most 4U, so that error is at most U/2. If q falls
+outside the range, clamping it moves it toward the original fourth child. The remaining sum error is at
+most the sum of the first three rounding errors. Their spacings sum to at most 8U: for normal R, spacing is
+a power of two and three children with a larger spacing sum would already exceed 4R. Subnormal spacing is
+constant and satisfies the same bound. Half that spacing sum, divided by four for the mean, is at most U.
+The float32 remainder constraint covers the computed-Hbar residual. The
+outward-rounding guard keeps limiting arithmetic on the safe side of both endpoints.
+
+Headless property checks cover the gate, scalar retention, per-channel bounds, subnormals, zero and removed
+channels, the finite maximum and both cancellation/overflow regressions. Metal checks cover still colour
+and state identity from cold prefixes, presented still frames, moving/recovery means, return to exact
+replication after motion stops, thin-detail retention and a moving output that differs from Display.
+
+On a still frame Fine runs Display's own expressions through a different compiled program: Fine's one checked
+resolve for every certificate state, against Display's resolve in its own entry, and its certified program on
+a fully lit frame. Stored colour and state are byte for byte Display's wherever the device computes the two
+programs alike. Two facts assert it through one per-device comparison, `TemporalStillHistoryComparison`:
+`TemporalDetailStillGpuTests` on the resolve rig's cold still prefixes, and
+`TemporalDetailStoreGpuTests.Fine_presents_every_still_fence_frame_identically_and_replicates_history` on the
+scene's still fence, its presented frame included. The comparison asserts exactly on every hardware device the
+suite runs. On the software rasterizers it asserts what Display's own program pairs already keep there. On
+llvmpipe that is the entry pair's rules of `TemporalEntryIdentityGpuTests`: the colour history within
+`TemporalSoftwareCompileDivergenceRule` over the walk, drift and swing within `TemporalEntryStateComparison`'s
+llvmpipe limits, confidence, locks and marks exact, and no presented frame, since the stored history is the
+contract and the picture is a function of it. On WARP a certified frame, where Display ran its certified
+program, follows the certificate pair's rule through `TemporalFullyLitHistoryOracle`: colour, confidence,
+drift and swing within `TemporalSoftwareCompileDivergenceRule`, locks, marks, R8 and depth exact. Hardware
+NVIDIA Direct3D 11 takes that oracle's reporting rule on a certified frame. Every child replicates stored R
+exactly on every device and frame, since replication does not cross a program pair.
+
+Equal values on a software rasterizer are measurements of a scene, not guarantees. Hosted run 43870310625
+(2026-11-16) found WARP's drift one half step apart on certified still frames 2, 3 and 6 with colour equal.
+Hosted run 43844224166 (2026-11-16) found llvmpipe's record at most 2 half steps apart on at most 0.0343% of
+values, against limits of 9,100 and 500 steps and shares of 1.02% and 0.51%. Hosted run 44003391743
+(2026-11-17) found llvmpipe's colour history 3 of 6,535,828 values one half step apart at Quality 1591 by
+1027, on the reset frame where every pixel takes the coarse path. Which values differ depends on the scene and
+its jitter phase, so `TemporalDetailSceneFixture.Reset` starts every row at phase 0 of its preset's jitter
+cycle, and a row's inputs do not depend on the rows before it.
+
+Fine debug views and sampled counts share the fine resolve core and its classification/read bindings.
+Each builds the one checked pipeline over the full resolve layout, matching the full set the resolve
+binds in every certificate state.
+Each sampled pixel initializes its own transport context, including the count grid's sixteen samples per cell.
+Their pipelines and staging snapshots belong to the renderer, while the borrowed fine sets follow the history
+generation. This keeps pending count readbacks valid across a mode change or resize.
+
+A change of the mode in effect resets history once with `TemporalResetReason.HistoryDetail`. Existing
+settings and resize reasons outrank it, since they can cause the fallback. It outranks camera cuts. A mode
+change, either size change or release retires the pair and its bindings through the history owner's queue
+and bumps the same generation. A reset keeps targets and seeds the write side from this frame's result.
+The next frame reads only the side that was written. A later render or offscreen capture leaves both sides,
+indices, mode and generation alone. Turning the temporal resolve off retires the store with history.
+
+#### Cost capture
+
+On 2026-11-16 UTC, MetalNative on an Apple M2 Max measured two moving thin-field scenes over the same
+textured wall and followed wide box at a 2560 by 1440 display. Native rendered internally at 2560 by 1440,
+Quality at 1707 by 960. The fully lit scene is certified (`certifiedCurrent=True`). Display skips the
+visibility decision there, and Fine runs its one checked program, with `visibilitySkipped=False`. The
+shadowed scene adds a key shadow in view, with `certifiedCurrent=False` and `visibilitySkipped=False` in
+every mode. A game frame with sun shadows takes this checked path. Each case used four
+warm frames and eight measured frames on a shared machine. The on-demand `TemporalDetailCostPerfGpuTests`
+reports native GPU timestamps, never timing gates. Children are computed once in resolve, classification
+checks validity, and the fine-grid store point-copies the completed children.
+
+| Preset | Mode | Pass | Fully lit median ms (min to max) | Shadowed median ms (min to max) |
+| --- | --- | --- | --- | --- |
+| Native | DisplaySplit | `temporal.prepare` | 0.929 (0.880 to 1.389) | 0.791 (0.757 to 0.850) |
+| Native | DisplaySplit | `temporal.accumulate` | 2.926 (2.520 to 3.168) | 3.320 (3.089 to 3.995) |
+| Native | Display | `temporal.resolve` | 2.934 (2.861 to 3.110) | 4.517 (4.295 to 4.755) |
+| Native | Fine | `temporal.detail-classify` | 1.885 (1.836 to 2.680) | 1.887 (1.833 to 2.188) |
+| Native | Fine | `temporal.resolve` | 8.663 (8.390 to 9.563) | 9.343 (9.169 to 9.499) |
+| Native | Fine | `temporal.detail-store` | 0.714 (0.673 to 1.137) | 0.751 (0.666 to 0.823) |
+| Quality | DisplaySplit | `temporal.prepare` | 0.649 (0.568 to 1.124) | 0.518 (0.472 to 0.565) |
+| Quality | DisplaySplit | `temporal.accumulate` | 2.638 (2.397 to 3.108) | 3.641 (3.417 to 3.924) |
+| Quality | Display | `temporal.resolve` | 2.815 (2.785 to 2.947) | 4.532 (4.309 to 4.856) |
+| Quality | Fine | `temporal.detail-classify` | 2.034 (1.949 to 2.186) | 1.865 (1.812 to 1.950) |
+| Quality | Fine | `temporal.resolve` | 8.815 (8.636 to 9.042) | 9.332 (9.110 to 9.570) |
+| Quality | Fine | `temporal.detail-store` | 0.676 (0.661 to 0.787) | 0.757 (0.656 to 0.812) |
+
+Fully-lit Native's median of each frame's summed Fine intervals is 11.477 ms (10.938 to 12.275), against Display split's 3.860 ms. The difference is 7.617 ms.
+Fully-lit Quality's median of each frame's summed Fine intervals is 11.609 ms (11.353 to 11.743), against Display split's 3.339 ms. The difference is 8.270 ms.
+Shadowed Native's median of each frame's summed Fine intervals is 11.994 ms (11.853 to 12.338), against Display split's 4.155 ms. The difference is 7.840 ms.
+Shadowed Quality's median of each frame's summed Fine intervals is 11.894 ms (11.739 to 12.292), against Display split's 4.179 ms. The difference is 7.715 ms.
+The report-only aim is Fine within 3 ms of Display split at Native. It is not met. No timing assertion is added.
+
+Payload remains 64 retained and 33 scratch bytes a display pixel: a fine RGBA16F pair, one R8
+classification target and four display-grid RGBA16F child targets. At 1440p these are 225.00 MiB and
+116.02 MiB, 341.02 MiB total. The source-derived payload excludes unchanged ordinary histories,
+scene/post targets, optional diagnostics, retired generations and driver overhead. It is not residency.
+Display split's existing preparation workspace is 24 bytes an internal texel.
+
+The resolve now pays transport once per display pixel using its four held fetches. The fine-grid store
+only copies a selected child. Classification retains shared validity and strict finite-history sampling without colour accumulation.
+Only slow motion needs a separate candidate-lock prefix. The full accumulation runs once. Split
+prepare also writes ordinary depth, while Fine's separate depth and visibility stores are outside its
+three named intervals. Markers end the active Metal encoder, and each interval includes its pass
+switches. These small shared-machine blocks are not paired causal measurements, whole-frame times or
+a steady-state residency proof. Native Vulkan, Direct3D 11 and consumer acceptance remain separate proof.
+
+Fine resolve, debug and counts run the checked program in every certificate state. The validity pass retains its shared input ABI.
+
 ## Shimmer record
 
 The record distinguishes alternating jitter error from persistent lighting change. Before clipping and
@@ -370,6 +722,8 @@ unchanged.
 - `Post.Temporal.Upscale` (`TemporalUpscale.Native`, `Quality`, `Balanced`, `Performance` or `UltraPerformance`), the
   nullable `Post.Temporal.UpscaleRatio` that overrides it, `Post.Temporal.Sharpness` and
   `Post.Temporal.MipBiasOffset`, beside the foundations' cut thresholds.
+- `Post.Temporal.HistoryDetail`, `Post.Temporal.HistoryDetailPixelLimit` and the read-only
+  `Scene3D.TemporalHistoryDetailInEffect` select and report the [fine colour store](#fine-colour-store).
 - `Scene3D.LastTemporalDiagnostics` gains the internal and display sizes, the preset, and per-frame counts of
   disoccluded, reactive and clipped pixels, sampled on a coarse grid so reading them costs nothing measurable.
 - `Scene3D.DebugView` includes `History`, `Disocclusion`, `Reactive` and `Shimmer`.
@@ -391,13 +745,70 @@ paths.
    upscaled, on a resolution chart golden.
 7. **Mip bias.** A textured checkerboard at `Performance` keeps the native reference's detail within tolerance.
 8. **Byte identity off.** With temporal off, every committed golden is unchanged.
-9. **Cost.** On the Grimhollow town and meadow paths on Apple silicon, the resolve and sharpen together cost under
-   1.0 ms at 2560x1440 display. The default preset's whole frame beats MSAA 4x's frame time, measured in the
-   Grimhollow probe and confirmed by the owner's windowed playtest.
+9. **Display cost baseline.** On town and meadow paths on Apple silicon, the Display resolve and sharpen
+   together cost under 1.0 ms at 2560x1440 display. At the default upscale preset, Display's whole-frame time
+   was lower than MSAA 4x in the same probe. For Fine, see the [cost capture](#cost-capture).
 10. **No steady allocation** with temporal active.
 
 The accepted still-detail source is pinned like any other shader edit, by the composed-source and emission
 tables [RENDER-PIPELINE.md](../RENDER-PIPELINE.md) describes. The pure D oracle and its pins are unchanged.
+
+`TemporalMotionClarityGpuTests` compares Display and Fine on the same moving blades and textured panel,
+against FXAA and a factor-four spatial reference. Translation and fixed-eye rotation cover 0.5, 1.37 and
+3.3 display pixels per frame. Native and Quality require higher moving detail energy, lower luma RMS,
+added change within the larger of Display and FXAA, and sustained stop recovery no slower than Display.
+Balanced is reported. The shared scene has an aged-versus-fresh image parity check.
+
+Fine also runs the existing absolute image limits in the ghosting, fast-edge, stability and zoom,
+convergence, reset, sub-texel line and blade, follow-line, narrow-crossing and passing-box classes.
+Shadow grain retention, ordinary fast-to-slow shadow tails and moving-object tails against their own
+far region also assert in Fine with the same live image bounds. Recorded shadow limits remain Diagnostic.
+The diagonal and shadow-lag matrices reuse lazy fixture scenes with cold history and aligned jitter,
+and each has an aged-versus-fresh parity fact. A shadow fixture retains one renderer and selects the
+current capture's gate through its source callback. Turning TAA off retires history and fine passes,
+while retaining that renderer. The moving-shade parity fact crosses a wider gate back to production
+before comparing complete images. Moving-shade assertions and reports use one evaluator.
+Recovery captures return an unsettled result when the window ends, so a Diagnostic row still prints it.
+Their Display rows keep their original bounds. The live fine-path export is compared with the decision
+probe's count before that probe supplies a gate study.
+
+The followed-object trail, stop, phase and long-hold protocols and recorded shading/detail controls
+run in Fine as Diagnostic reports. Sharper history can move those control comparisons. Their reports
+print Display, Fine and the existing limit without assigning a new recorded limit to Fine. The
+Diagnostic gate study compares the original gate (`TemporalDetailGate.Original`: untrusted history and the
+followed and band marks, with the lock rule), untrusted-history-only admission (`Narrower`), that admission
+with the lock rule (L, `Production`), that admission with followed/band marks (M, `MarksOnly`), and the
+original gate plus clip, visibility-release and reactive observations (`Wider`). Every variant retains the
+still epsilon. These
+interventions use the renderer's test source seam and expose no production switch.
+`KE_TEMPORAL_DETAIL_TEST_GATE` selects a gate for asserting test processes, and
+`KE_TEMPORAL_DETAIL_REPORT_GATES` selects Diagnostic rows without repeating earlier captures.
+
+The production gate is L. It passed all 347 focused Metal cases, including the restored live shadow
+contracts, jitter-only thin detail, cold still identity and the stored mean (Apple M2 Max, MetalNative,
+2026-11-15 UTC). The Native and Quality
+report-only cells select it by the fewest new crossings of existing limits among admissible gates.
+A new crossing means Display meets that row's old inequality and Fine does not. Fixed is the reverse.
+The inequality's recorded direction is used explicitly. The five rows were measured on an Apple M2 Max
+with MetalNative on 2026-11-15 UTC, 5,134 report records and 2,416 bounded Native and Quality cells a gate.
+The study ran again for `Original` and `Production` on 2026-11-17 UTC and reproduced both rows: every L
+record identical, every original-gate record identical but one follow-stop value that moved by 0.00016 on
+the same side of its bound.
+
+| Gate | New crossings | Fixed crossings | New direct follow-stop crossings | Admissibility |
+| --- | --- | --- | --- | --- |
+| Original, lock and marks | 69 | 6 | 33 | Pass |
+| Narrower, neither lock nor marks | 27 | 9 | 0 | Fails four Native thin-detail rows |
+| L, lock only, now production | 25 | 9 | 0 | Pass |
+| M, marks only | 130 | 6 | 64 | Fails four Native thin-detail rows |
+| Wider, original plus clip, visibility release and reactive | 71 | 4 | 34 | Fails rig energy/RMS orderings |
+
+L and the original gate have identical rig energy, RMS, added change, recovery and fine-path share at
+every measured quality. L retains all Native and Quality moving-detail orderings and existing absolute
+image limits. The narrower and M gates lose the thin-detail contract, so their crossing counts cannot
+make them admissible. The wider gate loses detail or RMS improvement in some rig cells, so its added
+observations are not admission rules. Some follow and diagonal-detail comparisons still cross their
+recorded limits under L. Those remain Diagnostic and define no new Fine limit.
 
 ## Grimhollow adoption
 

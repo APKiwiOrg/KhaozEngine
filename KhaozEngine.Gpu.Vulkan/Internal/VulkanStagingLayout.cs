@@ -70,7 +70,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// format, size, mip level and array layer, and asserts this type against it.</para>
     ///
     /// <para><b>THE COMPRESSED BRANCH IS DELIBERATELY ABSENT rather than reproduced.</b>
-    /// <see cref="GpuPixelFormat"/> has eight members and not one of them is a block-compressed format, so the
+    /// <see cref="GpuPixelFormat"/> has nine members and not one of them is a block-compressed format, so the
     /// incumbent's <c>blockSize</c> is 1 at every site this backend can reach and its
     /// <c>(width + 3) / 4</c> row arithmetic is unreachable code. Carrying an unreachable branch would be carrying
     /// a second thing to keep correct with no way to test it. If the seam ever gains a compressed format, the
@@ -91,7 +91,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     internal static class VulkanStagingLayout
     {
         /// <summary>
-        /// Bytes per texel. <c>FormatSizeHelpers.GetSizeInBytes</c>, restricted to the eight formats the seam has.
+        /// Bytes per texel. <c>FormatSizeHelpers.GetSizeInBytes</c>, restricted to the nine formats the seam has.
         /// <para>
         /// <b><see cref="GpuPixelFormat.D32FloatS8UInt"/> IS FIVE BYTES, AND IT IS THE ONE VALUE A READER WILL
         /// DOUBT.</b> The real <c>VK_FORMAT_D32_SFLOAT_S8_UINT</c> image is eight bytes per texel with the stencil
@@ -110,6 +110,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             GpuPixelFormat.D24UNormS8UInt => 4,
             GpuPixelFormat.D32FloatS8UInt => 5,
             GpuPixelFormat.R16G16B16A16Float => 8,
+            GpuPixelFormat.R32G32B32A32Float => 16,
             _ => throw new ArgumentOutOfRangeException(nameof(format), format,
                 "The native Vulkan staging layout has no byte size for that pixel format. The seam gained a "
                 + "member this arithmetic has not been taught, and guessing would garble every readback of it "

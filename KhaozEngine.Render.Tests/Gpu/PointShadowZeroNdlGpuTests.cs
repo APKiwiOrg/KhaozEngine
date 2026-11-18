@@ -47,6 +47,7 @@ public sealed class PointShadowZeroNdlGpuTests
             new ShadowSettings { ShadowCascadeCount = 2, ShadowMapResolution = 128 }, requestLitVisibility: true);
         scene.ForceTemporalForTests = true;
         scene.Post.RenderScale = RenderScale.MatchViewport;
+        scene.Post.Temporal.HistoryDetail = TemporalHistoryDetail.Display;
         scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
         scene.Post.Hdr.Enabled = true;
         scene.Post.Starfield = false;

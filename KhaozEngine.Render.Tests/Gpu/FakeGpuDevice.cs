@@ -27,14 +27,15 @@ namespace KhaozEngine.Tests.Gpu
         readonly FakeGpuResourceFactory _factory;
 
         internal FakeGpuDevice(GpuBackendKind backend = GpuBackendKind.Vulkan, bool supportsShadowMaps = true,
-            int maxColorAttachments = 8, int maxMsaaSampleCount = 1, GpuCapabilities? capabilityOverride = null)
+            int maxColorAttachments = 8, int maxMsaaSampleCount = 1, GpuCapabilities? capabilityOverride = null,
+            uint maxRenderTexture2DDimension = 16384)
         {
             Backend = backend;
             Capabilities = capabilityOverride ?? new GpuCapabilities(
                 clipSpaceYInverted: false, depthRangeZeroToOne: true, deviceName: "FakeGpuDevice",
                 samplerAnisotropy: false, samplerLodBias: false, maxMsaaSampleCount: maxMsaaSampleCount,
                 supportsShadowMaps: supportsShadowMaps, supportsCompute: false, supportsCompletionFences: false)
-            { MaxColorAttachments = maxColorAttachments };
+            { MaxColorAttachments = maxColorAttachments, MaxRenderTexture2DDimension = maxRenderTexture2DDimension };
             _factory = new FakeGpuResourceFactory(maxColorAttachments);
             PointSampler = new FakeSampler();
             LinearSampler = new FakeSampler();
@@ -121,6 +122,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>Absolute 1-based texture creation to fail, or zero for no injected failure.</summary>
         internal int ThrowOnTextureCreate { get; set; }
+        internal GpuPixelFormat? ThrowOnTextureFormat { get; set; }
         internal int ThrowOnFramebufferCreate { get; set; }
         internal int ThrowOnResourceSetCreate { get; set; }
         /// <summary>Absolute 1-based buffer creation to fail, or zero for no injected failure.</summary>
@@ -205,7 +207,7 @@ namespace KhaozEngine.Tests.Gpu
 
         public IGpuTexture CreateTexture(in GpuTextureDescription d)
         {
-            if (ThrowOnTextureCreate == Textures.Count + 1)
+            if (ThrowOnTextureCreate == Textures.Count + 1 || ThrowOnTextureFormat == d.Format)
                 throw new InvalidOperationException("planned texture creation failure");
             var t = new FakeTexture(d.Width, d.Height, d.MipLevels, d.SampleCount, d.Format, d.Usage, d.ArrayLayers,
                 d.IsArray);

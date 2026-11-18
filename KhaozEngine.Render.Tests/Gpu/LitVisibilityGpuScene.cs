@@ -42,6 +42,8 @@ public sealed class LitVisibilityGpuScene : IDisposable
         _commands = device.Factory.CreateCommandList();
         _scene = new Scene3D(device, _target.Outputs,
             new ShadowSettings { ShadowMapResolution = 512, ShadowCascadeCount = 3 }, requestLitVisibility: true);
+        // Keep the certificate and visibility checks on the Display resolve.
+        _scene.Post.Temporal.HistoryDetail = TemporalHistoryDetail.Display;
         GltfMesh plane = MeshPrimitives.Plane(12f, 12f);
         _plane = _scene.LoadMesh(plane);
         _box = _scene.LoadMesh(MeshPrimitives.Box(1f));

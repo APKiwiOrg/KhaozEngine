@@ -112,10 +112,10 @@ namespace KhaozEngine.Tests.Gpu
 
             int frames = TemporalFollowLinesRuns.Last + 1 + StopFrames, compared = 0, band = 0, followed = 0,
                 movingShare = 0, outlinePixels = 0;
-            var colour = new EntryDifference("colour");
-            var confidence = new EntryDifference("confidence");
-            var locks = new EntryDifference("lock");
-            var marks = new EntryDifference("mark", false);
+            var colour = new TemporalEntryDifference("colour");
+            var confidence = new TemporalEntryDifference("confidence");
+            var locks = new TemporalEntryDifference("lock");
+            var marks = new TemporalEntryDifference("mark", false);
             Vector2 previousJitter = default;
             for (int n = 0; n < frames; n++)
             {
@@ -379,38 +379,5 @@ namespace KhaozEngine.Tests.Gpu
 
         // The mark a stored lock lies under: 0 none, 1 moved, 2 the band, 3 the followed surface's own.
         static int Mark(float stored) => stored < -4.5f ? 3 : stored < -2.5f ? 2 : stored < -0.5f ? 1 : 0;
-
-        // The half float's steps between two values it holds, zero for the two zeros.
-        static int HalfSteps(float a, float b) => Math.Abs(Ordinal(a) - Ordinal(b));
-
-        static int Ordinal(float v)
-        {
-            short bits = BitConverter.HalfToInt16Bits((Half)v);
-            return bits < 0 ? -(bits & 0x7fff) : bits;
-        }
-
-        // Every value that differs between the entries over the walk: how many, on how many frames from which, and
-        // the largest difference, in value and in half-float steps.
-        sealed class EntryDifference(string what, bool halfFloat = true)
-        {
-            public int Values, Frames, FirstFrame = -1, WorstSteps;
-            public float Worst;
-            int _lastFrame = -1;
-
-            public void Add(int frame, float a, float b)
-            {
-                if (BitConverter.SingleToInt32Bits(a) == BitConverter.SingleToInt32Bits(b)) return;
-                Values++;
-                if (frame != _lastFrame) Frames++;
-                _lastFrame = frame;
-                if (FirstFrame < 0) FirstFrame = frame;
-                Worst = MathF.Max(Worst, MathF.Abs(a - b));
-                if (halfFloat) WorstSteps = Math.Max(WorstSteps, HalfSteps(a, b));
-            }
-
-            public override string ToString() => Values == 0 ? $"{what}: none differ"
-                : $"{what}: {Values} values differ on {Frames} frames from frame {FirstFrame}, the largest by {Worst}"
-                    + (halfFloat ? $" ({WorstSteps} half-float steps)" : " levels");
-        }
     }
 }

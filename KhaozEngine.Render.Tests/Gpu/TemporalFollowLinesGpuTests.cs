@@ -66,9 +66,11 @@ namespace KhaozEngine.Tests.Gpu
         /// walk at 1.5 on Quality a quarter texel wide, where it falls to 0.807. The rest of the table, every walk and
         /// both widths, runs only with <c>KE_TEMPORAL_ACCEPTANCE_TABLE=1</c>, which no workflow sets.
         /// </summary>
-        [GpuFact]
-        public void A_still_line_keeps_its_energy_beside_a_box_the_orthographic_camera_follows()
+        [GpuTheory]
+        [TemporalHistoryModeData]
+        public void A_still_line_keeps_its_energy_beside_a_box_the_orthographic_camera_follows(TemporalHistoryDetail detail)
         {
+            runs = runs.For(detail);
             var under = new List<string>();
             foreach (var (perspective, preset, speed, texels) in TableRuns())
             {
@@ -77,6 +79,7 @@ namespace KhaozEngine.Tests.Gpu
                 foreach (var (name, m) in new[] { ("across", across), ("along", along) })
                 {
                     string what = $"orthographic {preset} {speed} {texels} {name}";
+                    output.WriteLine($"ACCEPT|follow lines|{detail}|{what}|value={m.Worst:R}|bound={MinShare:R}");
                     Assert.False(double.IsNaN(m.Worst), $"{what}: the line covered nothing near the box");
                     if (!(m.Worst >= MinShare)) under.Add(Describe(what, m));
                 }
@@ -89,9 +92,11 @@ namespace KhaozEngine.Tests.Gpu
         /// after the band left it. With <c>KE_TEMPORAL_ACCEPTANCE_TABLE=1</c> it prints every walk from
         /// half a display pixel a frame to three and both widths.</summary>
         [Trait("Category", "Diagnostic")]
-        [GpuFact]
-        public void The_follow_lines_table_prints_every_walk()
+        [GpuTheory]
+        [TemporalHistoryModeData]
+        public void The_follow_lines_table_prints_every_walk(TemporalHistoryDetail detail)
         {
+            runs = runs.For(detail);
             output.WriteLine("| Projection | Preset | Speed | Width texels | Line | Worst share | Frame | Checked "
                 + "| Excess | Allows | Worst excess | Revealed excess of checked |");
             output.WriteLine("|" + string.Concat(Enumerable.Repeat(" --- |", 12)));

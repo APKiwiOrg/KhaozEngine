@@ -45,7 +45,7 @@ namespace KhaozEngine.Tests.Gpu
     /// 1.0 display pixels a frame over the background and over the wall, and the prop paths at Quality.
     /// </para>
     /// </summary>
-    public sealed class TemporalStabilityGpuTests(TemporalStabilityRuns runs, ITestOutputHelper output)
+    public sealed partial class TemporalStabilityGpuTests(TemporalStabilityRuns runs, ITestOutputHelper output)
         : IClassFixture<TemporalStabilityRuns>
     {
         // Every bound below is relative to runs of the same session. The measured values in the comments are Metal on
@@ -99,29 +99,46 @@ namespace KhaozEngine.Tests.Gpu
                 $"temporal anti-aliasing must add under half the change MSAA 4x adds. {ctx}");
         }
 
-        [GpuFact(RequiresFourSampleMsaa = true)]
-        public void ASlowPanOverThinGeometryFlickersLessThanMsaa4xAtNative() =>
+        [GpuTheory(RequiresFourSampleMsaa = true)]
+        [TemporalHistoryModeData]
+        public void ASlowPanOverThinGeometryFlickersLessThanMsaa4xAtNative(TemporalHistoryDetail detail)
+        {
+            runs = runs.For(detail);
             AssertAddsLessChangeThanMsaa(runs.FencePan(TemporalStabilityRuns.SlowPan), TemporalUpscale.Native);
+        }
 
-        [GpuFact(RequiresFourSampleMsaa = true)]
-        public void ASlowPanOverThinGeometryFlickersLessThanMsaa4xAtQuality() =>
+        [GpuTheory(RequiresFourSampleMsaa = true)]
+        [TemporalHistoryModeData]
+        public void ASlowPanOverThinGeometryFlickersLessThanMsaa4xAtQuality(TemporalHistoryDetail detail)
+        {
+            runs = runs.For(detail);
             AssertAddsLessChangeThanMsaa(runs.FencePan(TemporalStabilityRuns.SlowPan), TemporalUpscale.Quality);
+        }
 
-        [GpuFact(RequiresFourSampleMsaa = true)]
-        public void ASlowPanOverThinGeometryOnAWallFlickersLessThanMsaa4xAtNative() =>
+        [GpuTheory(RequiresFourSampleMsaa = true)]
+        [TemporalHistoryModeData]
+        public void ASlowPanOverThinGeometryOnAWallFlickersLessThanMsaa4xAtNative(TemporalHistoryDetail detail)
+        {
+            runs = runs.For(detail);
             AssertAddsLessChangeThanMsaa(runs.WallPan(TemporalStabilityRuns.SlowPan), TemporalUpscale.Native);
+        }
 
-        [GpuFact(RequiresFourSampleMsaa = true)]
-        public void ASlowPanOverThinGeometryOnAWallFlickersLessThanMsaa4xAtQuality() =>
+        [GpuTheory(RequiresFourSampleMsaa = true)]
+        [TemporalHistoryModeData]
+        public void ASlowPanOverThinGeometryOnAWallFlickersLessThanMsaa4xAtQuality(TemporalHistoryDetail detail)
+        {
+            runs = runs.For(detail);
             AssertAddsLessChangeThanMsaa(runs.WallPan(TemporalStabilityRuns.SlowPan), TemporalUpscale.Quality);
+        }
 
         [GpuTheory]
-        [InlineData(TemporalUpscale.Native, false, 0.40)]   // measured 0.583
-        [InlineData(TemporalUpscale.Quality, false, 0.22)]  // measured 0.322
-        [InlineData(TemporalUpscale.Native, true, 0.15)]    // measured 0.208
-        [InlineData(TemporalUpscale.Quality, true, 0.08)]   // measured 0.114
-        public void ThinGeometryKeepsItsSharpness(TemporalUpscale preset, bool panning, double floor)
+        [TemporalHistoryModeData(TemporalUpscale.Native, false, 0.40)]   // measured 0.583
+        [TemporalHistoryModeData(TemporalUpscale.Quality, false, 0.22)]  // measured 0.322
+        [TemporalHistoryModeData(TemporalUpscale.Native, true, 0.15)]    // measured 0.208
+        [TemporalHistoryModeData(TemporalUpscale.Quality, true, 0.08)]   // measured 0.114
+        public void ThinGeometryKeepsItsSharpness(TemporalUpscale preset, bool panning, double floor, TemporalHistoryDetail detail)
         {
+            runs = runs.For(detail);
             FlickerStats f = panning
                 ? runs.FencePan(TemporalStabilityRuns.SlowPan).Temporal[preset]
                 : runs.Still[preset];
@@ -132,13 +149,14 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuTheory]
-        [InlineData(TemporalUpscale.Native)]
-        [InlineData(TemporalUpscale.Quality)]
-        [InlineData(TemporalUpscale.Balanced)]
-        [InlineData(TemporalUpscale.Performance)]
-        [InlineData(TemporalUpscale.UltraPerformance)]
-        public void ASlowPanOverThinGeometryDoesNotShimmer(TemporalUpscale preset)
+        [TemporalHistoryModeData(TemporalUpscale.Native)]
+        [TemporalHistoryModeData(TemporalUpscale.Quality)]
+        [TemporalHistoryModeData(TemporalUpscale.Balanced)]
+        [TemporalHistoryModeData(TemporalUpscale.Performance)]
+        [TemporalHistoryModeData(TemporalUpscale.UltraPerformance)]
+        public void ASlowPanOverThinGeometryDoesNotShimmer(TemporalUpscale preset, TemporalHistoryDetail detail)
         {
+            runs = runs.For(detail);
             StabilityPath path = runs.FencePan(TemporalStabilityRuns.SlowPan);
             FlickerStats f = path.Temporal[preset];
             double share = f.TemporalError / path.Frozen;
@@ -153,10 +171,11 @@ namespace KhaozEngine.Tests.Gpu
         // Native 0.53, with a reset every frame 1.22. Quality 0.74, with a reset every frame 2.41. Each bound sits
         // near the geometric mean of the preset's measured share and 1, so the passing and the failing margins match.
         [GpuTheory]
-        [InlineData(TemporalUpscale.Native, 0.7)]
-        [InlineData(TemporalUpscale.Quality, 0.86)]
-        public void TheDefaultIsometricCameraZoomingDoesNotSwim(TemporalUpscale preset, double maxShareOfOff)
+        [TemporalHistoryModeData(TemporalUpscale.Native, 0.7)]
+        [TemporalHistoryModeData(TemporalUpscale.Quality, 0.86)]
+        public void TheDefaultIsometricCameraZoomingDoesNotSwim(TemporalUpscale preset, double maxShareOfOff, TemporalHistoryDetail detail)
         {
+            runs = runs.For(detail);
             StabilityPath zoom = runs.Zoom;
             FlickerStats taa = zoom.Temporal[preset], msaa = zoom.Msaa, lag = zoom.Lagged, off = zoom.Off;
             double share = taa.LowPassedError / lag.LowPassedError;
@@ -192,17 +211,27 @@ namespace KhaozEngine.Tests.Gpu
                 $"temporal anti-aliasing must add under half the change no anti-aliasing adds in the prop. {ctx}");
         }
 
-        [GpuFact]
-        public void APropMidDissolvePansCalmerThanWithoutAntiAliasing() =>
-            AssertPropPansCalmerThanOff(crossfade: false, TemporalUpscale.Native);
-
-        [GpuFact]
-        public void ALodCrossfadePansCalmerThanWithoutAntiAliasing() =>
-            AssertPropPansCalmerThanOff(crossfade: true, TemporalUpscale.Native);
-
-        [GpuFact]
-        public void APropHeldAtHalfDissolveConvergesToASteadyPartialCoverage()
+        [GpuTheory]
+        [TemporalHistoryModeData]
+        public void APropMidDissolvePansCalmerThanWithoutAntiAliasing(TemporalHistoryDetail detail)
         {
+            runs = runs.For(detail);
+            AssertPropPansCalmerThanOff(crossfade: false, TemporalUpscale.Native);
+        }
+
+        [GpuTheory]
+        [TemporalHistoryModeData]
+        public void ALodCrossfadePansCalmerThanWithoutAntiAliasing(TemporalHistoryDetail detail)
+        {
+            runs = runs.For(detail);
+            AssertPropPansCalmerThanOff(crossfade: true, TemporalUpscale.Native);
+        }
+
+        [GpuTheory]
+        [TemporalHistoryModeData]
+        public void APropHeldAtHalfDissolveConvergesToASteadyPartialCoverage(TemporalHistoryDetail detail)
+        {
+            runs = runs.For(detail);
             HeldDissolve held = runs.Held;
             double error = Math.Abs(held.Coverage - held.ReferenceCoverage);
             string ctx = $"half dissolve, still, TAA Native, region {runs.PropRegion}: coverage {held.Coverage:0.000} "
@@ -216,9 +245,11 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [Trait("Category", "Diagnostic")]
-        [GpuFact(RequiresFourSampleMsaa = true)]
-        public void TheMotionClarityTablePrintsEveryRun()
+        [GpuTheory(RequiresFourSampleMsaa = true)]
+        [TemporalHistoryModeData]
+        public void TheMotionClarityTablePrintsEveryRun(TemporalHistoryDetail detail)
         {
+            runs = runs.For(detail);
             output.WriteLine(TemporalStabilityRuns.FullTable
                 ? "the full motion-clarity table"
                 : $"the asserted runs only. Set {TemporalStabilityRuns.TableVariable}=1 for the full table");

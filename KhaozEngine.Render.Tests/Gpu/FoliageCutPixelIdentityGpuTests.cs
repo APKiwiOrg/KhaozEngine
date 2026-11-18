@@ -85,6 +85,7 @@ public sealed class FoliageCutPixelIdentityGpuTests
         scene.ForceTemporalForTests = true;
         scene.TemporalResolveEntryForTests = TemporalResolveEntry.Split;
         scene.Post.RenderScale = RenderScale.MatchViewport;
+        scene.Post.Temporal.HistoryDetail = TemporalHistoryDetail.Display;
         scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
         scene.Post.Hdr.Enabled = true;
         scene.Post.Starfield = false;

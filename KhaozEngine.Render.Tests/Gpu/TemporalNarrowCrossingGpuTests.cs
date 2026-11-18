@@ -58,10 +58,11 @@ namespace KhaozEngine.Tests.Gpu
         /// through the reconstruction (https://github.com/APKiwiOrg/KhaozEngine/issues/1187).
         /// </summary>
         [GpuTheory]
-        [InlineData(TemporalUpscale.Native)]
-        [InlineData(TemporalUpscale.Quality)]
-        public void A_ridged_keyed_box_keeps_no_history_by_its_locks_where_it_left(TemporalUpscale preset)
+        [TemporalHistoryModeData(TemporalUpscale.Native)]
+        [TemporalHistoryModeData(TemporalUpscale.Quality)]
+        public void A_ridged_keyed_box_keeps_no_history_by_its_locks_where_it_left(TemporalUpscale preset, TemporalHistoryDetail detail)
         {
+            runs = runs.For(detail);
             CrossingTrail t = runs.Run(NarrowCrossing.RidgedBox, preset);
             string ctx = Describe(t);
             output.WriteLine(ctx);
@@ -80,10 +81,11 @@ namespace KhaozEngine.Tests.Gpu
         /// kept its colour there, 50 and 136, and with the state's veto alone 0 and 3.
         /// </summary>
         [GpuTheory]
-        [InlineData(TemporalUpscale.Native)]
-        [InlineData(TemporalUpscale.Quality)]
-        public void A_keyed_line_two_texels_wide_leaves_no_trail_where_it_left(TemporalUpscale preset)
+        [TemporalHistoryModeData(TemporalUpscale.Native)]
+        [TemporalHistoryModeData(TemporalUpscale.Quality)]
+        public void A_keyed_line_two_texels_wide_leaves_no_trail_where_it_left(TemporalUpscale preset, TemporalHistoryDetail detail)
         {
+            runs = runs.For(detail);
             CrossingTrail t = runs.Run(NarrowCrossing.LineTwoTexels, preset);
             string ctx = Describe(t);
             output.WriteLine(ctx);
@@ -102,10 +104,11 @@ namespace KhaozEngine.Tests.Gpu
         /// a footprint a moving surface showed at kept its history only whole.
         /// </summary>
         [GpuTheory]
-        [InlineData(TemporalUpscale.Native)]
-        [InlineData(TemporalUpscale.Quality)]
-        public void A_keyed_line_one_texel_wide_leaves_no_trail_where_it_left(TemporalUpscale preset)
+        [TemporalHistoryModeData(TemporalUpscale.Native)]
+        [TemporalHistoryModeData(TemporalUpscale.Quality)]
+        public void A_keyed_line_one_texel_wide_leaves_no_trail_where_it_left(TemporalUpscale preset, TemporalHistoryDetail detail)
         {
+            runs = runs.For(detail);
             CrossingTrail t = runs.Run(NarrowCrossing.LineOneTexel, preset);
             string ctx = Describe(t);
             output.WriteLine(ctx);
@@ -117,9 +120,11 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>Every crossing at Native and Quality, by age at Native, and the reason the ridged box misses
         /// acceptance 3.</summary>
         [Trait("Category", "Diagnostic")]
-        [GpuFact]
-        public void The_narrow_crossing_table_prints_every_case()
+        [GpuTheory]
+        [TemporalHistoryModeData]
+        public void The_narrow_crossing_table_prints_every_case(TemporalHistoryDetail detail)
         {
+            runs = runs.For(detail);
             output.WriteLine("| Case | Preset | Checked | Excess | Acceptance 3 allows | Worst excess | Reach | Oldest "
                 + "| Age 2 excess |");
             output.WriteLine("|" + string.Concat(System.Linq.Enumerable.Repeat(" --- |", 9)));

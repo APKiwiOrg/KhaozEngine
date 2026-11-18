@@ -49,8 +49,41 @@ namespace KhaozEngine.Tests.Gpu
     /// supersampled reference (<see cref="TemporalAcceptance.ReferenceSequence"/>). HDR is off and the sharpen is at
     /// its default.
     /// </summary>
-    public sealed class TemporalFollowStopRuns
+    public sealed partial class TemporalFollowStopRuns
     {
+        readonly TemporalHistoryDetail _detail;
+        readonly TemporalDetailGate _gate;
+        readonly TemporalHistoryVariants<TemporalFollowStopRuns> _variants;
+        readonly Dictionary<TemporalDetailGate, TemporalFollowStopRuns> _gates = new();
+
+        public TemporalFollowStopRuns() : this(TemporalHistoryDetail.Display) { }
+
+        TemporalFollowStopRuns(TemporalHistoryDetail detail, TemporalHistoryVariants<TemporalFollowStopRuns>? variants = null,
+            TemporalDetailGate gate = TemporalDetailGate.Production)
+        {
+            _detail = detail;
+            _gate = gate;
+            _variants = variants ?? new TemporalHistoryVariants<TemporalFollowStopRuns>(this, detail,
+                (mode, pool) => new(mode, pool, gate));
+        }
+
+        internal TemporalFollowStopRuns For(TemporalHistoryDetail detail) => _variants.For(detail);
+
+        internal TemporalFollowStopRuns ForGate(TemporalDetailGate gate)
+        {
+            if (gate == TemporalDetailGate.Production) return For(TemporalHistoryDetail.Fine);
+            if (!_gates.TryGetValue(gate, out var source))
+                _gates.Add(gate, source = new TemporalFollowStopRuns(TemporalHistoryDetail.Fine, gate: gate));
+            return source;
+        }
+
+        void Detail(Scene3D scene)
+        {
+            scene.Post.Temporal.HistoryDetail = _detail;
+            if (_detail == TemporalHistoryDetail.Fine && _gate != TemporalDetailGate.Production)
+                scene.InstallTemporalResolveForTests(source => TemporalDetailGateVariants.Rewrite(source, _gate));
+        }
+
         public const int W = 320, H = 180, StillFrames = 16, Turn = StillFrames + 24, After = 15, RampFrames = 4;
 
         /// <summary>The frames measured before the turn frame: a whole jitter sequence at Quality, the longest of the
@@ -123,9 +156,28 @@ namespace KhaozEngine.Tests.Gpu
             const int first = Turn - Lead, count = Lead + After + 1;
             if (!_references.TryGetValue(scene.Name, out byte[][]? references))
                 _references[scene.Name] = references = TemporalAcceptance.ReferenceSequence(W, H,
-                    s => scene.Setup(s, TemporalUpscale.Native), scene.Draw, first, count);
-            byte[][] frames = TemporalAcceptance.Sequence(W, H, s => scene.Setup(s, preset), scene.Draw, first, count,
-                phase);
+                    s => { scene.Setup(s, TemporalUpscale.Native); Detail(s); }, scene.Draw, first, count);
+            byte[][] frames;
+            if (_observe is null || scene.Still)
+                frames = TemporalAcceptance.Sequence(W, H, s => { scene.Setup(s, preset); Detail(s); }, scene.Draw, first, count,
+                    phase);
+            else
+            {
+                using var fx = new TemporalFixture(W, H, s => { scene.Setup(s, preset); Detail(s); });
+                fx.Scene.TemporalHistory.CaptureDetailPathForTests = true;
+                fx.SkipPhases(phase);
+                fx.Frames(first, scene.Draw);
+                using var probe = new TemporalDetailGateReadback(fx);
+                frames = new byte[count][];
+                for (int i = 0; i < count; i++)
+                {
+                    frames[i] = fx.Frame(scene.Draw);
+                    int frame = first + i;
+                    _observe(frame, probe.Read(), TemporalTextureIo.Read(fx.Device,
+                        fx.Scene.TemporalHistory.DetailStore!.TransportForTests),
+                        Erode(scene.Mask(frame), TemporalFollowCameraRuns.SpillPixels(preset)));
+                }
+            }
             var masks = new bool[count][];
             for (int k = 0; k < count; k++) masks[k] = scene.Mask(first + k);
             int reach = TemporalFollowCameraRuns.SpillPixels(preset);

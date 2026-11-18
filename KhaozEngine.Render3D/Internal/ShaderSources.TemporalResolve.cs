@@ -123,7 +123,10 @@ const float VisibilityShimmerGate = 0.1;
 
         // ---- The fused entry point's core: its bindings, the uniforms, the per-texel preparation and per-pixel
         //      accumulation, and the per-pixel resolve that prepares its 3x3 inline, no stage inputs or outputs ----
-        public const string TemporalResolveCoreGlsl = @"
+        public const string TemporalResolveCoreGlsl = TemporalResolvePreparationGlsl + TemporalAccumulateGlsl
+            + TemporalResolvePixelGlsl;
+
+        internal const string TemporalResolvePreparationGlsl = @"
 layout(set=0, binding=0) uniform texture2D SceneColor;
 layout(set=0, binding=1) uniform texture2D OpaqueColor;
 layout(set=0, binding=2) uniform texture2D SceneDepth;
@@ -135,7 +138,9 @@ layout(set=0, binding=7) uniform sampler LinearClamp;
 // The members are TemporalResolveUniforms.GlslMembers, documented on the struct's fields.
 layout(set=0, binding=8) uniform Resolve {" + TemporalResolveUniforms.GlslMembers + @"};
 " + TemporalResolveVisibilityBindingsGlsl + TemporalCommonGlsl + TemporalResolveTuningGlsl + TemporalVisibilityMaskGlsl + TemporalVisibilityGlsl
-            + TemporalShimmerVisibilityGlsl + TemporalNarrowBothGlsl + TemporalPrepareGlsl + TemporalShimmerGlsl + TemporalAccumulateGlsl + @"
+            + TemporalShimmerVisibilityGlsl + TemporalNarrowBothGlsl + TemporalPrepareGlsl + TemporalShimmerGlsl;
+
+        internal const string TemporalResolvePixelGlsl = @"
 // The fused entry point: one display pixel, its 3x3 read from the scene's inputs and prepared inline
 // (temporalWeighted, temporalReactiveDifference, temporalDilate, temporalVisibilityCurrentBit), gathered
 // (temporalGather), its centre texel's surface prepared (temporalPrepareSurface), and the accumulation

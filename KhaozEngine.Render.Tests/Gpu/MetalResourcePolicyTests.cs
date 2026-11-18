@@ -41,6 +41,8 @@ namespace KhaozEngine.Tests.Gpu
                 MetalFormats.ToPixelFormat(GpuPixelFormat.B8G8R8A8UNorm, false));
             Assert.Equal(MTLPixelFormat.RGBA16Float,
                 MetalFormats.ToPixelFormat(GpuPixelFormat.R16G16B16A16Float, false));
+            Assert.Equal(MTLPixelFormat.RGBA32Float,
+                MetalFormats.ToPixelFormat(GpuPixelFormat.R32G32B32A32Float, false));
             Assert.Equal(MTLPixelFormat.Depth24UnormStencil8,
                 MetalFormats.ToPixelFormat(GpuPixelFormat.D24UNormS8UInt, true));
             Assert.Equal(MTLPixelFormat.Depth32FloatStencil8,

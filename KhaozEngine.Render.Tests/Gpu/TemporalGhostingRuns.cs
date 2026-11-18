@@ -79,6 +79,19 @@ namespace KhaozEngine.Tests.Gpu
     /// </summary>
     public sealed class TemporalGhostingRuns
     {
+        readonly TemporalHistoryDetail _detail;
+        readonly TemporalHistoryVariants<TemporalGhostingRuns> _variants;
+
+        public TemporalGhostingRuns() : this(TemporalHistoryDetail.Display) { }
+
+        TemporalGhostingRuns(TemporalHistoryDetail detail, TemporalHistoryVariants<TemporalGhostingRuns>? variants = null)
+        {
+            _detail = detail;
+            _variants = variants ?? new TemporalHistoryVariants<TemporalGhostingRuns>(this, detail, (mode, pool) => new(mode, pool));
+        }
+
+        internal TemporalGhostingRuns For(TemporalHistoryDetail detail) => _variants.For(detail);
+
         public const int W = 320, H = 180;
 
         /// <summary>The difference, 0 to 1, a trail pixel may keep.</summary>
@@ -125,10 +138,11 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>Wall time spent rendering and measuring so far, in seconds.</summary>
         internal double Seconds { get; private set; }
 
-        static Action<Scene3D> Setup(FrontStage stage, TemporalUpscale preset) => s =>
+        Action<Scene3D> Setup(FrontStage stage, TemporalUpscale preset) => s =>
         {
             stage.Setup(s, AntiAliasing.Temporal, preset);
             s.Post.Hdr.Enabled = false;
+                s.Post.Temporal.HistoryDetail = _detail;
         };
 
         static byte[] RunTo(Action<Scene3D> setup, int last, Action<Scene3D, int> draw)
@@ -275,6 +289,7 @@ namespace KhaozEngine.Tests.Gpu
                 yard.Setup(s, aa);
                 s.Post.Temporal.Upscale = preset;
                 s.Post.Hdr.Enabled = false;
+                s.Post.Temporal.HistoryDetail = _detail;
             };
             _zoomReferences ??= Array.ConvertAll(ZoomCheckpoints, n => TemporalAcceptance.Supersampled(W, H,
                 ZoomReferenceFactor, Setup(AntiAliasing.Off), yard.Draw, n));

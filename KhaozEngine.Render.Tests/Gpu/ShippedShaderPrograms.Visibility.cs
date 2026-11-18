@@ -35,5 +35,6 @@ public static partial class ShippedShaderPrograms
         }
         yield return new("SilhouetteVisibility", ShaderSources.SilhouetteVert,
             ShadowVisibilityTargets.Fragment(ShaderSources.SilhouetteFrag, false, preserve: true));
+        foreach (ShippedGraphicsProgram program in TemporalDetailPrograms()) yield return program;
     }
 }

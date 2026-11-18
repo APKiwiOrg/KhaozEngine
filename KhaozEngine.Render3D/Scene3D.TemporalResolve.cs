@@ -158,7 +158,8 @@ namespace KhaozEngine.Render3D
             _temporalPost ??= new TemporalPostTargets(_gd);
             // New targets hold nothing. A new display or internal size already reset the history through the frame key,
             // so this catches a replacement the key cannot see, and the resolve never reads new targets as history.
-            if (TemporalHistory.EnsureTargets(_gd, displayWidth, displayHeight, _res.Width, _res.Height, _retired)
+            if (TemporalHistory.EnsureTargets(_gd, displayWidth, displayHeight, _res.Width, _res.Height, _retired,
+                TemporalHistoryDetailInEffect)
                 && TemporalHistory.IsValid)
             {
                 TemporalHistory.Invalidate(TemporalResetReason.Resize);
@@ -167,6 +168,7 @@ namespace KhaozEngine.Render3D
             _temporalPost.Ensure(_res, TemporalHistory, displayWidth, displayHeight, Post.Bloom.Enabled, _retired);
 
             TemporalHistory.BeginResolve(current.FrameIndex);
+            TemporalHistory.DetailStore?.Prepare(cl);
             IGpuTexture motion = _res.MotionTex ?? throw new InvalidOperationException(
                 "The temporal resolve runs only while temporal rendering is active, which allocates the motion target.");
             _temporalResolve.SelectEntry(ChooseTemporalEntry(), _retired);   // TemporalEntry
@@ -258,6 +260,7 @@ namespace KhaozEngine.Render3D
                 }
             _temporalResolve!.Run(cl, TemporalHistory, ResolvedVisibilityFullyLit);
             _frameStats.DrawCalls += TemporalResolveRenderer.DrawCallsPerFrame;
+            UpdateTemporalDetail(cl);
         }
 
         // A frame without the resolve holds none of its targets. The history targets, the resolve's sets that name them,
@@ -285,6 +288,10 @@ namespace KhaozEngine.Render3D
             bool postSafe = postReleased || _temporalPost?.DisposalSafeForDependants == true;
             if (postReleased) _temporalPost = null;
             // The resolve's sets borrow history targets. Keep those targets if that owner retains its sets.
+            // The resolve also owns the layouts the detail store's sets and pipelines were built over, and it goes
+            // first. That is safe on every backend: a layout's Dispose only marks it (Vulkan's set layout handles
+            // live in a device cache until teardown), it is checked only when a set or pipeline is created from it,
+            // and releasing what was built over it reads nothing of it.
             bool resolveReleased = postSafe && disposal.Release("temporal.resolve", () => _temporalResolve?.Dispose());
             if (resolveReleased) _temporalResolve = null;
             if (disposal.Release("temporal.laterPost", () => _laterRenderPost?.Dispose())) _laterRenderPost = null;

@@ -199,6 +199,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 supportsCompletionFences: SupportsCompletionFences)
             {
                 MaxColorAttachments = ColorRenderTargets,
+                // Metal feature set tables, Mac2 maximum 2D texture width and height.
+                MaxRenderTexture2DDimension = 16384,
                 MaxFragmentStorageBuffers = 31,
                 SupportsTimestamps = supportsTimestamps,
             };

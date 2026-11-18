@@ -327,6 +327,8 @@ public sealed class WaterOpticsProofScene : IDisposable
             IGpuFramebuffer framebuffer = Target(device, Width, Height).Framebuffer;
             _commands = device.Factory.CreateCommandList();
             _scene = new Scene3D(device, framebuffer.Outputs);
+            // Keep the temporal optics captures on the display-grid history.
+            _scene.Post.Temporal.HistoryDetail = TemporalHistoryDetail.Display;
             _plane = _scene.LoadMesh(MeshPrimitives.Plane());
             _box = _scene.LoadMesh(MeshPrimitives.Box());
             // The real four-bone tube used by BlobDecalGhostHoleGoldenTests, with no rigid substitute.

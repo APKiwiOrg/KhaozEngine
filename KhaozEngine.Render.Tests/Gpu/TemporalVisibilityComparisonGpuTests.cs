@@ -178,22 +178,62 @@ public sealed class TemporalVisibilityComparisonGpuTests(GameShadowGrainScene gr
     [InlineData(1, 0)]
     [InlineData(1, 1)]
     [InlineData(1, 2)]
-    public void JitterOnlyVisibilityDoesNotReleaseThinDetail(int entry, int variation)
+    [InlineData(0, 0, TemporalHistoryDetail.Fine)]
+    [InlineData(0, 1, TemporalHistoryDetail.Fine)]
+    [InlineData(0, 2, TemporalHistoryDetail.Fine)]
+    [InlineData(1, 0, TemporalHistoryDetail.Fine)]
+    [InlineData(1, 1, TemporalHistoryDetail.Fine)]
+    [InlineData(1, 2, TemporalHistoryDetail.Fine)]
+    [InlineData(0, 0, TemporalHistoryDetail.Fine, TemporalUpscale.Quality)]
+    [InlineData(0, 1, TemporalHistoryDetail.Fine, TemporalUpscale.Quality)]
+    [InlineData(0, 2, TemporalHistoryDetail.Fine, TemporalUpscale.Quality)]
+    [InlineData(1, 0, TemporalHistoryDetail.Fine, TemporalUpscale.Quality)]
+    [InlineData(1, 1, TemporalHistoryDetail.Fine, TemporalUpscale.Quality)]
+    [InlineData(1, 2, TemporalHistoryDetail.Fine, TemporalUpscale.Quality)]
+    public void JitterOnlyVisibilityDoesNotReleaseThinDetail(int entry, int variation,
+        TemporalHistoryDetail detail = TemporalHistoryDetail.Display, TemporalUpscale preset = TemporalUpscale.Native)
     {
-        using var rig = new Rig();
-        using GpuRetireQueue retired = GpuRetireQueue.Create(rig.Device);
-        rig.Renderer.SelectEntry((TemporalResolveEntry)entry, retired);
-        using IGpuTexture signal = Signal(rig.Device, 153);
-        float[] color = Grey((x, _) => x == 3 ? 0.7f : 0.2f);
-        rig.Fill(color, color, Motion((_, _) => Vector2.Zero));
-        Vector2 priorJitter = variation == 0 ? Vector2.Zero : new(0.25f, -0.25f);
-        rig.BeginFrame(); rig.Resolve(Uniforms(false, priorJitter), signal);
-        rig.History.MarkValidAfterFrame(); rig.BeginFrame();
-        rig.FillHistory(color, State((_, _) => new Vector2(1, 1)), SceneLinear);
-        if (variation != 1) rig.Fill(color, color, Motion((_, _) => new Vector2(0.25f / N, 0)));
-        rig.Resolve(Uniforms(true, variation == 0 ? Vector2.Zero : new(-0.25f, 0.25f)), signal);
+        using var rig = JitterOnlyRig(entry, variation, detail, preset);
+        int At(int x, int y) => JitterOnlyPixel(rig, x, y);
         Assert.True(rig.ReadState()[At(3, 3) * 4 + 1] >= 0.875f);
         Assert.True(rig.ReadColor()[At(3, 3) * 4] > 0.6f);
+        if (preset == TemporalUpscale.Quality && variation == 0)
+        {
+            using var balanced = JitterOnlyRig(entry, variation, detail, TemporalUpscale.Balanced);
+            int pixel = JitterOnlyPixel(balanced, 3, 3);
+            output.WriteLine($"Balanced jitter-only: lock {balanced.ReadState()[pixel * 4 + 1]}, red {balanced.ReadColor()[pixel * 4]}");
+        }
+    }
+
+    static int JitterOnlyPixel(Rig rig, int x, int y)
+    {
+        int size = rig.History.DisplayWidth;
+        return (int)((y + 0.5f) * size / N) * size + (int)((x + 0.5f) * size / N);
+    }
+
+    static Rig JitterOnlyRig(int entry, int variation, TemporalHistoryDetail detail, TemporalUpscale preset)
+    {
+        int display = (int)MathF.Round(N * TemporalSettings.DisplayOverInternal(preset));
+        var rig = new Rig(N, N, display, display, SceneNdc, detail);
+        try
+        {
+            using GpuRetireQueue retired = GpuRetireQueue.Create(rig.Device);
+            rig.Renderer.SelectEntry((TemporalResolveEntry)entry, retired);
+            using IGpuTexture signal = Signal(rig.Device, 153);
+            float[] color = Grey((x, _) => x == 3 ? 0.7f : 0.2f);
+            rig.Fill(color, color, Motion((_, _) => Vector2.Zero));
+            Vector2 priorJitter = variation == 0 ? Vector2.Zero : new(0.25f, -0.25f);
+            TemporalResolveUniforms Uniform(bool valid, Vector2 jitter) => TemporalResolveMath.BuildUniforms(
+                Still, Still, jitter, N, N, display, display, valid);
+            rig.BeginFrame(); rig.Resolve(Uniform(false, priorJitter), signal);
+            rig.History.MarkValidAfterFrame(); rig.BeginFrame();
+            rig.FillHistory(Grey(display, display, (x, _) => (int)((x + 0.5f) * N / display) == 3 ? 0.7f : 0.2f),
+                States(display, display, (_, _) => new Vector2(1, 1)), SceneLinear);
+            if (variation != 1) rig.Fill(color, color, Motion((_, _) => new Vector2(0.25f / display, 0)));
+            rig.Resolve(Uniform(true, variation == 0 ? Vector2.Zero : new(-0.25f, 0.25f)), signal);
+            return rig;
+        }
+        catch { rig.Dispose(); throw; }
     }
 
     [GpuTheory]

@@ -4,6 +4,47 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 24.1.0
+
+2026-11-18
+
+A minor with additive runtime API in `KhaozEngine.Render3D` and `KhaozEngine.Gpu`. When temporal anti-aliasing
+is enabled, it now requests the fine colour history by default.
+
+**Fine colour history for temporal anti-aliasing.**
+
+- `Post.Temporal.HistoryDetail` selects the colour history grid of the temporal resolve. The default request,
+  `TemporalHistoryDetail.Fine`, keeps an extra RGBA16F colour pair at twice the display on each axis.
+  Set `Post.Temporal.HistoryDetail = TemporalHistoryDetail.Display` for the display-sized history. An admitted
+  moving pixel reads its four reprojected texels and keeps their bounded sub-pixel deviations around its resolved
+  colour, preserving detail under camera motion across repeated resampling. A still pixel, whose stored motion is below a 128th of a display pixel a frame,
+  and a distrusted one take `Display`'s path.
+- Fine needs the temporal resolve, six colour attachments, a device 2D render texture dimension that holds
+  twice the display, and a display pixel count within the new `Post.Temporal.HistoryDetailPixelLimit`
+  (inclusive, default 3,686,400, which is 2560 by 1440). Otherwise `Display` stays in effect, so 3840 by 2160
+  falls back by default. Nonpositive budgets disable Fine and unknown enum values mean `Display`. The new
+  `Scene3D.TemporalHistoryDetailInEffect` reports the selection latched on the frame's first render. A change
+  of it resets history for one frame, reported as the new `TemporalResetReason.HistoryDetail` unless a
+  higher-ranking reason such as a resize applies to the same frame.
+- Cost. At 2560 by 1440 Fine adds 341.02 MiB of targets, 225 MiB for the pair and 116.02 MiB of display-grid
+  scratch, and about 7.6 to 8.3 ms of GPU time a frame over the Display split resolve on an Apple M2 Max
+  (2026-11-16 UTC), about 2.9 to 3.5 times its cost. If the admitted pair or its scratch fails to allocate,
+  each resolving frame throws for as long as Fine stays admitted and the allocation keeps failing.
+- Limits. A still frame in Fine is `Display`'s byte for byte where the device computes the two compiled
+  programs alike and a still surface's stored motion stays below the gate. With camera-relative rendering in
+  force that holds at displays within the default budget. With the render origin opted out it stops holding
+  about 1,000 m along a horizontal axis from the world origin at 2560 by 1440. The
+  [temporal resolve design](docs/design/TEMPORAL-RESOLVE.md#the-still-gate) has the measurements and the
+  per-device still rules. The suite asserts the moving-detail protocols for Display and reports them for Fine.
+
+**GPU seam.**
+
+- `GpuCapabilities.MaxRenderTexture2DDimension` reports the guaranteed largest width or height of a sampled 2D
+  colour render target on the device, or zero when unknown.
+- `GpuPixelFormat.R32G32B32A32Float` is a four-channel 32-bit float colour target and sampled texture on
+  Metal, Direct3D 11 and Vulkan, 16 bytes a texel in staging. Linear filtering of it is not guaranteed on
+  every device.
+
 ## 24.0.0
 
 2026-11-17

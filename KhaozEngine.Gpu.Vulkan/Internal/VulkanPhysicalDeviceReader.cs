@@ -44,6 +44,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <param name="TimestampPeriodNanoseconds">The physical device's limits.timestampPeriod.</param>
     /// <param name="MaxStorageBufferRangeBytes">The physical device's limits.maxStorageBufferRange.</param>
     /// <param name="SignedZeroInfNanPreserveFloat32">Requested per-stage arithmetic policy or float-control capability.</param>
+    /// <param name="MaxRenderTexture2DDimension">The smaller of the image and both framebuffer axis limits.</param>
     internal readonly record struct VulkanPhysicalDeviceRead(
         VulkanDeviceFacts Facts,
         VulkanFeatureSupport Features,
@@ -59,7 +60,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         int TimestampValidBits = 0,
         double TimestampPeriodNanoseconds = 0d,
         uint MaxStorageBufferRangeBytes = 0,
-        bool SignedZeroInfNanPreserveFloat32 = false);
+        bool SignedZeroInfNanPreserveFloat32 = false,
+        uint MaxRenderTexture2DDimension = 0);
 
     /// <summary>
     /// The one place a <c>VkPhysicalDevice</c> is turned into plain data, shared by the support probe and by
@@ -136,7 +138,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 reportedName,
                 VulkanCapabilityRead.ColorAttachmentLimit(properties.Limits.MaxColorAttachments,
                     properties.Limits.MaxFragmentOutputAttachments),
-                timestampValidBits, properties.Limits.TimestampPeriod, properties.Limits.MaxStorageBufferRange, clearsVersionFloor && ReadFloatControls(vk, device));
+                timestampValidBits, properties.Limits.TimestampPeriod, properties.Limits.MaxStorageBufferRange,
+                clearsVersionFloor && ReadFloatControls(vk, device),
+                Math.Min(properties.Limits.MaxImageDimension2D,
+                    Math.Min(properties.Limits.MaxFramebufferWidth, properties.Limits.MaxFramebufferHeight)));
         }
 
         /// <summary>

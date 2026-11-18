@@ -50,8 +50,8 @@ namespace KhaozEngine.Tests.Gpu
             output.WriteLine($"{fused.Device.Backend} on {fused.Device.Capabilities.DeviceName}, {preset}, {iw}x{ih} internal, "
                 + $"{dw}x{dh} display, production and D prime each fused against split on one frame set");
             bool softwareVulkan = TemporalDeviceClass.IsLavapipe(fused.Device);
-            var productionColour = new EntryDifference("production fused vs split colour");
-            var dColour = new EntryDifference("D prime fused vs split colour");
+            var productionColour = new TemporalEntryDifference("production fused vs split colour");
+            var dColour = new TemporalEntryDifference("D prime fused vs split colour");
             var productionState = new TemporalEntryStateComparison(softwareVulkan);
             // D prime stores no shimmer record, so its zero blue and alpha channels remain exact too.
             var dState = new TemporalEntryStateComparison(softwareVulkan: false);
@@ -106,7 +106,7 @@ namespace KhaozEngine.Tests.Gpu
                     foreach (TemporalResolveRig rig in rigs) rig.History.MarkValidAfterFrame();
                 }
                 if (softwareVulkan)
-                    foreach (EntryDifference pair in new[] { productionColour, dColour })
+                    foreach (TemporalEntryDifference pair in new[] { productionColour, dColour })
                     {
                         double share = TemporalSoftwareCompileDivergenceRule.ShareOf(pair.Values, colourCompared);
                         output.WriteLine($"  software Vulkan: {pair}, within "
@@ -138,7 +138,7 @@ namespace KhaozEngine.Tests.Gpu
 
         // A software Vulkan pair: confidence, lock, mark, R8 and depth exact, colour and record gathered for bounds.
         static void SoftwareVulkanPair(int frame, string what, TemporalHistorySample a, TemporalHistorySample b,
-            EntryDifference colour, TemporalEntryStateComparison state)
+            TemporalEntryDifference colour, TemporalEntryStateComparison state)
         {
             Assert.Equal(a.Colour.Length, b.Colour.Length);
             for (int i = 0; i < a.Colour.Length; i++) colour.Add(frame, a.Colour[i], b.Colour[i]);

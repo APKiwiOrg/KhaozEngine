@@ -12,9 +12,9 @@
 #      item, so .props, .targets and .projitems imports count. Double or single quotes. A path is resolved against
 #      its file's directory, with $(MSBuildThisFileDirectory) and $(MSBuildProjectDirectory) understood. Any other
 #      property cannot be resolved here, so the part after its last ) is matched from a path boundary when a separator
-#      follows the property, and from anywhere when the property ends inside a path segment. A parent segment after
-#      the property folds the folder before it. One that consumes the first name after the property, or climbs
-#      above it, leaves a rest that is matched from a path boundary.
+#      or ./ follows the property, and from anywhere when the property ends inside a path segment. A parent segment
+#      after the property folds the folder before it. One that consumes the first name after the property, or climbs
+#      above it, leaves a rest that is matched from a path boundary. A rest that folds to nothing matches every path.
 #   4. Every floating point test project compiles the default-environment guard and its registration test, so a test
 #      that leaves a control changed fails itself instead of a later test.
 # A .cs file that names a setter or the fixture class anywhere is read with its lines joined, so a declaration split
@@ -22,7 +22,9 @@
 # Default: read the index. --tree: read tracked files in the work tree, for CI.
 # Limits: an item list (@(...)) or metadata (%(...)) in a Compile path is not expanded, and a raw > inside an attribute
 # before Include cuts the tag short, so a link written in one of those forms can pass. A project's own Compile Remove
-# is not honoured, which only widens. Markdown files are not read, as MSBuild never imports documentation. Machine
+# is not honoured, which only widens. The literal part of a path is compared as written: a percent escape, a
+# recursive wildcard that spans no folder and a different letter case are not resolved, so a link that reaches a file
+# only through one of those can pass. Markdown files are not read, as MSBuild never imports documentation. Machine
 # code a test writes and runs itself is not recognised.
 # Exit 0 clean, 1 on a violation, 2 on bad usage or a git error.
 set -eu

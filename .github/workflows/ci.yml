@@ -24,10 +24,7 @@ concurrency:
   cancel-in-progress: true
 on:
   push:
-    branches: [ main ]
     tags: [ 'v*' ]   # all four packages share one version + tag line
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:   # manual re-trigger (e.g. to check a hosted runner image update) without a dummy commit
 
 jobs:

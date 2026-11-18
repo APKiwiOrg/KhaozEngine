@@ -33,7 +33,7 @@ namespace KhaozEngine.CodeHealth.Analyzers
 
         public void RecordRead(IOperation argument)
         {
-            var type = argument.Type?.SpecialType;
+            var type = UnderlyingEnumType(argument.Type)?.SpecialType;
             if (type == SpecialType.System_Int32 || type == SpecialType.System_UInt32)
                 RecordRead(argument, ImmutableArray<IntegralConversion>.Empty);
         }
@@ -111,12 +111,14 @@ namespace KhaozEngine.CodeHealth.Analyzers
         {
             if (type is INamedTypeSymbol named && named.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T)
                 type = named.TypeArguments[0];
-            type = (type as INamedTypeSymbol)?.EnumUnderlyingType ?? type;
-            result = type?.SpecialType ?? SpecialType.None;
+            result = UnderlyingEnumType(type)?.SpecialType ?? SpecialType.None;
             return result is SpecialType.System_SByte or SpecialType.System_Byte or SpecialType.System_Char
                 or SpecialType.System_Int16 or SpecialType.System_UInt16 or SpecialType.System_Int32
                 or SpecialType.System_UInt32 or SpecialType.System_Int64 or SpecialType.System_UInt64;
         }
+
+        private static ITypeSymbol? UnderlyingEnumType(ITypeSymbol? type) =>
+            (type as INamedTypeSymbol)?.EnumUnderlyingType ?? type;
 
         private static bool TryGetIntegralValue(object? value, out decimal result)
         {

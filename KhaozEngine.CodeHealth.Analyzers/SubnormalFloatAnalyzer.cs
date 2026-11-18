@@ -42,7 +42,12 @@ namespace KhaozEngine.CodeHealth.Analyzers
             context.RegisterOperationAction(run.CheckObjectCreation, OperationKind.ObjectCreation);
             context.RegisterOperationAction(run.CheckMemberReference,
                 OperationKind.PropertyReference, OperationKind.FieldReference, OperationKind.EventReference);
-            context.RegisterSyntaxNodeAction(run.CheckBaseType, SyntaxKind.SimpleBaseType, SyntaxKind.PrimaryConstructorBaseType);
+            context.RegisterSyntaxNodeAction(run.CheckGenericName, SyntaxKind.GenericName);
+            context.RegisterOperationAction(run.CheckCompilerSelectedUse,
+                OperationKind.CollectionExpression, OperationKind.Conversion, OperationKind.Binary, OperationKind.Unary,
+                OperationKind.CompoundAssignment, OperationKind.Increment, OperationKind.Decrement, OperationKind.Loop,
+                OperationKind.Using, OperationKind.UsingDeclaration, OperationKind.DeconstructionAssignment,
+                OperationKind.RecursivePattern);
             context.RegisterOperationAction(run.RecordFieldInitializer, OperationKind.FieldInitializer);
             context.RegisterCompilationEndAction(run.ReportDeferred);
         }

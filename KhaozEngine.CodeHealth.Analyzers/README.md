@@ -160,12 +160,10 @@ The rule flags:
 - A call or method group that resolves to `MathF.BitDecrement`, `MathF.BitIncrement`, `float.BitDecrement`
   or `float.BitIncrement`, including `T.BitDecrement` on a type parameter constrained to
   `IFloatingPointIeee754<float>`. The zero branch of each holds `float.Epsilon`.
-- A reference that closes a stepped generic parameter over `float` in the same compilation. A
-  `BitDecrement` or `BitIncrement` on a parameter marks its declaration, including in initializers, nested
-  types and local functions. Forwarding to a stepped parameter marks the forwarded parameter too. Calls,
-  method groups, constructions, property and indexer accesses, fields, events and base lists are checked,
-  even when the named member is unrelated to the step. Move the stepping member to its own type to keep
-  unrelated uses with `float` allowed.
+- Any source name or inferred use that closes a stepped generic parameter over `float`, including inside
+  nested type arguments and in type-only positions. A `BitDecrement` or `BitIncrement` on a parameter
+  marks its declaration, and forwarding to a stepped parameter marks the forwarded parameter too.
+  Move the stepping member to its own type or leave that generic parameter closed over a type other than `float`.
 - Any `float` expression whose compile-time constant is subnormal: a literal, `float.Epsilon`, a `const`, a
   folded expression of normal operands, a cast, and a default parameter value at each call that omits it. The
   compiler emits the outermost constant, so `(double)float.Epsilon` is a normal double and stays allowed.
@@ -202,7 +200,7 @@ What the rule cannot see:
   `(uint)(double)Bits`, stays unknown.
 - Generated code, which KEFP001 skips.
 - Constants inside BCL or third-party code, such as Bepu, that the JIT inlines into the calling method.
-- A stepping generic defined in another assembly.
+- A stepping generic defined in another assembly, or closure through reflection or `dynamic`.
 
 ### Scope and consumer adoption
 

@@ -38,8 +38,12 @@ internal static class SubnormalFloatHarness
     /// a compilation that does not surface the property at all. Refuses a source that does not compile, so no case
     /// passes because its sample failed to bind.
     /// </summary>
+    public static Task<ImmutableArray<Diagnostic>> Run(string? scope, bool withXunit, bool warningsAsErrors,
+        params string[] sources) =>
+        Run(scope, withXunit, warningsAsErrors, checkOverflow: false, sources);
+
     public static async Task<ImmutableArray<Diagnostic>> Run(string? scope, bool withXunit, bool warningsAsErrors,
-        params string[] sources)
+        bool checkOverflow, params string[] sources)
     {
         var referencePaths = withXunit
             ? PlatformReferences.Concat(new[]
@@ -52,7 +56,7 @@ internal static class SubnormalFloatHarness
             .Select(path => MetadataReference.CreateFromFile(path));
         var trees = sources.Select((source, index) => CSharpSyntaxTree.ParseText(source, path: $"/repo/Sample{index}.cs"));
         var options = new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary,
-            generalDiagnosticOption: warningsAsErrors ? ReportDiagnostic.Error : ReportDiagnostic.Default);
+            checkOverflow: checkOverflow, generalDiagnosticOption: warningsAsErrors ? ReportDiagnostic.Error : ReportDiagnostic.Default);
         var compilation = CSharpCompilation.Create("SubnormalFloatHarness", trees, references, options);
         var errors = compilation.GetDiagnostics().Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error).ToArray();
         if (errors.Length > 0)

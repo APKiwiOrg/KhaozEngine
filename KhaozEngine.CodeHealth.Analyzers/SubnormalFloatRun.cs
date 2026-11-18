@@ -21,6 +21,7 @@ namespace KhaozEngine.CodeHealth.Analyzers
         private readonly INamedTypeSymbol? _helperTemplate;
         private readonly SubnormalFloatFieldReads _fieldReads;
         private readonly SubnormalFloatGenericUses _genericUses;
+        private readonly SubnormalFloatSelectedUses _selectedUses;
 
         public SubnormalFloatRun(Compilation compilation)
         {
@@ -34,6 +35,7 @@ namespace KhaozEngine.CodeHealth.Analyzers
             _helperTemplate = compilation.Assembly.GetTypeByMetadataName("KhaozEngine.FloatSteps.FloatUlp");
             _fieldReads = new SubnormalFloatFieldReads(compilation.Options.CheckOverflow);
             _genericUses = new SubnormalFloatGenericUses(compilation.Assembly);
+            _selectedUses = new SubnormalFloatSelectedUses(_genericUses);
         }
 
         public void CheckConstant(OperationAnalysisContext context)
@@ -70,12 +72,13 @@ namespace KhaozEngine.CodeHealth.Analyzers
         public void CheckMemberReference(OperationAnalysisContext context) =>
             _genericUses.RecordUse(context, ((IMemberReferenceOperation)context.Operation).Member);
 
-        public void CheckBaseType(SyntaxNodeAnalysisContext context)
+        public void CheckGenericName(SyntaxNodeAnalysisContext context)
         {
-            var syntax = (BaseTypeSyntax)context.Node;
-            var type = context.SemanticModel.GetTypeInfo(syntax.Type, context.CancellationToken).Type;
-            _genericUses.RecordUse(type, syntax);
+            var syntax = (GenericNameSyntax)context.Node;
+            _genericUses.RecordName(context.SemanticModel.GetSymbolInfo(syntax, context.CancellationToken).Symbol, syntax);
         }
+
+        public void CheckCompilerSelectedUse(OperationAnalysisContext context) => _selectedUses.Record(context);
 
         public void RecordFieldInitializer(OperationAnalysisContext context) => _fieldReads.RecordInitializer(context);
 

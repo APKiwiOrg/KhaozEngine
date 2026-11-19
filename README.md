@@ -2,7 +2,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="art-assets/brand/KhaozEngine-logo-dark.svg">
-  <img src="art-assets/brand/KhaozEngine-logo-light.svg" alt="Khaoz Engine" width="708">
+  <img src="art-assets/brand/KhaozEngine-logo-light.svg" alt="KhaozEngine" width="708">
 </picture>
 
 KhaozEngine is a 2D and 3D game engine for C# and .NET 10. It renders through its own Metal, Direct3D 11 and

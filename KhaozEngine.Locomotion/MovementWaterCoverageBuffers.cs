@@ -1,3 +1,6 @@
+#if CONTACT_SHORE_ATTRIBUTION
+using KhaozEngine.Physics;
+#endif
 using System;
 using System.Buffers;
 
@@ -51,6 +54,9 @@ internal sealed class MovementWaterCoverageBuffers
 
         internal void Return(int exposedContacts)
         {
+#if CONTACT_SHORE_ATTRIBUTION
+            using var shoreStep = ShoreStepProbe.Begin(ShorePhase.WaterBufferReturn);
+#endif
             if (Environment.CurrentManagedThreadId != _thread)
                 throw new InvalidOperationException("Water coverage buffers belong to their borrowing thread.");
             if (completeWriter)

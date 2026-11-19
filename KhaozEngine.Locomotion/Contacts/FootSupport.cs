@@ -100,6 +100,9 @@ internal static class FootSupport
     internal static SupportSample Find(FootAnalyticGround? analytic, IPhysicsWorld? world, IPhysicsQueryLease? lease,
         in FootSupportQuery query, SupportFootprintBounds? scope, SupportRequestMemo? memo)
     {
+#if CONTACT_SHORE_ATTRIBUTION
+        using var shoreStep = ShoreStepProbe.Begin(ShorePhase.Find);
+#endif
         SupportQueryDiagnostics.Record(SupportQueryCounter.Find);
         SupportFootprintRequest request = DescribeFootprint(query);
         var selection = new Selection(query);

@@ -14,6 +14,9 @@ public sealed partial class MovementQueryLease
     internal MovementAvailability QuerySolidSweepFiltered(in MovementBodyQuery body, Vector3 displacement,
         out CapsuleSweepResult result, QueryFilter filter, ContactCapsuleRole role = ContactCapsuleRole.RoundedSweep)
     {
+#if CONTACT_SHORE_ATTRIBUTION
+        using var shoreStep = ShoreStepProbe.Begin(ShorePhase.CertifiedSweep);
+#endif
         result = default;
         AssertUsable();
         if (!_selectionReady) return MovementAvailability.Unresolved;

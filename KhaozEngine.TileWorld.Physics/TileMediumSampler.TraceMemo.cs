@@ -1,3 +1,6 @@
+#if CONTACT_SHORE_ATTRIBUTION
+using KhaozEngine.Physics;
+#endif
 using System;
 using System.Numerics;
 using KhaozEngine.Locomotion;
@@ -50,6 +53,9 @@ public sealed partial class TileMediumSampler
     MovementCoverageResult TraceFlat(in MovementMediumSweepQuery query, Vector3 origin,
         in MovementQueryIdentity identity, Span<MovementCoverageSpan> spans, Span<MovementDomainContact> contacts)
     {
+#if CONTACT_SHORE_ATTRIBUTION
+        ShoreStepProbe.Count(ShoreEvent.FlatTrace);
+#endif
         // Fresh dry queries pay lookup cost without avoiding geometry. Keep their cheap one-span
         // construction out of the eight wet-result slots, including paths outside the water extent.
         if (_field.FlatColumns.Length == 0 || !new TileWaterPathBounds(query, origin).Meets(Extent.Minimum, Extent.Maximum))
@@ -70,6 +76,9 @@ public sealed partial class TileMediumSampler
         {
             if (table.TryRead(key, query.Body.CurrentSpace, identity, spans, contacts, out var cached))
             {
+#if CONTACT_SHORE_ATTRIBUTION
+                ShoreStepProbe.Count(flat ? ShoreEvent.FlatResultHit : ShoreEvent.PrismResultHit);
+#endif
                 if (TileWaterQueryWork.Enabled) TileWaterQueryWork.ResultHits++;
                 return cached;
             }
@@ -92,9 +101,20 @@ public sealed partial class TileMediumSampler
     }
 
     MovementCoverageResult ComputeTrace(bool flat, in MovementMediumSweepQuery query, Vector3 origin,
-        in MovementQueryIdentity identity, Span<MovementCoverageSpan> spans, Span<MovementDomainContact> contacts) => flat
+        in MovementQueryIdentity identity, Span<MovementCoverageSpan> spans, Span<MovementDomainContact> contacts)
+#if CONTACT_SHORE_ATTRIBUTION
+    {
+        ShoreStepProbe.Count(flat ? ShoreEvent.FlatSolve : ShoreEvent.PrismSolve);
+        using var shoreStep = ShoreStepProbe.Begin(ShorePhase.WaterKernel);
+        return flat
+#else
+        => flat
+#endif
         ? TileWaterColumnCoverage.Trace(_field.FlatColumns, _field.FlatBoundaries, _field.FlatExterior, query,
             origin, identity, spans, contacts, _field.FlatIndex)
         : TileWaterPrismCoverage.Trace(_field.Prisms, _field.Faces, _field.Ground, _field.PointIndex,
             _field.PrismStarts, _field.FaceStarts, query, origin, identity, spans, contacts);
+#if CONTACT_SHORE_ATTRIBUTION
+    }
+#endif
 }

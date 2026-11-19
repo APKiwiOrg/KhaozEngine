@@ -27,6 +27,9 @@ public sealed partial class MovementQueryLease
     internal MovementAvailability FindContactSupport(in MovementSupportRequest request, in FootSupportQuery query,
         out SupportSample sample, out MovementContactSupportBinding? binding)
     {
+#if CONTACT_SHORE_ATTRIBUTION
+        using var shoreStep = ShoreStepProbe.Begin(ShorePhase.FindRead);
+#endif
         sample = default;
         binding = null;
         MovementAvailability allowed = CheckContactSupportQuery(request, query);
@@ -60,6 +63,9 @@ public sealed partial class MovementQueryLease
     internal MovementAvailability SweepContactShell(in MovementBodyQuery shell, CapsuleShape shape, Vector3 direction, float distance,
         QueryFilter filter, out bool blocked, out SweepHit hit)
     {
+#if CONTACT_SHORE_ATTRIBUTION
+        using var shoreStep = ShoreStepProbe.Begin(ShorePhase.ShellSweep);
+#endif
         blocked = false;
         hit = default;
         MovementAvailability allowed = CheckContactShellShape(shell, shape);
@@ -108,6 +114,9 @@ public sealed partial class MovementQueryLease
 
     internal MovementAvailability PenetrateContactShell(in MovementBodyQuery shell, CapsuleShape shape, out bool overlapping, out Vector3 mtv)
     {
+#if CONTACT_SHORE_ATTRIBUTION
+        using var shoreStep = ShoreStepProbe.Begin(ShorePhase.ShellPenetration);
+#endif
         overlapping = false;
         mtv = default;
         MovementAvailability allowed = CheckContactShellShape(shell, shape);

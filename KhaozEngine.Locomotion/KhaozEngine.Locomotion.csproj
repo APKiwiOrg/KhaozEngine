@@ -8,6 +8,7 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.Benchmarks" Condition="'$(ContactShoreAttribution)' == 'true'" />
     <None Include="README.md" Pack="true" PackagePath="\" />
     <InternalsVisibleTo Include="KhaozEngine.TileWorld.Physics.Tests" />
   </ItemGroup>

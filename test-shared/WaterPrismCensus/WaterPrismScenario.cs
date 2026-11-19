@@ -44,7 +44,11 @@ internal sealed class WaterPrismScenario : IDisposable
     internal WaterPrismScenario(string name, MovementControllerKind controller = MovementControllerKind.Contact,
         bool crowded = false)
     {
-        if (Array.IndexOf(Names, name) < 0 && name != "shore-traverse") throw new ArgumentOutOfRangeException(nameof(name));
+        if (Array.IndexOf(Names, name) < 0 && name != "shore-traverse"
+#if CONTACT_SHORE_ATTRIBUTION
+            && name != "flat-wade"
+#endif
+        ) throw new ArgumentOutOfRangeException(nameof(name));
         Name = name;
         _contact = controller == MovementControllerKind.Contact;
         bool bank = name.StartsWith("bank-", StringComparison.Ordinal);
@@ -135,6 +139,9 @@ internal sealed class WaterPrismScenario : IDisposable
                     "shore-traverse" => -35 - 18 * (z - 236),
                     "swim-entry" => -130 - 18 * (z - 246),
                     "deep-swim" or "deep-tread" => Math.Max(-537, -369 - 44 * (z - 260)),
+#if CONTACT_SHORE_ATTRIBUTION
+                    "flat-wade" => -72,
+#endif
                     "flat-neighbour" => -237 - 7 * Math.Max(0, z - 253),
                     _ => -237,
                 };

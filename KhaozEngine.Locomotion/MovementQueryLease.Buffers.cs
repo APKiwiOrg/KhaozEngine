@@ -1,6 +1,9 @@
 using System;
 using System.Buffers;
 using System.Numerics;
+#if CONTACT_SHORE_ATTRIBUTION
+using KhaozEngine.Physics;
+#endif
 
 namespace KhaozEngine.Locomotion;
 
@@ -59,6 +62,9 @@ public sealed partial class MovementQueryLease
     public MovementCoverageResult TraceWater(in MovementMediumSweepQuery query,
         Span<MovementCoverageSpan> spans, Span<MovementDomainContact> contacts)
     {
+#if CONTACT_SHORE_ATTRIBUTION
+        using var shoreStep = ShoreStepProbe.Begin(ShorePhase.WaterTraceLease);
+#endif
         AssertUsable();
         if (!_selectionReady) return NoCoverage(MovementAvailability.Unresolved);
         if (!query.IsValid || !SameWorld(query.Body.CurrentSpace)) return NoCoverage(MovementAvailability.Invalid);

@@ -1,3 +1,6 @@
+#if CONTACT_SHORE_ATTRIBUTION
+using KhaozEngine.Physics;
+#endif
 using System;
 using System.Runtime.CompilerServices;
 using V = KhaozEngine.TileWorld.Physics.TileWaterConvexShape.Vector;
@@ -76,6 +79,9 @@ internal sealed class TileWaterSharedProjections
         _suspended = false;
         Last = new(ReservedPayloadBytes, _published, _borrowed, _duplicates, _exhausted, _lends, _misses,
             _nested, _unsupported, _bypassed, _copies, _fresh, _stale);
+#if CONTACT_SHORE_ATTRIBUTION
+        ShoreStepProbe.Count(ShoreEvent.SharedProjectionCopies, _copies);
+#endif
         // Reset after publishing, so a stale source evaluated between traces is reported with the next trace.
         _published = _borrowed = _duplicates = _exhausted = _lends = _misses = 0;
         _nested = _unsupported = _bypassed = _copies = _fresh = _stale = 0;

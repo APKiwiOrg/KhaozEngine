@@ -1,3 +1,6 @@
+#if CONTACT_SHORE_ATTRIBUTION
+using KhaozEngine.Physics;
+#endif
 using System;
 using System.Numerics;
 
@@ -14,6 +17,9 @@ internal static class MovementWaterBoundary
         float bodyHalfHeight, float enterFraction, WaterTraversalMode mode, MovementQueryLease queries,
         Span<Vector3> normals, out int normalCount, out Hit hit, float proximity = 0)
     {
+#if CONTACT_SHORE_ATTRIBUTION
+        using var shoreStep = ShoreStepProbe.Begin(ShorePhase.WaterBoundary);
+#endif
         normalCount = 0;
         hit = default;
         if (mode is not (WaterTraversalMode.SurfaceSwimmer or WaterTraversalMode.WadeOnly or WaterTraversalMode.DryOnly))

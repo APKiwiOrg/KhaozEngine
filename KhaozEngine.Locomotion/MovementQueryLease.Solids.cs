@@ -20,6 +20,9 @@ public sealed partial class MovementQueryLease
     internal MovementAvailability QuerySolidContactsFiltered(in MovementBodyQuery body, float margin,
         Span<CapsuleContact> scratch, out CapsuleContactResult result, QueryFilter filter, ContactCapsuleRole role = ContactCapsuleRole.RoundedContact)
     {
+#if CONTACT_SHORE_ATTRIBUTION
+        using var shoreStep = ShoreStepProbe.Begin(ShorePhase.SolidContacts);
+#endif
         result = default;
         AssertUsable();
         if (!_selectionReady) return MovementAvailability.Unresolved;

@@ -1,3 +1,6 @@
+#if CONTACT_SHORE_ATTRIBUTION
+using KhaozEngine.Physics;
+#endif
 using System;
 using System.Numerics;
 
@@ -8,6 +11,9 @@ public sealed partial class MovementQueryLease
     /// <summary>Reads canonical centre-feet membership under the captured scope and lifetime.</summary>
     public MovementWaterPoint SampleCentreWater(in MovementBodyQuery body)
     {
+#if CONTACT_SHORE_ATTRIBUTION
+        using var shoreStep = ShoreStepProbe.Begin(ShorePhase.WaterPoint);
+#endif
         AssertUsable();
         if (!_selectionReady) return NoWaterFact(MovementAvailability.Unresolved);
         if (!body.IsValid || !SameWorld(body.CurrentSpace))

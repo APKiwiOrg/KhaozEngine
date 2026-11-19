@@ -24,6 +24,14 @@ using KhaozEngine.Simulation;
 //   dotnet run --project KhaozEngine.Benchmarks -c Release -- --jpeg         (one 960x540 JpegWriter encode)
 // See KhaozEngine.Benchmarks/README.md for how to read the output.
 
+#if CONTACT_SHORE_ATTRIBUTION
+if (Array.IndexOf(args, "--shore-step-attribution") >= 0)
+{
+    ShoreStepAttributionBenchmark.Run(args);
+    return;
+}
+#endif
+
 if (Array.IndexOf(args, "--query-cost") >= 0)
 {
     ContactQueryCostBenchmark.Run(args);

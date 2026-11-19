@@ -42,6 +42,9 @@ public sealed partial class BepuPhysicsWorld : IPhysicsSupportFootprint
         in SupportFootprintRequest request, Span<SupportFootprintMember> members, Span<ulong> joins,
         QueryFilter filter, StaticQueryExclusions? exclusions)
     {
+#if CONTACT_SHORE_ATTRIBUTION
+        using var shoreStep = ShoreStepProbe.Begin(ShorePhase.Footprint);
+#endif
         // Taken first, so a refused or throwing query still consumes the request and no later query inherits it.
         bool certificationJoins = SupportCertificationJoins.Take();
         AuthenticateFeatureLease(lease);

@@ -98,6 +98,17 @@ jobs:
           sh scripts/check-scratch.sh --tree
           sh scripts/check-fp-control-tests.sh --tree
           bash scripts/check-doc-versions.sh
+      - name: Check out the scope matcher for its fixture
+        if: ${{ needs.scope.outputs.full == 'true' || contains(fromJSON(needs.scope.outputs.segments), 'tooling') }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: APKiwiOrg/ci-workflows
+          ref: ae32b9aaede81946fdc88a02876d75e70861c728
+          path: obj/ci-workflows
+          persist-credentials: false
+          sparse-checkout: |
+            .github/actions/ci-scope
+            .github/actions/_shared
       - name: 'Test: tooling'
         if: ${{ needs.scope.outputs.full == 'true' || contains(fromJSON(needs.scope.outputs.segments), 'tooling') }}
         env:
@@ -121,6 +132,7 @@ jobs:
           sh scripts/tests/release-lock.test.sh
           sh scripts/tests/tag-collision-guard.test.sh
           sh scripts/tests/version-push-guard.test.sh
+          python3 -B scripts/tests/ci-product-build.test.py --matcher obj/ci-workflows/.github/actions/ci-scope/scope.py --gpu-only
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         if: needs.scope.outputs.build == 'true'
         with:

@@ -127,12 +127,15 @@ conditional references. A valid rule set with a stale project mapping fails the 
 to be prose may skip compilation and still run whole-tree convention guards.
 
 GPU correctness uses the same scope rules on pull requests and main pushes. It selects the
-`render` and `map-editor` segments or any full scope. External inputs such as shared assets and
-GPU build scripts are full overrides. The build helper audits the closure rows against the project
-graph, so an added reference with a stale row fails validation. A pull request uses its own base,
-and a main push reads the GPU workflow's last passing ancestor using the leg selector's
-read-only token. The Scope summary records why the job condition skips a matrix before GitHub
-expands it. The weekly full and manual GPU paths run independently of Product CI.
+dependency closures of solution test projects with device-gated tests and every full scope.
+The tooling fixture derives the device-test roster from the canonical solution and audits the
+workflow's segment inputs against it. Shared assets, GPU build scripts and the Windows console
+smoke script are full overrides. The build helper audits the closure rows against the project
+graph, so an added reference with a stale row fails validation. Pull requests use their own base.
+On a main push, the leg selector reads workflow history with its read-only token. Only a
+passing push or schedule can be the comparison base, since a dispatch can test a narrower scope.
+The Scope summary records why a job condition skips the matrix before GitHub expands it.
+Weekly full and manual GPU paths run independently of Product CI.
 
 ## Decision 5: product and release validation
 

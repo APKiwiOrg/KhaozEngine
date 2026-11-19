@@ -51,6 +51,10 @@ def check_tooling_and_census_routes(matcher, rules):
     workflow = (ROOT / '.github/workflows/product-ci.yml').read_text()
     stage = workflow.partition("      - name: 'Test: tooling'\n")[2].split('\n      - ', 1)[0]
     problems = []
+    action = (ROOT / '.github/actions/native-ci-scope/action.yml').read_text()
+    pin = re.search(r'/ci-scope@([0-9a-f]{40})', action)[1]
+    assert f'ref: {pin}\n          path: obj/ci-workflows' in workflow
+    assert 'python3 -B scripts/tests/ci-product-build.test.py --matcher obj/ci-workflows/' in stage
     if command.findall(stage) != expected:
         problems.append('Test: tooling must execute the eighteen legacy fixture commands in order')
 
@@ -99,33 +103,183 @@ def check_native_reference_growth(matcher, rules, manifest):
     raise AssertionError('Native scope audit accepted a stale render closure after adding a reference')
 
 
-def check_gpu_scope(matcher, rules, scratch):
+def scope_inputs(workflow, rules):
+    match = re.search(r"^\s+uses: \./\.github/actions/native-ci-scope\n\s+with:\n"
+                      r"\s+segments: '([^\n]+)'(?:\n\s+base-events: ([^\n]+))?", workflow, re.M)
+    assert match, 'Expected a native scope caller with a literal segment list'
+    segments = json.loads(match[1])
+    assert isinstance(segments, list) and segments and all(isinstance(item, str) for item in segments)
+    assert len(segments) == len(set(segments)) and set(segments) <= rules.segments.keys(), segments
+    return segments, tuple(match[2].split()) if match[2] else ()
+
+
+NON_CODE = re.compile(r'//[^\n]*|/\*.*?\*/|("{3,}).*?\1|@"(?:""|[^"])*"|'
+                      r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'', re.S)
+FACT_TYPE = re.compile(r'\bclass\s+(\w+Attribute)\s*:\s*(?:[\w.]+\.)?'
+                       r'(?:FactAttribute|TheoryAttribute)\s*\{')
+TEST_GATE = re.compile(r'\b(?:GpuTestGate\s*\.\s*SkipReason\s*\(|'
+                       r'Environment\s*\.\s*GetEnvironmentVariable\(\s*"KE_GPU_TESTS"\s*\))')
+
+
+def class_body(source, start):
+    depth = 1
+    for brace in re.compile(r'[{}]').finditer(source, start):
+        depth += 1 if brace[0] == '{' else -1
+        if not depth:
+            return source[start:brace.start()]
+    raise AssertionError('Unclosed test attribute class')
+
+
+def source_code(path):
+    return NON_CODE.sub(lambda match: match[0] if match[0] == '"KE_GPU_TESTS"' else ' ',
+                        (ROOT / path).read_text())
+
+
+def device_tests(canonical, manifest):
+    test_roots = {
+        Path(path).parent: path for entry in manifest.values() if entry['role'] == 'test'
+        for path in entry['roots'] if path in canonical
+    }
+    tracked = subprocess.check_output(['git', 'ls-files', '-z', '--', '*.cs'], cwd=ROOT).decode().split('\0')
+    definitions = []
+    sources = []
+    for path in map(Path, filter(None, tracked)):
+        test_root = next((test_roots[parent] for parent in path.parents if parent in test_roots), None)
+        if not test_root and path.parts[0] != 'KhaozEngine.TestSupport.Gpu':
+            continue
+        code = source_code(path)
+        definitions.append(code)
+        if test_root:
+            sources.append((test_root, code))
+    gated = {declaration[1].removesuffix('Attribute')
+             for code in definitions for declaration in FACT_TYPE.finditer(code)
+             if TEST_GATE.search(class_body(code, declaration.end()))}
+    assert {'GpuFact', 'GpuTheory'} <= gated, gated
+    names = '|'.join(re.escape(name) for name in sorted(gated))
+    use = re.compile(r'\[(?:[^\[\]\r\n]*,)?\s*'
+                     rf'(?:[\w.:]+\.)?(?:{names})(?:Attribute)?(?=\s*[\](,])')
+    return {root for root, code in sources if use.search(code)}, use
+
+
+def runs_path(matcher, rules, requested, path):
+    full, segments, _ = matcher.select(rules, [path])
+    return full or bool(set(requested).intersection(segments))
+
+
+def assert_external_routes(matcher, rules, requested, workflow, paths):
+    # Include scripts run directly by shell steps, even when their command uses substitution.
+    commands = re.compile(r'(?:\b(?:python3|bash|sh)\s+(?:-B\s+)?|\./)'
+                          r'(scripts/[\w./-]+\.(?:sh|py|ps1))\b')
+    external = set(paths) | set(commands.findall(workflow))
+    missed = sorted(path for path in external if not runs_path(matcher, rules, requested, path))
+    assert not missed, f'Native inputs outside scope: {missed}'
+
+
+def check_scope_request(matcher, rules, requested, scratch):
+    action = (ROOT / '.github/actions/native-ci-scope/action.yml').read_text()
+    route = textwrap.dedent(action.split('      run: |\n', 1)[1])
+    output = scratch / 'gpu-scope-output'
+
+    def invoke(value, full, affected, reason='', cwd=ROOT):
+        output.write_text('')
+        return subprocess.run(
+            ['bash', '-c', route],
+            env={**os.environ, 'FULL': str(full).lower(), 'AFFECTED': json.dumps(affected),
+                 'REQUESTED': value, 'REASON': reason, 'GITHUB_OUTPUT': str(output),
+                 'GITHUB_STEP_SUMMARY': str(scratch / 'gpu-scope-summary')},
+            cwd=cwd, text=True, capture_output=True,
+        )
+
+    for path, expected in (
+        ('README.md', 'false'),
+        ('KhaozEngine.Render.Tests/Gpu/Source.cs', 'true'),
+        ('KhaozEngine.TileEdit.Tests/RenderServiceTests.cs', 'true'),
+        ('KhaozEngine.WorldMap.Gui.Tests/WorldMapViewSnapshotGoldenTests.cs', 'true'),
+        ('tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf/RendererPerfWaterOpticsRecipeTests.cs', 'false'),
+    ):
+        full, segments, reason = matcher.select(rules, [path])
+        result = invoke(json.dumps(requested), full, segments, reason)
+        assert result.returncode == 0, result.stderr
+        assert output.read_text().splitlines() == [f'selected={expected}'], path
+
+    for invalid in ('bad json', '[]', '{"segment":"render"}', '["render", 1]', '["full"]', '["native-segment-missing"]'):
+        result = invoke(invalid, True, list(rules.segments))
+        assert result.returncode != 0 and not output.read_text()
+        assert invalid in result.stderr, result.stderr
+    result = invoke(json.dumps(requested), True, [], cwd=scratch)
+    assert result.returncode == 0 and output.read_text().splitlines() == ['selected=true']
+
+
+def check_gpu_push_base(matcher, requested, base_events):
+    # A failed relevant push followed by a green narrowed dispatch must still be visible
+    # in subsequent prose diffs until an eligible run covers the changed tree.
+    repo = 'owner/engine'
+    path = '.github/workflows/cross-platform-gpu.yml'
+    workflow = matcher.Workflow(repo, path, 'main', 'current', base_events)
+    a, b, c, d = (letter * 40 for letter in 'abcd')
+    rules = (ROOT / '.github/ci-scope.txt').read_text()
+    changed = b'KhaozEngine.TileEdit.Tests/RenderServiceTests.cs\0README.md\0'
+    prose = b'README.md\0'
+
+    def run(event, conclusion, sha, minute):
+        time = f'2026-01-01T01:{minute:02}:00Z'
+        return {'event': event, 'conclusion': conclusion, 'head_sha': sha, 'id': minute,
+                'created_at': time, 'updated_at': time, 'path': path,
+                'repository': {'full_name': repo}, 'head_repository': {'full_name': repo}}
+
+    def git(args):
+        if args[0] in ('cat-file', 'merge-base'):
+            return 0, b''
+        assert args[0] == 'diff', args
+        return 0, changed if args[-1].startswith(a + '..') else prose
+
+    history = [run('push', 'success', a, 1), run('push', 'failure', b, 2),
+               run('workflow_dispatch', 'success', b, 3)]
+
+    def fetch(_endpoint):
+        return {'workflow_runs': history}
+
+    for head in (c, d):
+        decision = matcher.decide('push', {}, 'branch', rules, head, git, fetch, workflow)
+        assert not decision.full and set(decision.segments).intersection(requested), (head, decision)
+        history.append(run('push', 'failure', head, len(history) + 1))
+    history.pop()
+    history[-1]['conclusion'] = 'success'
+    decision = matcher.decide('push', {}, 'branch', rules, d, git, fetch, workflow)
+    assert not decision.full and not decision.segments, decision
+
+    history.append(run('workflow_dispatch', 'failure', c, 5))
+    assert matcher.decide('push', {}, 'branch', rules, d, git, fetch, workflow).full
+
+
+def check_gpu_scope(matcher, rules, manifest, canonical, scratch):
     workflow = (ROOT / '.github/workflows/cross-platform-gpu.yml').read_text()
+    requested, base_events = scope_inputs(workflow, rules)
+    assert base_events == ('push', 'schedule'), base_events
+    check_gpu_push_base(matcher, requested, base_events)
+    gpu_roots, use = device_tests(canonical, manifest)
+    assert all(manifest[segment]['role'] == 'test' for segment in requested), requested
+    selected = {path for segment in requested for path in manifest[segment]['roots']}
+    assert selected == gpu_roots, f'GPU segment roots differ from device tests: {sorted(selected ^ gpu_roots)}'
+    outside = 'tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf/RendererPerfWaterOpticsRecipeTests.cs'
+    assert use.search(source_code(outside)) and not any(
+        outside.startswith(str(Path(project).parent) + '/') for project in canonical
+    ), outside
+    check_scope_request(matcher, rules, requested, scratch)
+    assert_external_routes(matcher, rules, requested, workflow, (
+        'KhaozEngine.slnx', 'Directory.Packages.props', 'nuget.config',
+        'KhaozEngine.Showcase/assets/dungeon/dungeon_stair.glb',
+        'KhaozEngine.MapDoc.Tests/Foliage/FarFoliageGenerationFixtures.cs',
+        'KhaozEngine.MapDoc.Tests/FormatFourFixtures.cs',
+        'KhaozEngine.MapDoc.Physics.Tests/NativeWorldFixtures.Nested.cs',
+        'docs/examples/EquipmentCoverageConsumer.cs', 'test-shared/D3D11CompileQuiesce.cs',
+    ))
     selector, golden = workflow.split('\n  gpu-golden:\n', 1)
     gate, matrix_steps = golden.split('    steps:\n', 1)
     matrix_steps = matrix_steps.split('\n  gpu-full-suite:', 1)[0]
     assert re.findall(r'^    if: (.+)$', gate, re.M) == ["needs.legs.outputs.selected == 'true'"]
     assert "selected: ${{ steps.scope.outputs.selected || 'true' }}" in selector
     assert 'matrix.skip' not in matrix_steps and 'Report the GPU skip' not in matrix_steps
-
-    action = (ROOT / '.github/actions/native-ci-scope/action.yml').read_text()
-    route = textwrap.dedent(action.split('      run: |\n', 1)[1])
-    scope_output = scratch / 'gpu-scope-output'
-    summary = scratch / 'gpu-scope-summary'
-    for path, expected in (
-        ('README.md', 'false'),
-        ('KhaozEngine.Render.Tests/Gpu/Source.cs', 'true'),
-    ):
-        full, segments, reason = matcher.select(rules, [path])
-        scope_output.write_text('')
-        subprocess.run(
-            ['bash', '-c', route],
-            env={**os.environ, 'FULL': str(full).lower(), 'AFFECTED': json.dumps(segments),
-                 'REQUESTED': '["render", "map-editor"]', 'REASON': reason,
-                 'GITHUB_OUTPUT': str(scope_output), 'GITHUB_STEP_SUMMARY': str(summary)},
-            check=True, capture_output=True,
-        )
-        assert scope_output.read_text().splitlines() == [f'selected={expected}'], path
 
     pick = textwrap.dedent(selector.split('      - id: pick\n', 1)[1].split('        run: |\n', 1)[1])
     output = scratch / 'gpu-leg-output'
@@ -142,10 +296,55 @@ def check_gpu_scope(matcher, rules, scratch):
     assert values['sharded'] == '[]' and values['vulkan_native'] == 'true'
 
 
+def check_native_call_sites(matcher, rules, manifest, scratch):
+    shared_build = ('Directory.Build.props', 'Directory.Build.targets', 'Directory.Packages.props', 'nuget.config')
+    files = {
+        'foliage-conformance': (
+            'KhaozEngine.slnx', 'scripts/outside-solution-projects.py', '.github/ci-projects.json',
+            'KhaozEngine.Showcase/assets/dungeon/dungeon_stair.glb',
+            'docs/examples/EquipmentCoverageConsumer.cs', 'test-shared/CapacityDemandProbe.cs',
+        ),
+        'terrain-format': (
+            'KhaozEngine.TileWorld.Physics.Tests/Fixtures/ContactTerrainFormatFour.navbake',
+            'KhaozEngine.Game.Tests/Locomotion/Contacts/LocomotionStateBits.cs',
+            'KhaozEngine.Movement.Tests/Fixtures/ArrivalReference.cs',
+            'test-shared/WaterPrismCensus/WaterPrismScenario.cs',
+        ),
+        'windows-console': tuple(path.relative_to(ROOT).as_posix()
+                                 for path in (ROOT / 'tools/WindowsConsoleProbe/Shared').glob('*.cs')),
+    }
+    assert files['windows-console'], 'Expected shared Windows console sources'
+    for name, external in files.items():
+        workflow = (ROOT / f'.github/workflows/{name}.yml').read_text()
+        requested, base_events = scope_inputs(workflow, rules)
+        assert not base_events, (name, base_events)
+        assert_external_routes(matcher, rules, requested, workflow, (*shared_build, *external))
+        role = 'compile' if name == 'windows-console' else 'test'
+        assert all(manifest[segment]['role'] == role for segment in requested), requested
+        roots = {path for segment in requested for path in manifest[segment]['roots']}
+        if name == 'windows-console':
+            smoke = (ROOT / 'scripts/tests/windows-console-smoke.ps1').read_text()
+            targets = re.search(r"foreach \(\$head in @\(([^)]+)\)\)", smoke)[1]
+            expected = {f'tools/WindowsConsoleProbe/{target}.csproj'
+                        for target in re.findall(r"'([^']+)'", targets)}
+        else:
+            expected = set(re.findall(r'\bdotnet test ([\w./-]+\.csproj)\b', workflow))
+        assert expected and roots == expected, (name, roots, expected)
+        if name == 'foliage-conformance':
+            build = re.search(r"scripts/ci-product-build\.py false '([^']+)'", workflow)
+            assert build, 'Expected a foliage solution planner call'
+            build_segments = json.loads(build[1])
+            assert isinstance(build_segments, list) and len(build_segments) == len(requested)
+            assert set(build_segments) == set(requested), (build_segments, requested)
+            foliage = plan(False, build_segments, scratch)
+            assert set(projects(scratch / 'product.slnx')) == set(foliage['test_roots']) == expected
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--matcher', required=True, type=Path)
     parser.add_argument('--replay', action='store_true')
+    parser.add_argument('--gpu-only', action='store_true', help='Check GPU before the other native callers land')
     args = parser.parse_args()
     matcher = load_matcher(args.matcher.resolve())
     rules = matcher.parse_rules((ROOT / '.github/ci-scope.txt').read_text())
@@ -172,7 +371,9 @@ def main():
     canonical = projects(ROOT / 'KhaozEngine.slnx')
     with tempfile.TemporaryDirectory(dir=os.environ.get('TMPDIR')) as scratch:
         scratch = Path(scratch)
-        check_gpu_scope(matcher, rules, scratch)
+        check_gpu_scope(matcher, rules, manifest, set(canonical), scratch)
+        if not args.gpu_only:
+            check_native_call_sites(matcher, rules, manifest, scratch)
         full = plan(True, [], scratch)
         roots = projects(scratch / 'product.slnx')
         tests = projects(scratch / 'tests.slnx')

@@ -326,6 +326,12 @@ run. Main pushes, manual dispatches, reusable calls and reruns each have their o
 later event can interrupt a renderer prerequisite and a retried older run cannot cancel the current
 commit's run. Product CI runs its registered tooling fixtures on a full or tooling selection.
 
+Every workflow job has a time limit, so a hung step stops long before the six hour default. The
+jobs on the release path, in `ci.yml`, `cross-platform-gpu.yml` and `gpu-hosted-bench.yml`, take
+theirs from measured runs: twice the slowest completed job among the newest hundred runs, with a
+five minute floor for a job that takes seconds. The margin exists because a limit set too tight
+stops a real release gate. Raise a limit in the change that makes its job slower.
+
 Product CI includes solution projects and the tracked projects outside the solution in one Linux
 Release build. The outside inventory comes from `scripts/outside-solution-projects.py`, which also
 serves release CI. The compile-only segments ensure an engine dependency or linked source can

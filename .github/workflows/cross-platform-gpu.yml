@@ -400,6 +400,8 @@ jobs:
   legs:
     name: select legs
     runs-on: ubuntu-26.04
+    # Takes seconds. Five minutes is the floor for a job this short.
+    timeout-minutes: 5
     permissions:
       contents: read
       actions: read
@@ -547,6 +549,8 @@ jobs:
     # job that answers for them.
     name: ${{ matrix.os }} / ${{ matrix.backend }}${{ matrix.shard != '' && format(' / {0}', matrix.shard) || '' }}
     runs-on: ${{ matrix.runner }}
+    # Twice the slowest completed job in the newest 100 runs, read 2026-11-19 (163 minutes, an unsharded Vulkan dispatch).
+    timeout-minutes: 330
     # All three legs are blocking, with no continue-on-error on any of them. Each verifies its OWN golden
     # family since 17.41.0, on the rasterizer its deleted incumbent used to share (macOS paravirtual Metal,
     # Windows WARP, Linux Mesa lavapipe), and each blocks by design rather than by record: a native
@@ -1746,6 +1750,8 @@ jobs:
     if: always() && needs.legs.result == 'success' && needs.legs.outputs.sharded != '[]'
     name: ${{ matrix.os }} / ${{ matrix.backend }} / full suite
     runs-on: ubuntu-26.04
+    # Takes seconds. Five minutes is the floor for a job this short.
+    timeout-minutes: 5
     strategy:
       fail-fast: false
       matrix:
@@ -1814,6 +1820,8 @@ jobs:
     # llvmpipe IS the device under test here. Promoting it is a golden re-bake, not a runner bump, and
     # it gets its own change. Same reasoning as the macos-26 pin above.
     runs-on: ubuntu-24.04
+    # Twice the slowest completed job in the newest 100 runs, read 2026-11-19 (20 minutes).
+    timeout-minutes: 45
     if: |
       needs.legs.outputs.vulkan_native == 'true'
       && (github.event_name == 'schedule'

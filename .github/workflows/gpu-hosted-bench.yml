@@ -87,6 +87,8 @@ permissions:
 jobs:
   legs:
     runs-on: ubuntu-latest
+    # Twice the slowest completed job in the newest 100 runs, read 2026-11-19 (3 minutes), rounded up.
+    timeout-minutes: 10
     outputs:
       matrix: ${{ steps.pick.outputs.matrix }}
       authorization-sha: ${{ steps.renderer-admission.outputs.authorization-sha }}

@@ -33,6 +33,8 @@ jobs:
   water-kernel-contract:
     name: Water kernel differential (${{ matrix.arch }})
     runs-on: ${{ matrix.os }}
+    # Twice the slowest completed job in the newest 100 runs, read 2026-11-19 (11 minutes).
+    timeout-minutes: 25
     permissions:
       contents: read
     strategy:
@@ -124,6 +126,8 @@ jobs:
     needs: prior-gate
     if: ${{ !cancelled() }}
     runs-on: ubuntu-26.04
+    # Twice the slowest completed job in the newest 100 runs, read 2026-11-19 (30 minutes).
+    timeout-minutes: 60
     permissions:
       contents: read
       packages: write

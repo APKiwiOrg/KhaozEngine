@@ -44,8 +44,8 @@
 # (Render.Tests in slices). The software legs also move named non-Render projects to `projects-N` shards
 # (#1458, #1471):
 #   metal-native        rest + 2 render slices = 3 jobs
-#   direct3d11-native   rest + projects-1 + projects-2 + 4 render slices = 7 jobs
-#   vulkan-native       rest + projects-1 + 12 render slices = 14 jobs
+#   direct3d11-native   rest + projects-1 + projects-2 + 3 render slices = 6 jobs
+#   vulkan-native       rest + projects-1 + 11 render slices = 13 jobs
 # Each backend has its own slice table, balanced from that backend's measured per-test times. The split lives
 # in scripts/gpu-test-shards.py, which is also the coverage guard: every render shard checks that its
 # backend's slices partition the listed Render.Tests methods exactly once before it runs, and the per-backend
@@ -60,8 +60,8 @@
 # and reject Debug output. The build selection does not change test selection or coverage guards.
 #
 # CONCURRENCY. The org is on the Team plan: 60 concurrent GitHub-hosted standard jobs and 5 concurrent macOS
-# jobs (https://docs.github.com/en/actions/reference/limits). A default-input dispatch peaks at 25 jobs here
-# (3 Metal, 7 Windows, 14 Linux, the sync job), 29 with the `ci` dispatch the pre-tag gate runs beside it.
+# jobs (https://docs.github.com/en/actions/reference/limits). A default-input dispatch starts 22 backend jobs
+# (3 Metal, 6 Windows, 13 Linux) plus sync. Three backend summaries follow their shards.
 # Metal takes no more than 3 because its slowest shard is already well under the Vulkan floor, so a fourth
 # macOS job would only spend the shared macOS allowance. That allowance is the one that binds in practice:
 # every selected push and pull_request runs Metal's full suite too, so overlapping runs share 5 macOS slots. While
@@ -69,8 +69,8 @@
 # before the gate dispatch (run 39041774821) held 3 slots, and the dispatch's render-1 shard queued 13 minutes
 # (run 39041795759 took 27.3 minutes against 21.3 uncontended at the same commit). So push and pull_request
 # run Metal's full suite as one job, about half an hour that nothing waits on, and a push run beside the gate
-# needs 4 macOS slots (#1460). On the Free plan's 20 total the gate would also queue three Linux or Windows
-# jobs until the first shards finish.
+# needs 4 macOS slots (#1460). Main pushes keep distinct groups. Three overlapping automatic Metal jobs
+# plus the three-shard dispatch need six slots, so one job or more queues.
 #
 # What this does (suite split by leg + trigger, decided from measured cost + lavapipe stability):
 #   * The Metal NATIVE leg runs the engine's own KhaozEngine.Gpu.Metal backend
@@ -245,12 +245,13 @@ name: cross-platform-gpu
 concurrency:
   # A rerun keeps its old commit, so keep it out of the group for the current PR head.
   group: >-
-    ${{ github.event_name == 'workflow_dispatch' && format('cross-platform-gpu-workflow_dispatch-{0}', github.ref) ||
+    ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
+        format('cross-platform-gpu-{0}-{1}', github.event_name, github.ref) ||
         (github.event_name == 'pull_request' && github.run_attempt == 1 &&
         format('cross-platform-gpu-pr-{0}', github.event.pull_request.number) ||
         format('cross-platform-gpu-{0}-{1}', github.event_name, github.run_id)) }}
   cancel-in-progress: >-
-    ${{ github.event_name == 'workflow_dispatch' ||
+    ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
         (github.event_name == 'pull_request' && github.run_attempt == 1) }}
 
 on:
@@ -429,7 +430,8 @@ jobs:
         if: github.event_name == 'push' || github.event_name == 'pull_request'
         uses: ./.github/actions/native-ci-scope
         with:
-          segments: '["render", "map-editor"]'
+          segments: '["map-editor", "render", "tile-edit", "world-map-gui"]'
+          base-events: push schedule
 
       # Only the shard plan is needed on the full schedule and dispatch paths.
       - if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -453,11 +455,9 @@ jobs:
           # `fullSuite` picks when a leg runs the whole suite vs the golden subset (see the test step's
           # filter expression, plus the cost + lavapipe-stability rationale in the header):
           #   always    - every trigger (Metal alone, on hosted macos-26)
-          #   scheduled - weekly schedule + workflow_dispatch only, which is the other four legs (both D3D11
-          #               legs billed 2x and both Vulkan legs 1x while the repo was private, golden subset
-          #               only on push/pull_request). Both Vulkan legs' full-suite runs additionally
-          #               serialize projects and collections (KE_TEST_BUILD_ARGS/KE_TEST_EXTRA_ARGS, header). Every leg is hosted and
-          #               free now, so these tiers are kept for feedback speed rather than for money.
+          #   scheduled - weekly schedule and manual dispatch run full on Direct3D 11 and Vulkan. Pushes and
+          #               pull requests run their golden subset for fast feedback. Vulkan's full suite also
+          #               serializes projects and collections (KE_TEST_BUILD_ARGS/KE_TEST_EXTRA_ARGS, header).
           #
           # `d3d11Adapter` is the leg's KE_D3D11_ADAPTER value, pinned to warp (decision G2). The leg pins it
           # rather than inheriting an accident of the runner image: unpinned, the selection resolves
@@ -996,9 +996,8 @@ jobs:
       # size of every Vortice struct the backend passes to the driver by address. Naming a Vortice type loads the
       # interop, which the suite forbids off Windows, so it early-returns PASSED on every other leg and the
       # "Golden" push filter does not select it. Here a Vortice upgrade that changes one of those sizes fails on
-      # every trigger instead of reaching a driver. A push reaches this workflow only through the paths above,
-      # and Directory.Packages.props, where Vortice is pinned, is not one of them. A bare version bump pushed
-      # alone is therefore caught on a pull request, a dispatch or the weekly run.
+      # every trigger instead of reaching a driver. Directory.Packages.props pins Vortice and selects this
+      # check on pushes and pull requests.
       #
       # No KE_GPU_TESTS and no backend selection: nothing here creates a device. Cheap enough (seconds) that it
       # runs before the suite, so a rejected shader fails fast instead of after a full golden pass.

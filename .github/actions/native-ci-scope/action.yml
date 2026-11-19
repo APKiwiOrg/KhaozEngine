@@ -7,6 +7,9 @@ inputs:
   token:
     description: Token for the shared scope action's Actions API read.
     default: ${{ github.token }}
+  base-events:
+    description: Optional space separated list of events whose passing runs can be a push base.
+    required: false
 outputs:
   selected:
     description: Whether to run native correctness.
@@ -15,9 +18,10 @@ runs:
   using: composite
   steps:
     - id: scope
-      uses: APKiwiOrg/ci-workflows/.github/actions/ci-scope@b1bed5d207afb9174432e91af30548f2c1e12143
+      uses: APKiwiOrg/ci-workflows/.github/actions/ci-scope@ae32b9aaede81946fdc88a02876d75e70861c728
       with:
         token: ${{ inputs.token }}
+        base-events: ${{ inputs.base-events }}
     - id: route
       shell: bash
       env:
@@ -27,6 +31,26 @@ runs:
         REASON: ${{ steps.scope.outputs.reason }}
       run: |
         set -euo pipefail
+        if ! jq -en --argjson requested "$REQUESTED" \
+          '$requested | type == "array" and length > 0 and all(.[]; type == "string")' >/dev/null; then
+          printf 'Invalid native scope segments %s. Expected a nonempty array of strings.\n' "$REQUESTED" >&2
+          exit 1
+        fi
+        if [[ -r .github/ci-scope.txt ]]; then
+          catalog=$(awk -F: 'NF > 1 {
+            name = $1
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", name)
+            rest = substr($0, index($0, ":") + 1)
+            if (name ~ /^[A-Za-z0-9][A-Za-z0-9._-]*$/ && rest ~ /[^[:space:]]/ &&
+                tolower(name) != "full" && tolower(name) != "ignore") print name
+          }' .github/ci-scope.txt)
+          unknown=$(jq -cn --argjson requested "$REQUESTED" --arg catalog "$catalog" \
+            '$requested - ($catalog | split("\n"))')
+          if [[ "$unknown" != '[]' ]]; then
+            printf 'Unknown native scope segments %s.\n' "$unknown" >&2
+            exit 1
+          fi
+        fi
         matches=$(jq -n --argjson affected "$AFFECTED" --argjson requested "$REQUESTED" \
           'any($requested[]; IN($affected[]))')
         if [[ "$FULL" == true || "$matches" == true ]]; then

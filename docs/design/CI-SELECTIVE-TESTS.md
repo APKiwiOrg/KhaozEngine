@@ -131,10 +131,10 @@ Native correctness uses the same scope rules on pull requests and main pushes. G
 `tile-world-physics`, and Windows console selects its two probe compile roots. Every full scope
 selects all four workflows. Full overrides cover external inputs such as shared assets, GPU build
 scripts and the console smoke script. The build helper audits the closure rows against the project
-graph, so an added reference with a stale row fails validation. Each native workflow compares a
-pull request with its own base and a main push with its last passing ancestor where available.
-The Scope summary records the reason when a change skips native jobs. The weekly full and manual
-paths run independently of Product CI.
+graph, so an added reference with a stale row fails validation. Each native workflow compares a pull
+request with its own base and reads workflow history with a read-only token to find the last passing
+ancestor for a main push. The Scope summary records why the job condition skips native tests
+before runners start. The weekly full and manual paths run independently of Product CI.
 
 ## Decision 5: product and release validation
 

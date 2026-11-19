@@ -99,30 +99,47 @@ def check_native_reference_growth(matcher, rules, manifest):
     raise AssertionError('Native scope audit accepted a stale render closure after adding a reference')
 
 
-def check_gpu_skip(scratch):
+def check_gpu_scope(matcher, rules, scratch):
     workflow = (ROOT / '.github/workflows/cross-platform-gpu.yml').read_text()
-    selector = workflow.split('      - id: pick\n', 1)[1].split('\n  gpu-golden:', 1)[0]
-    command = textwrap.dedent(selector.split('        run: |\n', 1)[1])
-    output = scratch / 'gpu-skip-output'
+    selector, golden = workflow.split('\n  gpu-golden:\n', 1)
+    gate, matrix_steps = golden.split('    steps:\n', 1)
+    matrix_steps = matrix_steps.split('\n  gpu-full-suite:', 1)[0]
+    assert re.findall(r'^    if: (.+)$', gate, re.M) == ["needs.legs.outputs.selected == 'true'"]
+    assert "selected: ${{ steps.scope.outputs.selected || 'true' }}" in selector
+    assert 'matrix.skip' not in matrix_steps and 'Report the GPU skip' not in matrix_steps
+
+    action = (ROOT / '.github/actions/native-ci-scope/action.yml').read_text()
+    route = textwrap.dedent(action.split('      run: |\n', 1)[1])
+    scope_output = scratch / 'gpu-scope-output'
+    summary = scratch / 'gpu-scope-summary'
+    for path, expected in (
+        ('README.md', 'false'),
+        ('KhaozEngine.Render.Tests/Gpu/Source.cs', 'true'),
+    ):
+        full, segments, reason = matcher.select(rules, [path])
+        scope_output.write_text('')
+        subprocess.run(
+            ['bash', '-c', route],
+            env={**os.environ, 'FULL': str(full).lower(), 'AFFECTED': json.dumps(segments),
+                 'REQUESTED': '["render", "map-editor"]', 'REASON': reason,
+                 'GITHUB_OUTPUT': str(scope_output), 'GITHUB_STEP_SUMMARY': str(summary)},
+            check=True, capture_output=True,
+        )
+        assert scope_output.read_text().splitlines() == [f'selected={expected}'], path
+
+    pick = textwrap.dedent(selector.split('      - id: pick\n', 1)[1].split('        run: |\n', 1)[1])
+    output = scratch / 'gpu-leg-output'
     subprocess.run(
-        ['bash', '-c', command],
-        env={**os.environ, 'SELECTED': 'false', 'GITHUB_OUTPUT': str(output)},
-        check=True,
+        ['bash', '-c', pick],
+        env={**os.environ, 'WANT': 'all', 'EVENT': 'pull_request', 'BAKE': 'false',
+             'RENDER_FILTER': '', 'GITHUB_OUTPUT': str(output)},
+        cwd=ROOT, check=True, capture_output=True,
     )
     values = dict(line.split('=', 1) for line in output.read_text().splitlines())
-    matrix = json.loads(values['matrix'])
-    assert len(matrix.get('include', [])) == 1, 'Off-scope GPU must have one report row'
-    row = matrix['include'][0]
-    assert row['skip'] is True and row['runner'].startswith('ubuntu-')
-    assert values['sharded'] == '[]' and values['vulkan_native'] == 'false'
-
-    golden = workflow.split('\n  gpu-golden:\n', 1)[1].split('\n  gpu-full-suite:\n', 1)[0]
-    steps = re.split(r'^      - ', golden.split('    steps:\n', 1)[1], flags=re.M)[1:]
-    report, *gpu_steps = steps
-    assert re.search(r'^        if: matrix.skip == true$', report, re.M)
-    assert gpu_steps
-    for step in gpu_steps:
-        assert re.search(r'^        if: matrix.skip != true(?: && .+)?$', step, re.M), step.splitlines()[0]
+    rows = json.loads(values['matrix'])['include']
+    assert sorted(row['backend'] for row in rows) == ['direct3d11-native', 'metal-native', 'vulkan-native']
+    assert all(row['shard'] == '' and row['primary'] == '1' for row in rows)
+    assert values['sharded'] == '[]' and values['vulkan_native'] == 'true'
 
 
 def main():
@@ -155,7 +172,7 @@ def main():
     canonical = projects(ROOT / 'KhaozEngine.slnx')
     with tempfile.TemporaryDirectory(dir=os.environ.get('TMPDIR')) as scratch:
         scratch = Path(scratch)
-        check_gpu_skip(scratch)
+        check_gpu_scope(matcher, rules, scratch)
         full = plan(True, [], scratch)
         roots = projects(scratch / 'product.slnx')
         tests = projects(scratch / 'tests.slnx')

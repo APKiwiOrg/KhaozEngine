@@ -394,21 +394,16 @@ env:
   GPU_DISK_CACHE: ${{ (github.event_name == 'workflow_dispatch' && inputs.disableGpuDiskCache) && 'off' || '' }}
 
 jobs:
-  # Which legs this run uses. This exists as a JOB rather than as a condition because a matrix cannot be
-  # filtered by an input any other way: `strategy` is expanded before a job-level `if` is evaluated, and an
-  # `if` on the steps would still boot the runner and bill for it. The selection therefore has to arrive as
-  # data, which means a job that produces it.
-  #
-  # The leg table lives here for the same reason. Its per-leg rationale is directly above it, unchanged from
-  # when it sat in `strategy.matrix.include`.
-  #
-  # Cost: one billed Ubuntu minute on every run of this workflow, about $1.30 a month at the August 2026
-  # rate, against $5 to $25 a month saved on targeted dispatches. It is the cheapest job in the file by an
-  # order of magnitude, and it is what stops the expensive legs from starting at all.
+  # The leg table supplies the backend and shard combinations. The Scope step on push and pull_request
+  # publishes whether the matrix should run. GitHub evaluates the job condition before expanding the matrix.
   legs:
     name: select legs
     runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+      actions: read
     outputs:
+      selected: ${{ steps.scope.outputs.selected || 'true' }}
       matrix: ${{ steps.pick.outputs.matrix }}
       # Whether this run's selection includes the native Vulkan leg. The sync-validation job below is a
       # SEPARATE job, so it cannot read the matrix the way a matrix leg does, and gating it on the raw
@@ -435,8 +430,6 @@ jobs:
         uses: ./.github/actions/native-ci-scope
         with:
           segments: '["render", "map-editor"]'
-          # Public workflow history can be read without widening dispatch permissions.
-          token: ''
 
       # Only the shard plan is needed on the full schedule and dispatch paths.
       - if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -454,19 +447,8 @@ jobs:
           EVENT: ${{ github.event_name }}
           BAKE: ${{ (github.event_name == 'workflow_dispatch' && inputs.bake) && 'true' || 'false' }}
           RENDER_FILTER: ${{ github.event_name == 'workflow_dispatch' && inputs.renderTestFilter || '' }}
-          SELECTED: ${{ steps.scope.outputs.selected }}
         run: |
           set -euo pipefail
-
-          if [[ "$SELECTED" == false ]]; then
-            # GitHub requires a nonempty matrix. Start only the hosted skip-report row.
-            {
-              echo 'matrix={"include":[{"os":"GPU","backend":"skipped","runner":"ubuntu-26.04","shard":"","skip":true}]}'
-              echo 'sharded=[]'
-              echo 'vulkan_native=false'
-            } >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
 
           # `fullSuite` picks when a leg runs the whole suite vs the golden subset (see the test step's
           # filter expression, plus the cost + lavapipe-stability rationale in the header):
@@ -557,6 +539,7 @@ jobs:
 
   gpu-golden:
     needs: legs
+    if: needs.legs.outputs.selected == 'true'
     # An unsharded leg keeps its historical name, so every push-path check reads as it did before #1438, Metal's
     # `macos-26 / metal-native` included (#1460). A shard appends its own name, for example
     # `ubuntu-latest / vulkan-native / render-3`. On the schedule and a dispatch Metal's checks are
@@ -723,11 +706,6 @@ jobs:
       # opt-in and stay off here: the runtime suspends the host while dumping, which can itself time out tests.
       POOL_WATCH_ARMED: ${{ (matrix.backend == 'direct3d11-native' && (matrix.fullSuite == 'always' || (matrix.fullSuite == 'scheduled' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'))) && !(github.event_name == 'workflow_dispatch' && inputs.renderTestFilter)) && '1' || '' }}
     steps:
-      - name: Report the GPU skip
-        if: matrix.skip == true
-        shell: bash
-        run: echo 'GPU tests skipped. See Scope in the select legs job for the reason.'
-
       # THE TIER-EDIT GUARD (https://github.com/APKiwiOrg/KhaozEngine/issues/614), and the only step in this job
       # that asserts something about THIS FILE rather than about the engine. It runs before the checkout because
       # it needs nothing from the repository, and the whole point is to red the job on the first push that gets
@@ -761,7 +739,7 @@ jobs:
       # macOS legs only. Every Metal variable is empty by construction on the Windows and Linux legs, so running
       # there would assert that two empty strings are empty.
       - name: Assert the Metal instruments are not both armed
-        if: matrix.skip != true && (runner.os == 'macOS')
+        if: runner.os == 'macOS'
         shell: bash
         env:
           # Read from the job variables the test step reads, deliberately, so this cannot drift from what the run
@@ -802,16 +780,13 @@ jobs:
           echo "metal instruments on $LEG / $TRIGGER (unattended='${unattended}'): MTL_DEBUG_LAYER='${MTL_DEBUG_LAYER:-}' MTL_CAPTURE_ENABLED='${MTL_CAPTURE_ENABLED:-}'"
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: matrix.skip != true
 
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        if: matrix.skip != true
         with:
           dotnet-version: '10.0.x'
 
       # local-feed is git-ignored (dev inner-loop); create it so the nuget.config 'local' source resolves.
       - run: mkdir -p local-feed
-        if: matrix.skip != true
         shell: bash
 
       # ON WINDOWS THE NUGET GLOBAL PACKAGES FOLDER IS CACHED, AND KHAOZENGINE PACKAGES NEVER ARE. Restore was
@@ -834,7 +809,7 @@ jobs:
       # alone and no job runs `dotnet tool restore`. The exclusion keeps that true if one ever appears.
       - name: Restore the NuGet package cache
         id: nuget-cache
-        if: matrix.skip != true && (runner.os == 'Windows')
+        if: runner.os == 'Windows'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -845,7 +820,6 @@ jobs:
             nuget-${{ runner.os }}-
 
       - name: Select the shard build inputs
-        if: matrix.skip != true
         id: build-inputs
         shell: bash
         env:
@@ -861,14 +835,13 @@ jobs:
           echo "target=$target" >> "$GITHUB_OUTPUT"
 
       - name: Restore the shard build inputs
-        if: matrix.skip != true
         run: dotnet restore "$BUILD_TARGET"
         shell: bash
         env:
           BUILD_TARGET: ${{ steps.build-inputs.outputs.target }}
 
       - name: Save the NuGet package cache
-        if: matrix.skip != true && (runner.os == 'Windows' && matrix.primary == '1' && steps.nuget-cache.outputs.cache-hit != 'true')
+        if: runner.os == 'Windows' && matrix.primary == '1' && steps.nuget-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -878,7 +851,6 @@ jobs:
 
       # Build the shard's test roots and their references, never another shard's test projects (#1472).
       - name: Build the shard in Release
-        if: matrix.skip != true
         run: |
           if [ -n "$SHARD" ]; then
             sh scripts/gpu-shard-build.sh "$BUILD_TARGET"
@@ -897,7 +869,7 @@ jobs:
       # symptom is hundreds of tests failing inside a shaderc type initializer, which reads like a shader bug and
       # is not one, so assert the files are where the resolver looks instead.
       - name: Assert the host natives landed beside the assemblies (Linux)
-        if: matrix.skip != true && (matrix.os == 'ubuntu-latest' && !startsWith(matrix.shard, 'projects-'))
+        if: matrix.os == 'ubuntu-latest' && !startsWith(matrix.shard, 'projects-')
         shell: bash
         run: |
           out=KhaozEngine.Render.Tests/bin/Release/net10.0
@@ -915,7 +887,7 @@ jobs:
       # download of 17.8 MB and 3.5 s to unpack and set up. Caching the .deb archives would save the 0.6 s and
       # add a cache step of its own, and the unpack and the index refresh would still run.
       - name: Install software Vulkan (lavapipe)
-        if: matrix.skip != true && (matrix.os == 'ubuntu-latest')
+        if: matrix.os == 'ubuntu-latest'
         run: |
           set -x
           sudo apt-get update
@@ -929,7 +901,7 @@ jobs:
       # found the same file and took 50 to 116 s per job (run 39022823501). The name still is not hardcoded,
       # and a package that ships no lvp manifest still fails the job with the manifests it did ship.
       - name: Point Vulkan loader at lavapipe
-        if: matrix.skip != true && (matrix.os == 'ubuntu-latest')
+        if: matrix.os == 'ubuntu-latest'
         run: |
           set -x
           icd=$(dpkg -L mesa-vulkan-drivers | grep -E '/lvp_icd[^/]*\.json$' | head -1)
@@ -965,7 +937,7 @@ jobs:
       # records a push-triggered golden gate degrading for weeks with nobody noticing, and a validation gate
       # that quietly stops validating is that failure with no pixels to eventually give it away.
       - name: Install the Khronos validation layer (Linux)
-        if: matrix.skip != true && (matrix.os == 'ubuntu-latest' && env.VULKAN_VALIDATION_ARMED != '')
+        if: matrix.os == 'ubuntu-latest' && env.VULKAN_VALIDATION_ARMED != ''
         run: |
           set -x
           sudo apt-get install -y vulkan-validationlayers
@@ -992,7 +964,7 @@ jobs:
       # runner without vulkaninfo costs an empty file rather than a red leg.
       # One reading per leg: the primary entry alone, which is the `rest` shard on a sharded full suite.
       - name: Vulkan diagnostics
-        if: matrix.skip != true && (matrix.os == 'ubuntu-latest' && matrix.primary == '1')
+        if: matrix.os == 'ubuntu-latest' && matrix.primary == '1'
         continue-on-error: true
         shell: bash
         run: |
@@ -1003,7 +975,7 @@ jobs:
       # is read off a GREEN run, and a failure-only artifact could only ever show it after something broke.
       # Kilobytes of text. ignore = no spurious failure on a leg that never ran the step.
       - name: Upload Vulkan device limits
-        if: matrix.skip != true && (always() && matrix.os == 'ubuntu-latest' && matrix.primary == '1')
+        if: always() && matrix.os == 'ubuntu-latest' && matrix.primary == '1'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: vulkan-device-limits-${{ matrix.backend }}
@@ -1055,7 +1027,7 @@ jobs:
         # nothing failing anywhere: the TreatNoTestsAsError guard below catches a filter that matches nothing,
         # not a matrix-key rename. `primary` keeps it to one run per leg when the full suite is sharded
         # (#1438): the `rest` shard runs it, and an unsharded run is always primary.
-        if: matrix.skip != true && (matrix.backend == 'direct3d11-native' && matrix.primary == '1')
+        if: matrix.backend == 'direct3d11-native' && matrix.primary == '1'
         run: |
           dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build \
             --filter "FullyQualifiedName~D3D11FxcValidationTests|FullyQualifiedName~D3D11VorticeStructLayoutTests" \
@@ -1084,7 +1056,7 @@ jobs:
       # and the condition is gone with the goldenGuest column it read.
       # Once per leg, on the primary entry, which is the `rest` shard when the full suite is sharded (#1438).
       - name: Vulkan shader cache cold warm and disabled verification
-        if: matrix.skip != true && (github.event_name == 'workflow_dispatch' && matrix.backend == 'vulkan-native' && matrix.primary == '1' && !inputs.disableGpuDiskCache)
+        if: github.event_name == 'workflow_dispatch' && matrix.backend == 'vulkan-native' && matrix.primary == '1' && !inputs.disableGpuDiskCache
         env:
           KE_GPU_TESTS: '1'
           KE_GRAPHICS_BACKEND: vulkan-native
@@ -1115,7 +1087,6 @@ jobs:
           PY
 
       - name: Run test suite
-        if: matrix.skip != true
         # Named, because the shard report below records this step's outcome and the per-backend `full suite`
         # job reads it.
         id: suite
@@ -1432,7 +1403,7 @@ jobs:
       # call, and the engine's own facts come from a filtered --no-build run of three device-reading rows.
       # The macOS pin is the leg table's `os` key, exactly as the lavapipe steps pin ubuntu-latest.
       - name: Collect device evidence
-        if: matrix.skip != true && (always() && matrix.os == 'macos-26')
+        if: always() && matrix.os == 'macos-26'
         continue-on-error: true
         env:
           KE_GPU_TESTS: '1'
@@ -1559,7 +1530,7 @@ jobs:
       # which is exactly the reading #614 differences, and its detector scans that shard's own suite log. The
       # shard suffix keeps the names apart. An unsharded run keeps `device-evidence-metal-native`.
       - name: Upload device evidence
-        if: matrix.skip != true && (always() && matrix.os == 'macos-26')
+        if: always() && matrix.os == 'macos-26'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: device-evidence-${{ matrix.backend }}${{ env.SHARD_SUFFIX }}
@@ -1567,7 +1538,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Upload filtered render measurements
-        if: matrix.skip != true && (always() && github.event_name == 'workflow_dispatch' && inputs.renderTestFilter != '')
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.renderTestFilter != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: filtered-render-measurements-${{ matrix.backend }}
@@ -1585,7 +1556,7 @@ jobs:
       # validation OFF. An artifact whose NAME is false is worse than a missing one, because the name is what a
       # reader trusts when they go looking for a tier's evidence weeks later. It exists only when it is true now.
       - name: Upload validation log (strict tier)
-        if: matrix.skip != true && (always() && env.VULKAN_VALIDATION_ARMED != '')
+        if: always() && env.VULKAN_VALIDATION_ARMED != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: vulkan-validation-strict-${{ matrix.backend }}${{ env.SHARD_SUFFIX }}
@@ -1642,7 +1613,7 @@ jobs:
       # A sharded run appends the shard (#1438), so each shard's log is its own artifact, for example
       # `metal-validation-debug-layer-metal-native-render-2`.
       - name: Upload Metal validation log
-        if: matrix.skip != true && (always() && matrix.backend == 'metal-native')
+        if: always() && matrix.backend == 'metal-native'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: metal-validation-${{ env.METAL_DEEP_TIER != '' && 'shader-validation' || (env.METAL_CAPTURE_TIER != '' && 'capture' || 'debug-layer') }}-${{ matrix.backend }}${{ env.SHARD_SUFFIX }}
@@ -1657,7 +1628,7 @@ jobs:
       # ride here only on an unsharded run (#1461). Only a shard that runs Server.Tests or MapEditor.Tests arms a
       # watchdog, so a shard with no watch directory uploads nothing and says nothing.
       - name: Upload thread pool watch evidence
-        if: matrix.skip != true && (always() && env.POOL_WATCH_ARMED != '')
+        if: always() && env.POOL_WATCH_ARMED != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: pool-watch-${{ matrix.backend }}${{ env.SHARD_SUFFIX }}
@@ -1670,7 +1641,7 @@ jobs:
       # On a host crash: surface the --blame Sequence.xml (names the last-started test on the dead host).
       # Kilobytes, failure-only, no dumps.
       - name: Upload crash-sequence evidence
-        if: matrix.skip != true && (failure())
+        if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: crash-sequence-${{ matrix.backend }}${{ env.SHARD_SUFFIX }}
@@ -1681,7 +1652,7 @@ jobs:
       # regression can be eyeballed from the run without re-running. ignore = no spurious failure when a leg
       # failed for a non-golden reason and wrote no evidence.
       - name: Upload golden failure evidence
-        if: matrix.skip != true && (failure())
+        if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: golden-evidence-${{ matrix.backend }}${{ env.SHARD_SUFFIX }}
@@ -1694,7 +1665,7 @@ jobs:
       # can only ever show the number after something broke, which is the one reading that gate cannot use.
       # Kilobytes of text. ignore = no spurious failure on a leg that ran no golden compares at all.
       - name: Upload golden delta records
-        if: matrix.skip != true && (always())
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: golden-deltas-${{ matrix.backend }}${{ env.SHARD_SUFFIX }}
@@ -1706,7 +1677,7 @@ jobs:
       # not re-baked and a cross-compile option drift, and with it they are one diff apart. Kilobytes,
       # failure-only. ignore = no spurious failure on a leg that failed for another reason.
       - name: Upload emitted-HLSL evidence
-        if: matrix.skip != true && (failure())
+        if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: hlsl-evidence-${{ matrix.backend }}${{ env.SHARD_SUFFIX }}
@@ -1720,7 +1691,7 @@ jobs:
       - name: Upload baked goldens
         # Every leg since 17.41.0, the three native ones included: each owns the family it just wrote. The
         # guest-leg exclusion that used to sit here went with the goldenGuest column.
-        if: matrix.skip != true && (always() && github.event_name == 'workflow_dispatch' && inputs.bake)
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.bake
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: goldens-${{ matrix.backend }}${{ env.SHARD_SUFFIX }}
@@ -1735,7 +1706,7 @@ jobs:
       # leaves no report, and the summary job reads a missing report as a failed shard rather than as a smaller
       # suite.
       - name: Record the shard report
-        if: matrix.skip != true && (always() && matrix.shard != '')
+        if: always() && matrix.shard != ''
         shell: bash
         env:
           LEG: ${{ matrix.backend }}
@@ -1746,7 +1717,7 @@ jobs:
           python3 scripts/gpu-test-shards.py report "$LEG" "$SHARD" "${OUTCOME:-skipped}" TestResults "shard-report/$LEG-$SHARD.json"
 
       - name: Upload the shard report
-        if: matrix.skip != true && (always() && matrix.shard != '')
+        if: always() && matrix.shard != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: shard-report-${{ matrix.backend }}-${{ matrix.shard }}
@@ -1757,7 +1728,7 @@ jobs:
       # this backend's rasterizer. The slice tables in scripts/gpu-test-shards.py are re-balanced from these,
       # so a slice that drifts long can be moved without a diagnostic re-run. Kept a week. A few MB per backend.
       - name: Upload the shard test timings
-        if: matrix.skip != true && (always() && matrix.shard != '')
+        if: always() && matrix.shard != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: shard-trx-${{ matrix.backend }}-${{ matrix.shard }}

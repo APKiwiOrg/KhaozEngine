@@ -400,8 +400,8 @@ on the exact tree. A manual Product CI run forces full validation.
 
 The hosted [GPU correctness matrix](CROSS-PLATFORM.md#ci-matrix-githubworkflowscross-platform-gpuyml)
 uses the same dependency scope on pull requests and main pushes and runs in full each Sunday.
-Its Scope summary explains a skipped matrix. Product CI reports the only `CI passed` check and
-does not wait for the GPU workflow.
+Its Scope summary explains a skipped matrix before any GPU runner starts. Product CI reports the
+only `CI passed` check and does not wait for the GPU workflow.
 
 The release workflow `ci` retains its manual and tag paths. A manual run restores, builds, tests
 and packs, executes the three SQL Server jobs and never publishes. A tag push reuses the hosted

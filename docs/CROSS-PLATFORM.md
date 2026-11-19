@@ -509,11 +509,11 @@ a paid pilot.
 Pull requests and pushes to `main` run a hosted scope check. The GPU matrix starts for changes
 that reach the Render or MapEditor test project through its reference graph, or for full scope
 inputs such as shared assets, project definitions, the GPU build and shard scripts, or unknown
-paths. The Scope summary states why the matrix was selected or skipped. Off-scope runs use
-one hosted reporting row because GitHub requires a nonempty matrix. All GPU test steps
-skip in that row. A new first attempt cancels the previous first attempt for the same pull
-request. A rerun uses its own run group, so it cannot cancel validation of the current pull
-request head. Main push runs are independent.
+paths. The Scope step in the leg selector reads workflow history using the job's read-only
+token and records why the matrix was selected or skipped. An off-scope change skips the
+matrix before GitHub expands it, so no GPU runner starts. A new first attempt cancels the
+previous first attempt for the same pull request. A rerun uses its own run group, so it
+cannot cancel validation of the current pull request head. Main push runs are independent.
 
 The Sunday 18:00 UTC schedule still runs all backends in full, including both Vulkan validation
 tiers. The matrix reports its own result independently of Product CI.

@@ -130,9 +130,9 @@ GPU correctness uses the same scope rules on pull requests and main pushes. It s
 `render` and `map-editor` segments or any full scope. External inputs such as shared assets and
 GPU build scripts are full overrides. The build helper audits the closure rows against the project
 graph, so an added reference with a stale row fails validation. A pull request uses its own base,
-and a main push uses the last passing ancestor of the GPU workflow where available. The Scope
-summary records the reason when a change skips the matrix. The weekly full and manual GPU paths run
-independently of Product CI.
+and a main push reads the GPU workflow's last passing ancestor using the leg selector's
+read-only token. The Scope summary records why the job condition skips a matrix before GitHub
+expands it. The weekly full and manual GPU paths run independently of Product CI.
 
 ## Decision 5: product and release validation
 

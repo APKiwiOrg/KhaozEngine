@@ -41,12 +41,27 @@ public sealed partial class TileMediumSampler
         // for the same inputs. Executed-work counters are excluded too. Controls stay in the key.
         if (memoizable && table!.TryRead(key, query.Body.CurrentSpace, identity, spans, contacts, out var cached))
         {
+#if CONTACT_SHORE_ATTRIBUTION
+            TileWaterShoreCounts.Outcome("small-hit");
+            TileWaterShoreCounts.EndTrace(key, controls, true, cached);
+#endif
             if (TileWaterQueryWork.Enabled) TileWaterQueryWork.MemoHits++;
             return cached;
         }
         if (TileWaterQueryWork.Enabled) TileWaterQueryWork.MemoMisses++;
         var result = TraceResult(false, query, physicsOrigin, identity, spans, contacts, key, controls);
-        if (memoizable) table!.Store(key, result, spans, contacts);
+        if (memoizable)
+        {
+#if CONTACT_SHORE_ATTRIBUTION
+            bool stored = table!.Store(key, result, spans, contacts);
+            TileWaterShoreCounts.Count(stored ? ShoreWork.SmallStore : ShoreWork.SmallReject);
+#else
+            table!.Store(key, result, spans, contacts);
+#endif
+        }
+#if CONTACT_SHORE_ATTRIBUTION
+        TileWaterShoreCounts.EndTrace(key, controls, true, result);
+#endif
         return result;
     }
 
@@ -59,11 +74,26 @@ public sealed partial class TileMediumSampler
         // Fresh dry queries pay lookup cost without avoiding geometry. Keep their cheap one-span
         // construction out of the eight wet-result slots, including paths outside the water extent.
         if (_field.FlatColumns.Length == 0 || !new TileWaterPathBounds(query, origin).Meets(Extent.Minimum, Extent.Maximum))
+        {
+#if CONTACT_SHORE_ATTRIBUTION
+            var dry = ComputeTrace(true, query, origin, identity, spans, contacts);
+            TileWaterShoreCounts.Outcome("dry-solve");
+            TileWaterShoreCounts.EndTrace(new(query, origin, spans.Length, contacts.Length, 0), false, false, dry);
+            return dry;
+#else
             return ComputeTrace(true, query, origin, identity, spans, contacts);
+#endif
+        }
         ulong state = 0;
         bool controls = !BypassTraceMemoForTests && TryReadTraceControls(out state);
         var key = controls ? new TileWaterTraceMemo.Key(query, origin, spans.Length, contacts.Length, state) : default;
+#if CONTACT_SHORE_ATTRIBUTION
+        var result = TraceResult(true, query, origin, identity, spans, contacts, key, controls);
+        TileWaterShoreCounts.EndTrace(key, controls, false, result);
+        return result;
+#else
         return TraceResult(true, query, origin, identity, spans, contacts, key, controls);
+#endif
     }
 
     MovementCoverageResult TraceResult(bool flat, in MovementMediumSweepQuery query, Vector3 origin,
@@ -78,6 +108,7 @@ public sealed partial class TileMediumSampler
             {
 #if CONTACT_SHORE_ATTRIBUTION
                 ShoreStepProbe.Count(flat ? ShoreEvent.FlatResultHit : ShoreEvent.PrismResultHit);
+                TileWaterShoreCounts.Outcome("result-hit");
 #endif
                 if (TileWaterQueryWork.Enabled) TileWaterQueryWork.ResultHits++;
                 return cached;
@@ -85,12 +116,18 @@ public sealed partial class TileMediumSampler
             if (TileWaterQueryWork.Enabled) TileWaterQueryWork.ResultMisses++;
         }
         else if (TileWaterQueryWork.Enabled) TileWaterQueryWork.ResultBypasses++;
+#if CONTACT_SHORE_ATTRIBUTION
+        TileWaterShoreCounts.Outcome(table is null ? "bypassed-solve" : "solve");
+#endif
         var result = ComputeTrace(flat, query, origin, identity, spans, contacts);
         // Small prism results and numeric refusals keep their existing home and replacement age.
         if (table is not null && (flat || result.SpansWritten > TileWaterTraceMemo.SpanLimit ||
             result.ContactsWritten > TileWaterTraceMemo.ContactLimit))
         {
             bool stored = table.Store(key, result, spans, contacts);
+#if CONTACT_SHORE_ATTRIBUTION
+            TileWaterShoreCounts.Count(stored ? ShoreWork.ResultStore : ShoreWork.ResultReject);
+#endif
             if (TileWaterQueryWork.Enabled)
             {
                 if (stored) TileWaterQueryWork.ResultStores++;

@@ -1,3 +1,6 @@
+#if CONTACT_SHORE_ATTRIBUTION
+using System.Runtime.CompilerServices;
+#endif
 using System;
 using System.Numerics;
 using KhaozEngine.Physics;
@@ -78,8 +81,15 @@ internal readonly struct ContactQueryContext
         return _leased?.ConstrainGroundDescent(from, to, supportNormal, footRadius, cosMaxSlope, out move) ??
             _range?.ConstrainGroundDescent(from, to, supportNormal, footRadius, cosMaxSlope, out move) ?? false;
     }
-    internal void ValidatePlacement(Vector3 feet)
+    internal void ValidatePlacement(Vector3 feet
+#if CONTACT_SHORE_ATTRIBUTION
+        , [CallerMemberName] string caller = ""
+#endif
+        )
     {
+#if CONTACT_SHORE_ATTRIBUTION
+        using var traceLabel = ShoreStepProbe.LabelTrace(caller);
+#endif
         _leased?.ValidatePlacement(feet);
         _range?.AcceptSegment(feet, feet);
     }

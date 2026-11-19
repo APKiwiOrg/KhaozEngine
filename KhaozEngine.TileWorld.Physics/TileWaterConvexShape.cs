@@ -76,7 +76,16 @@ internal sealed class TileWaterConvexShape
             entries = Interlocked.CompareExchange(ref _geometryTerms, created, null) ?? created;
         }
         var cached = Volatile.Read(ref entries[ordinal]);
-        if (cached is not null && cached.Token == token) return cached.Geometry;
+        if (cached is not null && cached.Token == token)
+        {
+#if CONTACT_SHORE_ATTRIBUTION
+            TileWaterShoreCounts.Count(ShoreWork.GeometryHit);
+#endif
+            return cached.Geometry;
+        }
+#if CONTACT_SHORE_ATTRIBUTION
+        TileWaterShoreCounts.Count(ShoreWork.GeometryMiss);
+#endif
         var value = TileWaterGeometryTerms.Compute(this, _bases[ordinal]);
         // A mismatch computes directly and never replaces the first control domain. A racing
         // publisher can only install a complete immutable entry. No lock is needed on a hit.
@@ -158,6 +167,9 @@ internal sealed class TileWaterConvexShape
         using var measurement = TileWaterCensus.Observe(this, start, drive, core, radius, enter, exit, heightError, horizontalError);
 #endif
         if (TileWaterQueryWork.Enabled) TileWaterQueryWork.ConvexIntersections++;
+#if CONTACT_SHORE_ATTRIBUTION
+        TileWaterShoreCounts.Count(ShoreWork.DirectEvaluations);
+#endif
         double first = double.PositiveInfinity, last = double.NegativeInfinity, nearest = double.PositiveInfinity;
         double error = start.Width + drive.Width;
         Vector witnessStart = default, witnessDrive = default;

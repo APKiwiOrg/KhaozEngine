@@ -13,6 +13,7 @@ public static partial class ExplicitCharacterMovement
     {
 #if CONTACT_SHORE_ATTRIBUTION
         using var shoreStep = ShoreStepProbe.Begin(ShorePhase.WaterPlacement);
+        using var traceLabel = ShoreStepProbe.LabelTrace(nameof(WaterPlacement));
 #endif
         MovementPlacementDiagnostics.Validate();
         if (boundary is not null)

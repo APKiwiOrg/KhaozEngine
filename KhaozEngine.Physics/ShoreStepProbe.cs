@@ -42,6 +42,25 @@ internal static class ShoreStepProbe
         _mode = mode;
     }
 
+    [ThreadStatic] internal static bool TraceLabelsEnabled;
+    [ThreadStatic] internal static string? TraceLabel;
+
+    internal static TraceLabelScope LabelTrace(string label)
+    {
+        if (!TraceLabelsEnabled) return default;
+        var scope = new TraceLabelScope(TraceLabel, true);
+        TraceLabel = label;
+        return scope;
+    }
+
+    internal readonly struct TraceLabelScope(string? previous, bool active) : IDisposable
+    {
+        public void Dispose()
+        {
+            if (active) TraceLabel = previous;
+        }
+    }
+
     internal static void Stop() => _mode = ShoreProbeMode.Off;
 
     internal static void Count(ShoreEvent kind, int amount = 1)

@@ -92,7 +92,13 @@ internal class TileWaterTraceStorage
         int at = _next, charge = 0;
         if (_identifiers is not null && !_identifiers.TryCharge(key, contacts[..result.ContactsWritten],
             IdentifierBytes - _identifierCharges[at], out charge)) return false;
-        if (_count == _keys.Length) Remove(at);
+        if (_count == _keys.Length)
+        {
+#if CONTACT_SHORE_ATTRIBUTION
+            TileWaterShoreCounts.Count(_identifiers is null ? ShoreWork.SmallEvict : ShoreWork.ResultEvict);
+#endif
+            Remove(at);
+        }
         _keys[at] = key;
         _values[at] = new(result);
         var destination = _contacts.AsSpan(at * _contactLimit, _contactLimit);

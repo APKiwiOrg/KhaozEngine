@@ -15,7 +15,7 @@ using KhaozEngine.TileWorld.Physics;
 namespace KhaozEngine.Benchmarks;
 
 // Report-only, with no latency assertions. Each invocation runs one finite count or timing pass.
-internal static class ShoreStepAttributionBenchmark
+internal static partial class ShoreStepAttributionBenchmark
 {
     const int WarmupSteps = 8;
     const int FixedSteps = 32;
@@ -25,6 +25,11 @@ internal static class ShoreStepAttributionBenchmark
 
     internal static void Run(string[] args)
     {
+        if (args is ["--shore-step-attribution", "--counts", "--water-design", var population])
+        {
+            RunWaterDesign(population);
+            return;
+        }
         var mode = args switch
         {
             ["--shore-step-attribution", "--counts"] => ShoreProbeMode.Counts,

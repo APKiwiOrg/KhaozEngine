@@ -56,8 +56,9 @@ internal static class ShoreStepAttributionBenchmark
         [
             new("dry-walk", "dry-control", Vector2.UnitX),
             new("flat-wade", "flat-wade", Vector2.UnitX),
-            new("bank-up", "bank-stand", Vector2.UnitY, 237.55f),
-            new("bank-down", "bank-stand", -Vector2.UnitY, 235.45f),
+            // At yaw zero, camera-forward travels toward negative world Z (deeper into the lake).
+            new("bank-up", "bank-stand", -Vector2.UnitY, 237.55f),
+            new("bank-down", "bank-stand", Vector2.UnitY, 235.45f),
             new("bank-stand", "bank-stand", Vector2.Zero),
             new("surface-swim", "flat-control", Vector2.UnitX),
         ];
@@ -83,15 +84,19 @@ internal static class ShoreStepAttributionBenchmark
         int samples = path < 0 ? FixedSteps : @case.BankStart.HasValue ? BankAdvanceSteps : ControlAdvanceSteps;
         var rows = new List<object>(samples);
         var state = basis;
+        bool reachedSlope = false;
         for (int i = 0; i < samples; i++)
         {
             var (next, clocks, work) = Sample(scene, state, command, mode);
             var input = Describe(scene, state, surface);
             var output = Describe(scene, next, surface);
             CheckFixture(@case, input, output);
+            reachedSlope |= input.Z is <= -236 and >= -237 && input.Z != output.Z;
             rows.Add(new { kind = "step", name = @case.Name, path, sample = i, input, output, clocks, work });
             state = path < 0 ? basis : next;
         }
+        if (path >= 0 && @case.BankStart.HasValue && !reachedSlope)
+            throw new InvalidOperationException($"Fixture {@case.Name} did not advance on the slope.");
         foreach (var row in rows) Console.WriteLine(JsonSerializer.Serialize(row));
     }
 
@@ -120,7 +125,9 @@ internal static class ShoreStepAttributionBenchmark
                 MathF.Abs(input.Surface - input.Bed - 0.35f) < 0.001f,
             "bank-stand" => input.Grounded && output.Grounded && input.X == output.X && input.Z == output.Z,
             "surface-swim" => input.Swimming && output.Swimming && output.X > input.X,
-            _ => input.Grounded || input.Swimming || output.Grounded
+            "bank-up" => output.Z >= input.Z,
+            "bank-down" => output.Z <= input.Z,
+            _ => throw new ArgumentOutOfRangeException(nameof(@case))
         };
         if (!valid) throw new InvalidOperationException($"Fixture {@case.Name} strayed from its intended motion: {input} -> {output}.");
     }

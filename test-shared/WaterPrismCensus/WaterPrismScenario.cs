@@ -31,6 +31,10 @@ internal sealed class WaterPrismScenario : IDisposable
         SwimSurfaceSubmersionFraction = 0.6f,
         Water = new(WaterTraversalMode.SurfaceSwimmer),
     };
+#if CONTACT_SHORE_ATTRIBUTION
+    // Count-pass policy contrast on the same fixtures. Null keeps the fixture's SurfaceSwimmer policy.
+    [ThreadStatic] internal static WaterTraversalMode? WaterModeOverride;
+#endif
     readonly BepuPhysicsWorld _world = new(Vector3.Zero);
     readonly bool _contact;
     readonly TileColliderRegistration _installed;
@@ -79,6 +83,9 @@ internal sealed class WaterPrismScenario : IDisposable
         using (var lease = _world.AcquireQueryReadLease()) registration = builder.Build(lease);
         Field = new(Colliders.Medium);
         var tuning = Tuning with { Controller = controller, Water = _contact ? Tuning.Water : default };
+#if CONTACT_SHORE_ATTRIBUTION
+        if (_contact && WaterModeOverride is { } waterMode) tuning = tuning with { Water = new(waterMode) };
+#endif
         Simulator = new(Colliders.MovementGroundHeight, tuning, Colliders.MovementGroundNormal, null,
             _world, Colliders.Medium.MediumDelegate, SamplerSpace.World, null, Field, registration,
             MovementBoundary.Rectangle(65, -319, 127, -193));

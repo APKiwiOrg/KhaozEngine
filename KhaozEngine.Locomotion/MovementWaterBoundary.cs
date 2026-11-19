@@ -19,6 +19,19 @@ internal static class MovementWaterBoundary
     {
 #if CONTACT_SHORE_ATTRIBUTION
         using var shoreStep = ShoreStepProbe.Begin(ShorePhase.WaterBoundary);
+        ShoreProofCounts.Open(mode.ToString(), delta == Vector3.Zero);
+        MovementAvailability status = FindCore(enclosure, delta, bodyHalfHeight, enterFraction, mode, queries,
+            normals, out normalCount, out hit, proximity, out int candidates);
+        MovementWaterBoundaryProbe.Close(status, enclosure, delta, bodyHalfHeight, enterFraction, proximity,
+            candidates, normalCount, hit);
+        return status;
+    }
+
+    static MovementAvailability FindCore(in MovementBodyQuery enclosure, Vector3 delta,
+        float bodyHalfHeight, float enterFraction, WaterTraversalMode mode, MovementQueryLease queries,
+        Span<Vector3> normals, out int normalCount, out Hit hit, float proximity, out int candidateCount)
+    {
+        candidateCount = 0;
 #endif
         normalCount = 0;
         hit = default;
@@ -34,6 +47,9 @@ internal static class MovementWaterBoundary
             MovementCoverageResult result = queries.TraceWater(query,
                 spans, contacts);
             initialized = result.ContactsWritten;
+#if CONTACT_SHORE_ATTRIBUTION
+            MovementWaterBoundaryProbe.Coverage(result, spans, contacts);
+#endif
             if (result.Availability != MovementAvailability.Known) return result.Availability;
             Span<Candidate> candidates = stackalloc Candidate[MovementQueryLease.MaxDomainContacts];
             int count = 0;
@@ -83,6 +99,9 @@ internal static class MovementWaterBoundary
                     first = Math.Min(first, at);
                 }
             }
+#if CONTACT_SHORE_ATTRIBUTION
+            candidateCount = count;
+#endif
             if (count == 0) return MovementAvailability.Known;
             double length = Math.Sqrt((double)delta.X * delta.X + (double)delta.Y * delta.Y + (double)delta.Z * delta.Z);
             foreach (Candidate candidate in candidates[..count])

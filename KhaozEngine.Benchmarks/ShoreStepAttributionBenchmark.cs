@@ -30,6 +30,16 @@ internal static partial class ShoreStepAttributionBenchmark
             RunWaterDesign(population);
             return;
         }
+        if (args is ["--shore-step-attribution", "--counts", "--proof-design", var seats, .. var policy])
+        {
+            RunProofDesign(seats, policy);
+            return;
+        }
+        if (args is ["--shore-step-attribution", "--counts", "--proof-capture", var world])
+        {
+            RunProofCapture(world);
+            return;
+        }
         var mode = args switch
         {
             ["--shore-step-attribution", "--counts"] => ShoreProbeMode.Counts,

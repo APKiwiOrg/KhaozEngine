@@ -10,6 +10,7 @@
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
     <InternalsVisibleTo Include="KhaozEngine.TileWorld.Physics.Tests" />
+    <InternalsVisibleTo Include="KhaozEngine.TileWorld.Physics.FloatingPoint.Tests" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />

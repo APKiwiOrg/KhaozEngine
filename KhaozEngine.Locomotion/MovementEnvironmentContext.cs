@@ -20,7 +20,13 @@ public sealed class MovementEnvironmentContext
         _provider = decorate(_provider);
 
     public MovementEnvironmentContext(IPhysicsWorldQueryView physics, IMovementEnvironmentProvider provider,
-        MovementQueryIdentity identity)
+        MovementQueryIdentity identity) : this(physics, provider, identity, MovementWaterBoundaryScope.Runtime)
+    {
+    }
+
+    /// <summary>A context whose leases answer the water boundary question under <paramref name="waterBoundary"/>.</summary>
+    internal MovementEnvironmentContext(IPhysicsWorldQueryView physics, IMovementEnvironmentProvider provider,
+        MovementQueryIdentity identity, MovementWaterBoundaryScope waterBoundary)
     {
         ArgumentNullException.ThrowIfNull(physics);
         ArgumentNullException.ThrowIfNull(provider);
@@ -31,7 +37,10 @@ public sealed class MovementEnvironmentContext
         _identity = identity;
         _worldId = provider.WorldId;
         MovementEnvironmentValidation.RequireName(_worldId, nameof(provider));
+        WaterBoundaryScope = waterBoundary;
     }
+
+    internal MovementWaterBoundaryScope WaterBoundaryScope { get; }
 
     /// <summary>Enter outside other physics leases. Success retains both gates until the returned lease is disposed.</summary>
     /// <remarks>Sequential per-tick acquisition is supported. Every fresh null-hint lease starts without
@@ -92,7 +101,8 @@ public sealed class MovementEnvironmentContext
             physicsLease.AssertCurrent();
             SupportQueryDiagnostics.Record(SupportQueryCounter.MovementLeases);
             using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.MovementLease))
-                lease = new MovementQueryLease(_physics, physicsLease, pin, witness, scope.Frame, environmentGeneration, Release, _workspace);
+                lease = new MovementQueryLease(_physics, physicsLease, pin, witness, scope.Frame, environmentGeneration, Release, _workspace,
+                    WaterBoundaryScope);
             _workspace.Enter(lease);
             transferred = true;
             return MovementAvailability.Known;

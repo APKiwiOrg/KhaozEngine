@@ -53,10 +53,12 @@ public sealed partial class MovementQueryLease : IDisposable
     public MovementScopeWitness Witness { get; }
     public MovementQueryIdentity Identity => Witness.Identity;
     public MovementFrameDescriptor Frame { get; }
+    internal MovementWaterBoundaryScope WaterBoundaryScope { get; }
 
     internal MovementQueryLease(IPhysicsWorldQueryView view, IPhysicsQueryLease physics,
         IMovementEnvironmentPin pin, MovementScopeWitness witness, MovementFrameDescriptor frame,
-        long environmentGeneration, Action releaseContext, ContactTickWorkspace workspace)
+        long environmentGeneration, Action releaseContext, ContactTickWorkspace workspace,
+        MovementWaterBoundaryScope waterBoundary = MovementWaterBoundaryScope.Runtime)
     {
         _view = view;
         _physics = physics;
@@ -66,6 +68,7 @@ public sealed partial class MovementQueryLease : IDisposable
         _releaseContext = releaseContext;
         Workspace = workspace;
         _selectionReady = witness.Scope.CurrentSpace.HasValue;
+        WaterBoundaryScope = waterBoundary;
         Id = new MovementQueryLeaseId(physics.SourceWorld, physics.GeometryGeneration, environmentGeneration, frame.Epoch);
     }
 

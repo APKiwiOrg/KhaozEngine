@@ -279,6 +279,23 @@ skinned path inside the witness. Every failure, a stale pin and a producer excep
 trace that follows reproduces today's refusal for it. A disposed lease or a foreign thread throws as the trace does.
 A wrapper that forwards only the inner field's trace hides the certificate, and its leases keep the full trace.
 
+Runtime movement consults the certificate at the start of every water boundary proof, after the policy check and
+before any coverage buffer is borrowed. An empty reach answers every policy. One free level answers a SurfaceSwimmer,
+because every contact is then free surface and skipped and every span carries that one level, so neither closed
+water nor the level rule can constrain it. A WadeOnly body is answered when the lowest centre of its path, its start
+plus the downward part of its delta, lies strictly above the skip threshold at that level with the 0.001 m error a
+Known trace admits at most. The proof and the certificate compute that threshold with one shared helper, so they
+cannot drift, and every rounding and flush mode keeps both bounds monotone. The certificate takes the single counted
+level, never a maximum over different levels, so it needs no monotonicity across levels. DryOnly uses only the empty
+reach. An answer is Known with no normals and a default hit, which every Known full solve gives in these cases, so no
+output bit changes wherever the full solve would not refuse. Where the full solve would refuse with precision,
+numerical, capacity or validation evidence, the step now continues past that proof and its later checks decide the
+outcome. Point samples, support, shell sweeps, solid contacts, route boundary proofs, frame checks and all
+authentication still run. Navigation bake proofs always take the full solve. The bake sets this where it creates its
+movement binding, and every proof and fall binding derived from it inherits it, because a refusal there rejects a
+Drop link, refuses a terrain Drop or refuses the whole profile bake. Bakes therefore keep their links, refusals and
+exceptions bit for bit, while runtime movement, runtime Drop following included, may continue where a bake refused.
+
 `EffectiveMovementBinding.SampleWaterForPacing(state, queries, out swimming)` reads frame-local point water and
 shares the controller's tick-start swimmer classification, including supported footing and the free-surface flag.
 Use the returned local interval and the carried local feet for approach settling. This point query authorizes no

@@ -78,11 +78,14 @@ internal static class WaterBoundaryParityRun
             report.CertifiedByMode[mode] = report.CertifiedByMode.GetValueOrDefault(mode) + 1;
         }
         if (Same(full, fullNormals[..fullCount], fullHit, answer, certifiedNormals[..count], hit)) return;
-        // The listed kinds: the full solve refused (precision, numerical, capacity or validation) and the
-        // certificate answered Known with no constraint.
+        // The listed kinds: the coverage trace itself refused (precision, numerical, capacity or validation), Find
+        // passed that refusal on, and the certificate answered Known with no constraint. A refusal Find makes from a
+        // Known trace, such as two levels in one span, is never listed.
         if (certified && answer == MovementAvailability.Known && count == 0 && hit == default &&
             full is MovementAvailability.PrecisionExceeded or MovementAvailability.Unresolved or
-                MovementAvailability.CapacityExceeded or MovementAvailability.Invalid)
+                MovementAvailability.CapacityExceeded or MovementAvailability.Invalid &&
+            lease.TraceWater(query, new MovementCoverageSpan[MovementQueryLease.MaxCoverageSpans],
+                new MovementDomainContact[MovementQueryLease.MaxDomainContacts]).Availability == full)
         {
             report.Listed[full] = report.Listed.GetValueOrDefault(full) + 1;
             return;

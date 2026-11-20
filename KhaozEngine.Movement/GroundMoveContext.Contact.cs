@@ -139,7 +139,16 @@ public sealed partial class GroundMoveContext
     internal EffectiveMovementBinding ResolvedBinding => _binding
         ?? throw new InvalidOperationException("Validate tuning before reading the resolved movement binding.");
 
-    internal EffectiveMovementBinding CreateNavigationBinding(in MoveTuning tuning)
+    internal EffectiveMovementBinding CreateNavigationBinding(in MoveTuning tuning) =>
+        CreateOrdinaryBinding(tuning, MovementWaterBoundaryScope.Runtime);
+
+    /// <summary>The binding a navigation bake proves its holds, edges, Stair links and Drops with. Its leases answer
+    /// every water boundary question with the full coverage solve, so a bake keeps its links, refusals and exceptions
+    /// bit for bit. See <see cref="MovementWaterBoundaryScope.NavigationBake"/>.</summary>
+    internal EffectiveMovementBinding CreateNavigationBakeBinding(in MoveTuning tuning) =>
+        CreateOrdinaryBinding(tuning, MovementWaterBoundaryScope.NavigationBake);
+
+    EffectiveMovementBinding CreateOrdinaryBinding(in MoveTuning tuning, MovementWaterBoundaryScope waterBoundary)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (_stepping) throw new InvalidOperationException("Ground movement steps cannot overlap or recurse.");
@@ -158,7 +167,7 @@ public sealed partial class GroundMoveContext
                 : MovementRegistration is null ? typeof(OrdinaryMovementRegistration) : typeof(MovementBoundary)
             };
         return EffectiveMovementBinding.Ordinary(tuning, Physics, MovementRegistration, GroundHeight, GroundNormal,
-            MovementBoundary, MovementWaterField, _providedMedium, MovementQueries);
+            MovementBoundary, MovementWaterField, _providedMedium, MovementQueries, OrdinaryGroundSpace.World, waterBoundary);
     }
 
     GroundContactCapabilityException ContactProducerRefusal() => new(

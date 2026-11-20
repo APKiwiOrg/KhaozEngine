@@ -53,7 +53,17 @@ public sealed partial class EffectiveMovementBinding : IDisposable
         OrdinaryMovementRegistration registration, Func<float, float, float> groundHeight,
         Func<float, float, Vector3>? groundNormal, MovementBoundary boundary,
         IMovementWaterField? waterField = null, Func<float, float, float, MovementMedium>? medium = null,
-        IPhysicsWorldQueryView? movementQueries = null, OrdinaryGroundSpace groundSpace = OrdinaryGroundSpace.World)
+        IPhysicsWorldQueryView? movementQueries = null, OrdinaryGroundSpace groundSpace = OrdinaryGroundSpace.World) =>
+        Ordinary(tuning, physics, registration, groundHeight, groundNormal, boundary, waterField, medium, movementQueries,
+            groundSpace, MovementWaterBoundaryScope.Runtime);
+
+    /// <summary>An ordinary binding whose leases answer the water boundary question under
+    /// <paramref name="waterBoundary"/>. Only a navigation bake chooses anything but runtime.</summary>
+    internal static EffectiveMovementBinding Ordinary(in MoveTuning tuning, IPhysicsWorld physics,
+        OrdinaryMovementRegistration registration, Func<float, float, float> groundHeight,
+        Func<float, float, Vector3>? groundNormal, MovementBoundary boundary, IMovementWaterField? waterField,
+        Func<float, float, float, MovementMedium>? medium, IPhysicsWorldQueryView? movementQueries,
+        OrdinaryGroundSpace groundSpace, MovementWaterBoundaryScope waterBoundary)
     {
         ArgumentNullException.ThrowIfNull(physics);
         ArgumentNullException.ThrowIfNull(registration);
@@ -72,7 +82,7 @@ public sealed partial class EffectiveMovementBinding : IDisposable
                 throw new ArgumentException("The movement view must name the configured physical source.", nameof(movementQueries));
             MovementConfigurationValidation.ValidateOrdinaryContact(tuning, view, true, true, medium is not null, waterField is not null);
             var environment = new OrdinaryMovementEnvironment(view, registration, tuning, groundHeight, groundNormal, boundary, waterField, groundSpace);
-            var context = new MovementEnvironmentContext(view, environment, environment.Identity);
+            var context = new MovementEnvironmentContext(view, environment, environment.Identity, waterBoundary);
             return new(EffectiveMovementBindingKind.OrdinaryContact, tuning, tuning.Water, context, environment, view, owned);
         }
         catch { if (owned) view.Dispose(); throw; }

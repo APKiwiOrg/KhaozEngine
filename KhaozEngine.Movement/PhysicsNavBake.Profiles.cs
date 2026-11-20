@@ -206,7 +206,7 @@ public sealed partial class PhysicsNavBake
             basis.AssertCurrent();
         }
         EffectiveMovementBinding? source = kind == EffectiveMovementBindingKind.OrdinaryContact
-            ? context.CreateNavigationBinding(tuning) : null;
+            ? context.CreateNavigationBakeBinding(tuning) : null;
         try
         {
             if (kind == EffectiveMovementBindingKind.Legacy) context.ValidateTuning(tuning);

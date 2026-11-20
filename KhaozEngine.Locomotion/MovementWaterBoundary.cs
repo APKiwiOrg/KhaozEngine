@@ -33,10 +33,17 @@ internal static class MovementWaterBoundary
         normalCount = 0;
         hit = default;
         certified = false;
-        _ = certify;
         if (mode is not (WaterTraversalMode.SurfaceSwimmer or WaterTraversalMode.WadeOnly or WaterTraversalMode.DryOnly))
             return MovementAvailability.Invalid;
         var query = new MovementMediumSweepQuery(enclosure, delta);
+        // Before any coverage buffer is borrowed. A certified answer is the one every Known full solve gives here.
+        // Navigation bake leases always take the full solve, see MovementWaterBoundaryScope.
+        if (certify && queries.WaterBoundaryScope == MovementWaterBoundaryScope.Runtime &&
+            MovementWaterBoundaryCertificate.Answers(query, bodyHalfHeight, enterFraction, mode, queries, proximity))
+        {
+            certified = true;
+            return MovementAvailability.Known;
+        }
         var storage = queries.BorrowWaterCoverage(boundary: true);
         Span<MovementCoverageSpan> spans = storage.Spans;
         Span<MovementDomainContact> contacts = storage.Contacts;
@@ -73,10 +80,10 @@ internal static class MovementWaterBoundary
                     Vector3 normal = contact.Normal;
                     if (mode == WaterTraversalMode.WadeOnly && contact.Interval.UpperIsFreeSurface)
                     {
-                        double threshold = contact.Interval.NominalSurfaceY + bodyHalfHeight * (1d - 2d * enterFraction);
-                        double startY = enclosure.Centre.Y + delta.Y * (double)span.EnterFraction;
-                        double endY = enclosure.Centre.Y + delta.Y * (double)span.ExitFraction;
-                        threshold += result.CertifiedErrorMetres + proximity;
+                        double threshold = WadeThreshold(contact.Interval.NominalSurfaceY, bodyHalfHeight, enterFraction,
+                            result.CertifiedErrorMetres, proximity);
+                        double startY = PathCentreY(enclosure.Centre.Y, delta.Y, span.EnterFraction);
+                        double endY = PathCentreY(enclosure.Centre.Y, delta.Y, span.ExitFraction);
                         if (Math.Min(startY, endY) > threshold) continue;
                         if (startY > threshold)
                         {
@@ -116,4 +123,19 @@ internal static class MovementWaterBoundary
             storage.Return(initialized);
         }
     }
+
+    /// <summary>The centre height a WadeOnly body must stay above for a free-surface contact to be skipped: the level
+    /// plus the body's offset at its enter line, then the certified error and proximity as one binary32 sum.
+    /// <see cref="Find(in MovementBodyQuery, Vector3, float, float, WaterTraversalMode, MovementQueryLease,
+    /// Span{Vector3}, out int, out Hit, float)"/> and the wade-depth certificate both use it, so the two cannot drift.
+    /// Every rounding mode keeps it monotone in the error.</summary>
+    internal static double WadeThreshold(float surfaceY, float bodyHalfHeight, float enterFraction, float certifiedError,
+        float proximity)
+    {
+        double threshold = surfaceY + bodyHalfHeight * (1d - 2d * enterFraction);
+        return threshold + (certifiedError + proximity);
+    }
+
+    /// <summary>The path centre's height at a fraction. The binary32 product is exact in binary64.</summary>
+    internal static double PathCentreY(float centreY, float deltaY, float fraction) => centreY + deltaY * (double)fraction;
 }

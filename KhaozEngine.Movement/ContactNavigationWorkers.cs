@@ -62,7 +62,7 @@ internal sealed class ContactNavigationWorkers
         {
             for (int worker = 0; worker < workers.Count; worker++)
             {
-                workers._sources[worker] = context.CreateNavigationBinding(source.Tuning);
+                workers._sources[worker] = context.CreateNavigationBakeBinding(source.Tuning);
                 workers._proofs[worker] = new ContactNavigationProof(bake, snapshot, workers._sources[worker]!, footprint, reuse, maxDropMetres);
                 workers._observers[worker] = workers._diagnostics.Observer(worker);
                 workers._hooks?.WorkerPinned?.Invoke(worker);

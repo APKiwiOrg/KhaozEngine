@@ -12,10 +12,28 @@ internal static class MovementWaterBoundary
 
     internal static MovementAvailability Find(in MovementBodyQuery enclosure, Vector3 delta,
         float bodyHalfHeight, float enterFraction, WaterTraversalMode mode, MovementQueryLease queries,
-        Span<Vector3> normals, out int normalCount, out Hit hit, float proximity = 0)
+        Span<Vector3> normals, out int normalCount, out Hit hit, float proximity = 0) =>
+        Find(enclosure, delta, bodyHalfHeight, enterFraction, mode, queries, normals, out normalCount, out hit,
+            proximity, certify: true, out _);
+
+    /// <summary>The water boundary parity suite's seam. It answers the same question on the same lease with the
+    /// capture certificate allowed or with the full solve only, and reports whether the certificate answered.
+    /// Movement code calls <see cref="Find(in MovementBodyQuery, Vector3, float, float, WaterTraversalMode,
+    /// MovementQueryLease, Span{Vector3}, out int, out Hit, float)"/>.</summary>
+    internal static MovementAvailability FindForParityTests(in MovementBodyQuery enclosure, Vector3 delta,
+        float bodyHalfHeight, float enterFraction, WaterTraversalMode mode, MovementQueryLease queries,
+        Span<Vector3> normals, out int normalCount, out Hit hit, float proximity, bool certify, out bool certified) =>
+        Find(enclosure, delta, bodyHalfHeight, enterFraction, mode, queries, normals, out normalCount, out hit,
+            proximity, certify, out certified);
+
+    static MovementAvailability Find(in MovementBodyQuery enclosure, Vector3 delta,
+        float bodyHalfHeight, float enterFraction, WaterTraversalMode mode, MovementQueryLease queries,
+        Span<Vector3> normals, out int normalCount, out Hit hit, float proximity, bool certify, out bool certified)
     {
         normalCount = 0;
         hit = default;
+        certified = false;
+        _ = certify;
         if (mode is not (WaterTraversalMode.SurfaceSwimmer or WaterTraversalMode.WadeOnly or WaterTraversalMode.DryOnly))
             return MovementAvailability.Invalid;
         var query = new MovementMediumSweepQuery(enclosure, delta);

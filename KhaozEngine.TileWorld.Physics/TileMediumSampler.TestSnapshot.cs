@@ -55,6 +55,18 @@ public sealed partial class TileMediumSampler
         _field.Prisms.ToArray(), _field.Faces.ToArray(), _field.Ground, _field.PointIndex,
         _field.PrismStarts.ToArray(), _field.FaceStarts.ToArray());
 
+    // Copies of the captured columns whose lateral projection meets the directed capsule-path bounds, the set the
+    // prism kernel selects from. Null when more than the kernel's 256-column limit would be collected.
+    internal TileWaterColumn[]? ReachColumnsForTests(in MovementMediumSweepQuery query, Vector3 physicsOrigin)
+    {
+        Span<int> collected = stackalloc int[MovementQueryLease.MaxDomainContacts];
+        int count = _field.PointIndex.Collect(new TileWaterPathBounds(query, physicsOrigin), collected);
+        if (count < 0) return null;
+        var columns = new TileWaterColumn[count];
+        for (int i = 0; i < count; i++) columns[i] = _field.Columns[collected[i]];
+        return columns;
+    }
+
     // The legacy computation keeps the same captured geometry and output assembly, with no
     // continuous-bed root certificate. Copies never mutate the producer's captured shapes.
     internal TileWaterTraceTestSnapshot CaptureLegacyTraceForTests() => CaptureTraceForTests() with

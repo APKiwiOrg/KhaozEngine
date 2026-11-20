@@ -243,7 +243,7 @@ public class DrawnWaterBedTests
         Assert.Equal(MovementAvailability.Unresolved, point.Availability);
     }
 
-    static TileWorldDocument World(bool levelTriangle)
+    internal static TileWorldDocument World(bool levelTriangle)
     {
         var document = TileWorldPhysicsTestData.FlatWorld();
         for (int z = 8; z <= 9; z++)

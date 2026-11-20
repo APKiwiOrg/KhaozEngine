@@ -56,6 +56,7 @@ public sealed partial class TileMediumSampler
         internal TileWaterColumnIndex NonuniformIndex { get; }
         internal TileWaterFlatIndex FlatIndex { get; }
         internal MovementWaterExtent Extent { get; }
+        internal TileWaterCaptureFacts Facts { get; }
 
         internal FieldSnapshot(TileWorldDocument document, TileWorldCatalogs catalogs, RegionCoord[] regions, string worldId,
             TileMovementSnapshot captured)
@@ -100,6 +101,7 @@ public sealed partial class TileMediumSampler
                 }
             Columns = columns.ToArray();
             PointIndex = new(Columns);
+            Facts = TileWaterCaptureFacts.Verify(Columns);
             Vector3 min = Vector3.Zero, max = Vector3.Zero;
             for (int i = 0; i < Columns.Length; i++)
             {

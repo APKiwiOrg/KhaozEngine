@@ -36,6 +36,9 @@ public sealed partial class TileMediumSampler
             FlatBoundaries = geometry.Boundaries;
             FlatExterior = geometry.Exterior;
             PointIndex = geometry.PointIndex;
+            // The borrowed point index addresses the source capture's columns, not the merged ones above, so no
+            // reach certificate may read levels through it.
+            Facts = TileWaterCaptureFacts.Unverified;
             NonuniformIndex = new(NonuniformColumns);
             FlatIndex = new(FlatColumns, FlatBoundaries, FlatExterior);
             Vector3 minimum = Vector3.Zero, maximum = Vector3.Zero;
@@ -55,12 +58,12 @@ public sealed partial class TileMediumSampler
         _field.Prisms.ToArray(), _field.Faces.ToArray(), _field.Ground, _field.PointIndex,
         _field.PrismStarts.ToArray(), _field.FaceStarts.ToArray());
 
-    // Copies of the captured columns whose lateral projection meets the directed capsule-path bounds, the set the
-    // prism kernel selects from. Null when more than the kernel's 256-column limit would be collected.
+    // Copies of the columns the boundary reach certificate counts for this path. Null when it would collect more
+    // than its limit.
     internal TileWaterColumn[]? ReachColumnsForTests(in MovementMediumSweepQuery query, Vector3 physicsOrigin)
     {
-        Span<int> collected = stackalloc int[MovementQueryLease.MaxDomainContacts];
-        int count = _field.PointIndex.Collect(new TileWaterPathBounds(query, physicsOrigin), collected);
+        Span<int> collected = stackalloc int[MaxReachColumns];
+        int count = CollectReach(query, physicsOrigin, collected);
         if (count < 0) return null;
         var columns = new TileWaterColumn[count];
         for (int i = 0; i < count; i++) columns[i] = _field.Columns[collected[i]];

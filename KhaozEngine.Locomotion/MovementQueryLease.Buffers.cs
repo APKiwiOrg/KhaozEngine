@@ -62,15 +62,7 @@ public sealed partial class MovementQueryLease
         AssertUsable();
         if (!_selectionReady) return NoCoverage(MovementAvailability.Unresolved);
         if (!query.IsValid || !SameWorld(query.Body.CurrentSpace)) return NoCoverage(MovementAvailability.Invalid);
-        Vector3 min = Witness.Scope.EnvelopeMin, max = Witness.Scope.EnvelopeMax;
-        double radial = (double)query.Body.Radius + CoverageSkinMetres;
-        double vertical = (double)query.Body.HalfHeight + CoverageSkinMetres;
-        // The producer traces the affine path, not its rounded float endpoint. An inward-rounded
-        // endpoint or skin addition cannot widen the scope certified by the immutable witness.
-        if (!AxisInside(query.Body.Centre.X, query.Delta.X, radial, min.X, max.X) ||
-            !AxisInside(query.Body.Centre.Y, query.Delta.Y, vertical, min.Y, max.Y) ||
-            !AxisInside(query.Body.Centre.Z, query.Delta.Z, radial, min.Z, max.Z))
-            return NoCoverage(MovementAvailability.Unresolved);
+        if (!WaterPathInsideWitness(query)) return NoCoverage(MovementAvailability.Unresolved);
 
         int spanCapacity = Math.Min(spans.Length, MaxCoverageSpans);
         int contactCapacity = Math.Min(contacts.Length, MaxDomainContacts);
@@ -131,6 +123,18 @@ public sealed partial class MovementQueryLease
         {
             storage.Return(contactCapacity);
         }
+    }
+
+    bool WaterPathInsideWitness(in MovementMediumSweepQuery query)
+    {
+        Vector3 min = Witness.Scope.EnvelopeMin, max = Witness.Scope.EnvelopeMax;
+        double radial = (double)query.Body.Radius + CoverageSkinMetres;
+        double vertical = (double)query.Body.HalfHeight + CoverageSkinMetres;
+        // The producer traces the affine path, not its rounded float endpoint. An inward-rounded
+        // endpoint or skin addition cannot widen the scope certified by the immutable witness.
+        return AxisInside(query.Body.Centre.X, query.Delta.X, radial, min.X, max.X) &&
+            AxisInside(query.Body.Centre.Y, query.Delta.Y, vertical, min.Y, max.Y) &&
+            AxisInside(query.Body.Centre.Z, query.Delta.Z, radial, min.Z, max.Z);
     }
 
     bool ColumnOverlapsCapsule(in MovementMediumSweepQuery query, in MovementDomainContact contact, float error)

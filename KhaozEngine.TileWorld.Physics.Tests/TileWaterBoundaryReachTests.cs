@@ -50,11 +50,57 @@ public class TileWaterBoundaryReachTests
     }
 
     [Fact]
-    public void ATestGeometrySamplerIsUnverified()
+    public void ATestGeometrySamplerIsUnverifiedAndDeclines()
     {
         // Its borrowed point index addresses another column array, so no level may be read through it.
         TileMediumSampler sampler = WaterBoundaryParityCorpus.Create("real-shore").Sampler!;
-        Assert.False(TileMediumSampler.FromTraceForTests(sampler.CaptureTraceForTests(), "water-world").CaptureFacts.Hold);
+        var borrowed = TileMediumSampler.FromTraceForTests(sampler.CaptureTraceForTests(), "water-world");
+        Assert.False(borrowed.CaptureFacts.Hold);
+        MovementMediumSweepQuery wet = ShoreStand(), dry = Away();
+        Assert.Equal(MovementWaterReachKind.OneFreeSurface, Certify(sampler, wet).Kind);
+        Assert.Equal(MovementWaterReachKind.Empty, Certify(sampler, dry).Kind);
+        Assert.Equal(MovementWaterReach.Declined, Certify(borrowed, wet));
+        Assert.Equal(MovementWaterReach.Declined, Certify(borrowed, dry));
+    }
+
+    [Theory]
+    [InlineData("control")]
+    [InlineData("query")]
+    [InlineData("identity")]
+    [InlineData("origin")]
+    [InlineData("world")]
+    public void TheSamplerDeclinesWhatItsTraceRefusesAsInvalid(string row)
+    {
+        TileMediumSampler sampler = WaterBoundaryParityCorpus.Create("real-shore").Sampler!;
+        MovementMediumSweepQuery query = row switch
+        {
+            "query" => default,
+            "world" => new(new(ShoreStand().Body.Centre, 0.3f, 0.75f, new("other-world", "ordinary"), null), Vector3.Zero),
+            _ => ShoreStand(),
+        };
+        MovementQueryIdentity identity = row == "identity" ? default : MovementWaterFieldTests.Identity;
+        Vector3 origin = row == "origin" ? new(float.NaN, 0, 0) : Vector3.Zero;
+        var trace = sampler.TraceWater(query, origin, identity, new MovementCoverageSpan[64], new MovementDomainContact[256]);
+        MovementWaterReach reach = sampler.CertifyBoundaryReach(query, origin, identity);
+        if (row == "control")
+        {
+            Assert.Equal(MovementAvailability.Known, trace.Availability);
+            Assert.Equal(MovementWaterReachKind.OneFreeSurface, reach.Kind);
+            return;
+        }
+        Assert.Equal(MovementAvailability.Invalid, trace.Availability);
+        Assert.Equal(MovementWaterReach.Declined, reach);
+    }
+
+    [Fact]
+    public void AOneLevelReachAnswersTheLevelEveryCountedColumnCarries()
+    {
+        TileMediumSampler sampler = WaterBoundaryParityCorpus.Create("real-shore").Sampler!;
+        MovementWaterReach reach = Certify(sampler, ShoreStand());
+        TileWaterColumn[] counted = sampler.ReachColumnsForTests(ShoreStand(), Vector3.Zero)!;
+        Assert.NotEmpty(counted);
+        Assert.All(counted, column => Assert.Equal(BitConverter.SingleToInt32Bits(column.Maximum.Y),
+            BitConverter.SingleToInt32Bits(reach.SurfaceY)));
     }
 
     [Theory]
@@ -72,6 +118,7 @@ public class TileWaterBoundaryReachTests
         TileMediumSampler sampler = TileWorldColliders.Build(document, TileWorldPhysicsTestData.Catalogs(), "water-world").Medium;
         var query = new MovementMediumSweepQuery(new(new(18, -0.5f, -18), 12, 12, WaterBoundaryParityCorpus.Space, null), Vector3.Zero);
         Assert.Equal(certifies, sampler.TryCertifyBoundaryReach(query, Vector3.Zero, out var reach));
+        Assert.Equal(certifies ? MovementWaterReachKind.OneFreeSurface : MovementWaterReachKind.Declined, Certify(sampler, query).Kind);
         if (!certifies) return;
         Assert.Equal(256, reach.Columns);
         Assert.True(reach.UniformLevel);
@@ -89,6 +136,7 @@ public class TileWaterBoundaryReachTests
             Assert.True(corpus.Sampler!.TryCertifyBoundaryReach(query, Vector3.Zero, out var reach));
             Assert.False(reach.UniformLevel);
             Assert.Equal(-0.02f, reach.HighestLevel);
+            Assert.Equal(MovementWaterReach.Declined, Certify(corpus.Sampler, query));
         }
     }
 
@@ -99,6 +147,7 @@ public class TileWaterBoundaryReachTests
         var query = new MovementMediumSweepQuery(new(new(30, 0, -30), 0.3f, 0.75f, WaterBoundaryParityCorpus.Space, null), Vector3.UnitX);
         Assert.True(sampler.TryCertifyBoundaryReach(query, Vector3.Zero, out var reach));
         Assert.Equal(0, reach.Columns);
+        Assert.Equal(MovementWaterReach.Empty, Certify(sampler, query));
     }
 
     // The corpus worlds whose questions select merged flat columns, including the wide merged lake bed.
@@ -136,6 +185,16 @@ public class TileWaterBoundaryReachTests
             }
         Assert.True(checkedColumns > 0);
     }
+
+    static MovementWaterReach Certify(TileMediumSampler sampler, MovementMediumSweepQuery query) =>
+        sampler.CertifyBoundaryReach(query, Vector3.Zero, MovementWaterFieldTests.Identity);
+
+    // The stationary control of the #1697 seat on the one-level shore, and a path clear of its water.
+    static MovementMediumSweepQuery ShoreStand() => new(new(new(99.11088f, 0.4276524f, -296.68784f), 0.3f, 0.75f,
+        WaterBoundaryParityCorpus.Space, null), Vector3.Zero);
+
+    static MovementMediumSweepQuery Away() => new(new(new(92, 0.4276524f, -292), 0.3f, 0.75f,
+        WaterBoundaryParityCorpus.Space, null), Vector3.UnitX);
 
     static TileWaterColumn Column(MovementDomainKey domain, int x, float top) => new(domain, new(x, -2, -1), new(x + 1, top, 0),
         "min-x", "max-x", "min-z", "max-z", "bed", "surface");

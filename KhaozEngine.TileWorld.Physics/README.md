@@ -104,6 +104,15 @@ disjoint from every captured column projection. Such points return Known dry bef
 lookup, even at large coordinates. An overlapping projection declines the proof, including dry regions below
 beds or above water, because the separate bed lookup can refuse. This adds no tolerance and does not relax any
 trace precision or capacity check. The bound uses the same immutable column index as point selection.
+Its optional `IMovementWaterBoundaryReachProof` counts the captured columns whose lateral projection meets the
+directed capsule-path bounds, through the same index and bounds the prism kernel selects its candidates with. Merged
+flat columns are exact unions of captured columns of one domain, bed and top, so the count also covers the flat
+kernel's selection. Both kernels build every contact with a free surface and its own column's top, so the producer
+guarantees hold. The capture verifies when it is built that every column of one domain carries the same surface bits,
+and counts its domains. More than 256 columns within reach, two surfaces among them, more than 256 domains in the
+capture or an unverified capture declines. A body that crosses a region border is two clipped domains that can sit
+at different heights, so a reach across that border declines as it does at a weir. A sampler built from borrowed
+test geometry is unverified, because its point index addresses another column array.
 A point is in a column when the exact framed centre lies in X [minimum, maximum), Z (minimum, maximum] and its
 feet in [bed, surface). Support and water share captured drawn triangles, triangle selection and anchored height
 evaluation. The lower boundary follows the selected triangle at the queried axis, including sloped beds and a

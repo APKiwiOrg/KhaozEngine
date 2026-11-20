@@ -4,8 +4,25 @@ using KhaozEngine.Locomotion;
 
 namespace KhaozEngine.TileWorld.Physics;
 
-public sealed partial class TileMediumSampler
+public sealed partial class TileMediumSampler : IMovementWaterBoundaryReachProof
 {
+    /// <summary>Certifies the water boundary question from the capture alone. Both trace kernels build every contact
+    /// with a free surface and its own column's top as its level, and only from columns this reach counts, so the
+    /// four producer guarantees hold. The capture verified one level per domain and its domain count when it was
+    /// built. An empty reach answers <see cref="MovementWaterReach.Empty"/>. A reach whose columns share one surface
+    /// bit for bit answers that surface. Two levels, more than 256 columns, unverified capture facts or a query the
+    /// trace itself would refuse as invalid all decline.</summary>
+    public MovementWaterReach CertifyBoundaryReach(in MovementMediumSweepQuery query, Vector3 physicsOrigin,
+        in MovementQueryIdentity identity)
+    {
+        if (!query.IsValid || !identity.IsValid || !float.IsFinite(physicsOrigin.X) || !float.IsFinite(physicsOrigin.Y) ||
+            !float.IsFinite(physicsOrigin.Z) || query.Body.CurrentSpace.WorldId != _field.WorldId ||
+            !_field.Facts.Hold || !TryCertifyBoundaryReach(query, physicsOrigin, out BoundaryReach reach))
+            return MovementWaterReach.Declined;
+        if (reach.Columns == 0) return MovementWaterReach.Empty;
+        return reach.UniformLevel ? MovementWaterReach.FreeSurface(reach.HighestLevel) : MovementWaterReach.Declined;
+    }
+
     /// <summary>The most columns one reach certificate collects, the prism kernel's own candidate limit.</summary>
     internal const int MaxReachColumns = MovementQueryLease.MaxDomainContacts;
 

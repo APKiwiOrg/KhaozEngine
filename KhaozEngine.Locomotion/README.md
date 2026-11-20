@@ -262,6 +262,23 @@ point queries use exact dyadic signs and have no precision refusal path. Its tra
 capacity checks must still succeed first. Wrappers that alter point availability cannot inherit this guarantee
 by forwarding only the inner field's trace or proof.
 
+`IMovementWaterBoundaryReachProof` is a separate opt-in capture certificate for the water boundary question.
+`CertifyBoundaryReach` answers `Empty` when no water column lies within the path's directed lateral reach,
+`OneFreeSurface` with the shared absolute surface when every column within reach has identical surface bits, and
+`Declined` otherwise. The default `MovementWaterReach` declines. An implementer makes four guarantees for every
+answer other than `Declined`: every contact its trace can report for the query is free surface, carries its own
+column's top as `NominalSurfaceY` and belongs to a column the certificate counted, and every domain of the capture
+has one level. It answers only when the capture has at most 256 domains, the lease's distinct-domain bound. A
+producer that cannot guarantee all four must not implement the interface, because the certificate would then answer
+where the trace must constrain. The ordinary pin finds it by a type test on the supplied field, as it finds
+`IMovementDryTracePointProof`, and converts the surface to the frame with the outward rounding its trace applies to
+every contact level, so a Known trace's levels equal the certified one bit for bit. Absence keeps its intrinsic dry
+trace and is not a certificate producer. `MovementQueryLease` runs the trace's own pre-checks in the same order and
+under the same catches before it asks the pin: a usable lease, a ready selection, a valid query in this world and the
+skinned path inside the witness. Every failure, a stale pin and a producer exception included, declines, so the full
+trace that follows reproduces today's refusal for it. A disposed lease or a foreign thread throws as the trace does.
+A wrapper that forwards only the inner field's trace hides the certificate, and its leases keep the full trace.
+
 `EffectiveMovementBinding.SampleWaterForPacing(state, queries, out swimming)` reads frame-local point water and
 shares the controller's tick-start swimmer classification, including supported footing and the free-surface flag.
 Use the returned local interval and the carried local feet for approach settling. This point query authorizes no

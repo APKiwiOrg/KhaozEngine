@@ -17,7 +17,7 @@ internal sealed class WaterBoundaryParityLease : IDisposable
     internal MovementFrameDescriptor Frame { get; }
 
     internal WaterBoundaryParityLease(IMovementWaterField field, string worldId, Vector3 origin, Vector3 minimum,
-        Vector3 maximum, in MoveTuning tuning, Vector3 select)
+        Vector3 maximum, in MoveTuning tuning, Vector3 select, bool rebuildSelection = true)
     {
         try
         {
@@ -33,7 +33,7 @@ internal sealed class WaterBoundaryParityLease : IDisposable
             Assert.Equal(MovementAvailability.Known, _binding.TryAcquire(_binding.CreateOrdinaryScope(Frame), out var lease));
             Lease = lease!;
             var state = new FramedMovementState(new MoveState { Position = select - Frame.PhysicsOrigin }, Frame, null);
-            Assert.Equal(MovementAvailability.Known, Lease.RebuildSelection(state, out _));
+            if (rebuildSelection) Assert.Equal(MovementAvailability.Known, Lease.RebuildSelection(state, out _));
         }
         catch
         {

@@ -59,7 +59,7 @@ public sealed partial class OrdinaryMovementEnvironment
         out double error)
     {
         float lower = Outward(interval.LowerY, originY, false), upper = Outward(interval.UpperY, originY, true),
-            surface = Outward(interval.NominalSurfaceY, originY, true);
+            surface = LocalSurface(interval.NominalSurfaceY, originY);
         local = default;
         error = Math.Max(Displacement(lower, interval.LowerY, originY), Math.Max(Displacement(upper, interval.UpperY, originY),
             Displacement(surface, interval.NominalSurfaceY, originY)));
@@ -67,6 +67,10 @@ public sealed partial class OrdinaryMovementEnvironment
         local = new(lower, upper, surface, interval.UpperIsFreeSurface, interval.LowerBoundaryId, interval.UpperBoundaryId);
         return true;
     }
+
+    /// <summary>An absolute nominal surface in local coordinates, rounded upward. Every converted interval's surface
+    /// and the boundary reach certificate's surface come from this one conversion.</summary>
+    internal static float LocalSurface(float surfaceY, float originY) => Outward(surfaceY, originY, true);
 
     static float Outward(float value, float origin, bool up)
     {

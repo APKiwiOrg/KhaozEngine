@@ -82,6 +82,9 @@ public sealed partial class MovementQueryLease : IDisposable
 
     public void AssertCurrent()
     {
+#if CONTACT_SHORE_ATTRIBUTION
+        using var shoreStep = ShoreStepProbe.Authenticate(ShoreEvent.AuthMovement);
+#endif
         AssertThread();
         ObjectDisposedException.ThrowIf(_disposed, this);
         _physics.AssertCurrent();

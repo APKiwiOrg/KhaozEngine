@@ -1,3 +1,7 @@
+#if CONTACT_SHORE_ATTRIBUTION
+using System.Runtime.CompilerServices;
+using KhaozEngine.Physics;
+#endif
 using System;
 using System.Numerics;
 
@@ -18,8 +22,15 @@ internal struct ContactMotionRoute
     internal float Highest { get; private set; }
     internal float Lowest { get; private set; }
 
-    internal bool Append(Vector3 target)
+    internal bool Append(Vector3 target
+#if CONTACT_SHORE_ATTRIBUTION
+        , [CallerMemberName] string caller = ""
+#endif
+        )
     {
+#if CONTACT_SHORE_ATTRIBUTION
+        using var traceLabel = ShoreStepProbe.LabelTrace(caller);
+#endif
         if (Denied) return false;
         Count();
         if (!_queries.AcceptSegment(Current, target) || !_queries.AcceptRouteSegment(Current, target))
@@ -28,8 +39,15 @@ internal struct ContactMotionRoute
         return true;
     }
 
-    internal bool Move(Vector3 target, out bool blocked, Span<Vector3> velocity = default)
+    internal bool Move(Vector3 target, out bool blocked, Span<Vector3> velocity = default
+#if CONTACT_SHORE_ATTRIBUTION
+        , [CallerMemberName] string caller = ""
+#endif
+        )
     {
+#if CONTACT_SHORE_ATTRIBUTION
+        using var traceLabel = ShoreStepProbe.LabelTrace(caller);
+#endif
         blocked = false;
         if (Denied) return false;
         Span<Vector3> path = stackalloc Vector3[MovementCapsuleResolver.MaximumEndpoints];

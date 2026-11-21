@@ -182,6 +182,9 @@ internal sealed partial class OrdinaryMovementEnvironmentPin : IMovementEnvironm
 
     public void AssertCurrent()
     {
+#if CONTACT_SHORE_ATTRIBUTION
+        using var shoreStep = ShoreStepProbe.Authenticate(ShoreEvent.AuthPin);
+#endif
         ObjectDisposedException.ThrowIf(_disposed, this);
         _physics.AssertCurrent();
         if (_physics.Origin != Frame.PhysicsOrigin || _tuple != _owner.CaptureTuple(_physics) ||

@@ -39,6 +39,9 @@ internal static class MovementSegmentProof
         MovementQueryLease queries, WaterTraversalMode mode, float enterFraction, MovementBoundary? boundary,
         Span<Vector3> normals, out int count, out MovementWaterBoundary.Hit hit, Vector3? storedEnd = null)
     {
+#if CONTACT_SHORE_ATTRIBUTION
+        using var shoreStep = ShoreStepProbe.Begin(ShorePhase.WaterStep);
+#endif
         count = 0;
         hit = default;
         if (!MovementCapsuleRounding.TryEncloseStored(body, delta, out MovementBodyQuery enclosure, out Vector3 end,

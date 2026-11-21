@@ -73,6 +73,9 @@ internal ref struct TileWaterPreparedQuery
             InitialError = start.Width + drive.Width, RadiusSquared = I.Point(radius).Square(),
             HasControlToken = TileWaterFloatingPointState.TryRead(out ulong token), ControlToken = token
         };
+#if CONTACT_SHORE_ATTRIBUTION
+        TileWaterShoreCounts.ObserveShape(_shape, _header);
+#endif
         if (TileWaterQueryWork.Enabled) TileWaterQueryWork.ShapePreparations++;
     }
 
@@ -87,6 +90,9 @@ internal ref struct TileWaterPreparedQuery
             return _shape.Intersect(start, drive, core, radius, enter, exit, heightError, horizontalError);
 #if WATER_PRISM_CENSUS
         using var measurement = TileWaterCensus.Observe(_shape, start, drive, core, radius, enter, exit, heightError, horizontalError);
+#endif
+#if CONTACT_SHORE_ATTRIBUTION
+        TileWaterShoreCounts.Count(ShoreWork.PreparedEvaluations);
 #endif
         if (TileWaterQueryWork.Enabled) TileWaterQueryWork.ConvexIntersections++;
         double first = double.PositiveInfinity, last = double.NegativeInfinity, nearest = double.PositiveInfinity;
@@ -103,7 +109,13 @@ internal ref struct TileWaterPreparedQuery
             // same ordered clips only narrow low/high through window-independent crossings. Starting
             // in a valid subset of [0,1] rejects at or before that clip and contributes no later error
             // or minimum. Invalid, unordered, NaN and out-of-range windows must replay every basis.
-            if (skipFullRejections && state.RejectedFullWindow) continue;
+            if (skipFullRejections && state.RejectedFullWindow)
+            {
+#if CONTACT_SHORE_ATTRIBUTION
+                TileWaterShoreCounts.Count(ShoreWork.BasisWindowSkip);
+#endif
+                continue;
+            }
 #if WATER_PRISM_CENSUS
             TileWaterCensus.Add("bases");
             TileWaterCensus.Add(basis.A < 0 ? "basis/0" : basis.B < 0 ? "basis/1" : basis.C < 0 ? "basis/2" : "basis/3");
@@ -116,8 +128,16 @@ internal ref struct TileWaterPreparedQuery
                 // A face copies its parent's identical, already resolved projection when one was lent.
                 // Every other basis runs the original expression at its original place in the order.
                 if (!_source.TryCopy(ordinal, ref state))
+                {
+#if CONTACT_SHORE_ATTRIBUTION
+                    TileWaterShoreCounts.Count(ShoreWork.Projection);
+#endif
                     state.Projected = Project(ordinal, basis, start, drive, core, heightError, horizontalError,
                         state.Lambda, state.Velocity, out state.Q, out state.V);
+                }
+#if CONTACT_SHORE_ATTRIBUTION
+                else TileWaterShoreCounts.Count(ShoreWork.CopiedProjection);
+#endif
 #if WATER_PRISM_CENSUS
                 TileWaterCensus.Projecting = false;
 #endif
@@ -145,6 +165,9 @@ internal ref struct TileWaterPreparedQuery
                 state.A = state.Motion.SquaredLength;
                 state.B = V.Dot(state.Offset, state.Motion);
                 state.Mask |= 2;
+#if CONTACT_SHORE_ATTRIBUTION
+                TileWaterShoreCounts.Count(ShoreWork.PostClipFill);
+#endif
                 Filled();
             }
             error = Math.Max(error, state.Width);
@@ -157,6 +180,9 @@ internal ref struct TileWaterPreparedQuery
                 {
                     state.Vertex = (I.Point(0) - b) / a;
                     state.Mask |= 4;
+#if CONTACT_SHORE_ATTRIBUTION
+                    TileWaterShoreCounts.Count(ShoreWork.VertexFill);
+#endif
                     Filled();
                 }
                 vertex = state.Vertex;
@@ -196,6 +222,9 @@ internal ref struct TileWaterPreparedQuery
                         state.Length = Math.Sqrt(V.Dot(drive, drive).High);
                     }
                     state.Mask |= 8;
+#if CONTACT_SHORE_ATTRIBUTION
+                    TileWaterShoreCounts.Count(ShoreWork.RootFill);
+#endif
                     Filled();
                 }
                 if ((state.Mask & 16) != 0) continue;
@@ -310,6 +339,9 @@ internal ref struct TileWaterPreparedQuery
                 V bc = geometry.Bc, ca = geometry.Ca;
                 I determinant = geometry.Determinant;
                 if (determinant.Low <= 0 && determinant.High >= 0) return false;
+#if CONTACT_SHORE_ATTRIBUTION
+                TileWaterShoreCounts.ObserveTriple(_shape, ordinal, _header);
+#endif
                 q = (bc * Expanded(basis.A) + ca * Expanded(basis.B) + cross * Expanded(basis.C)) * (I.Point(1) / determinant);
                 v = default;
                 V difference = start - q;
@@ -335,6 +367,9 @@ internal ref struct TileWaterPreparedQuery
         ref PlaneState state = ref _planeTerms[i];
         if ((state.Mask & 1) == 0)
         {
+#if CONTACT_SHORE_ATTRIBUTION
+            TileWaterShoreCounts.ObserveExpansion(_shape.Planes[i], _header);
+#endif
             state.Expansion = _shape.Planes[i].Expanded(_header.Core, _header.HeightError, _header.HorizontalError);
             state.Mask |= 1;
             Filled();
@@ -347,6 +382,9 @@ internal ref struct TileWaterPreparedQuery
         ref PlaneState state = ref _planeTerms[i];
         if ((state.Mask & 2) == 0)
         {
+#if CONTACT_SHORE_ATTRIBUTION
+            TileWaterShoreCounts.ObserveDot(_shape.Planes[i].Normal, _header, false);
+#endif
             state.Start = V.Dot(_shape.Planes[i].Normal, _header.Start);
             state.Mask |= 2;
             Filled();
@@ -359,6 +397,9 @@ internal ref struct TileWaterPreparedQuery
         ref PlaneState state = ref _planeTerms[i];
         if ((state.Mask & 4) == 0)
         {
+#if CONTACT_SHORE_ATTRIBUTION
+            TileWaterShoreCounts.ObserveDot(_shape.Planes[i].Normal, _header, true);
+#endif
             state.Drive = V.Dot(_shape.Planes[i].Normal, _header.Drive);
             state.Mask |= 4;
             Filled();
@@ -373,7 +414,14 @@ internal ref struct TileWaterPreparedQuery
         {
             Fill(ref term, I.Point(0) - state.Lambda[i], I.Point(0) - state.Velocity[i]);
             state.ClipMask |= (ushort)(1 << i);
+#if CONTACT_SHORE_ATTRIBUTION
+            TileWaterShoreCounts.Count(ShoreWork.ActiveFill);
+            TileWaterShoreCounts.ObserveClip(_shape, ordinal, i, term.Slope.Low != 0, !_source.IsEmpty);
+#endif
         }
+#if CONTACT_SHORE_ATTRIBUTION
+        TileWaterShoreCounts.Count(ShoreWork.ClipApply);
+#endif
         return term.Apply(ref enter, ref exit);
     }
 
@@ -387,7 +435,14 @@ internal ref struct TileWaterPreparedQuery
             Fill(ref term, V.Dot(plane.Normal, state.Q) - Expanded(i),
                 V.Dot(plane.Normal, state.V));
             state.ClipMask |= (ushort)(1 << slot);
+#if CONTACT_SHORE_ATTRIBUTION
+            TileWaterShoreCounts.Count(ShoreWork.PlaneFill);
+            TileWaterShoreCounts.ObserveClip(_shape, ordinal, slot, term.Slope.Low != 0, !_source.IsEmpty);
+#endif
         }
+#if CONTACT_SHORE_ATTRIBUTION
+        TileWaterShoreCounts.Count(ShoreWork.ClipApply);
+#endif
         return term.Apply(ref enter, ref exit);
     }
 

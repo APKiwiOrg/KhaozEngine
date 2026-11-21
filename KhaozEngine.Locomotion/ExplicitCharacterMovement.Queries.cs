@@ -1,3 +1,6 @@
+#if CONTACT_SHORE_ATTRIBUTION
+using KhaozEngine.Physics;
+#endif
 using System;
 using System.Numerics;
 
@@ -8,6 +11,10 @@ public static partial class ExplicitCharacterMovement
     internal static MovementStepOutcome WaterPlacement(in MovementBodyQuery body, in MoveTuning tuning,
         in WaterTraversalPolicy water, MovementQueryLease queries, MovementBoundary? boundary)
     {
+#if CONTACT_SHORE_ATTRIBUTION
+        using var shoreStep = ShoreStepProbe.Begin(ShorePhase.WaterPlacement);
+        using var traceLabel = ShoreStepProbe.LabelTrace(nameof(WaterPlacement));
+#endif
         MovementPlacementDiagnostics.Validate();
         if (boundary is not null)
         {

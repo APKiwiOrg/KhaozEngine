@@ -1,5 +1,8 @@
 using System;
 using KhaozEngine.Locomotion;
+#if CONTACT_SHORE_ATTRIBUTION
+using KhaozEngine.Physics;
+#endif
 using KhaozEngine.Primitives;
 using KhaozEngine.Sharding;
 
@@ -62,6 +65,9 @@ public sealed partial class PlayerMoveReadScope : IDisposable
 
     public void Dispose()
     {
+#if CONTACT_SHORE_ATTRIBUTION
+        using var shoreStep = ShoreStepProbe.Begin(ShorePhase.Dispose);
+#endif
         if (System.Environment.CurrentManagedThreadId != thread)
             throw new InvalidOperationException("An explicit player read belongs to its acquiring thread.");
         if (disposed) return;

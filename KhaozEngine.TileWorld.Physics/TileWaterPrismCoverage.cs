@@ -63,6 +63,9 @@ internal static class TileWaterPrismCoverage
         V drive = V.Point(query.Delta.X, query.Delta.Y, query.Delta.Z);
         Span<int> candidates = stackalloc int[ContactLimit];
         int candidateCount = index.Collect(new(query, origin), candidates);
+#if CONTACT_SHORE_ATTRIBUTION
+        if (candidateCount >= 0) TileWaterShoreCounts.Count(ShoreWork.Columns, candidateCount);
+#endif
         if (candidateCount < 0) return Refuse(MovementAvailability.CapacityExceeded, identity, 0, ContactLimit + 1);
         for (int c = 0; c < candidateCount; c++)
             for (int i = prismStarts[candidates[c]]; i < prismStarts[candidates[c] + 1]; i++)
@@ -72,6 +75,9 @@ internal static class TileWaterPrismCoverage
 #if WATER_PRISM_CENSUS
                 TileWaterCensus.Phase = "select-prism";
                 TileWaterCensus.Selected?.Invoke(piece, piece.Shape, -1);
+#endif
+#if CONTACT_SHORE_ATTRIBUTION
+                TileWaterShoreCounts.Count(ShoreWork.PieceSelection);
 #endif
                 var prepared = scratch.Preparations.Prepare(piece.Shape, piece.Start(query, origin), drive,
                     core, query.Body.Radius, piece.HeightError, piece.HorizontalError);
@@ -97,6 +103,9 @@ internal static class TileWaterPrismCoverage
 #if WATER_PRISM_CENSUS
                 TileWaterCensus.Phase = "select-face";
                 TileWaterCensus.Selected?.Invoke(piece, face.Shape, face.Plane);
+#endif
+#if CONTACT_SHORE_ATTRIBUTION
+                TileWaterShoreCounts.Count(ShoreWork.FaceSelection);
 #endif
                 var prepared = scratch.Preparations.Prepare(face.Shape, piece.Start(query, origin), drive,
                     core, query.Body.Radius, piece.HeightError, piece.HorizontalError);
@@ -129,6 +138,9 @@ internal static class TileWaterPrismCoverage
 #if WATER_PRISM_CENSUS
                     TileWaterCensus.Phase = "assemble-prism";
 #endif
+#if CONTACT_SHORE_ATTRIBUTION
+                    TileWaterShoreCounts.Count(ShoreWork.PieceAssembly);
+#endif
                     R covered = scratch.Preparations.Evaluate(hit.Preparation, piece.Shape, piece.Start(query, origin), drive, core, query.Body.Radius,
                         enter, exit, piece.HeightError, piece.HorizontalError);
                     if (!covered.Resolved) return Refuse(MovementAvailability.Unresolved, identity);
@@ -142,6 +154,9 @@ internal static class TileWaterPrismCoverage
                         if (face.Prism != hit.Index || !face.Wet || !Overlaps(faceHit.Range, enter, exit)) continue;
 #if WATER_PRISM_CENSUS
                         TileWaterCensus.Phase = "assemble-face";
+#endif
+#if CONTACT_SHORE_ATTRIBUTION
+                        TileWaterShoreCounts.Count(ShoreWork.FaceAssembly);
 #endif
                         R located = scratch.Preparations.Evaluate(faceHit.Preparation, face.Shape, piece.Start(query, origin), drive, core, query.Body.Radius,
                             enter, exit, piece.HeightError, piece.HorizontalError);
@@ -181,6 +196,9 @@ internal static class TileWaterPrismCoverage
     {
 #if WATER_PRISM_CENSUS
         TileWaterCensus.Add("append");
+#endif
+#if CONTACT_SHORE_ATTRIBUTION
+        TileWaterShoreCounts.Count(ShoreWork.Append);
 #endif
         if (count == output.Length) return false;
         float fraction = Math.Clamp((float)Math.Max(enter, contact.Enter), enter, exit);

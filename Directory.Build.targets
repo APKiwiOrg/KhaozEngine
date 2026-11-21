@@ -1,4 +1,20 @@
-<Project>
+<Project InitialTargets="ValidateContactShoreAttribution">
+  <!-- Research build only. Isolated SDK artifacts keep the instrumented DLLs out of normal builds. -->
+  <PropertyGroup Condition="'$(ContactShoreAttribution)' == 'true'">
+    <DefineConstants>$(DefineConstants);CONTACT_SHORE_ATTRIBUTION</DefineConstants>
+    <IsPackable>false</IsPackable>
+    <IsPublishable>false</IsPublishable>
+  </PropertyGroup>
+  <Target Name="ValidateContactShoreAttribution" Condition="'$(ContactShoreAttribution)' == 'true'">
+    <Error Condition="'$(UseArtifactsOutput)' != 'true' or '$(WaterPrismCensus)' == 'true'"
+           Text="Contact shore attribution requires a dedicated --artifacts-path and no WaterPrismCensus." />
+    <Error Condition="'$(_IsPublishing)' == 'true'"
+           Text="Contact shore attribution binaries are for local diagnostics only." />
+  </Target>
+  <Target Name="RefuseContactShoreAttributionDistribution" Condition="'$(ContactShoreAttribution)' == 'true'"
+          BeforeTargets="Pack;_IntermediatePack;GenerateNuspec;PrepareForPublish;Publish;PublishOnly">
+    <Error Text="Contact shore attribution binaries are for local diagnostics only." />
+  </Target>
   <Import Project="$(MSBuildThisFileDirectory)build/WaterPrismCensus.targets" />
   <!-- The internal FloatUlp steps, for a project that sets KhaozFloatUlp to true. -->
   <Import Project="$(MSBuildThisFileDirectory)build/FloatUlp.targets" />

@@ -28,6 +28,9 @@ internal sealed class TileWaterPreparationStorage
     internal void EndTrace()
     {
         Last = new(ByteBudget, _used, Workspace.PayloadBytes, _retained, _misses, _exhausted, _fallbacks);
+#if CONTACT_SHORE_ATTRIBUTION
+        TileWaterShoreCounts.Count(ShoreWork.RetainedBytes, _used);
+#endif
         Shared.EndTrace();
         // Every offset belongs to this trace. The bytes contain no references and are not observable afterward.
         _used = 0;

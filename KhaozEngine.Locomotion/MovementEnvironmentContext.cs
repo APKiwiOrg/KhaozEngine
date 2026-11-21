@@ -48,6 +48,9 @@ public sealed class MovementEnvironmentContext
     /// including for a carried selection. Direct selected-space queries require an explicit rebuild first.</remarks>
     public MovementAvailability TryAcquire(in MovementQueryScope scope, out MovementQueryLease? lease)
     {
+#if CONTACT_SHORE_ATTRIBUTION
+        using var shoreStep = ShoreStepProbe.Begin(ShorePhase.Acquire);
+#endif
         using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.AcquisitionBody);
         lease = null;
         if (!scope.IsValid || scope.Identity != _identity ||

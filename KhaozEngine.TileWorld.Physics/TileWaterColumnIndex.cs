@@ -71,6 +71,9 @@ internal sealed class TileWaterColumnIndex
 
     bool Collect(int index, in TileWaterPathBounds bounds, Span<int> columns, ref int count)
     {
+#if CONTACT_SHORE_ATTRIBUTION
+        TileWaterShoreCounts.Count(ShoreWork.CollectNodes);
+#endif
         Node node = _nodes[index];
         if (!bounds.Meets(node.Minimum, node.Maximum)) return true;
         if (node.Column < 0)

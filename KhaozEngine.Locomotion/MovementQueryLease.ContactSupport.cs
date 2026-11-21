@@ -21,6 +21,9 @@ public sealed partial class MovementQueryLease
 
     internal MovementAvailability SampleAnalyticGround(in MovementSupportRequest request, out MovementAnalyticGround? ground)
     {
+#if CONTACT_SHORE_ATTRIBUTION
+        using var shoreStep = ShoreStepProbe.Begin(ShorePhase.Analytic);
+#endif
         ground = null;
         AssertUsable();
         MovementAvailability allowed = ContactSupportScope(request);
@@ -59,6 +62,9 @@ public sealed partial class MovementQueryLease
     MovementAvailability BindContactSupportCore(in MovementSupportRequest request, in SupportSample sample,
         out MovementContactSupportBinding binding, float? kernelFeetY)
     {
+#if CONTACT_SHORE_ATTRIBUTION
+        using var shoreStep = ShoreStepProbe.Begin(ShorePhase.Binding);
+#endif
         using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.Binding);
         binding = default;
         AssertUsable();

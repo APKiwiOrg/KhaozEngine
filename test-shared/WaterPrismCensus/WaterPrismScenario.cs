@@ -31,6 +31,10 @@ internal sealed class WaterPrismScenario : IDisposable
         SwimSurfaceSubmersionFraction = 0.6f,
         Water = new(WaterTraversalMode.SurfaceSwimmer),
     };
+#if CONTACT_SHORE_ATTRIBUTION
+    // Count-pass policy contrast on the same fixtures. Null keeps the fixture's SurfaceSwimmer policy.
+    [ThreadStatic] internal static WaterTraversalMode? WaterModeOverride;
+#endif
     readonly BepuPhysicsWorld _world = new(Vector3.Zero);
     readonly bool _contact;
     readonly TileColliderRegistration _installed;
@@ -49,7 +53,11 @@ internal sealed class WaterPrismScenario : IDisposable
     internal WaterPrismScenario(string name, MovementControllerKind controller = MovementControllerKind.Contact,
         bool crowded = false, WaterTraversalMode? water = null, bool exposeCertificate = false)
     {
-        if (Array.IndexOf(Names, name) < 0 && name != "shore-traverse") throw new ArgumentOutOfRangeException(nameof(name));
+        if (Array.IndexOf(Names, name) < 0 && name != "shore-traverse"
+#if CONTACT_SHORE_ATTRIBUTION
+            && name != "flat-wade"
+#endif
+        ) throw new ArgumentOutOfRangeException(nameof(name));
         Name = name;
         _contact = controller == MovementControllerKind.Contact;
         bool bank = name.StartsWith("bank-", StringComparison.Ordinal);
@@ -81,6 +89,9 @@ internal sealed class WaterPrismScenario : IDisposable
         Field = new(Colliders.Medium);
         var policy = water is { } mode ? new WaterTraversalPolicy(mode) : Tuning.Water;
         var tuning = Tuning with { Controller = controller, Water = _contact ? policy : default };
+#if CONTACT_SHORE_ATTRIBUTION
+        if (_contact && WaterModeOverride is { } waterMode) tuning = tuning with { Water = new(waterMode) };
+#endif
         Certificate = exposeCertificate ? new CertificateForwardingWaterField(Field, Colliders.Medium) : null;
         IMovementWaterField field = Certificate ?? (IMovementWaterField)Field;
         Simulator = new(Colliders.MovementGroundHeight, tuning, Colliders.MovementGroundNormal, null,
@@ -151,6 +162,9 @@ internal sealed class WaterPrismScenario : IDisposable
                     "shore-traverse" => -35 - 18 * (z - 236),
                     "swim-entry" => -130 - 18 * (z - 246),
                     "deep-swim" or "deep-tread" => Math.Max(-537, -369 - 44 * (z - 260)),
+#if CONTACT_SHORE_ATTRIBUTION
+                    "flat-wade" => -72,
+#endif
                     "flat-neighbour" => -237 - 7 * Math.Max(0, z - 253),
                     _ => -237,
                 };

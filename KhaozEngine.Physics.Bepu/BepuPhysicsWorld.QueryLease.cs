@@ -92,6 +92,9 @@ public sealed partial class BepuPhysicsWorld : IPhysicsQueryLeaseSource, IPhysic
 
         public void AssertCurrent()
         {
+#if CONTACT_SHORE_ATTRIBUTION
+            using var shoreStep = ShoreStepProbe.Authenticate(ShoreEvent.AuthPhysics);
+#endif
             AssertThread();
             if (_disposed) throw new ObjectDisposedException(nameof(IPhysicsQueryLease));
             // The live lease keeps writers out, so the owner fields read here cannot change underneath it.

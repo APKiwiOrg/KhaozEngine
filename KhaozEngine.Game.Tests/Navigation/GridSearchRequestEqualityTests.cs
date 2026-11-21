@@ -22,10 +22,15 @@ public partial class GridSearchRequestEqualityTests
         {
             var planner = Incremental(query.Planner);
             using var pool = planner.CreateWorkspaces(1);
+            var before = query.Planner.WorkForTests;
             NavPath expected = planner.FindPath(query.Start, query.Goal, 0f, query.Budget);
+            var afterSync = query.Planner.WorkForTests;
             Assert.Equal(query.Status, expected.Status);
             using var request = planner.BeginPath(query.Start, query.Goal, 0f, query.Budget, pool);
             EqualBits(expected, Finish(request, quantum));
+            var afterRequest = query.Planner.WorkForTests;
+            Assert.Equal(afterSync.Searches - before.Searches, afterRequest.Searches - afterSync.Searches);
+            Assert.Equal(afterSync.Certificates - before.Certificates, afterRequest.Certificates - afterSync.Certificates);
         }
 
         for (int seed = 1; seed <= 40; seed++)

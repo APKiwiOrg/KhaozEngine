@@ -55,12 +55,20 @@ internal abstract class PathPlanRequest : IDisposable
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="budget"/> holds fewer than one unit, as the
     /// default value does.</exception>
+    /// <exception cref="InvalidOperationException">The call overlaps another call into the pool.</exception>
     public void Advance(PathWorkBudget budget)
     {
         if (budget.Units < 1)
             throw new ArgumentOutOfRangeException(nameof(budget), "A work budget holds at least one unit.");
-        if (State != PathPlanState.Pending) return;
-        AdvanceCore(budget);
+        EnterCall();
+        try
+        {
+            if (State == PathPlanState.Pending) AdvanceCore(budget);
+        }
+        finally
+        {
+            ExitCall();
+        }
     }
 
     /// <summary>
@@ -73,7 +81,22 @@ internal abstract class PathPlanRequest : IDisposable
 
     /// <summary>Cancels a pending request and releases its workspace, or leaves the pool's queue if it was still
     /// waiting. Does nothing to a Ready or Cancelled request.</summary>
+    /// <exception cref="InvalidOperationException">The call overlaps another call into the pool.</exception>
     public void Cancel()
+    {
+        EnterCall();
+        try
+        {
+            CancelPending();
+        }
+        finally
+        {
+            ExitCall();
+        }
+    }
+
+    /// <summary>Cancels while the caller already owns the pool's call guard. Also used on query failure.</summary>
+    private protected void CancelPending()
     {
         if (State != PathPlanState.Pending) return;
         State = PathPlanState.Cancelled;
@@ -86,6 +109,12 @@ internal abstract class PathPlanRequest : IDisposable
         Cancel();
         GC.SuppressFinalize(this);
     }
+
+    /// <summary>Acquires an owner sequence guard before an advance or cancel can change request state.</summary>
+    private protected virtual void EnterCall() { }
+
+    /// <summary>Releases a successfully acquired owner sequence guard.</summary>
+    private protected virtual void ExitCall() { }
 
     /// <summary>Spends work according to <paramref name="budget"/>. Called only while the request is pending,
     /// with a quota of at least one unit. An implementation reports each operation through

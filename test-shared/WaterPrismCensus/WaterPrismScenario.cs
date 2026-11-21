@@ -37,12 +37,17 @@ internal sealed class WaterPrismScenario : IDisposable
     internal TileWorldColliders Colliders { get; }
     internal PlayerMoveSimulator Simulator { get; }
     internal RecordingWaterField Field { get; }
+    /// <summary>The field that exposes the certificate, when the scenario forwards it.</summary>
+    internal CertificateForwardingWaterField? Certificate { get; }
     internal PlayerMoveState Basis { get; }
     internal MoveCommand Command { get; }
     internal string Name { get; }
 
+    /// <summary>A Contact scenario uses its own SurfaceSwimmer policy and requires every settling step to advance unless
+    /// <paramref name="water"/> chooses another policy, whose settling steps may hold. The recording field hides the
+    /// boundary reach certificate unless <paramref name="exposeCertificate"/> forwards it.</summary>
     internal WaterPrismScenario(string name, MovementControllerKind controller = MovementControllerKind.Contact,
-        bool crowded = false)
+        bool crowded = false, WaterTraversalMode? water = null, bool exposeCertificate = false)
     {
         if (Array.IndexOf(Names, name) < 0 && name != "shore-traverse") throw new ArgumentOutOfRangeException(nameof(name));
         Name = name;
@@ -74,9 +79,12 @@ internal sealed class WaterPrismScenario : IDisposable
         OrdinaryMovementRegistration registration;
         using (var lease = _world.AcquireQueryReadLease()) registration = builder.Build(lease);
         Field = new(Colliders.Medium);
-        var tuning = Tuning with { Controller = controller, Water = _contact ? Tuning.Water : default };
+        var policy = water is { } mode ? new WaterTraversalPolicy(mode) : Tuning.Water;
+        var tuning = Tuning with { Controller = controller, Water = _contact ? policy : default };
+        Certificate = exposeCertificate ? new CertificateForwardingWaterField(Field, Colliders.Medium) : null;
+        IMovementWaterField field = Certificate ?? (IMovementWaterField)Field;
         Simulator = new(Colliders.MovementGroundHeight, tuning, Colliders.MovementGroundNormal, null,
-            _world, Colliders.Medium.MediumDelegate, SamplerSpace.World, null, Field, registration,
+            _world, Colliders.Medium.MediumDelegate, SamplerSpace.World, null, field, registration,
             MovementBoundary.Rectangle(65, -319, 127, -193));
         bool swimming = deep || name is "flat-neighbour" or "flat-control";
         if (name == "dry-control") z = 234.5f;
@@ -92,7 +100,7 @@ internal sealed class WaterPrismScenario : IDisposable
             }
         };
         // Settle the support disc before observing the fixed authority basis.
-        for (int tick = 0; tick < 4; tick++) basis = Step(basis, MoveCommand.Idle);
+        for (int tick = 0; tick < 4; tick++) basis = water is null ? Step(basis, MoveCommand.Idle) : Step(basis, MoveCommand.Idle, out _);
         Basis = basis;
         Command = name switch
         {
@@ -105,10 +113,18 @@ internal sealed class WaterPrismScenario : IDisposable
 
     internal PlayerMoveState Step(PlayerMoveState state, MoveCommand command)
     {
+        var next = Step(state, command, out MovementStepOutcome? outcome);
+        if (_contact && outcome != MovementStepOutcome.Advanced)
+            throw new InvalidOperationException($"{Name}: {outcome}");
+        return next;
+    }
+
+    /// <summary>One authority operation under a fresh read, with its outcome, whatever the outcome is.</summary>
+    internal PlayerMoveState Step(PlayerMoveState state, MoveCommand command, out MovementStepOutcome? outcome)
+    {
         using var read = Simulator.BeginExplicitRead(state);
         var next = Simulator.Step(state, command, Dt);
-        if (_contact && Simulator.LastExplicitOutcome != MovementStepOutcome.Advanced)
-            throw new InvalidOperationException($"{Name}: {Simulator.LastExplicitOutcome}");
+        outcome = Simulator.LastExplicitOutcome;
         return next;
     }
 

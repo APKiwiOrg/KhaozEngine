@@ -32,6 +32,13 @@ The shallow bank's centre-column water depth is 0.327 m. Support-disc seating ra
 axis bed, so feet submersion is smaller. The deep station's axis depth is about 3.570 m. It approximates one
 local bowl grade with a plane rather than the bowl's changing two-dimensional gradients.
 
+The recording field forwards only `IMovementWaterField`, so it hides the producer's boundary reach certificate and
+every boundary proof of a census run takes the full coverage solve. A scenario built with `exposeCertificate`
+passes `CertificateForwardingWaterField` instead. It records the same traces through the same recording field and
+forwards `TileMediumSampler.CertifyBoundaryReach`, so a test can drive the same steps both ways and compare their
+bits and their trace counts. A scenario built with another `water` policy settles without requiring every settling
+step to advance, because a WadeOnly body in deep water need not advance.
+
 ## Deterministic observations
 
 Normal binaries compile out `TileWaterCensus` and all its observation sites. The existing `TileWaterQueryWork`

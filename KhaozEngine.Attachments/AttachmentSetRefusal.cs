@@ -75,6 +75,30 @@ public enum AttachmentSetRefusal
     /// <summary>Refuses malformed JSON syntax while retaining the caller source name.</summary>
     JsonMalformed,
 
-    /// <summary>Refuses a JSON value shape rejected by a framework accessor.</summary>
+    /// <summary>Refuses a JSON value shape rejected by a framework accessor, or a covers entry or region run of the wrong shape.</summary>
     JsonValueShapeInvalid,
+
+    /// <summary>Refuses format 3 without a layer, or region tags on a set that has no layer.</summary>
+    LayerMissing,
+
+    /// <summary>Refuses a layer that is not one of the defined layers.</summary>
+    LayerUnknown,
+
+    /// <summary>Refuses a covered region listed more than once.</summary>
+    CoveredRegionDuplicate,
+
+    /// <summary>Refuses a part without its region tag in a set with a layer.</summary>
+    PartRegionMissing,
+
+    /// <summary>Refuses a skinned part's region run of fewer than one triangle.</summary>
+    PartRegionRunEmpty,
+
+    /// <summary>Refuses an empty or blank region name.</summary>
+    RegionNameEmpty,
+
+    /// <summary>Refuses a region name with malformed UTF-16, which canonical JSON cannot write.</summary>
+    RegionNameMalformedUtf16,
+
+    /// <summary>Refuses a skinned part whose region runs add up to more than <see cref="int.MaxValue"/> triangles.</summary>
+    RegionTriangleCountOverflow,
 }

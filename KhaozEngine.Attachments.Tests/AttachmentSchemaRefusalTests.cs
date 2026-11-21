@@ -1,4 +1,5 @@
 using System;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using KhaozEngine.Attachments;
@@ -142,5 +143,72 @@ public sealed class AttachmentSchemaRefusalTests
                 Assert.Equal(hierarchy.Reason, Assert.IsType<AttachmentHierarchyDataException>(hierarchy.InnerException).Reason);
                 break;
         }
+    }
+
+    [Theory]
+    [InlineData("layer missing in format 3", AttachmentSetRefusal.LayerMissing)]
+    [InlineData("layer is 'cloak'", AttachmentSetRefusal.LayerUnknown)]
+    [InlineData("covers lists 'a' twice", AttachmentSetRefusal.CoveredRegionDuplicate)]
+    [InlineData("rigid part without region", AttachmentSetRefusal.PartRegionMissing)]
+    [InlineData("skinned part without regions", AttachmentSetRefusal.PartRegionMissing)]
+    [InlineData("a run of zero triangles", AttachmentSetRefusal.PartRegionRunEmpty)]
+    [InlineData("layer on a format 2 set", AttachmentSetRefusal.JsonPropertyUnknown)]
+    [InlineData("region on a format 2 part", AttachmentSetRefusal.JsonPropertyUnknown)]
+    [InlineData("covers missing in format 3", AttachmentSetRefusal.JsonPropertyMissing)]
+    [InlineData("a run that is not a pair", AttachmentSetRefusal.JsonValueShapeInvalid)]
+    [InlineData("runs past Int32", AttachmentSetRefusal.RegionTriangleCountOverflow)]
+    public void A_bad_format_3_set_is_refused_with_its_reason(string fault, AttachmentSetRefusal reason)
+    {
+        string control = AttachmentFixtures.RegionsSetJson();
+        Assert.Equal(AttachmentLayer.Garment, AttachmentSetJson.Parse(Encoding.UTF8.GetBytes(control), "control.json").Layer);
+        string json = fault switch
+        {
+            "layer missing in format 3" => control.Replace("\"layer\":\"garment\",", "", StringComparison.Ordinal),
+            "layer is 'cloak'" => control.Replace("\"layer\":\"garment\"", "\"layer\":\"cloak\"", StringComparison.Ordinal),
+            "covers lists 'a' twice" => control.Replace("\"covers\":[\"a\",\"b\"]", "\"covers\":[\"a\",\"b\",\"a\"]", StringComparison.Ordinal),
+            "rigid part without region" => control.Replace(",\"region\":\"a\"", "", StringComparison.Ordinal),
+            "skinned part without regions" => control.Replace(",\"regions\":[[\"a\",3],[\"b\",1]]", "", StringComparison.Ordinal),
+            "a run of zero triangles" => control.Replace("[\"b\",1]", "[\"b\",0]", StringComparison.Ordinal),
+            "layer on a format 2 set" => control.Replace("\"formatVersion\":3", "\"formatVersion\":2", StringComparison.Ordinal),
+            "region on a format 2 part" => control.Replace("\"formatVersion\":3,\"layer\":\"garment\",\"covers\":[\"a\",\"b\"]", "\"formatVersion\":2", StringComparison.Ordinal),
+            "covers missing in format 3" => control.Replace("\"covers\":[\"a\",\"b\"],", "", StringComparison.Ordinal),
+            "a run that is not a pair" => control.Replace("[\"a\",3]", "[\"a\"]", StringComparison.Ordinal),
+            "runs past Int32" => control.Replace("[\"a\",3]", "[\"a\",2147483647]", StringComparison.Ordinal),
+            _ => throw new ArgumentException(fault),
+        };
+        Assert.NotEqual(control, json);
+        var error = Assert.Throws<AttachmentSetDataException>(() => AttachmentSetJson.Parse(Encoding.UTF8.GetBytes(json), "set.json"));
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal("set.json", error.SourceName);
+        Assert.Equal(fault switch
+        {
+            "layer missing in format 3" or "layer on a format 2 set" or "covers missing in format 3" => "$",
+            "layer is 'cloak'" => "$.layer",
+            "rigid part without region" or "region on a format 2 part" => "$.parts[0]",
+            "skinned part without regions" => "$.parts[1]",
+            "a run that is not a pair" => "$.parts[1].regions[0]",
+            _ => null,
+        }, error.JsonPath);
+        Assert.Equal(fault switch
+        {
+            "layer missing in format 3" or "layer on a format 2 set" => "layer",
+            "rigid part without region" or "region on a format 2 part" => "region",
+            "skinned part without regions" => "regions",
+            "covers missing in format 3" => "covers",
+            _ => null,
+        }, error.PropertyName);
+        Assert.Equal(fault == "layer is 'cloak'" ? "cloak" : null, error.LayerName);
+        Assert.Equal(fault switch
+        {
+            "rigid part without region" => (uint?)1,
+            "skinned part without regions" or "a run of zero triangles" or "a run that is not a pair" or "runs past Int32" => 2,
+            _ => null,
+        }, error.PartId);
+        Assert.Equal(fault switch { "a run of zero triangles" or "runs past Int32" => (int?)1, "a run that is not a pair" => 0, _ => null }, error.RunIndex);
+        Assert.Equal(fault == "covers lists 'a' twice" ? (int?)2 : null, error.CoverIndex);
+        Assert.Equal(fault switch { "covers lists 'a' twice" => "a", "a run of zero triangles" or "runs past Int32" => (string?)"b", _ => null }, error.RegionName);
+        Assert.Equal(fault == "runs past Int32" ? (long?)int.MaxValue + 1 : null, error.ActualTriangleCount);
+        if (fault is "covers lists 'a' twice")
+            Assert.Equal("covers", error.ParamName);
     }
 }

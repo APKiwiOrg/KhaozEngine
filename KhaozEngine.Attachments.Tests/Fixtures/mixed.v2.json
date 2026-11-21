@@ -1,0 +1,1 @@
+{"formatVersion":2,"parts":[{"id":1,"kind":"rigid","mesh":{"key":"parts/plate.glb","sha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"},"joint":"hip","local":[1,0,0,0,0,1,0,0,0,0,1,0,0.5,0,-1.25,1]},{"id":2,"kind":"skinned","mesh":{"key":"parts/garment.glb","sha256":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"}}]}

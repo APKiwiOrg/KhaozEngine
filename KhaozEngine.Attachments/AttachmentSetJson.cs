@@ -10,7 +10,12 @@ namespace KhaozEngine.Attachments;
 public static class AttachmentSetJson
 {
     public const int RigidOnlyFormatVersion = 1;
+
+    /// <summary>The format of a set with skinned parts and no layer. Kept at 2 because a public constant is compiled into its callers.</summary>
     public const int CurrentFormatVersion = 2;
+
+    /// <summary>The format of a worn set with a layer, covered regions and a region tag on every part.</summary>
+    public const int RegionsFormatVersion = 3;
 
     public static AttachmentSetDefinition Parse(ReadOnlyMemory<byte> utf8, string sourceName)
     {
@@ -19,15 +24,19 @@ public static class AttachmentSetJson
         {
             using JsonDocument document = JsonDocument.Parse(utf8, new JsonDocumentOptions());
             JsonElement root = document.RootElement;
-            Members(root, "root", "$", "formatVersion", "parts");
+            Members(root, "root", "$", "formatVersion", "layer", "covers", "parts");
             JsonElement version = Required(root, "formatVersion", "root", "$");
             if (version.ValueKind != JsonValueKind.Number || !version.TryGetInt32(out int number)
-                || number is not (RigidOnlyFormatVersion or CurrentFormatVersion))
+                || number is not (RigidOnlyFormatVersion or CurrentFormatVersion or RegionsFormatVersion))
                 throw new AttachmentSetDataException(AttachmentSetRefusal.FormatVersionUnsupported, "root: unsupported formatVersion.")
                 {
                     JsonPath = "$.formatVersion",
                     FormatVersion = version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out int declaredVersion) ? declaredVersion : null,
                 };
+            bool tagged = number == RegionsFormatVersion;
+            if (!tagged) Members(root, "root", "$", "formatVersion", "parts");
+            AttachmentLayer? layer = tagged ? ReadLayer(root) : null;
+            string[]? covers = tagged ? ReadCovers(root) : null;
             JsonElement array = Required(root, "parts", "root", "$");
             if (array.ValueKind != JsonValueKind.Array)
                 throw new AttachmentSetDataException(AttachmentSetRefusal.PartsNotArray, "root: parts must be an array.") { JsonPath = "$.parts" };
@@ -42,7 +51,8 @@ public static class AttachmentSetJson
                     Members(item, context, jsonPath, "id", "mesh", "joint", "local");
                 else
                 {
-                    Members(item, context, jsonPath, "id", "kind", "mesh", "joint", "local");
+                    if (tagged) Members(item, context, jsonPath, "id", "kind", "mesh", "joint", "local", "region", "regions");
+                    else Members(item, context, jsonPath, "id", "kind", "mesh", "joint", "local");
                     string kind = Text(item, "kind", context, jsonPath);
                     rigid = kind switch
                     {
@@ -51,7 +61,8 @@ public static class AttachmentSetJson
                         _ => throw new AttachmentSetDataException(AttachmentSetRefusal.JsonPartKindUnsupported, $"{context}: unsupported attachment kind.")
                         { JsonPath = jsonPath + ".kind", Kind = kind },
                     };
-                    if (!rigid) Members(item, context, jsonPath, "id", "kind", "mesh");
+                    if (!rigid) Members(item, context, jsonPath, tagged ? ["id", "kind", "mesh", "regions"] : ["id", "kind", "mesh"]);
+                    else if (tagged) Members(item, context, jsonPath, "id", "kind", "mesh", "joint", "local", "region");
                 }
                 JsonElement idValue = Required(item, "id", context, jsonPath);
                 if (idValue.ValueKind != JsonValueKind.Number || !idValue.TryGetUInt32(out uint id))
@@ -63,7 +74,7 @@ public static class AttachmentSetJson
                 string hash = Text(mesh, "sha256", context + " mesh", jsonPath + ".mesh");
                 if (!rigid)
                 {
-                    parts.Add(new SkinnedAttachmentPartDefinition(id, new(key, hash)));
+                    parts.Add(new SkinnedAttachmentPartDefinition(id, new(key, hash)) { Regions = tagged ? ReadRuns(item, id, jsonPath) : [] });
                     continue;
                 }
                 string joint = Text(item, "joint", context, jsonPath);
@@ -86,9 +97,15 @@ public static class AttachmentSetJson
                 }
                 var matrix = new Matrix4x4(values[0], values[1], values[2], values[3], values[4], values[5], values[6], values[7],
                     values[8], values[9], values[10], values[11], values[12], values[13], values[14], values[15]);
-                parts.Add(new RigidAttachmentPartDefinition(id, new(key, hash), joint, matrix));
+                string? region = null;
+                if (tagged)
+                {
+                    RequireRegionTag(item, "region", id, jsonPath);
+                    region = Text(item, "region", context, jsonPath);
+                }
+                parts.Add(new RigidAttachmentPartDefinition(id, new(key, hash), joint, matrix) { Region = region });
             }
-            return new AttachmentSetDefinition(parts);
+            return layer is { } setLayer ? new AttachmentSetDefinition(parts, setLayer, covers!) : new AttachmentSetDefinition(parts);
         }
         catch (MalformedDataException error)
         {
@@ -111,12 +128,21 @@ public static class AttachmentSetJson
     public static byte[] Write(AttachmentSetDefinition definition)
     {
         ArgumentNullException.ThrowIfNull(definition);
-        bool rigidOnly = definition.Parts.All(part => part is RigidAttachmentPartDefinition);
+        // The lowest format that expresses the definition, so a set without a layer keeps its format 1 or 2 bytes and hash.
+        bool tagged = definition.Layer is not null;
+        bool rigidOnly = !tagged && definition.Parts.All(part => part is RigidAttachmentPartDefinition);
         using var stream = new MemoryStream();
         using (var writer = new Utf8JsonWriter(stream))
         {
             writer.WriteStartObject();
-            writer.WriteNumber("formatVersion", rigidOnly ? RigidOnlyFormatVersion : CurrentFormatVersion);
+            writer.WriteNumber("formatVersion", tagged ? RegionsFormatVersion : rigidOnly ? RigidOnlyFormatVersion : CurrentFormatVersion);
+            if (definition.Layer is { } layer)
+            {
+                writer.WriteString("layer", LayerNames[(int)layer]);
+                writer.WriteStartArray("covers");
+                foreach (string region in definition.Covers) writer.WriteStringValue(region);
+                writer.WriteEndArray();
+            }
             writer.WriteStartArray("parts");
             foreach (AttachmentPartDefinition part in definition.Parts)
             {
@@ -135,6 +161,19 @@ public static class AttachmentSetJson
                     foreach (float value in AttachmentSetDefinition.Values(rigid.Local))
                         writer.WriteNumberValue(value == 0 ? 0f : value);
                     writer.WriteEndArray();
+                    if (tagged) writer.WriteString("region", rigid.Region);
+                }
+                else if (tagged)
+                {
+                    writer.WriteStartArray("regions");
+                    foreach (NamedRegionRun run in ((SkinnedAttachmentPartDefinition)part).Regions)
+                    {
+                        writer.WriteStartArray();
+                        writer.WriteStringValue(run.Region);
+                        writer.WriteNumberValue(run.TriangleCount);
+                        writer.WriteEndArray();
+                    }
+                    writer.WriteEndArray();
                 }
                 writer.WriteEndObject();
             }
@@ -142,6 +181,65 @@ public static class AttachmentSetJson
             writer.WriteEndObject();
         }
         return stream.ToArray();
+    }
+
+    // Indexed by AttachmentLayer value.
+    static readonly string[] LayerNames = ["body", "underclothes", "garment", "armour", "outerwear"];
+
+    static AttachmentLayer ReadLayer(JsonElement root)
+    {
+        if (!root.TryGetProperty("layer", out _))
+            throw new AttachmentSetDataException(AttachmentSetRefusal.LayerMissing, "root: format 3 requires a layer.") { JsonPath = "$", PropertyName = "layer" };
+        string name = Text(root, "layer", "root", "$");
+        int index = Array.IndexOf(LayerNames, name);
+        return index >= 0
+            ? (AttachmentLayer)index
+            : throw new AttachmentSetDataException(AttachmentSetRefusal.LayerUnknown, $"root: layer '{name}' is not a defined layer.") { JsonPath = "$.layer", LayerName = name };
+    }
+
+    static string[] ReadCovers(JsonElement root)
+    {
+        JsonElement covers = Required(root, "covers", "root", "$");
+        if (covers.ValueKind != JsonValueKind.Array)
+            throw new AttachmentSetDataException(AttachmentSetRefusal.JsonValueShapeInvalid, "root: covers must be an array of region names.") { JsonPath = "$.covers" };
+        var names = new string[covers.GetArrayLength()];
+        int index = 0;
+        foreach (JsonElement name in covers.EnumerateArray())
+        {
+            if (name.ValueKind != JsonValueKind.String)
+                throw new AttachmentSetDataException(AttachmentSetRefusal.JsonValueShapeInvalid, $"covers[{index}]: a covered region is a string.")
+                { JsonPath = $"$.covers[{index}]", CoverIndex = index };
+            names[index++] = name.GetString()!;
+        }
+        return names;
+    }
+
+    static NamedRegionRun[] ReadRuns(JsonElement item, uint partId, string jsonPath)
+    {
+        RequireRegionTag(item, "regions", partId, jsonPath);
+        JsonElement array = item.GetProperty("regions");
+        if (array.ValueKind != JsonValueKind.Array)
+            throw new AttachmentSetDataException(AttachmentSetRefusal.JsonValueShapeInvalid, $"part {partId}: regions must be an array of runs.")
+            { JsonPath = jsonPath + ".regions", PartId = partId };
+        var runs = new NamedRegionRun[array.GetArrayLength()];
+        int runIndex = 0;
+        foreach (JsonElement run in array.EnumerateArray())
+        {
+            string runPath = $"{jsonPath}.regions[{runIndex}]";
+            if (run.ValueKind != JsonValueKind.Array || run.GetArrayLength() != 2 || run[0].ValueKind != JsonValueKind.String
+                || run[1].ValueKind != JsonValueKind.Number || !run[1].TryGetInt32(out int triangles))
+                throw new AttachmentSetDataException(AttachmentSetRefusal.JsonValueShapeInvalid, $"part {partId} run {runIndex}: a run is a [region, triangleCount] pair.")
+                { JsonPath = runPath, PartId = partId, RunIndex = runIndex };
+            runs[runIndex++] = new NamedRegionRun(run[0].GetString()!, triangles);
+        }
+        return runs;
+    }
+
+    static void RequireRegionTag(JsonElement item, string name, uint partId, string jsonPath)
+    {
+        if (!item.TryGetProperty(name, out _))
+            throw new AttachmentSetDataException(AttachmentSetRefusal.PartRegionMissing, $"part {partId}: format 3 requires '{name}' on every part.")
+            { JsonPath = jsonPath, PropertyName = name, PartId = partId };
     }
 
     static void Members(JsonElement value, string context, string jsonPath, params string[] allowed)

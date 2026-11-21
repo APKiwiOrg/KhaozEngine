@@ -8,12 +8,27 @@ namespace KhaozEngine.Attachments;
 
 public sealed class AttachmentSetDefinition
 {
-    public AttachmentSetDefinition(IEnumerable<AttachmentPartDefinition> parts)
+    /// <summary>Admit a set with no layer, which formats 1 and 2 express. Its parts carry no region tags.</summary>
+    public AttachmentSetDefinition(IEnumerable<AttachmentPartDefinition> parts) : this(parts, null, null)
+    {
+    }
+
+    /// <summary>
+    /// Admit a worn set in <paramref name="layer"/> that hides the <paramref name="covers"/> regions below it. Every
+    /// rigid part names its region and every skinned part tags its triangles with region runs. Format 3 expresses it.
+    /// </summary>
+    public AttachmentSetDefinition(IEnumerable<AttachmentPartDefinition> parts, AttachmentLayer layer, IEnumerable<string> covers)
+        : this(parts, (AttachmentLayer?)layer, covers)
+    {
+    }
+
+    AttachmentSetDefinition(IEnumerable<AttachmentPartDefinition> parts, AttachmentLayer? layer, IEnumerable<string>? covers)
     {
         ArgumentNullException.ThrowIfNull(parts);
         AttachmentPartDefinition[] owned = parts.ToArray();
         if (owned.Length == 0)
             throw new AttachmentSetArgumentException(AttachmentSetRefusal.PartsEmpty, "An attachment set must contain parts.", nameof(parts)) { PartCount = owned.Length };
+        string[] coveredRegions = layer is { } admittedLayer ? AttachmentSetRegions.Covers(admittedLayer, covers!) : [];
 
         var ids = new HashSet<uint>();
         var meshes = new Dictionary<string, AttachmentMeshRef>(StringComparer.Ordinal);
@@ -53,12 +68,21 @@ public sealed class AttachmentSetDefinition
                 throw new AttachmentSetArgumentException(AttachmentSetRefusal.MeshHashConflict, $"{context}: mesh '{part.Mesh.Key}' has conflicting hashes.", nameof(parts))
                 { PartId = part.Id, MeshKey = part.Mesh.Key, DeclaredHash = part.Mesh.Sha256, ExistingHash = existing.Sha256 };
             meshes[part.Mesh.Key] = part.Mesh;
+            owned[partIndex] = AttachmentSetRegions.Part(part, layer is not null, nameof(parts));
         }
         Array.Sort(owned, (left, right) => left.Id.CompareTo(right.Id));
+        Layer = layer;
+        Covers = Array.AsReadOnly(coveredRegions);
         Parts = Array.AsReadOnly(owned);
         Meshes = Array.AsReadOnly(meshes.Values.OrderBy(mesh => mesh.Key, StringComparer.Ordinal).ToArray());
         SemanticSha256 = Convert.ToHexStringLower(SHA256.HashData(AttachmentSetJson.Write(this)));
     }
+
+    /// <summary>The layer a worn set sits in, or null for a set without one, as formats 1 and 2 read.</summary>
+    public AttachmentLayer? Layer { get; }
+
+    /// <summary>The regions the set hides below its layer, unique and in ordinal order. Empty for a set without a layer.</summary>
+    public IReadOnlyList<string> Covers { get; }
 
     public IReadOnlyList<AttachmentPartDefinition> Parts { get; }
     public IReadOnlyList<AttachmentMeshRef> Meshes { get; }

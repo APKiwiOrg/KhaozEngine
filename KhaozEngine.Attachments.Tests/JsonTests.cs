@@ -28,6 +28,73 @@ public class JsonTests
         Assert.Equal(1, document.RootElement.GetProperty("formatVersion").GetInt32());
     }
 
+    // Captured from the format 2 writer before format 3 existed. The stone fixtures above pin format 1 the same way.
+    const string MixedV2SemanticSha256 = "a485d9b7cd078c549a59089bd73caff3a232f9ba1b05b20c06a24ccbd394b541";
+
+    [Fact]
+    public void A_format_2_definition_keeps_its_semantic_hash()
+    {
+        byte[] committed = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Fixtures", "mixed.v2.json"));
+        AttachmentSetDefinition parsed = AttachmentSetJson.Parse(committed, "mixed.v2.json");
+        Assert.Equal(MixedV2SemanticSha256, parsed.SemanticSha256);
+        Assert.Equal(committed, AttachmentSetJson.Write(parsed));
+    }
+
+    [Theory]
+    [InlineData(AttachmentLayer.Body, "body")]
+    [InlineData(AttachmentLayer.Underclothes, "underclothes")]
+    [InlineData(AttachmentLayer.Garment, "garment")]
+    [InlineData(AttachmentLayer.Armour, "armour")]
+    [InlineData(AttachmentLayer.Outerwear, "outerwear")]
+    public void A_format_3_set_round_trips_layer_covers_and_region_tags(AttachmentLayer layer, string name)
+    {
+        string json = AttachmentFixtures.RegionsSetJson(name);
+        AttachmentSetDefinition parsed = Parse(json);
+        Assert.Equal(layer, parsed.Layer);
+        Assert.Equal(["a", "b"], parsed.Covers);
+        Assert.Equal(AttachmentFixtures.TaggedRigid(), parsed.Parts[0]);
+        Assert.Equal(AttachmentFixtures.TaggedSkinned(), parsed.Parts[1]);
+
+        byte[] written = AttachmentSetJson.Write(parsed);
+        Assert.Equal(json, Encoding.UTF8.GetString(written));
+        Assert.Equal(AttachmentFixtures.RegionsSet(layer).SemanticSha256, parsed.SemanticSha256);
+        Assert.Equal(parsed.SemanticSha256, AttachmentSetJson.Parse(written, "round-trip.json").SemanticSha256);
+    }
+
+    [Theory]
+    [InlineData("stone-body.v1.json")]
+    [InlineData("mixed.v2.json")]
+    public void Formats_1_and_2_parse_as_before_with_no_layer(string fixtureName)
+    {
+        AttachmentSetDefinition parsed = AttachmentSetJson.Parse(File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Fixtures", fixtureName)), fixtureName);
+        Assert.Null(parsed.Layer);
+        Assert.Empty(parsed.Covers);
+        Assert.NotEmpty(parsed.Parts);
+        Assert.All(parsed.Parts, part =>
+        {
+            if (part is RigidAttachmentPartDefinition rigid) Assert.Null(rigid.Region);
+            else Assert.Empty(Assert.IsType<SkinnedAttachmentPartDefinition>(part).Regions);
+        });
+    }
+
+    [Fact]
+    public void Write_emits_format_3_only_when_a_layer_is_set()
+    {
+        RigidAttachmentPartDefinition rigid = AttachmentFixtures.Part(1);
+        var skinned = new SkinnedAttachmentPartDefinition(2, new("parts/garment.glb", AttachmentFixtures.Hash));
+        Assert.Equal(1, WrittenVersion(new([rigid])));
+        Assert.Equal(2, WrittenVersion(new([rigid, skinned])));
+        Assert.Equal(AttachmentSetJson.RegionsFormatVersion, WrittenVersion(new([rigid with { Region = "a" }], AttachmentLayer.Armour, [])));
+        Assert.Equal(AttachmentSetJson.RegionsFormatVersion, WrittenVersion(AttachmentFixtures.RegionsSet()));
+        Assert.Equal(2, AttachmentSetJson.CurrentFormatVersion);
+    }
+
+    static int WrittenVersion(AttachmentSetDefinition definition)
+    {
+        using JsonDocument document = JsonDocument.Parse(AttachmentSetJson.Write(definition));
+        return document.RootElement.GetProperty("formatVersion").GetInt32();
+    }
+
     [Fact]
     public void Mixed_v2_round_trips_and_sorts_by_id()
     {
@@ -242,7 +309,7 @@ public class JsonTests
             "unknown-mesh" => V2(skinned.Replace("\"key\":", "\"extra\":0,\"key\":", StringComparison.Ordinal)),
             "duplicate-id-across-kinds" => V2(rigid + "," + skinned.Replace("\"id\":2", "\"id\":1", StringComparison.Ordinal)),
             "missing-mesh" => V2("{\"id\":1,\"kind\":\"skinned\"}"),
-            "unsupported-version" => V2(skinned).Replace("\"formatVersion\":2", "\"formatVersion\":3", StringComparison.Ordinal),
+            "unsupported-version" => V2(skinned).Replace("\"formatVersion\":2", "\"formatVersion\":4", StringComparison.Ordinal),
             "zero-id" => V2(skinned.Replace("\"id\":2", "\"id\":0", StringComparison.Ordinal)),
             "conflicting-hashes" => V2(rigid + "," + skinned.Replace(AttachmentFixtures.Hash, new string('b', 64), StringComparison.Ordinal)),
             _ => throw new ArgumentException(name),

@@ -13,7 +13,23 @@ rigid joint to resolve. Unknown programmatic part kinds are refused.
 Joint names and mesh keys require well-formed UTF-16 and retain their ordinal identity without
 Unicode normalization. Supplementary characters and literal U+FFFD remain valid.
 
-`AttachmentSetJson.Parse(utf8, sourceName)` accepts formats 1 and 2. Format 1 contains only rigid parts
+A worn set also declares its `AttachmentLayer` and the body regions it covers. Build one with
+`new AttachmentSetDefinition(parts, layer, covers)`. The layers are `Body`, `Underclothes`, `Garment`, `Armour`
+and `Outerwear`, ordered from the skin outward, and a higher layer hides the regions it covers on the body and on
+every lower layer. `Layer` is null and `Covers` is empty for a set built without a layer, which is every set read
+from formats 1 and 2. In a set with a layer, every `RigidAttachmentPartDefinition` names the region it sits on in
+`Region`, and every `SkinnedAttachmentPartDefinition` tags its triangles in `Regions` as `NamedRegionRun(Region,
+TriangleCount)` runs in triangle order. Both are init only properties, empty by default, so existing constructors
+and deconstruction are unchanged. A set without a layer refuses parts that carry either tag.
+
+The set owns its region data. `Covers` holds unique names in ordinal order, and a skinned part's runs are copied
+with adjacent runs of one region merged, so two sets that tag every triangle alike and cover the same regions in
+any listing order share their canonical bytes and `SemanticSha256`. Two skinned parts are equal when their runs
+are equal run by run. Region names need well-formed UTF-16 and keep their ordinal identity. A name is only a name
+in the set: whether the body has that region is checked when an outfit is resolved against the body's
+[region map](#body-region-maps).
+
+`AttachmentSetJson.Parse(utf8, sourceName)` accepts formats 1, 2 and 3. Format 1 contains only rigid parts
 and has no `kind` member:
 
 ```json
@@ -52,16 +68,45 @@ Format 2 requires `kind` on every part, using exactly `"rigid"` or `"skinned"`. 
 }
 ```
 
+Format 3 is format 2 with region coverage. The root adds `layer`, one of `body`, `underclothes`, `garment`,
+`armour` and `outerwear`, and `covers`, an array of unique region names that may be empty. A rigid part adds
+`region`, and a skinned part adds `regions` as `[name, triangleCount]` pairs. All four are required in format 3 and
+refused as unknown members in formats 1 and 2:
+
+```json
+{
+  "formatVersion": 3,
+  "layer": "garment",
+  "covers": ["a", "b"],
+  "parts": [
+    {
+      "id": 1,
+      "kind": "skinned",
+      "mesh": {
+        "key": "parts/garment.glb",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "regions": [["a", 3], ["b", 1]]
+    }
+  ]
+}
+```
+
+`AttachmentSetJson.CurrentFormatVersion` stays 2 and `RegionsFormatVersion` is 3. A public constant is compiled
+into its callers, so changing the value of an existing one would silently change what their code means.
+
 The example hash is a placeholder. Hash the exact self-contained GLB bytes. `local` contains 16
 row-major finite numbers and must be affine and invertible. Unknown or duplicate members, missing
 fields, unsupported versions and invalid parts throw `AttachmentSetDataException` with `SourceName`.
 Invalid constructor definitions throw `AttachmentSetArgumentException`. Both carry `AttachmentSetRefusal`
 and the identifiers listed in [Set refusals](#set-refusals).
 
-`Write(definition)` emits format 1 whenever all parts are rigid, even after parsing format 2.
-Existing canonical format-1 bytes and semantic hashes stay unchanged. A set containing skinned parts
-writes format 2. Property order is `id, mesh, joint, local` in format 1 and `id, kind, mesh` followed
-by rigid `joint, local` in format 2. Signed zero is normalized without changing other float values.
+`Write(definition)` emits the lowest format that expresses the definition. A set with a layer writes
+format 3, even when all its parts are rigid. Otherwise a set whose parts are all rigid writes format 1, even after
+parsing format 2, and a set containing skinned parts writes format 2. Existing canonical format 1 and 2 bytes and
+semantic hashes stay unchanged. Property order is `id, mesh, joint, local` in format 1 and `id, kind, mesh` followed
+by rigid `joint, local` in format 2. Format 3 writes `formatVersion, layer, covers, parts` at the root and appends
+`region` to a rigid part and `regions` to a skinned part. Signed zero is normalized without changing other float values.
 The writer emits canonical UTF-8 with no trailing newline. Its SHA-256 is
 `SemanticSha256`. Source whitespace and part-array order do not change that revision.
 Keep each part ID stable across source reordering. The renderer derives temporal identities from
@@ -181,9 +226,9 @@ where callers previously caught `InvalidDataException` for set data. The sealed 
 `AttachmentSetCache.Get` propagates these JSON refusals before mesh reads or uploads.
 
 For schema checks, `JsonPath` uses `$` for the root and identifies the refused value. Missing,
-duplicate and unknown properties identify their containing object plus `PropertyName`. `PartIndex` and
-`ComponentIndex` are zero-based. `ActualCount` is null when a local transform is not an array.
-`ActualHash` is null for a missing mesh reference. Messages remain developer prose.
+duplicate and unknown properties identify their containing object plus `PropertyName`. `PartIndex`,
+`ComponentIndex`, `CoverIndex` and `RunIndex` are zero-based. `ActualCount` is null when a local transform is not
+an array. `ActualHash` is null for a missing mesh reference. Messages remain developer prose.
 
 Every JSON refusal also carries `SourceName`. Direct constructor and reference checks have no source name.
 
@@ -213,7 +258,14 @@ Every JSON refusal also carries `SourceName`. Direct constructor and reference c
 | `JsonPropertyMissing` | a required property absent from attachment JSON. | `JsonPath`, `PropertyName` |
 | `JsonStringRequired` | a non-string attachment schema member. | `JsonPath`, `PropertyName` |
 | `JsonMalformed` | malformed JSON syntax while retaining the caller source name. | `InnerException` |
-| `JsonValueShapeInvalid` | a JSON value shape rejected by a framework accessor. | `InnerException` |
+| `JsonValueShapeInvalid` | a JSON value shape rejected by a framework accessor, or a `covers` entry or region run of the wrong shape. | `InnerException`, or `JsonPath` with `CoverIndex` or `PartId` and `RunIndex` |
+| `LayerMissing` | format 3 without a layer, or a part with a region tag in a set built without a layer. | `JsonPath` and `PropertyName`, or `PartId` |
+| `LayerUnknown` | a layer that names no defined layer. | `JsonPath` and `LayerName`, or `Layer` |
+| `CoveredRegionDuplicate` | a covered region listed more than once. | `CoverIndex`, `RegionName` |
+| `PartRegionMissing` | a part without its `region` or `regions` in a set with a layer. | `PartId`, and `JsonPath` and `PropertyName` from JSON |
+| `PartRegionRunEmpty` | a skinned part's run of fewer than one triangle. | `PartId`, `RunIndex`, `RegionName` |
+| `RegionNameEmpty`, `RegionNameMalformedUtf16` | a blank or malformed covered or part region name. | `RegionName`, with `CoverIndex` or `PartId` and `RunIndex` |
+| `RegionTriangleCountOverflow` | a skinned part whose runs add up past Int32. | `PartId`, `RunIndex`, `RegionName`, `ActualTriangleCount` |
 
 ## GLB refusals
 

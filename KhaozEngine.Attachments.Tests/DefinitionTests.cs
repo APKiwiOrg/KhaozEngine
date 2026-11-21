@@ -184,6 +184,90 @@ public class DefinitionTests
         Assert.NotEqual(revision, new AttachmentSetDefinition([skinned with { Mesh = new(rigid.Mesh.Key, new string('b', 64)) }]).SemanticSha256);
     }
 
+    [Fact]
+    public void Semantic_revision_follows_layer_covers_and_region_tags()
+    {
+        string revision = AttachmentFixtures.RegionsSet().SemanticSha256;
+        NamedRegionRun[] split = [new("a", 2), new("a", 1), new("b", 1)];
+        var equal = new AttachmentSetDefinition([AttachmentFixtures.TaggedSkinned(split), AttachmentFixtures.TaggedRigid()], AttachmentLayer.Garment, ["b", "a"]);
+        split[0] = new("b", 2);
+
+        Assert.Equal(revision, equal.SemanticSha256);
+        Assert.Equal(["a", "b"], equal.Covers);
+        Assert.Equal([new NamedRegionRun("a", 3), new NamedRegionRun("b", 1)], Assert.IsType<SkinnedAttachmentPartDefinition>(equal.Parts[1]).Regions);
+        Assert.Equal(AttachmentFixtures.TaggedSkinned(), equal.Parts[1]);
+        Assert.Throws<NotSupportedException>(() => ((IList<string>)equal.Covers).Clear());
+        Assert.Throws<NotSupportedException>(() => ((IList<NamedRegionRun>)((SkinnedAttachmentPartDefinition)equal.Parts[1]).Regions).Clear());
+        foreach (AttachmentSetDefinition changed in new[]
+        {
+            AttachmentFixtures.RegionsSet(AttachmentLayer.Armour),
+            new([AttachmentFixtures.TaggedRigid(), AttachmentFixtures.TaggedSkinned()], AttachmentLayer.Garment, ["a"]),
+            new([AttachmentFixtures.TaggedRigid("b"), AttachmentFixtures.TaggedSkinned()], AttachmentLayer.Garment, ["a", "b"]),
+            new([AttachmentFixtures.TaggedRigid(), AttachmentFixtures.TaggedSkinned(new("a", 2), new("b", 2))], AttachmentLayer.Garment, ["a", "b"]),
+        })
+            Assert.NotEqual(revision, changed.SemanticSha256);
+    }
+
+    [Theory]
+    [InlineData("undefined layer", AttachmentSetRefusal.LayerUnknown)]
+    [InlineData("covers lists 'a' twice", AttachmentSetRefusal.CoveredRegionDuplicate)]
+    [InlineData("blank covered region", AttachmentSetRefusal.RegionNameEmpty)]
+    [InlineData("malformed covered region", AttachmentSetRefusal.RegionNameMalformedUtf16)]
+    [InlineData("rigid part without region", AttachmentSetRefusal.PartRegionMissing)]
+    [InlineData("skinned part without regions", AttachmentSetRefusal.PartRegionMissing)]
+    [InlineData("blank rigid region", AttachmentSetRefusal.RegionNameEmpty)]
+    [InlineData("malformed run region", AttachmentSetRefusal.RegionNameMalformedUtf16)]
+    [InlineData("a run of zero triangles", AttachmentSetRefusal.PartRegionRunEmpty)]
+    [InlineData("runs past Int32", AttachmentSetRefusal.RegionTriangleCountOverflow)]
+    [InlineData("rigid region without a layer", AttachmentSetRefusal.LayerMissing)]
+    [InlineData("skinned regions without a layer", AttachmentSetRefusal.LayerMissing)]
+    public void A_bad_layered_definition_is_refused_with_its_reason(string fault, AttachmentSetRefusal reason)
+    {
+        RigidAttachmentPartDefinition rigid = AttachmentFixtures.TaggedRigid();
+        SkinnedAttachmentPartDefinition skinned = AttachmentFixtures.TaggedSkinned();
+        Assert.Equal(AttachmentLayer.Garment, AttachmentFixtures.RegionsSet().Layer);
+        Assert.Null(new AttachmentSetDefinition([AttachmentFixtures.Part(1), skinned with { Regions = [] }]).Layer);
+        Func<AttachmentSetDefinition> build = fault switch
+        {
+            "undefined layer" => () => new([rigid, skinned], (AttachmentLayer)5, ["a"]),
+            "covers lists 'a' twice" => () => new([rigid, skinned], AttachmentLayer.Garment, ["a", "b", "a"]),
+            "blank covered region" => () => new([rigid, skinned], AttachmentLayer.Garment, ["a", " "]),
+            "malformed covered region" => () => new([rigid, skinned], AttachmentLayer.Garment, ["a", "\uD800"]),
+            "rigid part without region" => () => new([rigid with { Region = null }, skinned], AttachmentLayer.Garment, ["a"]),
+            "skinned part without regions" => () => new([rigid, skinned with { Regions = [] }], AttachmentLayer.Garment, ["a"]),
+            "blank rigid region" => () => new([rigid with { Region = "" }, skinned], AttachmentLayer.Garment, ["a"]),
+            "malformed run region" => () => new([rigid, AttachmentFixtures.TaggedSkinned(new NamedRegionRun("\uDC00", 1))], AttachmentLayer.Garment, ["a"]),
+            "a run of zero triangles" => () => new([rigid, AttachmentFixtures.TaggedSkinned(new("a", 3), new("b", 0))], AttachmentLayer.Garment, ["a"]),
+            "runs past Int32" => () => new([rigid, AttachmentFixtures.TaggedSkinned(new("a", int.MaxValue), new("b", 1))], AttachmentLayer.Garment, ["a"]),
+            "rigid region without a layer" => () => new([rigid, skinned with { Regions = [] }]),
+            "skinned regions without a layer" => () => new([AttachmentFixtures.Part(1), skinned]),
+            _ => throw new ArgumentException(fault),
+        };
+        var error = Assert.Throws<AttachmentSetArgumentException>(() => build());
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal(fault switch { "undefined layer" => "layer", "covers lists 'a' twice" or "blank covered region" or "malformed covered region" => "covers", _ => "parts" }, error.ParamName);
+        Assert.Equal(fault == "undefined layer" ? (AttachmentLayer?)5 : null, error.Layer);
+        Assert.Equal(fault switch { "covers lists 'a' twice" => (int?)2, "blank covered region" or "malformed covered region" => 1, _ => null }, error.CoverIndex);
+        Assert.Equal(fault switch
+        {
+            "covers lists 'a' twice" => (string?)"a",
+            "blank covered region" => " ",
+            "malformed covered region" => "\uD800",
+            "blank rigid region" => "",
+            "malformed run region" => "\uDC00",
+            "a run of zero triangles" or "runs past Int32" => "b",
+            _ => null,
+        }, error.RegionName);
+        Assert.Equal(fault switch
+        {
+            "rigid part without region" or "blank rigid region" or "rigid region without a layer" => (uint?)1,
+            "skinned part without regions" or "malformed run region" or "a run of zero triangles" or "runs past Int32" or "skinned regions without a layer" => 2u,
+            _ => null,
+        }, error.PartId);
+        Assert.Equal(fault switch { "malformed run region" => (int?)0, "a run of zero triangles" or "runs past Int32" => 1, _ => null }, error.RunIndex);
+        Assert.Equal(fault == "runs past Int32" ? (long?)int.MaxValue + 1 : null, error.ActualTriangleCount);
+    }
+
     sealed record UnknownAttachmentPart(uint Id, AttachmentMeshRef Mesh) : AttachmentPartDefinition(Id, Mesh);
 }
 
@@ -194,4 +278,16 @@ internal static class AttachmentFixtures
     internal static RigidAttachmentPartDefinition Part(uint id) => new(id, new("parts/plate.glb", Hash), "hip", Matrix4x4.Identity);
     internal static string PartJson(uint id = 1) => $$"""{"id":{{id}},"mesh":{"key":"parts/plate.glb","sha256":"{{Hash}}"},"joint":"hip","local":{{Identity}}} """;
     internal static string SetJson(string parts) => $$"""{"formatVersion":1,"parts":[{{parts}}]}""";
+
+    internal static RigidAttachmentPartDefinition TaggedRigid(string region = "a") => Part(1) with { Region = region };
+
+    internal static SkinnedAttachmentPartDefinition TaggedSkinned(params NamedRegionRun[] runs) =>
+        new(2, new("parts/garment.glb", Hash)) { Regions = runs.Length == 0 ? [new("a", 3), new("b", 1)] : runs };
+
+    internal static AttachmentSetDefinition RegionsSet(AttachmentLayer layer = AttachmentLayer.Garment) =>
+        new([TaggedRigid(), TaggedSkinned()], layer, ["a", "b"]);
+
+    // The canonical format 3 bytes of RegionsSet(), member order as Write emits it.
+    internal static string RegionsSetJson(string layer = "garment") =>
+        $$"""{"formatVersion":3,"layer":"{{layer}}","covers":["a","b"],"parts":[{"id":1,"kind":"rigid","mesh":{"key":"parts/plate.glb","sha256":"{{Hash}}"},"joint":"hip","local":{{Identity}},"region":"a"},{"id":2,"kind":"skinned","mesh":{"key":"parts/garment.glb","sha256":"{{Hash}}"},"regions":[["a",3],["b",1]]}]}""";
 }

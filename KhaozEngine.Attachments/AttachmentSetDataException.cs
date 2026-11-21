@@ -77,6 +77,24 @@ public sealed class AttachmentSetDataException : MalformedDataException, IAttach
     /// <summary>The mesh hash supplied by the reference closure, or null when missing.</summary>
     public string? ActualHash { get; init; }
 
+    /// <summary>The undefined layer value given to the constructor.</summary>
+    public AttachmentLayer? Layer { get; init; }
+
+    /// <summary>The refused covered or part region name.</summary>
+    public string? RegionName { get; init; }
+
+    /// <summary>The zero-based input index of the refused covered region.</summary>
+    public int? CoverIndex { get; init; }
+
+    /// <summary>The zero-based input index of the refused region run of a skinned part.</summary>
+    public int? RunIndex { get; init; }
+
+    /// <summary>The run sum that passed the Int32 triangle range.</summary>
+    public long? ActualTriangleCount { get; init; }
+
+    /// <summary>The authored layer text that names no defined layer.</summary>
+    public string? LayerName { get; init; }
+
     MalformedDataException IAttachmentDataException.WithSource(string sourceName) => new AttachmentSetDataException(Reason, $"{sourceName}: {Message}", this)
     {
         SourceName = sourceName,
@@ -98,5 +116,11 @@ public sealed class AttachmentSetDataException : MalformedDataException, IAttach
         JointName = JointName,
         ExpectedHash = ExpectedHash,
         ActualHash = ActualHash,
+        Layer = Layer,
+        RegionName = RegionName,
+        CoverIndex = CoverIndex,
+        RunIndex = RunIndex,
+        ActualTriangleCount = ActualTriangleCount,
+        LayerName = LayerName,
     };
 }

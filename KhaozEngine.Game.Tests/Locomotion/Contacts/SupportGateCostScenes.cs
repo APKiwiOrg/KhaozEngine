@@ -114,8 +114,19 @@ internal static class SupportGateCostScenes
             FinalClamp = true, ClampMaximumX = 0.19f }];
     }
 
+    /// <summary>A flat box 0.25 m thick with its top where the flat box top is. A deck thinner than the query's
+    /// reach down puts its underside inside the footprint column, so a Find admits the underside as a second,
+    /// non-supporting member. It is kept out of <see cref="Rows"/> so the gate cost rows stay unchanged.</summary>
+    internal static SupportCostRow ThinDeck { get; } = new("thin deck");
+
     internal static SupportFootprintScene Build(SupportCostRow row)
     {
+        if (row.Name == ThinDeck.Name)
+        {
+            var deck = new SupportFootprintScene();
+            deck.Install(new BoxShape(new(4, 0.125f, 2)), Pose.At(new(0, -0.125f, 0)));
+            return deck;
+        }
         if (row.Name == "hidden crate") return SupportFootprintScenes.HiddenCrate(FootprintPartition.Boxes);
         if (row.Name == "grid 100") return SupportFootprintScenes.Grid(100);
         if (row.Name.StartsWith("fan ", StringComparison.Ordinal))

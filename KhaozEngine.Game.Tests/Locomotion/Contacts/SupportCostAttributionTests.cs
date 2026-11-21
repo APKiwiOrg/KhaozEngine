@@ -44,6 +44,31 @@ public sealed class SupportCostAttributionTests(ITestOutputHelper output) : IDis
     }
 
     [Fact]
+    public void ThinDeckFindAdmitsTheUndersideAsASecondMember()
+    {
+        SupportQueryDiagnostics.Enable(true);
+        SupportCostSample flat = MeasureFind("flat box");
+        Assert.Equal(1, flat.Counts.Members);
+        Assert.Equal(1, flat.Counts.PolygonOperands);
+        SupportCostSample deck = MeasureFind("thin deck");
+        Assert.True(deck.GeometryMatchesOracle);
+        Assert.Equal(0, deck.WarmBytes);
+        SupportQueryCounts c = deck.Counts;
+        // The whole tuple is a deck's Find shape, so the attribution's thin deck rows speak for a deck.
+        Assert.Equal((1L, 1L, 1L, 6L, 2L, 2L, 3L, 2L, 2L, 10L, 1L, 2L),
+            (c.Find, c.Volumes, c.SelectedStatics, c.Polygons, c.PolygonOperands, c.Members, c.Extrema,
+                c.StairStratum, c.PrefilterRejects, c.SharedMemberFacts, c.JoinsSkipped, c.Proposals));
+    }
+
+    static SupportCostSample MeasureFind(string name)
+    {
+        var recorder = new PhaseRecorder(false);
+        ContactAllocationDiagnostics.SetObserver(recorder.Observe);
+        return new SupportCostSampler(false)
+        { BeforeWarm = recorder.Reset, IsolateAllocations = true }.Measure(Row(name), "Find")[0];
+    }
+
+    [Fact]
     public void OneShotPhaseAttribution()
     {
         string? path = Environment.GetEnvironmentVariable("KHAOZ_SUPPORT_ATTRIBUTION");
@@ -62,6 +87,8 @@ public sealed class SupportCostAttributionTests(ITestOutputHelper output) : IDis
             foreach (string operation in name is "cluster 32 split" or "cluster 256 mesh" or "sphere" or "capsule"
                 or "cylinder" ? new[] { "Find" } : new[] { "Find", "DryTick" })
                 MeasureRow(name, operation, operation);
+        MeasureRow("thin deck", "Find", "Find");
+        MeasureRow("thin deck", "DryTick", "DryTick");
         File.WriteAllText(path, JsonSerializer.Serialize(measurements, new JsonSerializerOptions { WriteIndented = true }));
 
         void MeasureRow(string name, string operation, string recorded)
@@ -90,7 +117,7 @@ public sealed class SupportCostAttributionTests(ITestOutputHelper output) : IDis
     }
 
     static SupportCostRow Row(string name) => SupportGateCostScenes.Rows()
-        .Select(r => (SupportCostRow)r[0]).Single(r => r.Name == name);
+        .Select(r => (SupportCostRow)r[0]).Append(SupportGateCostScenes.ThinDeck).Single(r => r.Name == name);
 
     public void Dispose()
     {

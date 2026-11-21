@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using System.Runtime.ExceptionServices;
 using KhaozEngine.Render3D;
 
 namespace KhaozEngine.Attachments.Render3D;
@@ -107,11 +108,20 @@ public sealed class BoundOutfit : IDisposable
 
     /// <summary>Give back this outfit's views. A view another outfit still uses stays live, and the last user's
     /// release lets the scene free it at the next frame boundary. Idempotent.</summary>
+    /// <remarks>Every view is given back even when the scene refuses one, and the first refusal is rethrown after the
+    /// rest. The outfit is disposed either way and never retries, since a refused view is no longer one to free.
+    /// </remarks>
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
-        foreach (ViewKey key in _used) _views.Release(key);
+        ExceptionDispatchInfo? first = null;
+        foreach (ViewKey key in _used)
+        {
+            try { _views.Release(key); }
+            catch (Exception error) { first ??= ExceptionDispatchInfo.Capture(error); }
+        }
+        first?.Throw();
     }
 
     OutfitDraw[] Draws(int wornIndex)

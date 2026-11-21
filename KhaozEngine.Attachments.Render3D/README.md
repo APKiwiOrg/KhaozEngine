@@ -238,7 +238,10 @@ allocate no managed memory.
 
 A skinned part's region runs cover its triangles in the mesh's material order, then each material group's
 triangle order. Each material group is its own skinned handle, so a run that crosses from one group into the
-next splits at the boundary, and each handle gets its own view of its visible triangles.
+next splits at the boundary, and each handle gets its own view of its visible triangles. `BindOutfit` reads
+each tagged mesh's index lists when it binds, borrowed from the renderer for the shipped adapters, so a cache
+that never binds an outfit keeps no extra copy. A custom scene's lease cannot lend them, so its meshes are
+decoded again from the verified bytes the cache keeps, once per bind.
 
 Hidden triangles are cut through skinned mesh views (see the
 [regions and layers design](../docs/design/ATTACHMENT-REGIONS-AND-LAYERS-DESIGN.md#skinned-mesh-views)).
@@ -259,7 +262,9 @@ Dispose order matters, because an outfit's views draw from the cache's skinned m
 Dispose the outfit first. `AttachmentSetCache.Dispose`, a skinned attachment lease and the body's own
 `UnloadSkinnedMesh` each refuse with `SkinnedMeshViewArgumentException` and
 `SkinnedMeshViewRefusal.SourceHasLiveViews` while a view lives over one of their meshes, before changing
-anything, and succeed once the outfit is gone. Outfit disposal is idempotent.
+anything, and succeed once the outfit is gone. Outfit disposal is idempotent. It gives back every view even
+when the scene refuses one, for example a view the caller unloaded itself, and then rethrows the first
+refusal. A refused view is forgotten and never handed to another outfit.
 
 ## Table coverage preparation
 

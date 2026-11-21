@@ -48,6 +48,14 @@ internal sealed class SkinnedAttachmentUpload : ISkinnedAttachmentMeshLease, IAt
         get { ObjectDisposedException.ThrowIf(_disposed, this); return _view; }
     }
 
+    /// <summary>Each handle's index list as the renderer holds it, in material order, borrowed.</summary>
+    public ReadOnlyMemory<uint>[] SourceIndices()
+    {
+        var indices = new ReadOnlyMemory<uint>[_handles.Length];
+        for (int i = 0; i < indices.Length; i++) indices[i] = _scene.SkinnedSourceIndices(_handles[i]);
+        return indices;
+    }
+
     public void RefuseLiveViews() => _scene.RefuseSourcesWithLiveViews(_handles, null);
 
     // A live view over any handle refuses before the first unload, so a refusal leaves every handle live.

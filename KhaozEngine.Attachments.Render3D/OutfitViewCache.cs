@@ -31,6 +31,9 @@ internal sealed class OutfitViewCache
     }
 
     /// <summary>Give back one use taken by <see cref="Acquire"/>, releasing the view with its last user.</summary>
+    /// <remarks>The entry leaves the cache before the scene is asked, so a view whose release throws is never handed
+    /// out again. A throwing release means the scene no longer treats the handle as a view this cache may free, such
+    /// as one the caller already unloaded, so keeping it for reuse would hand out a dead handle.</remarks>
     internal void Release(ViewKey key)
     {
         SharedView shared = _views[key];

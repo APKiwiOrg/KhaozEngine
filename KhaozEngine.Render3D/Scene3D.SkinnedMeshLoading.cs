@@ -132,6 +132,13 @@ public sealed partial class Scene3D
         { Coverage = mesh.Coverage, CoverageSkeletonOwner = mesh.CoverageSkeletonOwner ?? mesh.Skeleton };
     }
 
+    /// <summary>The index list a live skinned mesh draws, borrowed and never written. The attachment outfit layer
+    /// reads it to build views over a cached attachment mesh without keeping a second copy.</summary>
+    internal ReadOnlyMemory<uint> SkinnedSourceIndices(SkinnedMeshHandle handle) =>
+        _skinnedSlots.IsValid(handle.Index, handle.Generation) && _skinnedMeshes[handle.Index] is { } entry
+            ? entry.Source.Indices32
+            : throw new ArgumentException("A skinned mesh's indices need a live handle.", nameof(handle));
+
     /// <summary>Detached copy of the upload source. Never returns the live entry's arrays.</summary>
     internal SkinnedGltfMesh SkinnedSourceSnapshotForTests(SkinnedMeshHandle handle) =>
         RetainSkinningSource(_skinnedMeshes[handle.Index]!.Source);

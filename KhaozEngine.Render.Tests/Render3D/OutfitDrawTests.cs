@@ -67,10 +67,13 @@ public sealed class OutfitDrawTests
         Assert.Equal(before, rig.Scene.LiveSkinnedMeshCount);
     }
 
-    [Fact]
-    public void A_lower_piece_loses_only_its_covered_triangles()
+    // A custom scene's leases cannot lend the renderer's index lists, so its row reads them from the cached GLB bytes.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_lower_piece_loses_only_its_covered_triangles(bool customLeases)
     {
-        using var rig = new OutfitRig();
+        using var rig = new OutfitRig(customLeases: customLeases);
         LoadedBodyRegions body = rig.BodyRegions(BodyRuns);
         // Eight garment triangles over two material handles of four each. The beta run spans the handle boundary, so
         // the first handle keeps its three alpha triangles and the second keeps its two gamma triangles.
@@ -92,6 +95,39 @@ public sealed class OutfitDrawTests
             Assert.Equal(plainGarment[i].Skinned with { Mesh = garmentDraws[i].Skinned.Mesh }, garmentDraws[i].Skinned);
         Assert.Equal(plainArmour, rig.Draws(outfit, 1));
         Assert.False(outfit.TryBodyMesh(0, out _));
+    }
+
+    [Fact]
+    public void A_worn_material_group_with_every_triangle_covered_writes_nothing()
+    {
+        using var rig = new OutfitRig();
+        LoadedBodyRegions body = rig.BodyRegions(BodyRuns);
+        // Two material handles of four triangles each. In the partial garment the first handle is all beta and the
+        // second keeps three gamma triangles. In the covered garment every triangle of both handles is beta.
+        BoundAttachmentSet partial = rig.Wear("partial.json", OutfitRig.Skinned(AttachmentLayer.Garment, [],
+            rig.Garment("partial.glb", materials: 2, seed: .25f), new NamedRegionRun("beta", 5), new NamedRegionRun("gamma", 3)));
+        BoundAttachmentSet covered = rig.Wear("covered.json", OutfitRig.Skinned(AttachmentLayer.Garment, [],
+            rig.Garment("covered.glb", materials: 2, seed: .75f), new NamedRegionRun("beta", 8)));
+        BoundAttachmentSet armour = rig.Wear("armour.json", OutfitRig.Skinned(AttachmentLayer.Armour, ["beta"],
+            rig.Garment("armour.glb", seed: .5f), new NamedRegionRun("beta", 4)));
+        int before = rig.Scene.LiveSkinnedMeshCount;
+
+        using BoundOutfit outfit = rig.Cache.BindOutfit(body, [partial, covered, armour]);
+
+        AttachmentDraw kept = Assert.Single(rig.Draws(outfit, 0));
+        Assert.Equal(1, kept.MaterialIndex);
+        Assert.True(rig.Scene.IsSkinnedMeshView(kept.Skinned.Mesh));
+        Assert.Equal([1u, 2, 0, 2, 0, 1, 0, 2, 1], rig.Indices(kept.Skinned.Mesh));
+        Assert.Equal(0, outfit.DrawCount(1));
+        Assert.Empty(rig.Draws(outfit, 1));
+        // One view for the partial garment's second handle and one for the body's alpha triangles, none for nothing.
+        Assert.Equal(before + 2, rig.Scene.LiveSkinnedMeshCount);
+        rig.Scene.Begin();
+        MeshOutlineGroup group = rig.Scene.BeginMeshOutline(Color.White, 2, MeshOutlineOcclusion.None);
+        outfit.QueueOutline(0, rig.Skeleton, rig.Palette, rig.Model, group);
+        outfit.QueueOutline(1, rig.Skeleton, rig.Palette, rig.Model, group);
+        Assert.Equal([kept.Skinned.Mesh], rig.Recording.OutlinedSkinned);
+        Assert.Empty(rig.Recording.OutlinedMeshes);
     }
 
     [Fact]
@@ -188,6 +224,35 @@ public sealed class OutfitDrawTests
     }
 
     [Fact]
+    public void Disposing_an_outfit_gives_back_every_view_when_one_release_is_refused()
+    {
+        using var rig = new OutfitRig();
+        LoadedBodyRegions body = rig.BodyRegions(BodyRuns);
+        LoadedAttachmentSet loaded = rig.Load("garment.json", OutfitRig.Skinned(AttachmentLayer.Garment, [],
+            rig.Garment("garment.glb"), new NamedRegionRun("alpha", 2), new NamedRegionRun("beta", 2)));
+        BoundAttachmentSet armour = rig.Wear("armour.json", OutfitRig.Skinned(AttachmentLayer.Armour, ["beta"],
+            rig.Garment("armour.glb", seed: .5f), new NamedRegionRun("beta", 4)));
+        int before = rig.Scene.LiveSkinnedMeshCount;
+        BoundOutfit outfit = rig.Cache.BindOutfit(body, [rig.Bind(loaded), armour]);
+        SkinnedMeshHandle garmentView = Assert.Single(rig.Draws(outfit, 0)).Skinned.Mesh;
+        Assert.True(outfit.TryBodyMesh(0, out SkinnedMeshHandle bodyView));
+        // The caller wrongly unloads the garment's view itself, so the outfit's own release of it is refused as a
+        // second unload. The garment's view is the outfit's first, so the body's view comes after the refusal.
+        rig.Scene.UnloadSkinnedMesh(garmentView);
+
+        Assert.ThrowsAny<ArgumentException>(() => outfit.Dispose());
+
+        outfit.Dispose();
+        rig.Scene.Begin();
+        Assert.False(rig.Scene.IsSkinnedMeshView(bodyView));
+        Assert.Equal(before, rig.Scene.LiveSkinnedMeshCount);
+        using BoundOutfit again = rig.Cache.BindOutfit(body, [rig.Bind(loaded), armour]);
+        SkinnedMeshHandle fresh = Assert.Single(rig.Draws(again, 0)).Skinned.Mesh;
+        Assert.NotEqual(garmentView, fresh);
+        Assert.True(rig.Scene.IsSkinnedMeshView(fresh));
+    }
+
+    [Fact]
     public void An_outfit_is_disposed_before_its_cache()
     {
         using var rig = new OutfitRig();
@@ -247,9 +312,9 @@ public sealed class OutfitDrawTests
     }
 
     [Fact]
-    public void Writing_draws_allocates_nothing_once_warm()
+    public void Frame_calls_allocate_nothing_once_warm()
     {
-        using var rig = new OutfitRig();
+        using var rig = new OutfitRig(recordOutlines: false);
         LoadedBodyRegions body = rig.BodyRegions(BodyRuns);
         BoundAttachmentSet garment = rig.Wear("garment.json", OutfitRig.Skinned(AttachmentLayer.Garment, ["alpha"],
             rig.Garment("garment.glb", materials: 2), new NamedRegionRun("alpha", 3), new NamedRegionRun("beta", 3), new NamedRegionRun("gamma", 2)));
@@ -258,21 +323,25 @@ public sealed class OutfitDrawTests
         using BoundOutfit outfit = rig.Cache.BindOutfit(body, [garment, armour]);
         var draws = new AttachmentDraw[4];
         RigidInstanceDraw template = new(default, Matrix4x4.Identity);
-        void Frame()
+        // One frame queues each worn set's outline once into a fresh group, as a game frame does. Only the outfit's
+        // calls are measured, so the scene's own frame begin stays outside the count.
+        long Frame()
         {
+            rig.Scene.Begin();
+            MeshOutlineGroup group = rig.Scene.BeginMeshOutline(Color.White, 2, MeshOutlineOcclusion.None);
+            long start = GC.GetAllocatedBytesForCurrentThread();
             outfit.WriteDraws(0, rig.Skeleton, rig.Palette, rig.Model, rig.Key, template, draws);
             outfit.WriteDraws(1, rig.Skeleton, rig.Palette, rig.Model, rig.Key, template, draws);
             outfit.TryBodyMesh(0, out _);
+            outfit.QueueOutline(0, rig.Skeleton, rig.Palette, rig.Model, group);
+            outfit.QueueOutline(1, rig.Skeleton, rig.Palette, rig.Model, group);
+            return GC.GetAllocatedBytesForCurrentThread() - start;
         }
-        Frame();
+        for (int i = 0; i < 3; i++) Frame();
 
-        long allocated;
-        using (AllocationRegion.Start("warm outfit draws"))
-        {
-            long start = GC.GetAllocatedBytesForCurrentThread();
-            for (int i = 0; i < 100; i++) Frame();
-            allocated = GC.GetAllocatedBytesForCurrentThread() - start;
-        }
+        long allocated = 0;
+        using (AllocationRegion.Start("warm outfit frame calls"))
+            for (int i = 0; i < 100; i++) allocated += Frame();
 
         Assert.Equal(0, allocated);
     }
@@ -418,7 +487,7 @@ internal sealed class OutfitRig : IDisposable
     internal readonly Matrix4x4 Model = Matrix4x4.CreateTranslation(10, 0, 0);
     internal readonly MotionKey Key = MotionKey.From(77);
 
-    internal OutfitRig(bool views = true)
+    internal OutfitRig(bool views = true, bool customLeases = false, bool recordOutlines = true)
     {
         Palette = Skeleton.ComposeRestPose();
         Map = RigidAttachmentTestRig.Map(Skeleton);
@@ -433,7 +502,7 @@ internal sealed class OutfitRig : IDisposable
             };
         Body = new SkinnedGltfMesh(vertices, [0, 1, 2, 2, 1, 3, 2, 3, 4, 4, 3, 5], Binds, Palette, Skeleton);
         BodyHandle = Scene.LoadSkinnedMesh(Body);
-        Recording = new OutfitRecordingScene(Scene);
+        Recording = new OutfitRecordingScene(Scene, customLeases, recordOutlines);
         Cache = new AttachmentSetCache(views ? Recording : new MixedAttachmentScene(new Scene3DAttachmentScene(Scene)), Source);
     }
 
@@ -517,14 +586,19 @@ internal sealed class OutfitRig : IDisposable
 }
 
 /// <summary>Forwards to the shipped adapter and records which meshes each outline call names.</summary>
-internal sealed class OutfitRecordingScene(Scene3D scene) : IAttachmentViewScene
+/// <remarks>With customLeases every skinned upload is handed back through a lease of the scene's own type, as a
+/// consumer's adapter would, so the cache cannot borrow the renderer's index lists.</remarks>
+internal sealed class OutfitRecordingScene(Scene3D scene, bool customLeases = false, bool recordOutlines = true) : IAttachmentViewScene
 {
     readonly Scene3DAttachmentScene _adapter = new(scene);
     internal List<MeshHandle> OutlinedMeshes { get; } = [];
     internal List<SkinnedMeshHandle> OutlinedSkinned { get; } = [];
     public IAttachmentMeshLease UploadAttachment(IReadOnlyList<GltfMeshPart> parts) => _adapter.UploadAttachment(parts);
-    public ISkinnedAttachmentMeshLease UploadSkinnedAttachment(IReadOnlyList<GltfSkinnedMeshPart> parts) =>
-        _adapter.UploadSkinnedAttachment(parts);
+    public ISkinnedAttachmentMeshLease UploadSkinnedAttachment(IReadOnlyList<GltfSkinnedMeshPart> parts)
+    {
+        ISkinnedAttachmentMeshLease lease = _adapter.UploadSkinnedAttachment(parts);
+        return customLeases ? new CustomSkinnedLease(lease) : lease;
+    }
     public SkinnedMeshHandle CreateSkinnedView(SkinnedMeshHandle source, ReadOnlySpan<uint> indices) =>
         _adapter.CreateSkinnedView(source, indices);
     public void ReleaseSkinnedView(SkinnedMeshHandle view) => _adapter.ReleaseSkinnedView(view);
@@ -532,13 +606,19 @@ internal sealed class OutfitRecordingScene(Scene3D scene) : IAttachmentViewScene
     public void DrawSkinned(in SkinnedInstanceDraw draw, ReadOnlySpan<Matrix4x4> bones) => _adapter.DrawSkinned(draw, bones);
     public void DrawMeshOutlineDissolved(MeshOutlineGroup group, MeshHandle mesh, Matrix4x4 world, float dissolve, bool complement)
     {
-        OutlinedMeshes.Add(mesh);
+        if (recordOutlines) OutlinedMeshes.Add(mesh);
         _adapter.DrawMeshOutlineDissolved(group, mesh, world, dissolve, complement);
     }
     public void DrawSkinnedOutlineDissolved(MeshOutlineGroup group, SkinnedMeshHandle mesh,
         ReadOnlySpan<Matrix4x4> bones, Matrix4x4 world, float dissolve, bool complement)
     {
-        OutlinedSkinned.Add(mesh);
+        if (recordOutlines) OutlinedSkinned.Add(mesh);
         _adapter.DrawSkinnedOutlineDissolved(group, mesh, bones, world, dissolve, complement);
+    }
+
+    sealed class CustomSkinnedLease(ISkinnedAttachmentMeshLease inner) : ISkinnedAttachmentMeshLease
+    {
+        public IReadOnlyList<SkinnedMeshHandle> Handles => inner.Handles;
+        public void Dispose() => inner.Dispose();
     }
 }

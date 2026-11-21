@@ -108,7 +108,7 @@ public sealed partial class AttachmentSetCache : IDisposable
             {
                 ISkinnedAttachmentMeshLease upload = Scene.UploadSkinnedAttachment(skinned);
                 lease = upload;
-                resources = new AttachmentPartResources(upload.Handles, skinned);
+                resources = new AttachmentPartResources(upload.Handles, skinned[0].Mesh);
             }
             else
             {

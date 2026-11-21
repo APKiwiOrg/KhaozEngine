@@ -246,6 +246,57 @@ with an `OutfitRefusal Reason`.
 |---|---|---|
 | `RegionUnknown` | a covered region, rigid part region or skinned run region the body does not declare. | `WornIndex`, `PartId` (null for a covered region), `RunIndex` (skinned runs only), `RegionName` |
 
+## Coverage claim check
+
+A piece's `Covers` hides the skin in those regions, so a false claim opens a hole in the body.
+`CoverageClaimCheck.Verify(bodyMeshes, body, piece, pieceMeshes, maxDistanceMetres)` checks the claim offline: at
+the rest pose the piece must lie over every triangle of every region it claims. A tool runs it when a piece is made.
+It casts one ray per claimed body triangle against every piece triangle, which suits low poly meshes, so it is never
+meant to run per frame and builds no acceleration structure.
+
+Geometry arrives as `CoverageClaimMesh(Positions, Indices)`, plain `ReadOnlyMemory<Vector3>` positions and a
+`ReadOnlyMemory<uint>` triangle list, so publishers and tools stay GPU free and never need a renderer mesh. The rules,
+with the reason for each:
+
+- `bodyMeshes` follow the region map's part order, one mesh per part with the part's triangle count, because the map
+  tags triangles by part and position and a mesh that disagrees would be checked against the wrong regions.
+- `pieceMeshes` are already in the body's rest frame. A rigid part is placed by its joint's rest transform and its
+  local transform before the call, since the check has no rig to place it with.
+- The ray starts at each claimed body triangle's centroid and runs along its outward normal, taken from counter
+  clockwise winding as glTF front faces. The centroid is the one point that always lies inside the triangle, and the
+  outward normal is the direction a piece worn over the skin lies in.
+- A piece triangle is hit from either side. A garment's inner surface faces the skin, and that is the surface an
+  outward ray meets first, so a back face test would call a well made garment uncovered.
+- A hit counts when its distance is from 0 to `maxDistanceMetres`, both ends included. A piece surface behind the
+  skin does not cover it, because the skin would be drawn over it. The consumer supplies the distance and the engine
+  sets no default, because how far a piece may stand off the skin depends on the game's art and scale. It must be
+  finite and greater than zero, or `ArgumentOutOfRangeException` is thrown.
+- A zero area body triangle has no normal. It is counted in its region's `TriangleCount` and `DegenerateCount` and
+  never makes a claim dishonest, because it cannot show through anything.
+- A piece with no layer, as formats 1 and 2 read, claims nothing. It is honest with an empty report.
+
+The `CoverageClaimReport` lists each claimed region in the body map's region order as a `CoverageClaimRegion` with
+its `Name`, `TriangleCount`, `DegenerateCount`, `UncoveredCount` and the `Uncovered` triangles as
+`CoverageClaimTriangle(PartIndex, TriangleIndex)`, in part then triangle order, so a tool can show them. `Honest` is
+true when no claimed triangle is uncovered. The ray test runs in double precision, so float geometry neither
+overflows nor underflows and only a triangle of truly zero area counts as degenerate.
+
+A null argument throws `ArgumentNullException`. Every other refusal throws `CoverageClaimDataException`, derived from
+`MalformedDataException`, with a `CoverageClaimRefusal Reason`. `MeshKind` says whether a refused mesh is a `Body`
+or `Piece` mesh and `MeshIndex` is its zero-based position in that list, which for a body mesh is its map part.
+
+| Reason | What it refuses | Other identifiers |
+|---|---|---|
+| `BodyMeshCountMismatch` | a body mesh count other than the map's part count. | `ExpectedMeshCount`, `ActualMeshCount` |
+| `BodyTriangleCountMismatch` | a body mesh whose triangle count differs from its map part's. | `MeshKind`, `MeshIndex`, `ExpectedTriangleCount`, `ActualTriangleCount` |
+| `RegionUnknown` | a covered region the body's map does not declare. | `RegionName` |
+| `IndexCountNotTriangles` | a mesh whose index count is not a multiple of three. | `MeshKind`, `MeshIndex`, `IndexCount` |
+| `IndexOutOfRange` | an index past the mesh's positions. | `MeshKind`, `MeshIndex`, `IndexPosition`, `VertexIndex`, `VertexCount` |
+| `PositionNotFinite` | a position with a NaN or infinite component. | `MeshKind`, `MeshIndex`, `VertexIndex` |
+
+The check has its own refusal family rather than `OutfitDataException`, because it resolves no worn list, so the
+outfit refusal's `WornIndex` would have nothing to name.
+
 ## Set refusals
 
 `AttachmentSetArgumentException` derives from `ArgumentException` for constructor admission.

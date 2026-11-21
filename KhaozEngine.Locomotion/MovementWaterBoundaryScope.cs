@@ -1,8 +1,9 @@
 namespace KhaozEngine.Locomotion;
 
 /// <summary>Which evidence answers the water boundary question for the leases of one environment context. It is
-/// engine-owned and set where a context is created. Games never choose it.</summary>
-internal enum MovementWaterBoundaryScope
+/// engine-owned and set where a context is created. Games never choose it. It is one byte, so every lease holds it in
+/// the padding beside its flags and a lease allocates no more than it did before the scope existed.</summary>
+internal enum MovementWaterBoundaryScope : byte
 {
     /// <summary>Runtime movement. The capture certificate may answer, and a declined question takes the full
     /// coverage solve.</summary>

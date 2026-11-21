@@ -4,6 +4,48 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 24.3.0
+
+2026-11-21
+
+A minor with additive runtime API in `KhaozEngine.Locomotion` and `KhaozEngine.TileWorld.Physics`. Runtime Contact
+movement answers a water boundary proof from a capture certificate when the answer cannot depend on the water
+geometry, and a step whose full solve would refuse such a proof now continues past it. Navigation bakes are unchanged.
+
+**Water boundary reach certificate.**
+
+- What is new. Runtime Contact movement answers a water boundary proof from a capture certificate in three cases:
+  an empty reach for every policy, one free surface for a SurfaceSwimmer, and one free surface for a WadeOnly body
+  whose whole path stays above its swim-enter line at that level. Every other proof takes the full coverage trace
+  as before. The [water boundary certificate design](docs/design/WATER-BOUNDARY-CERTIFICATE.md) says why these
+  answers cannot depend on the water geometry.
+- API. `IMovementWaterBoundaryReachProof` in `KhaozEngine.Locomotion` is an optional producer interface on
+  `IMovementWaterField`. Its `CertifyBoundaryReach` returns a `MovementWaterReach`, whose `MovementWaterReachKind`
+  is `Declined`, `Empty` or `OneFreeSurface`. The default `MovementWaterReach` declines. `TileMediumSampler`
+  implements it as the public `TileMediumSampler.CertifyBoundaryReach`, and declines on two levels in reach, on
+  more than 256 columns, on a query its trace would refuse as invalid and on a capture whose facts it did not
+  verify. The analytic level field does not implement it.
+- What does not change. Wherever the full solve returns Known, every output bit of a step is what it was. Navigation
+  bakes always take the full solve, so their links, refusals and exceptions are unchanged. A new golden pins 45
+  Contact bakes over tile water to their files before this change.
+- What does change. Where the full solve would refuse a proof, a runtime step continues past that proof and its
+  later checks decide the outcome. The refusals are a coverage error above 0.001 m, an evaluation that does not
+  resolve or is not finite, a kernel capacity limit, and a result rejected as malformed, which includes an exception
+  raised inside the producer. Runtime Drop following can therefore continue past a proof a bake refused. Point
+  samples, support, shell sweeps, solid contacts, route boundary proofs, frame checks and authentication are
+  unaffected.
+- Cost. A clean grounded moving step makes seven boundary proofs. On a bank or a shelf over one level and on dry
+  ground with no column in reach, the tests pin seven coverage traces for such a SurfaceSwimmer step without the
+  certificate and none with it. The saving is counted in traces. No measured time is recorded.
+- What a consumer must do. Nothing, to keep working. A consumer that wraps its water field must forward
+  `IMovementWaterBoundaryReachProof` to get the saving, because a wrapper that forwards only the trace keeps the
+  full solve. A producer may implement the interface only if it guarantees four facts for every answer other than a
+  decline: every contact its trace can report is free surface, every such contact carries its own column's top as
+  its nominal surface, every such contact belongs to a column the certificate counted, and every domain of the
+  capture has one level.
+- Hardening. The internal navigation proof constructors refuse a runtime movement binding, so a bake cannot leave
+  the full solve by mistake.
+
 ## 24.2.0
 
 2026-11-18

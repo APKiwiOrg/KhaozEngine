@@ -63,6 +63,7 @@ public sealed partial class Scene3D
             if (mesh is { MaterialSet: { } set }) into.Add(set);
         foreach (SkinnedMeshEntry? mesh in _skinnedMeshes)
         {
+            if (mesh is { IsView: true }) continue;   // a view's sets are its source's, collected once there
             if (mesh?.MaterialSet is { } materialSet) into.Add(materialSet);
             if (mesh?.SkinnedMaterialSet is { } skinnedMaterialSet) into.Add(skinnedMaterialSet);
         }
@@ -91,7 +92,7 @@ public sealed partial class Scene3D
 
         for (int i = 0; i < _skinnedMeshes.Count; i++)
         {
-            if (_skinnedMeshes[i] is not { } mesh) continue;
+            if (_skinnedMeshes[i] is not { IsView: false } mesh) continue;
             IGpuResourceSet? materialSet = mesh.MaterialSet is null ? null : replacementFor(mesh.MaterialSet);
             IGpuResourceSet? skinnedMaterialSet = mesh.SkinnedMaterialSet is null
                 ? null
@@ -100,6 +101,7 @@ public sealed partial class Scene3D
                 materialSet, skinnedMaterialSet, mesh.OutlineMaterialSet, mesh.AlphaCutoff,
                 mesh.Source, in mesh.Bounds);
         }
+        RebindSkinnedViewSets();
 
         foreach (SplatMaterialEntry? material in _splatMaterials)
             if (material is not null) material.ReplaceSet(replacementFor(material.Set));

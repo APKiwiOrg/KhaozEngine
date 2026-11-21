@@ -2585,6 +2585,33 @@ before palette, queue or motion publication.
 |---|---|---|
 | `ShadowOnlyWithoutCasting` | A shadow-only draw with shadow casting disabled | `ShadowOnly`, `CastsShadows`, `ParamName` |
 
+## Skinned mesh views
+
+`CreateSkinnedMeshView(source, indices)` returns a handle that draws `indices` over a loaded skinned mesh's vertices
+with its materials, alpha cutoff, bounds and inverse binds. It draws, outlines and casts cascade and point shadows
+through every skinned API, because every skinned pass draws an entry's whole index buffer and a view is an entry with
+a filtered one. The index buffer takes the narrowest format that fits. `IsSkinnedMeshView` tells a view from a loaded
+mesh. The design is in [Attachment regions and layers](../docs/design/ATTACHMENT-REGIONS-AND-LAYERS-DESIGN.md).
+
+`UnloadSkinnedMesh(view)` keeps the view drawable until the frame ends, because queued draws resolve their handle
+when the frame is prepared. The next `Begin` frees its slot and retires its index buffer. A source refuses to unload
+while a view of it lives. A view already unloaded this frame is released with its source, and its draws this frame
+are dropped with the source's own. Views count toward the live skinned mesh slots.
+
+`SkinnedMeshViewArgumentException` derives from `ArgumentException`, which skinned unload threw for a bad handle
+before, and carries `SkinnedMeshViewRefusal` with the source's `SourceIndex` and `SourceGeneration`. A refused call
+creates nothing.
+
+| Reason | Refused input | Extra identifiers |
+|---|---|---|
+| `SourceNotLive` | A default or stale source handle | |
+| `SourceIsView` | A source that is itself a view | |
+| `SourceHasCoverage` | A source with host coverage evidence, since coverage tables index the host's own triangles | |
+| `IndicesEmpty` | No indices. A fully hidden mesh is the caller's to skip | |
+| `IndexCountNotTriangles` | A count that is not a multiple of three | `IndexCount` |
+| `IndexOutOfRange` | An index past the source's vertices | `IndexPosition`, `VertexCount` |
+| `SourceHasLiveViews` | `UnloadSkinnedMesh(source)` while a view of it lives | `LiveViews` |
+
 ## Post-chain and water-frame refusals
 
 `PostChainArgumentException` derives from `ArgumentException`, and `PostChainStateException` derives from

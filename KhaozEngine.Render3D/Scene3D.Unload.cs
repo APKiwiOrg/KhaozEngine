@@ -144,11 +144,17 @@ namespace KhaozEngine.Render3D
         /// A no-op after <see cref="Dispose"/> has run.
         /// <para>Does not drain. This is the unload an MMO client runs constantly, one per avatar or corpse leaving
         /// interest range, so the buffers and all material sets are retired and destroyed at a later frame
-        /// boundary instead of stalling the frame thread on every despawn.</para></summary>
+        /// boundary instead of stalling the frame thread on every despawn.</para>
+        /// <para>A view from <see cref="CreateSkinnedMeshView"/> keeps drawing until the frame ends, then frees its
+        /// index buffer. A source refuses with <see cref="SkinnedMeshViewArgumentException"/> and
+        /// <see cref="SkinnedMeshViewRefusal.SourceHasLiveViews"/> while a view of it lives. Views already unloaded
+        /// this frame are released with it.</para></summary>
         public void UnloadSkinnedMesh(SkinnedMeshHandle h)
         {
             if (_disposalComplete) return;
             if (h.Generation == 0) return;
+            if (DeferSkinnedViewRelease(h)) return;
+            ReleaseViewsOfSkinnedSource(h);
             _skinnedSlots.Free(h.Index, h.Generation);
             if (_skinnedMeshes[h.Index] is { } e)
             {

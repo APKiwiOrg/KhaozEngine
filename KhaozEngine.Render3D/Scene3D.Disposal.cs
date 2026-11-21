@@ -66,7 +66,8 @@ namespace KhaozEngine.Render3D
                     Release("meshShadowCutoutSet", () => mesh.ShadowCutoutSet?.Dispose());
                 }
             foreach (var m in _skinnedMeshes)
-                if (m is { } e)
+                if (m is { IsView: true } view) Release("viewIb", view.Ib.Dispose);   // shares the rest with its source
+                else if (m is { } e)
                 {
                     Release("eVb", e.Vb.Dispose);
                     Release("eIb", e.Ib.Dispose);
@@ -74,6 +75,8 @@ namespace KhaozEngine.Render3D
                     shadowReceiversReleased &= Release("eSkinnedMaterialSet", () => e.SkinnedMaterialSet?.Dispose());
                     Release("eOutlineMaterialSet", () => e.OutlineMaterialSet?.Dispose());
                 }
+            _pendingSkinnedViewReleases.Clear();   // their index buffers went with the entries above
+            _skinnedLiveViews.Clear();
             foreach (var set in _texBillboardSets) Release("texturedBillboardSet", () => set?.Dispose());
             _texBillboardSets.Clear();
             // Per-mesh sets name these scene-loaded maps and owned material parameter buffers. Ground bundles own

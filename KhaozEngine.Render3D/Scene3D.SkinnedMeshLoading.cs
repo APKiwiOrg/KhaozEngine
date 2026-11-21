@@ -88,18 +88,7 @@ public sealed partial class Scene3D
             var entry = new SkinnedMeshEntry(
                 vertexBuffer, indexBuffer, mesh.Indices32.Length, mesh.IndexFormat,
                 material, skinnedMaterial, outlineMaterial, alphaCutoff, mesh, in bounds);
-            int index = _skinnedSlots.Alloc(out int generation);
-            if (index < _skinnedMeshes.Count)
-            {
-                _skinnedMeshes[index] = entry;
-                _skinnedCpuVerts[index] = mesh.Vertices;
-            }
-            else
-            {
-                _skinnedMeshes.Add(entry);
-                _skinnedCpuVerts.Add(mesh.Vertices);
-            }
-            return new SkinnedMeshHandle(index, generation, _coverageSceneStamp);
+            return StoreSkinnedEntry(entry, mesh.Vertices);
         }
         catch
         {
@@ -110,6 +99,23 @@ public sealed partial class Scene3D
             outlineMaterial?.Dispose();
             throw;
         }
+    }
+
+    // Takes a slot for a complete entry and its CPU skinning vertices. Nothing can fail once the slot is taken.
+    SkinnedMeshHandle StoreSkinnedEntry(SkinnedMeshEntry entry, SkinnedVertex[] cpuVertices)
+    {
+        int index = _skinnedSlots.Alloc(out int generation);
+        if (index < _skinnedMeshes.Count)
+        {
+            _skinnedMeshes[index] = entry;
+            _skinnedCpuVerts[index] = cpuVertices;
+        }
+        else
+        {
+            _skinnedMeshes.Add(entry);
+            _skinnedCpuVerts.Add(cpuVertices);
+        }
+        return new SkinnedMeshHandle(index, generation, _coverageSceneStamp);
     }
 
     static SkinnedGltfMesh RetainSkinningSource(SkinnedGltfMesh mesh)
@@ -157,6 +163,11 @@ public sealed partial class Scene3D
         public readonly Matrix4x4[] InverseBind;
         public readonly SkinnedGltfMesh Source;
         public readonly MeshBounds Bounds;
+        // The source slot a view draws over, or -1 for a loaded mesh. A view shares the source's vertex buffer and
+        // material sets and owns only its index buffer (Scene3D.SkinnedMeshViews.cs).
+        public readonly int ViewOf;
+
+        public bool IsView => ViewOf >= 0;
 
         public SkinnedMeshEntry(
             IGpuBuffer vb,
@@ -168,7 +179,8 @@ public sealed partial class Scene3D
             IGpuResourceSet? outlineMaterialSet,
             float alphaCutoff,
             SkinnedGltfMesh source,
-            in MeshBounds bounds)
+            in MeshBounds bounds,
+            int viewOf = -1)
         {
             Vb = vb;
             Ib = ib;
@@ -181,6 +193,11 @@ public sealed partial class Scene3D
             Source = source;
             InverseBind = source.InverseBind;
             Bounds = bounds;
+            ViewOf = viewOf;
         }
+
+        /// <summary>This view over the source's current material sets, after a replacement rebuilt them.</summary>
+        public SkinnedMeshEntry WithSourceSets(SkinnedMeshEntry source) => new(Vb, Ib, IndexCount, IndexFormat,
+            source.MaterialSet, source.SkinnedMaterialSet, source.OutlineMaterialSet, AlphaCutoff, Source, in Bounds, ViewOf);
     }
 }

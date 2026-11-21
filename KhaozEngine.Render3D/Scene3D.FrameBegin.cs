@@ -27,6 +27,7 @@ public sealed partial class Scene3D
     void BeginCore(GpuFrameSubmission? submission = null)
     {
         if (_coverageRegistered) throw StaleCoverage(null);
+        ReleasePendingSkinnedViews();   // the frame that unloaded them has recorded its draws
         if (submission is not null) _retired.BeginFrame(submission);
         ApplyPendingShadowLayout();
         ApplyPendingPointShadowLayout();

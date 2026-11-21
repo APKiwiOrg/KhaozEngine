@@ -26,8 +26,8 @@ The set owns its region data. `Covers` holds unique names in ordinal order, and 
 with adjacent runs of one region merged, so two sets that tag every triangle alike and cover the same regions in
 any listing order share their canonical bytes and `SemanticSha256`. Two skinned parts are equal when their runs
 are equal run by run. Region names need well-formed UTF-16 and keep their ordinal identity. A name is only a name
-in the set: whether the body has that region is checked when an outfit is resolved against the body's
-[region map](#body-region-maps).
+in the set: whether the body has that region is checked when an [outfit is resolved](#outfit-coverage) against the
+body's [region map](#body-region-maps).
 
 `AttachmentSetJson.Parse(utf8, sourceName)` accepts formats 1, 2 and 3. Format 1 contains only rigid parts
 and has no `kind` member:
@@ -209,6 +209,42 @@ Refusals throw `BodyRegionMapDataException`, derived from `MalformedDataExceptio
 | `RunEmpty` | a run of fewer than one triangle. | `PartIndex`, `RunIndex` |
 | `TriangleCountMismatch` | runs that do not add up to the part's declared triangle count. | `PartIndex`, `DeclaredTriangleCount`, `ActualTriangleCount` |
 | `TriangleCountOverflow` | a part whose runs add up past Int32, from the constructor. | `PartIndex`, `RunIndex`, `ActualTriangleCount` |
+
+## Outfit coverage
+
+`OutfitCoverage.Resolve(body, worn)` works out what an outfit hides on one body from the body's region map and
+the worn set definitions, in the order the caller wears them. It is a pure function with no renderer, so a tool can
+explain an outfit offline. Call it when the outfit changes, never per frame. It allocates, and the result keeps no
+reference to the caller's list.
+
+The rule, with the reason for each part:
+
+- `BodyHidden` is the union of `Covers` over every worn set that has a layer, a `Body` layer set included. Any
+  layered piece sits on top of the skin, so skin drawn under it would only show through where the piece is thin or
+  moves. A `Body` layer piece replaces the body's own look over the regions it covers.
+- `HiddenFor(wornIndex)` is the union of `Covers` over worn sets whose layer is strictly higher. A piece is drawn
+  over everything below its layer, so only a higher layer can hide it. Two pieces on one layer never hide each
+  other, because neither is on top: hiding either would open a hole that nothing else fills.
+- A set with no layer, as formats 1 and 2 read, covers nothing and `HiddenFor` is empty for it. It declares no
+  regions, so the rule has nothing to hide it by, and every set worn before format 3 keeps drawing exactly as it did.
+- `RigidPartHidden(wornIndex, partId)` is true when `HiddenFor` holds the region the rigid part sits on. A rigid
+  part is one unsplit mesh on one joint, so it hides whole. A rigid part of a set with no layer is never hidden.
+- `SkinnedPartRegions(wornIndex, partId)` lists a skinned part's runs in triangle order as `RegionRun` with body
+  region indices, the shape `BodyRegionMap.Parts` uses. A run is hidden when `HiddenFor` contains its region. The
+  drawing layer builds its index lists from these runs and the hidden set without resolving names again. It is
+  empty for a part of a set with no layer.
+
+`WornCount` is the number of worn sets. A worn index outside it throws `ArgumentOutOfRangeException`, and a part ID
+the set has no rigid or skinned part for throws `ArgumentException`. A null body, list or worn set throws
+`ArgumentNullException`.
+
+Every region name a worn set uses is resolved here: its covered regions, each rigid part's region and each skinned
+run's region. A name the body does not declare throws `OutfitDataException`, derived from `MalformedDataException`,
+with an `OutfitRefusal Reason`.
+
+| Reason | What it refuses | Other identifiers |
+|---|---|---|
+| `RegionUnknown` | a covered region, rigid part region or skinned run region the body does not declare. | `WornIndex`, `PartId` (null for a covered region), `RunIndex` (skinned runs only), `RegionName` |
 
 ## Set refusals
 

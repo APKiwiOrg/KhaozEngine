@@ -42,8 +42,11 @@ public sealed class SkinnedMeshViewTests
 
         Assert.True(rig.Scene.IsSkinnedMeshView(view));
         Assert.False(rig.Scene.IsSkinnedMeshView(source));
-        Assert.Equal(["cascade 6", "colour 6", "outline 6", "point 6"], PassesDrawn(draws, viewIndices));
-        Assert.Equal(["cascade 12", "colour 12", "outline 12", "point 12"], PassesDrawn(draws, sourceIndices));
+        PassDraw[] viewDraws = PassDraws(draws, viewIndices), sourceDraws = PassDraws(draws, sourceIndices);
+        Assert.Equal(["cascade 6", "colour 6", "outline 6", "point 6"], Shapes(viewDraws));
+        Assert.Equal(["cascade 12", "colour 12", "outline 12", "point 12"], Shapes(sourceDraws));
+        // Drawn beside its source under the same settings, the view is drawn exactly as often in every pass.
+        Assert.Equal(Counts(sourceDraws), Counts(viewDraws));
     }
 
     [Fact]
@@ -76,8 +79,8 @@ public sealed class SkinnedMeshViewTests
     public void A_bad_view_is_refused(string fault)
     {
         using var coverage = fault == "source with coverage evidence" ? new CoverageBindingFixture() : null;
-        using var rig = new ViewRig(gpuSkinning: true);
-        Scene3D scene = coverage?.Scene ?? rig.Scene;
+        using var rig = coverage is null ? new ViewRig(gpuSkinning: true) : null;
+        Scene3D scene = coverage?.Scene ?? rig!.Scene;
         uint[] valid = [0, 1, 2];
         SkinnedMeshHandle control = scene.LoadSkinnedMesh(Strip());
         SkinnedMeshHandle source = control;
@@ -124,7 +127,7 @@ public sealed class SkinnedMeshViewTests
     {
         using var rig = new ViewRig(gpuSkinning: true);
         SkinnedMeshHandle source = rig.LoadStrip(out _);
-        SkinnedMeshHandle view = rig.CreateView(source, AlternateTriangles, out _);
+        SkinnedMeshHandle view = rig.CreateView(source, AlternateTriangles, out FakeBuffer viewIndices);
         int live = rig.Scene.LiveSkinnedMeshCount;
 
         var refusal = Assert.Throws<SkinnedMeshViewArgumentException>(() => rig.Scene.UnloadSkinnedMesh(source));
@@ -138,23 +141,35 @@ public sealed class SkinnedMeshViewTests
         rig.Scene.UnloadSkinnedMesh(view);
         rig.Scene.UnloadSkinnedMesh(source);
         Assert.Equal(live - 2, rig.Scene.LiveSkinnedMeshCount);
+        // The source took its unloaded view with it, so the frame boundary has nothing left to free twice, and the
+        // view's index buffer still reaches the retire queue.
+        rig.Scene.Begin();
+        for (int boundary = 0; boundary < GpuRetireQueue.DefaultFrameDelay; boundary++) rig.Scene.Begin();
+        Assert.True(viewIndices.Disposed);
     }
 
     [Fact]
     public void A_view_unloaded_mid_frame_still_draws_this_frame()
     {
         using var rig = new ViewRig(gpuSkinning: true);
-        SkinnedMeshHandle source = rig.LoadStrip(out _);
+        SkinnedMeshHandle source = rig.LoadStrip(out FakeBuffer sourceIndices);
         SkinnedMeshHandle view = rig.CreateView(source, AlternateTriangles, out FakeBuffer viewIndices);
-        rig.RenderFrame(scene => scene.DrawSkinned(new SkinnedInstanceDraw(view, Matrix4x4.Identity), rig.Pose));
+        void Draw(Scene3D scene)
+        {
+            scene.DrawSkinned(new SkinnedInstanceDraw(source, Matrix4x4.Identity), rig.Pose);
+            scene.DrawSkinned(new SkinnedInstanceDraw(view, Matrix4x4.Identity), rig.Pose);
+        }
+        rig.RenderFrame(Draw);
 
         IReadOnlyList<RecordingGpuCommandList.IndexedDraw> draws = rig.RenderFrame(scene =>
         {
-            scene.DrawSkinned(new SkinnedInstanceDraw(view, Matrix4x4.Identity), rig.Pose);
+            Draw(scene);
             scene.UnloadSkinnedMesh(view);
         });
 
-        Assert.Equal(["cascade 6", "colour 6", "point 6"], PassesDrawn(draws, viewIndices));
+        PassDraw[] viewDraws = PassDraws(draws, viewIndices);
+        Assert.Equal(["cascade 6", "colour 6", "point 6"], Shapes(viewDraws));
+        Assert.Equal(Counts(PassDraws(draws, sourceIndices)), Counts(viewDraws));
         Assert.False(viewIndices.Disposed);
         Assert.Throws<ArgumentException>(() => rig.Scene.UnloadSkinnedMesh(view));
         // The next frame boundary releases the view and hands its index buffer to the retire queue, which destroys
@@ -167,11 +182,18 @@ public sealed class SkinnedMeshViewTests
         Assert.True(viewIndices.Disposed);
     }
 
-    // One pass name and index count per distinct draw of buffer, so a pass that drew the wrong count or not at all shows.
-    static string[] PassesDrawn(IReadOnlyList<RecordingGpuCommandList.IndexedDraw> draws, FakeBuffer indices) =>
+    readonly record struct PassDraw(string Pass, uint IndexCount, int Draws);
+
+    // The draws of one index buffer grouped by pass and index count, so a wrong count, a missing pass and a pass that
+    // draws the buffer more often than its counterpart each show.
+    static PassDraw[] PassDraws(IReadOnlyList<RecordingGpuCommandList.IndexedDraw> draws, FakeBuffer indices) =>
         draws.Where(draw => ReferenceEquals(draw.IndexBuffer, indices))
-            .Select(draw => $"{PassOf(draw.Pipeline)} {draw.IndexCount}")
-            .Distinct().Order(StringComparer.Ordinal).ToArray();
+            .GroupBy(draw => (Pass: PassOf(draw.Pipeline), draw.IndexCount))
+            .Select(group => new PassDraw(group.Key.Pass, group.Key.IndexCount, group.Count()))
+            .OrderBy(draw => draw.Pass, StringComparer.Ordinal).ThenBy(draw => draw.IndexCount).ToArray();
+
+    static string[] Shapes(PassDraw[] draws) => draws.Select(draw => $"{draw.Pass} {draw.IndexCount}").ToArray();
+    static string[] Counts(PassDraw[] draws) => draws.Select(draw => $"{draw.Pass} x{draw.Draws}").ToArray();
 
     static readonly (string Pass, string[] VertexSources)[] Passes =
     [

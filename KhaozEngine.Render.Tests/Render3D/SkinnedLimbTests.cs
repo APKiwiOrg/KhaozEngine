@@ -185,5 +185,26 @@ namespace KhaozEngine.Tests.Render3D
             d += MathF.Abs(a.M41 - b.M41) + MathF.Abs(a.M42 - b.M42) + MathF.Abs(a.M43 - b.M43) + MathF.Abs(a.M44 - b.M44);
             return d < 1e-4f;
         }
+
+        [Fact]
+        public void Disposing_a_limb_under_a_live_view_refuses_and_keeps_the_limb()
+        {
+            using var device = new KhaozEngine.Tests.Gpu.FakeGpuDevice();
+            using var scene = new Scene3D(device, new KhaozEngine.Gpu.GpuOutputDescription(null,
+                KhaozEngine.Gpu.GpuPixelFormat.R8G8B8A8UNorm));
+            var limb = new SkinnedLimb(scene, 0.2f, 1f, 4, 6, 3, Writhe);
+            SkinnedMeshHandle view = scene.CreateSkinnedMeshView(limb.Handle, new uint[] { 0, 1, 2 });
+
+            var refusal = Assert.Throws<SkinnedMeshViewArgumentException>(limb.Dispose);
+
+            Assert.Equal(SkinnedMeshViewRefusal.SourceHasLiveViews, refusal.Reason);
+            Assert.Equal(2, scene.LiveSkinnedMeshCount);
+            Assert.NotEqual(0, limb.Handle.Generation);
+            // Control: with the view gone the same dispose is accepted and frees the tube.
+            scene.UnloadSkinnedMesh(view);
+            limb.Dispose();
+            Assert.Equal(0, scene.LiveSkinnedMeshCount);
+            Assert.Equal(0, limb.Handle.Generation);
+        }
     }
 }

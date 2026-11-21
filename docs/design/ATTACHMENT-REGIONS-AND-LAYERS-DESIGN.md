@@ -97,6 +97,9 @@ Unload rules:
   unloading its source releases it at once, and its draws this frame are dropped with the source's own draws,
   exactly as a source unloaded mid frame always drops its queued draws. This lets a despawn release an outfit's
   views and then its body in one frame.
+- A refused unload changes nothing it owns. `UnloadSharedSkinnedMesh` keeps its key, `SkinnedLimb.Dispose` keeps the
+  limb live, and an attachment upload lease or `AttachmentSetCache` stays undisposed and resumes at the refused
+  handle on the next try, without freeing an earlier handle twice.
 - `Dispose` frees every view's index buffer and never a shared resource twice.
 
 `IsSkinnedMeshView` is true while the handle names a live view, including one unloaded during the current frame.
@@ -118,7 +121,7 @@ Views occupy skinned slots, so they count toward `LiveSkinnedMeshCount`.
 | `_retired` | Deferred GPU destruction | Receives the view's index buffer at release. |
 | `_coverageHosts` | Annotated hosts | A coverage source is refused, and a view's `Source` has no coverage, so `CreateHostCoverage` refuses a view as unannotated. |
 | Motion history | Previous model and palette per `MotionKey` | Unchanged. A view drawn under the source's key has the same bone count. |
-| `_sharedSkinnedMeshes` | Shared asset handles by key | Views are never shared assets. Releasing a shared source with live views refuses. |
+| `_sharedSkinnedMeshes` | Shared asset handles by key | Views are never shared assets. Releasing a shared source with live views refuses and keeps its key. |
 
 The per frame records (`GpuSkinnedDraw`, `CpuSkinnedDraw`, outline parts) copy the entry's buffers and counts, so
 the colour, motion, cascade, point and outline passes need no change.

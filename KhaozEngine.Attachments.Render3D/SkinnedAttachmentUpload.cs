@@ -11,7 +11,9 @@ internal sealed class SkinnedAttachmentUpload : ISkinnedAttachmentMeshLease, IAt
     readonly SkinnedMeshHandle[] _handles;
     readonly Scene3D.SurfaceMaps[] _maps;
     readonly IReadOnlyList<SkinnedMeshHandle> _view;
-    bool _meshesUnloaded;
+    // Handles already unloaded. A source with a live view refuses its unload, and a retry resumes at that handle
+    // instead of freeing the earlier ones twice.
+    int _unloadedMeshes;
     bool _disposed;
 
     SkinnedAttachmentUpload(Scene3D scene, int count)
@@ -50,16 +52,14 @@ internal sealed class SkinnedAttachmentUpload : ISkinnedAttachmentMeshLease, IAt
 
     public void UnloadMeshes()
     {
-        if (_meshesUnloaded) return;
-        _meshesUnloaded = true;
-        foreach (SkinnedMeshHandle handle in _handles) _scene.UnloadSkinnedMesh(handle);
+        for (; _unloadedMeshes < _handles.Length; _unloadedMeshes++) _scene.UnloadSkinnedMesh(_handles[_unloadedMeshes]);
     }
 
     public void Dispose()
     {
         if (_disposed) return;
+        UnloadMeshes();   // a refusal leaves the lease live and retryable
         _disposed = true;
-        UnloadMeshes();
         foreach (Scene3D.SurfaceMaps maps in _maps) _scene.UnloadSurfaceMaps(maps);
     }
 }

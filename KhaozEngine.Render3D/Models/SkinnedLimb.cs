@@ -169,12 +169,12 @@ namespace KhaozEngine.Render3D
         public void Dispose()
         {
             if (_disposed) return;
-            _disposed = true;
             if (_scene is not null && _handle.Generation != 0)
             {
-                _scene.UnloadSkinnedMesh(_handle);
+                _scene.UnloadSkinnedMesh(_handle);   // refuses while a view of the tube lives, leaving the limb intact
                 _handle = default;
             }
+            _disposed = true;
         }
 
         void ThrowIfDisposed()

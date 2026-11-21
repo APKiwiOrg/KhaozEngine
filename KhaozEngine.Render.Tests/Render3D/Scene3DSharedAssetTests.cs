@@ -122,6 +122,30 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void UnloadSharedSkinnedMesh_UnderALiveViewRefusesAndKeepsTheKey()
+        {
+            using var device = new FakeGpuDevice();
+            using IGpuFramebuffer fb = NewTarget(device.Factory);
+            using var scene = new Scene3D(device, fb.Outputs);
+            SkinnedMeshHandle shared = scene.GetOrLoadSkinnedMesh("body",
+                () => scene.LoadSkinnedMesh(SkinnedMeshBuilder.BuildTube(0.5f, 2f, 2, 4, 3)));
+            SkinnedMeshHandle view = scene.CreateSkinnedMeshView(shared, new uint[] { 0, 1, 2 });
+            int cached = scene.SharedAssetCount;
+
+            var refusal = Assert.Throws<SkinnedMeshViewArgumentException>(() => scene.UnloadSharedSkinnedMesh("body"));
+
+            Assert.Equal(SkinnedMeshViewRefusal.SourceHasLiveViews, refusal.Reason);
+            Assert.Equal(cached, scene.SharedAssetCount);
+            SkinnedMeshHandle again = scene.GetOrLoadSkinnedMesh("body",
+                () => throw new InvalidOperationException("A refused release must keep the cached mesh."));
+            Assert.Equal((shared.Index, shared.Generation), (again.Index, again.Generation));
+            // Control: with the view gone the same release is accepted and forgets the key.
+            scene.UnloadSkinnedMesh(view);
+            Assert.True(scene.UnloadSharedSkinnedMesh("body"));
+            Assert.Equal(cached - 1, scene.SharedAssetCount);
+        }
+
+        [Fact]
         public void SharedAssetCount_TracksWhatIsCachedAcrossAllThreeFamilies()
         {
             using var device = new FakeGpuDevice();

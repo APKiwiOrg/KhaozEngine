@@ -170,12 +170,14 @@ public sealed partial class AttachmentSetCache : IDisposable
     public void Dispose()
     {
         if (_disposed) return;
-        _disposed = true;
         foreach (var host in _coverageLifetimes.Keys) host.Invalidate();
         _coverageLifetimes.Clear(); _coverage.Clear(); _coverageSources.Clear();
+        // A skinned mesh a live view still draws from refuses its unload. The cache then stays undisposed, and a
+        // retry once the view is gone resumes where the refusal stopped.
         Release(_meshes.Values);
         _meshes.Clear();
         _definitions.Clear();
+        _disposed = true;
     }
 
     static void Release(IEnumerable<CachedMesh> meshes)

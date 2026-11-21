@@ -312,6 +312,53 @@ public sealed class SkinnedAttachmentAssetTests
     }
 
     [Fact]
+    public void Skinned_cache_disposal_under_a_live_view_refuses_and_resumes_once_the_view_goes()
+    {
+        using var harness = new AttachmentAssetHarness();
+        var source = new AttachmentTestSource();
+        AttachmentMeshRef skin = source.Mesh("skin.glb", Glb(materials: 2));
+        string hash = Set(source, "set.json", Skin(1, skin));
+        var cache = new AttachmentSetCache(harness.Scene, source);
+        int from = harness.Factory.Buffers.Count;
+        LoadedAttachmentSet loaded = cache.Get("set.json", hash);
+        List<FakeBuffer> buffers = harness.Factory.Buffers.Skip(from).ToList();
+        // A view over the second material handle, so the first is already unloaded when the second refuses.
+        SkinnedMeshHandle view = harness.Scene.CreateSkinnedMeshView(loaded.Resources[0].SkinnedHandles[1], [0, 1, 2]);
+
+        var refusal = Assert.Throws<SkinnedMeshViewArgumentException>(cache.Dispose);
+
+        Assert.Equal(SkinnedMeshViewRefusal.SourceHasLiveViews, refusal.Reason);
+        Assert.Equal(hash, loaded.DefinitionSha256);
+        // Control: with the view gone the retry frees the rest, and freeing nothing twice is what lets it return.
+        harness.Scene.UnloadSkinnedMesh(view);
+        cache.Dispose();
+        Assert.Throws<ObjectDisposedException>(() => loaded.Definition);
+        harness.DrainRetired();
+        Assert.Equal(0, harness.Scene.LiveSkinnedMeshCount);
+        Assert.All(buffers, b => Assert.True(b.Disposed));
+    }
+
+    [Fact]
+    public void Skinned_lease_disposal_under_a_live_view_refuses_and_keeps_the_lease()
+    {
+        using var harness = new AttachmentAssetHarness();
+        IAttachmentScene attachmentScene = new Scene3DAttachmentScene(harness.Scene);
+        IReadOnlyList<GltfSkinnedMeshPart> parts = GltfLoader.LoadSkinnedPartsWithMaterials(Glb(materials: 2), "fixture");
+        ISkinnedAttachmentMeshLease lease = attachmentScene.UploadSkinnedAttachment(parts);
+        SkinnedMeshHandle view = harness.Scene.CreateSkinnedMeshView(lease.Handles[1], [0, 1, 2]);
+
+        var refusal = Assert.Throws<SkinnedMeshViewArgumentException>(lease.Dispose);
+
+        Assert.Equal(SkinnedMeshViewRefusal.SourceHasLiveViews, refusal.Reason);
+        Assert.Equal(2, lease.Handles.Count);
+        // Control: with the view gone the same dispose is accepted.
+        harness.Scene.UnloadSkinnedMesh(view);
+        lease.Dispose();
+        Assert.Throws<ObjectDisposedException>(() => lease.Handles);
+        Assert.Equal(0, harness.Scene.LiveSkinnedMeshCount);
+    }
+
+    [Fact]
     public void Tile_scene_offers_typed_immutable_skinned_leases()
     {
         using var harness = new AttachmentAssetHarness();

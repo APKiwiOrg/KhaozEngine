@@ -81,7 +81,8 @@ public sealed partial class GridPathPlanner
                 return;
             }
 
-            // A ring whose arithmetic wraps has an empty span, as in the inclusive ring bounds.
+            // Stop at the last representable ring. An inclusive bound of int.MaxValue
+            // must end here too, without incrementing a coordinate past it.
             if (_ring == _maxRing || (long)_queryX - _ring - 1 < int.MinValue ||
                 (long)_queryX + _ring + 1 > int.MaxValue || (long)_queryZ - _ring - 1 < int.MinValue ||
                 (long)_queryZ + _ring + 1 > int.MaxValue)

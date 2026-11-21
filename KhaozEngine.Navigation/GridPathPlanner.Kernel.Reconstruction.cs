@@ -32,12 +32,20 @@ public sealed partial class GridPathPlanner
                 BeginDecoding();
         }
 
-        void ReversePair()
+        void ReverseChain(int operations)
         {
             List<int> chain = _scratch.Chain;
-            int end = chain.Count - 1 - _waypoint;
-            (chain[_waypoint], chain[end]) = (chain[end], chain[_waypoint]);
-            if (++_waypoint == chain.Count / 2) BeginDecoding();
+            if (operations == int.MaxValue)
+            {
+                chain.Reverse();
+            }
+            else
+            {
+                int end = chain.Count - 1 - _waypoint;
+                (chain[_waypoint], chain[end]) = (chain[end], chain[_waypoint]);
+                if (++_waypoint < chain.Count / 2) return;
+            }
+            BeginDecoding();
         }
 
         void BeginDecoding()
@@ -73,11 +81,19 @@ public sealed partial class GridPathPlanner
             Phase = SearchPhase.Copy;
         }
 
-        void CopyWaypoint()
+        void CopyWaypoints(int operations)
         {
-            _resultArray![_waypoint] = _scratch.Waypoints[_waypoint];
-            if (++_waypoint == _resultArray.Length)
-                Publish(new NavPath(_reachedGoal ? NavPathStatus.Complete : NavPathStatus.Partial, _resultArray));
+            NavWaypoint[] result = _resultArray!;
+            if (operations == int.MaxValue)
+            {
+                _scratch.Waypoints.CopyTo(result);
+            }
+            else
+            {
+                result[_waypoint] = _scratch.Waypoints[_waypoint];
+                if (++_waypoint < result.Length) return;
+            }
+            Publish(new NavPath(_reachedGoal ? NavPathStatus.Complete : NavPathStatus.Partial, result));
         }
     }
 }

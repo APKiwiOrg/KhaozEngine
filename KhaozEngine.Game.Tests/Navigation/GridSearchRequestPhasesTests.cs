@@ -15,24 +15,26 @@ public partial class GridSearchRequestEqualityTests
     public void PhaseBoundaryQuanta()
     {
         var (planner, goal) = DisconnectedCorridor();
-        using var pool = planner.CreateWorkspaces(1);
+        using var pool = planner.CreateWorkspaces(1, PathQueryBudget.Default);
         using var baseline = NewRequest(planner, pool, goal);
-        var boundaries = new Dictionary<Phase, long>();
+        var boundaries = new Dictionary<Phase, (long WorkSpent, Phase Next)>();
         for (int i = 0; baseline.State == PathPlanState.Pending; i++)
         {
             Assert.True(i < 1000);
             Phase phase = baseline.NextPhaseForTests;
             baseline.Advance(new PathWorkBudget(1));
-            if (phase != baseline.NextPhaseForTests) boundaries[phase] = baseline.WorkSpent;
+            if (phase != baseline.NextPhaseForTests)
+                boundaries[phase] = (baseline.WorkSpent, baseline.NextPhaseForTests);
         }
 
         using var request = NewRequest(planner, pool, goal);
         Phase[] cuts = { Phase.Member, Phase.CertificateProgress, Phase.Neighbor, Phase.Parent, Phase.Reverse, Phase.Copy };
-        Array.Sort(cuts, (left, right) => boundaries[left].CompareTo(boundaries[right]));
+        Array.Sort(cuts, (left, right) => boundaries[left].WorkSpent.CompareTo(boundaries[right].WorkSpent));
         foreach (Phase cut in cuts)
         {
-            request.Advance(new PathWorkBudget(checked((int)(boundaries[cut] - request.WorkSpent))));
-            Assert.Equal(boundaries[cut], request.WorkSpent);
+            var (workSpent, next) = boundaries[cut];
+            request.Advance(new PathWorkBudget(checked((int)(workSpent - request.WorkSpent))));
+            Assert.Equal((workSpent, next), (request.WorkSpent, request.NextPhaseForTests));
         }
         Assert.Equal(PathPlanState.Ready, request.State);
         EqualBits(Assert.IsType<NavPath>(baseline.Result), Assert.IsType<NavPath>(request.Result));
@@ -42,7 +44,7 @@ public partial class GridSearchRequestEqualityTests
     public void QuotaBelowLargestWeight()
     {
         var planner = Incremental(Corridor());
-        using var pool = planner.CreateWorkspaces(1);
+        using var pool = planner.CreateWorkspaces(1, PathQueryBudget.Default);
         using var request = NewRequest(planner, pool, End());
         bool exceededQuota = false;
         for (int i = 0; request.State == PathPlanState.Pending; i++)
@@ -68,7 +70,7 @@ public partial class GridSearchRequestEqualityTests
     public void CancellingASlicedPhaseReturnsOneWorkspace(int phase)
     {
         var (planner, goal) = DisconnectedCorridor();
-        using var pool = planner.CreateWorkspaces(1);
+        using var pool = planner.CreateWorkspaces(1, PathQueryBudget.Default);
         using var owner = NewRequest(planner, pool, goal);
         using var oldest = NewRequest(planner, pool, End());
         using var youngest = NewRequest(planner, pool, End());

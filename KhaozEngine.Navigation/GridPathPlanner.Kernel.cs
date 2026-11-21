@@ -43,7 +43,7 @@ public sealed partial class GridPathPlanner
         readonly Vector2? _pointGoal;
 
         int _startId, _startLayer, _startX, _startZ;
-        int _current, _layer, _x, _z;
+        int _current, _layer, _x, _z, _width, _layerBase;
         int _closest, _expanded, _sequence, _neighbor, _link, _wrapOffset;
         double _closestProgress, _gCurrent;
         NavGrid _grid;
@@ -124,13 +124,13 @@ public sealed partial class GridPathPlanner
                 case SearchPhase.Wrap: ClearStampBlock(); break;
                 case SearchPhase.Seed: SeedOpen(); break;
                 case SearchPhase.Pop: Pop(); break;
-                case SearchPhase.Neighbor: TestNeighbor(); break;
-                case SearchPhase.Link: TestLink(); break;
+                case SearchPhase.Neighbor: TestNeighbors(operations); break;
+                case SearchPhase.Link: TestLinks(operations); break;
                 case SearchPhase.Parent: VisitParent(); break;
-                case SearchPhase.Reverse: ReversePair(); break;
+                case SearchPhase.Reverse: ReverseChain(operations); break;
                 case SearchPhase.Decode: DecodeWaypoint(); break;
                 case SearchPhase.Allocate: AllocateResult(); break;
-                case SearchPhase.Copy: CopyWaypoint(); break;
+                case SearchPhase.Copy: CopyWaypoints(operations); break;
             }
         }
 
@@ -211,14 +211,19 @@ public sealed partial class GridPathPlanner
             }
 
             _gCurrent = _scratch.GScore(_current);
+            _width = _grid.Width;
+            _layerBase = _planner._layerOffset[_layer];
             _neighbor = 0;
             Phase = SearchPhase.Neighbor;
         }
 
-        void TestNeighbor()
+        void TestNeighbors(int operations)
         {
-            RelaxNeighbor(_neighbor++);
-            if (_neighbor < NeighborDx.Length) return;
+            int end = _neighbor + Math.Min(operations, NeighborDx.Length - _neighbor);
+            for (int index = _neighbor; index < end; index++)
+                RelaxNeighbor(index);
+            _neighbor = end;
+            if (end < NeighborDx.Length) return;
 
             if (_planner._linkEdges.TryGetValue(_current, out _links))
             {
@@ -239,17 +244,20 @@ public sealed partial class GridPathPlanner
             if (diagonal && (_planner.Blocks(_layer, _radius, nx, _z) ||
                 _planner.Blocks(_layer, _radius, _x, nz))) return;
 
-            int id = _planner._layerOffset[_layer] + nz * _grid.Width + nx;
+            int id = _layerBase + nz * _width + nx;
             if (_scratch.IsClosed(id)) return;
             double tentative = _gCurrent + PlannerWalkingPrices.Cost(_grid.CellSize, diagonal);
             Relax(id, tentative, _layer, nx, nz);
         }
 
-        void TestLink()
+        void TestLinks(int operations)
         {
-            PlannerLink link = _links![_link++];
-            RelaxLink(link);
-            if (_link == _links.Count) NextPop();
+            List<PlannerLink> links = _links!;
+            int end = _link + Math.Min(operations, links.Count - _link);
+            for (int index = _link; index < end; index++)
+                RelaxLink(links[index]);
+            _link = end;
+            if (end == links.Count) NextPop();
         }
 
         void RelaxLink(PlannerLink link)

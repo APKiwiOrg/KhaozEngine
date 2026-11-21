@@ -10,11 +10,14 @@ namespace KhaozEngine.Navigation;
 /// </summary>
 internal interface IIncrementalRegionPathPlanner : IRegionPathPlanner
 {
-    /// <summary>Creates a pool of <paramref name="count"/> search workspaces for this planner's requests,
-    /// allocated and prewarmed now so no request allocates one later. See <see cref="PathPlanWorkspaces"/> for
-    /// the ownership, owner sequence, grant, hand-over and release rules.</summary>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="count"/> is below one.</exception>
-    PathPlanWorkspaces CreateWorkspaces(int count);
+    /// <summary>Creates a pool of <paramref name="count"/> search workspaces for this planner's requests.
+    /// Each workspace's buffers are preallocated for the grid and the expansion cap in <paramref name="largestBudget"/>,
+    /// so advances allocate only their results. The declared expansion cap and snap radius limit every begin.
+    /// Either walk policy is supported. See <see cref="PathPlanWorkspaces"/> for the lease rules.</summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="count"/> is below one or
+    /// <paramref name="largestBudget"/> has a NaN snap radius.</exception>
+    /// <exception cref="ArgumentException">The budget requires a frontier larger than an array.</exception>
+    PathPlanWorkspaces CreateWorkspaces(int count, PathQueryBudget largestBudget);
 
     /// <summary>
     /// Freezes <paramref name="start"/>, <paramref name="goal"/>, <paramref name="agentRadius"/> and
@@ -24,7 +27,8 @@ internal interface IIncrementalRegionPathPlanner : IRegionPathPlanner
     /// </summary>
     /// <exception cref="ArgumentNullException"><paramref name="goal"/> or <paramref name="workspaces"/> is
     /// null.</exception>
-    /// <exception cref="ArgumentException"><paramref name="workspaces"/> belongs to another planner.</exception>
+    /// <exception cref="ArgumentException"><paramref name="workspaces"/> belongs to another planner, or
+    /// <paramref name="budget"/> exceeds the expansion cap or snap radius declared when the pool was created.</exception>
     /// <exception cref="InvalidOperationException">The call overlaps another call into the same pool.</exception>
     /// <exception cref="ObjectDisposedException"><paramref name="workspaces"/> is disposed.</exception>
     PathPlanRequest BeginPath(Vector3 start, NavGoalRegion goal, float agentRadius, PathQueryBudget budget,

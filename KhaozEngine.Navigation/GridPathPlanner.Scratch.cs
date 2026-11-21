@@ -46,14 +46,19 @@ public sealed partial class GridPathPlanner
         int _generation;
 
         readonly MemberBox[] _memberBoxes;
-        bool[] _memberFlags = Array.Empty<bool>();
-        (int Layer, int Cx, int Cz)[] _cells = Array.Empty<(int, int, int)>();
+        bool[] _memberFlags;
+        (int Layer, int Cx, int Cz)[] _cells;
 
         NavGrid? _rayGrid;
         float _rayRadius;
         readonly Func<int, int, bool> _rayBlocks;
 
         public SearchScratch(int totalNodes, int layerCount)
+            : this(totalNodes, layerCount, memberCapacity: 0, frontierCapacity: 0, chainCapacity: 0)
+        {
+        }
+
+        internal SearchScratch(int totalNodes, int layerCount, int memberCapacity, int frontierCapacity, int chainCapacity)
         {
             _gScore = new double[totalNodes];
             _cameFrom = new int[totalNodes];
@@ -61,22 +66,29 @@ public sealed partial class GridPathPlanner
             _stamp = new int[totalNodes];
             _memberBoxes = new MemberBox[layerCount];
             MemberLayers = new int[layerCount];
+            _memberFlags = memberCapacity == 0 ? Array.Empty<bool>() : new bool[memberCapacity];
+            _cells = chainCapacity == 0 ? Array.Empty<(int, int, int)>() : new (int, int, int)[chainCapacity];
+            Open = new(frontierCapacity);
+            Chain = new(chainCapacity);
+            Waypoints = new(chainCapacity);
+            Members = new(memberCapacity);
+            MemberNodeIds = new(memberCapacity);
             _rayBlocks = (x, z) => Blocks(_rayGrid!, _rayRadius, x, z);
         }
 
         /// <summary>The search's open set, cleared by <see cref="BeginSearch"/>.</summary>
-        public PriorityQueue<int, (double F, int Seq)> Open { get; } = new();
+        public PriorityQueue<int, (double F, int Seq)> Open { get; }
 
         /// <summary>Reconstruction's node chain, start first.</summary>
-        public List<int> Chain { get; } = new();
+        public List<int> Chain { get; }
 
         /// <summary>Reconstruction's waypoints, copied into each returned path.</summary>
-        public List<NavWaypoint> Waypoints { get; } = new();
+        public List<NavWaypoint> Waypoints { get; }
 
         /// <summary>A region query's member feet positions, in grid scan order.</summary>
-        public List<Vector3> Members { get; } = new();
+        public List<Vector3> Members { get; }
 
-        public List<int> MemberNodeIds { get; } = new();
+        public List<int> MemberNodeIds { get; }
 
         public PlannerRegionBounds MemberBounds { get; private set; }
 
@@ -155,7 +167,7 @@ public sealed partial class GridPathPlanner
             return offset + width * height;
         }
 
-        /// <summary>Sizes the flag storage for boxes covering <paramref name="cells"/> cells in total.</summary>
+        /// <summary>Ensures flags fit the candidate boxes. Only synchronous scratch can need to grow here.</summary>
         public void EnsureMemberFlags(int cells)
         {
             if (_memberFlags.Length < cells) _memberFlags = new bool[cells];

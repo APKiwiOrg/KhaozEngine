@@ -18,11 +18,12 @@ namespace KhaozEngine.Navigation;
 /// <see cref="IIncrementalRegionPathPlanner.BeginPath"/> until the request is Ready or Cancelled, not only during
 /// one call. A predicate that reads state its owner changes later, such as the mover's current target, plans
 /// against a goal that no longer exists. A predicate must not call back into the planner or its pool.</para>
-/// <para>Publication. The call on which a request becomes Ready depends on its ordered operations and weights,
-/// the quotas on the owner's advances, and the advance on which it first holds a workspace (see
-/// <see cref="PathPlanWorkspaces"/>). It does not depend on clocks, task or thread scheduling, allocations,
-/// collections, JIT tier, other pools or synchronous queries. With one workspace per sharing owner, no request
-/// waits. The owner's adoption rule determines when it uses the Ready result.</para>
+/// <para>Publication. The call on which a request becomes Ready depends on its ordered operations and weights
+/// including stamp maintenance, the quotas on the owner's advances, and the advance on which it first holds a
+/// workspace (see <see cref="PathPlanWorkspaces"/>). Replaying the same pool creation, owner calls, quotas and
+/// cancellations reproduces the workspace grants and stamp maintenance, including when no request waits. Clocks,
+/// task or thread scheduling, allocations, collections, JIT tier, other pools and synchronous queries do not
+/// affect publication. The owner's adoption rule determines when it uses the Ready result.</para>
 /// <para>Lifetime. A request is not serializable. Cancel or dispose a request its owner no longer needs, before
 /// dropping it, so its workspace passes to the next waiter. A dropped pending request keeps its lease. Cancel and
 /// Dispose are idempotent, and neither changes a Ready request or its result.</para>
@@ -44,8 +45,9 @@ internal abstract class PathPlanRequest : IDisposable
     /// which may be <see cref="NavPath.Unreachable"/>. Null after a cancel.</summary>
     public NavPath? Result => State == PathPlanState.Ready ? _result : null;
 
-    /// <summary>The work units this request has spent so far. For a completed request, the final value depends
-    /// only on the frozen inputs and the operation weights. Cancellation preserves the work already spent.</summary>
+    /// <summary>The work units this request has spent so far. A completed request spends work determined by the
+    /// frozen inputs and operation weights, plus any stamp blocks required by its leased workspace. Cancellation
+    /// preserves the work already spent.</summary>
     public long WorkSpent { get; private set; }
 
     /// <summary>
@@ -117,15 +119,15 @@ internal abstract class PathPlanRequest : IDisposable
     private protected virtual void ExitCall() { }
 
     /// <summary>Spends work according to <paramref name="budget"/>. Called only while the request is pending,
-    /// with a quota of at least one unit. An implementation reports each operation through
-    /// <see cref="Spend"/> and finishes through <see cref="Complete"/>.</summary>
+    /// with a quota of at least one unit. An implementation records the work of finished operations through
+    /// <see cref="Spend"/> before returning or completing the request through <see cref="Complete"/>.</summary>
     private protected abstract void AdvanceCore(PathWorkBudget budget);
 
     /// <summary>Returns the request's workspace to its pool, or leaves the pool's queue. Called exactly once,
     /// when the request leaves <see cref="PathPlanState.Pending"/> by completion or cancellation.</summary>
     private protected abstract void Release();
 
-    /// <summary>Adds the <paramref name="units"/> an operation just performed to <see cref="WorkSpent"/>.</summary>
+    /// <summary>Adds the <paramref name="units"/> spent on finished operations to <see cref="WorkSpent"/>.</summary>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="units"/> is below one.</exception>
     /// <exception cref="InvalidOperationException">The request is not pending.</exception>
     private protected void Spend(int units)

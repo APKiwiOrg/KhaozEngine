@@ -18,7 +18,7 @@ public class PathPlanWorkspacesTests
     public void ReleasedWorkspaceGoesToOldestWaitersNextAdvance(bool waiterCallsFirst)
     {
         var planner = Incremental(Corridor());
-        using var pool = planner.CreateWorkspaces(1);
+        using var pool = planner.CreateWorkspaces(1, PathQueryBudget.Default);
         using var owner = Begin(planner, pool);
         using var oldest = Begin(planner, pool);
         using var youngest = Begin(planner, pool);
@@ -40,7 +40,7 @@ public class PathPlanWorkspacesTests
         var space = NavSpace.Single(DisconnectedPlannerFixture.Grid(16, 1, (_, _) => true));
         var first = Incremental(new GridPathPlanner(space));
         var second = Incremental(new GridPathPlanner(space));
-        using var pool = first.CreateWorkspaces(1);
+        using var pool = first.CreateWorkspaces(1, PathQueryBudget.Default);
         Assert.Throws<ArgumentException>(() => Begin(second, pool));
     }
 
@@ -50,7 +50,23 @@ public class PathPlanWorkspacesTests
     public void PoolRequiresAnExplicitPositiveCount(int count)
     {
         var planner = Incremental(Corridor());
-        Assert.Throws<ArgumentOutOfRangeException>(() => planner.CreateWorkspaces(count));
+        Assert.Throws<ArgumentOutOfRangeException>(() => planner.CreateWorkspaces(count, PathQueryBudget.Default));
+    }
+
+    [Theory]
+    [InlineData(17, 3f)]
+    [InlineData(16, 4f)]
+    public void BeginAboveDeclaredBudgetIsRefusedBeforeLeasing(int maxExpandedNodes, float snapRadius)
+    {
+        var planner = Incremental(Corridor());
+        var limit = new PathQueryBudget { MaxExpandedNodes = 16, SnapRadius = 3f };
+        using var pool = planner.CreateWorkspaces(1, limit);
+        var tooLarge = new PathQueryBudget { MaxExpandedNodes = maxExpandedNodes, SnapRadius = snapRadius };
+
+        Assert.Throws<ArgumentException>(() => planner.BeginPath(Start, End(), 0f, tooLarge, pool));
+        using var atLimit = planner.BeginPath(Start, End(), 0f, limit with { WalkOnly = true }, pool);
+        Assert.Equal(NavPathStatus.Complete, Finish(atLimit, 1).Status);
+        Assert.Equal(0, pool.Waits);
     }
 
     [Theory]
@@ -62,7 +78,7 @@ public class PathPlanWorkspacesTests
     public void ReentryIsRefusedBeforeChangingOwnerOrQueue(string call)
     {
         var planner = Incremental(Corridor());
-        using var pool = planner.CreateWorkspaces(1);
+        using var pool = planner.CreateWorkspaces(1, PathQueryBudget.Default);
         PathPlanRequest? waiter = null;
         var goal = new NavGoalRegion(End().Anchor, 0f, _ =>
         {
@@ -92,12 +108,12 @@ public class PathPlanWorkspacesTests
     public async Task PoolCanMoveThreadsButRefusesOverlappingCalls()
     {
         var planner = Incremental(Corridor());
-        using var pool = planner.CreateWorkspaces(1);
-        using var entered = new ManualResetEventSlim();
+        using var pool = planner.CreateWorkspaces(1, PathQueryBudget.Default);
+        var entered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         using var exit = new ManualResetEventSlim();
         var goal = new NavGoalRegion(End().Anchor, 0f, _ =>
         {
-            entered.Set();
+            entered.TrySetResult(true);
             exit.Wait();
             return true;
         });
@@ -105,7 +121,7 @@ public class PathPlanWorkspacesTests
         Task advance = Task.Run(() => request.Advance(new PathWorkBudget(int.MaxValue)));
         try
         {
-            entered.Wait();
+            Assert.Same(entered.Task, await Task.WhenAny(entered.Task, advance));
             Assert.Throws<InvalidOperationException>(() => Begin(planner, pool));
         }
         finally
@@ -122,7 +138,7 @@ public class PathPlanWorkspacesTests
     public void CancelledWaiterLeavesTheQueueAndCannotReleaseAnothersLease()
     {
         var planner = Incremental(Corridor());
-        using var pool = planner.CreateWorkspaces(1);
+        using var pool = planner.CreateWorkspaces(1, PathQueryBudget.Default);
         using var owner = Begin(planner, pool);
         using var cancelled = Begin(planner, pool);
         using var oldest = Begin(planner, pool);
@@ -143,7 +159,7 @@ public class PathPlanWorkspacesTests
     public void DisposingPoolCancelsAllAndRefusesLaterBegins()
     {
         var planner = Incremental(Corridor());
-        using var pool = planner.CreateWorkspaces(2);
+        using var pool = planner.CreateWorkspaces(2, PathQueryBudget.Default);
         using var first = Begin(planner, pool);
         using var second = Begin(planner, pool);
         using var waiter = Begin(planner, pool);
@@ -159,10 +175,10 @@ public class PathPlanWorkspacesTests
     }
 
     [Fact]
-    public void NPlusOneRequestsUseNWorkspacesAndHandOverInBeginOrder()
+    public void LaterOwnerHandsOverAWorkspaceWhileTheFirstOwnerIsPending()
     {
         var planner = Incremental(Corridor());
-        using var pool = planner.CreateWorkspaces(2);
+        using var pool = planner.CreateWorkspaces(2, PathQueryBudget.Default);
         Assert.Equal(2, pool.Count);
         using var first = Begin(planner, pool);
         using var second = Begin(planner, pool);
@@ -176,16 +192,19 @@ public class PathPlanWorkspacesTests
         Assert.Equal(0, third.WorkSpent);
         Assert.Equal(1, pool.Waits);
 
-        Finish(first, int.MaxValue);
         Finish(second, int.MaxValue);
+        Assert.Equal(PathPlanState.Pending, first.State);
+        third.Advance(one);
+        Assert.True(third.WorkSpent > 0);
         Finish(third, int.MaxValue);
+        Finish(first, int.MaxValue);
     }
 
     [Fact]
     public void ThrowingPredicateCancelsAndReleasesExactlyOnce()
     {
         var planner = Incremental(Corridor());
-        using var pool = planner.CreateWorkspaces(1);
+        using var pool = planner.CreateWorkspaces(1, PathQueryBudget.Default);
         var failure = new InvalidOperationException();
         var goal = new NavGoalRegion(End().Anchor, 0f, _ => throw failure);
         using var owner = planner.BeginPath(Start, goal, 0f, PathQueryBudget.Default, pool);

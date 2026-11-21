@@ -4,8 +4,8 @@ namespace KhaozEngine.Navigation;
 
 /// <summary>
 /// A fixed set of search workspaces that <see cref="PathPlanRequest"/>s lease, created and prewarmed by
-/// <see cref="IIncrementalRegionPathPlanner.CreateWorkspaces"/> with an explicit count. Synchronous queries keep
-/// the planner's own working memory and never touch a pool.
+/// <see cref="IIncrementalRegionPathPlanner.CreateWorkspaces"/> with an explicit count and largest query budget.
+/// Synchronous queries keep the planner's own working memory and never touch a pool.
 /// </summary>
 /// <remarks>
 /// <para>Ownership. A pool belongs to the planner that created it. A begin from another planner throws
@@ -27,9 +27,10 @@ namespace KhaozEngine.Navigation;
 /// <para>Sizing. The count has no default because the engine cannot know how many owners share a pool. One
 /// workspace per sharing owner means no request ever waits. A smaller pool makes each request's publication call
 /// depend on the requests ahead of it: their begins, completions and releases and the call order within a tick.
-/// A workspace costs memory in proportion to the planner's layer cells. An owner dropped while its request is
-/// pending keeps the lease, so cancel or reset an owner first. <see cref="Waits"/> lets a consumer check that
-/// nothing waited.</para>
+/// Each workspace preallocates node and region membership storage for all layer cells, reconstruction storage
+/// up to the expansion cap or node count, whichever is smaller, and frontier storage for possible pushes
+/// within that cap. Its buffers never grow during a request. An owner dropped while its request is pending keeps
+/// the lease, so cancel or reset an owner first. <see cref="Waits"/> lets a consumer check that nothing waited.</para>
 /// </remarks>
 internal abstract class PathPlanWorkspaces : IDisposable
 {

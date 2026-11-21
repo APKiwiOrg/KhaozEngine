@@ -22,8 +22,10 @@ unchanged.
   pass already draws one entry's whole index buffer. Views count toward the live skinned mesh slots.
 - Lifetime. `UnloadSkinnedMesh(view)` keeps the view drawable until the frame ends and frees it at the next `Begin`
   or `BeginFrame`, so a view released in the middle of a frame does not drop draws already queued through it.
-  `UnloadSkinnedMesh`, `UnloadSharedSkinnedMesh` and `SkinnedLimb.Dispose` refuse a source while a view of it lives
-  and change nothing they own, so the same call succeeds once the view is gone. A view already unloaded this frame
+  `UnloadSkinnedMesh`, `UnloadSharedSkinnedMesh`, `SkinnedLimb.Dispose`, a skinned attachment lease and
+  `AttachmentSetCache.Dispose` refuse a source while a view of it lives, before changing anything, so the same call
+  succeeds once the view is gone. Every other outcome, a stale handle's throw included, is unchanged for a consumer
+  that creates no views. A view already unloaded this frame
   is released with its source. A source with host coverage evidence is never viewed, because its coverage tables
   index its own triangles.
 - API in `KhaozEngine.Render3D`. `Scene3D.CreateSkinnedMeshView(source, indices)` returns a `SkinnedMeshHandle`, and
@@ -70,7 +72,7 @@ unchanged.
   two sets on one layer never hide each other and a covered rigid part hides whole. An outfit applies the rule once
   when it is bound and draws the body and each worn set with covered triangles hidden through shared skinned mesh
   views. Frame calls only read and allocate nothing.
-- API for the rule in `KhaozEngine.Attachments`. `OutfitCoverage.Resolve(bodyMap, worn)` works out what an outfit
+- API for the rule in `KhaozEngine.Attachments`. `OutfitCoverage.Resolve(body, worn)` works out what an outfit
   hides without a renderer, and the result exposes `WornCount`, `BodyHidden`, `HiddenFor(wornIndex)`,
   `RigidPartHidden(wornIndex, partId)` and `SkinnedPartRegions(wornIndex, partId)`. `OutfitDataException`, a
   `MalformedDataException`, carries `Reason`, `WornIndex`, `PartId`, `RunIndex` and `RegionName`, and `OutfitRefusal`

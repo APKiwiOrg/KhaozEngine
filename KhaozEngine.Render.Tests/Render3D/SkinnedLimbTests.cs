@@ -187,6 +187,24 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void Disposing_a_limb_whose_tube_was_freed_elsewhere_throws_once_and_stays_spent()
+        {
+            using var device = new KhaozEngine.Tests.Gpu.FakeGpuDevice();
+            using var scene = new Scene3D(device, new KhaozEngine.Gpu.GpuOutputDescription(null,
+                KhaozEngine.Gpu.GpuPixelFormat.R8G8B8A8UNorm));
+            var limb = new SkinnedLimb(scene, 0.2f, 1f, 4, 6, 3, Writhe);
+            scene.UnloadSkinnedMesh(limb.Handle);
+
+            Assert.Throws<ArgumentException>(limb.Dispose);
+
+            // Spent: a second dispose does nothing and the limb never submits its dead handle.
+            limb.Dispose();
+            int queued = scene.SkinnedInstanceCount;
+            limb.Draw(scene, Matrix4x4.Identity, KhaozEngine.Primitives.Color.White, Material.None);
+            Assert.Equal(queued, scene.SkinnedInstanceCount);
+        }
+
+        [Fact]
         public void Disposing_a_limb_under_a_live_view_refuses_and_keeps_the_limb()
         {
             using var device = new KhaozEngine.Tests.Gpu.FakeGpuDevice();

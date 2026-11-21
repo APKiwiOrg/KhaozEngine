@@ -7625,7 +7625,7 @@ Roll format 3 out reader first. An engine at 24.3.0 or earlier checks root membe
 member, `layer` in canonical bytes, not as `FormatVersionUnsupported`. Publish format 3 sets only after every
 client, server and tool that reads them is on 24.4.0 or later.
 
-**The rule.** `OutfitCoverage.Resolve(bodyMap, worn)` works out the hidden regions offline with no renderer:
+**The rule.** `OutfitCoverage.Resolve(body, worn)` works out the hidden regions offline with no renderer:
 
 - The body hides the union of `Covers` over every worn set with a layer, because any layered piece lies over the
   skin and skin drawn under it could only show through.
@@ -7708,7 +7708,7 @@ some but not all of such a body part refuses with `SourceHasCoverage`. A coverag
 draws its own handle, and one that is wholly covered draws nothing, so both still work.
 
 **Check a claim offline.** A false `Covers` claim hides skin that nothing replaces and opens a hole in the body.
-`CoverageClaimCheck.Verify(bodyMeshes, bodyMap, piece, pieceMeshes, maxDistanceMetres)` checks at the rest pose that
+`CoverageClaimCheck.Verify(bodyMeshes, body, piece, pieceMeshes, maxDistanceMetres)` checks at the rest pose that
 the piece lies over every triangle of every region it claims, and its report lists the uncovered triangles by part.
 A tool runs it when a piece is made, never per frame. The consumer chooses the distance, because how far a piece
 may stand off the skin depends on the game's art and scale. The

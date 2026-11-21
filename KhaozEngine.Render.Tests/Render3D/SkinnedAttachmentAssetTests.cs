@@ -312,6 +312,38 @@ public sealed class SkinnedAttachmentAssetTests
     }
 
     [Fact]
+    public void Skinned_cache_disposal_over_a_stale_handle_throws_once_and_stays_disposed()
+    {
+        using var harness = new AttachmentAssetHarness();
+        var source = new AttachmentTestSource();
+        AttachmentMeshRef skin = source.Mesh("skin.glb", Glb(materials: 2));
+        string hash = Set(source, "skin.json", Skin(1, skin));
+        var cache = new AttachmentSetCache(harness.Scene, source);
+        LoadedAttachmentSet loaded = cache.Get("skin.json", hash);
+        harness.Scene.UnloadSkinnedMesh(loaded.Resources[0].SkinnedHandles[0]);   // freed behind the cache's back
+
+        Assert.Throws<ArgumentException>(cache.Dispose);
+
+        Assert.Throws<ObjectDisposedException>(() => cache.Get("skin.json", hash));
+        cache.Dispose();
+    }
+
+    [Fact]
+    public void Skinned_lease_disposal_over_a_stale_handle_throws_once_and_stays_disposed()
+    {
+        using var harness = new AttachmentAssetHarness();
+        IAttachmentScene attachmentScene = new Scene3DAttachmentScene(harness.Scene);
+        IReadOnlyList<GltfSkinnedMeshPart> parts = GltfLoader.LoadSkinnedPartsWithMaterials(Glb(materials: 2), "fixture");
+        ISkinnedAttachmentMeshLease lease = attachmentScene.UploadSkinnedAttachment(parts);
+        harness.Scene.UnloadSkinnedMesh(lease.Handles[0]);   // freed behind the lease's back
+
+        Assert.Throws<ArgumentException>(lease.Dispose);
+
+        Assert.Throws<ObjectDisposedException>(() => lease.Handles);
+        lease.Dispose();
+    }
+
+    [Fact]
     public void Skinned_cache_disposal_under_a_live_view_refuses_before_changing_anything()
     {
         using var fixture = new CoverageBindingFixture();

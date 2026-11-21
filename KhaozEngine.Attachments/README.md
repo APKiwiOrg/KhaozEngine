@@ -196,7 +196,7 @@ range with `ArgumentOutOfRangeException`.
 material part order. Each part declares its triangle count and lists `[region, triangleCount]` runs in
 triangle order, which must add up to it. `BodyRegionMap` exposes `RigIdentity`, `Regions`, `Parts` and
 `TryRegion(name, out index)` with ordinal names. `TriangleCount(part)` is the sum of a part's runs.
-`WriteTriangleRegions(part, span)` fills one region index per triangle and needs a span of exactly that
+`WriteTriangleRegions(part, regionPerTriangle)` fills one region index per triangle and needs a span of exactly that
 length. Both refuse a part index outside `Parts` with `ArgumentOutOfRangeException`. Adjacent runs of one
 region merge, so `Write(map)` is canonical and `Sha256` is the lowercase SHA-256 of those bytes.
 

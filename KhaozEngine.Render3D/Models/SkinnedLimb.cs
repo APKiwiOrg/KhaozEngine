@@ -166,17 +166,20 @@ namespace KhaozEngine.Render3D
 
         /// <summary>Free the tube's GPU buffers (via <see cref="Scene3D.UnloadSkinnedMesh"/>) and mark the limb spent.
         /// A second call does nothing, and so does a call on a headless limb. While a mesh view of the tube lives, it
-        /// refuses with <see cref="SkinnedMeshViewArgumentException"/> and leaves the limb live, so the same call
-        /// succeeds once the view is gone.</summary>
+        /// refuses with <see cref="SkinnedMeshViewArgumentException"/> before anything changes and leaves the limb
+        /// live, so the same call succeeds once the view is gone. Any other unload failure, such as a tube handle
+        /// already freed elsewhere, throws after the limb is marked spent, so it never draws or throws again.</summary>
         public void Dispose()
         {
             if (_disposed) return;
-            if (_scene is not null && _handle.Generation != 0)
+            bool owned = _scene is not null && _handle.Generation != 0;
+            if (owned) _scene!.RefuseSourcesWithLiveViews(new ReadOnlySpan<SkinnedMeshHandle>(in _handle), null);
+            _disposed = true;
+            if (owned)
             {
-                _scene.UnloadSkinnedMesh(_handle);   // refuses while a view of the tube lives, leaving the limb intact
+                _scene!.UnloadSkinnedMesh(_handle);
                 _handle = default;
             }
-            _disposed = true;
         }
 
         void ThrowIfDisposed()

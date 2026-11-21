@@ -122,6 +122,26 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void UnloadSharedSkinnedMesh_OnAStaleHandleThrowsAndForgetsTheKey()
+        {
+            using var device = new FakeGpuDevice();
+            using IGpuFramebuffer fb = NewTarget(device.Factory);
+            using var scene = new Scene3D(device, fb.Outputs);
+            SkinnedMeshHandle Load() => scene.LoadSkinnedMesh(SkinnedMeshBuilder.BuildTube(0.5f, 2f, 2, 4, 3));
+            SkinnedMeshHandle shared = scene.GetOrLoadSkinnedMesh("body", Load);
+            int cached = scene.SharedAssetCount;
+            scene.UnloadSkinnedMesh(shared);   // teardown freed the handle behind the cache's back
+
+            Assert.Throws<ArgumentException>(() => scene.UnloadSharedSkinnedMesh("body"));
+
+            // The key is gone, so the next load uploads a live mesh instead of handing back the dead handle.
+            Assert.Equal(cached - 1, scene.SharedAssetCount);
+            SkinnedMeshHandle again = scene.GetOrLoadSkinnedMesh("body", Load);
+            Assert.NotEqual((shared.Index, shared.Generation), (again.Index, again.Generation));
+            Assert.Equal(1, scene.LiveSkinnedMeshCount);
+        }
+
+        [Fact]
         public void UnloadSharedSkinnedMesh_UnderALiveViewRefusesAndKeepsTheKey()
         {
             using var device = new FakeGpuDevice();

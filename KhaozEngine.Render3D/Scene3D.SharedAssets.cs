@@ -99,14 +99,16 @@ namespace KhaozEngine.Render3D
 
         /// <summary>Unload the skinned mesh cached under <paramref name="key"/> (via
         /// <see cref="UnloadSkinnedMesh"/>) and forget the key. <c>false</c> when nothing was cached under
-        /// it. A mesh a live view still draws from refuses as <see cref="UnloadSkinnedMesh"/> does, and keeps its
-        /// key.</summary>
+        /// it. A mesh a live view still draws from refuses with <see cref="SkinnedMeshViewArgumentException"/>
+        /// before anything changes, and keeps its key. Otherwise the key goes first, so a stale handle throws as
+        /// <see cref="UnloadSkinnedMesh"/> does and a later load under the key uploads again.</summary>
         public bool UnloadSharedSkinnedMesh(string key)
         {
             ArgumentNullException.ThrowIfNull(key);
             if (!_sharedSkinnedMeshes.TryGetValue(key, out SkinnedMeshHandle h)) return false;
-            UnloadSkinnedMesh(h);   // forget the key only once the unload is accepted
+            RefuseSourcesWithLiveViews(new ReadOnlySpan<SkinnedMeshHandle>(in h), nameof(key));
             _sharedSkinnedMeshes.Remove(key);
+            UnloadSkinnedMesh(h);
             return true;
         }
 

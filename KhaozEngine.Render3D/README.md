@@ -2599,7 +2599,8 @@ while a view of it lives. A view already unloaded this frame is released with it
 are dropped with the source's own. Views count toward the live skinned mesh slots. A refused release changes nothing
 it owns, so the same call succeeds once the view is gone. `UnloadSharedSkinnedMesh` keeps its key and
 `SkinnedLimb.Dispose` keeps the limb. A skinned attachment lease and an `AttachmentSetCache` check every handle they
-own before the first unload, through the internal `RefuseSourcesWithLiveViews`.
+own before the first unload, through the internal `RefuseSourcesWithLiveViews`. Only a live view refuses early. A
+handle freed elsewhere throws as it always did, after the key is forgotten or the owner is marked spent.
 
 A view is the renderer's way to hide part of a skinned mesh without a shader mask. A mask would touch every skinned
 shader variant and the CPU skinning path, and a pass that missed it would shadow or outline triangles the colour

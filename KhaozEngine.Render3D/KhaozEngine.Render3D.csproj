@@ -35,6 +35,8 @@
     <InternalsVisibleTo Include="Coverage.Verify.Tests" />
     <InternalsVisibleTo Include="Coverage.Verify" />
     <InternalsVisibleTo Include="KhaozEngine.MapDoc.Render3D" />
+    <!-- Attachment leases and caches refuse a release up front while a mesh view is live (RefuseSourcesWithLiveViews). -->
+    <InternalsVisibleTo Include="KhaozEngine.Attachments.Render3D" />
     <InternalsVisibleTo Include="Renderer.Perf.Tooling.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.MapEditor.Tests" />
   </ItemGroup>

@@ -11,9 +11,7 @@ internal sealed class SkinnedAttachmentUpload : ISkinnedAttachmentMeshLease, IAt
     readonly SkinnedMeshHandle[] _handles;
     readonly Scene3D.SurfaceMaps[] _maps;
     readonly IReadOnlyList<SkinnedMeshHandle> _view;
-    // Handles already unloaded. A source with a live view refuses its unload, and a retry resumes at that handle
-    // instead of freeing the earlier ones twice.
-    int _unloadedMeshes;
+    bool _meshesUnloaded;
     bool _disposed;
 
     SkinnedAttachmentUpload(Scene3D scene, int count)
@@ -50,16 +48,26 @@ internal sealed class SkinnedAttachmentUpload : ISkinnedAttachmentMeshLease, IAt
         get { ObjectDisposedException.ThrowIf(_disposed, this); return _view; }
     }
 
+    public void RefuseLiveViews() => _scene.RefuseSourcesWithLiveViews(_handles, null);
+
+    // A live view over any handle refuses before the first unload, so a refusal leaves every handle live.
     public void UnloadMeshes()
     {
-        for (; _unloadedMeshes < _handles.Length; _unloadedMeshes++) _scene.UnloadSkinnedMesh(_handles[_unloadedMeshes]);
+        if (_meshesUnloaded) return;
+        RefuseLiveViews();
+        _meshesUnloaded = true;
+        foreach (SkinnedMeshHandle handle in _handles) _scene.UnloadSkinnedMesh(handle);
     }
 
+    /// <summary>Unload every mesh, then the textures. Refuses with <see cref="SkinnedMeshViewArgumentException"/>
+    /// before changing anything while a live mesh view draws from one of the meshes, and succeeds once it is gone.
+    /// </summary>
     public void Dispose()
     {
         if (_disposed) return;
-        UnloadMeshes();   // a refusal leaves the lease live and retryable
+        RefuseLiveViews();
         _disposed = true;
+        UnloadMeshes();
         foreach (Scene3D.SurfaceMaps maps in _maps) _scene.UnloadSurfaceMaps(maps);
     }
 }

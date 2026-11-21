@@ -97,9 +97,17 @@ Unload rules:
   unloading its source releases it at once, and its draws this frame are dropped with the source's own draws,
   exactly as a source unloaded mid frame always drops its queued draws. This lets a despawn release an outfit's
   views and then its body in one frame.
-- A refused unload changes nothing it owns. `UnloadSharedSkinnedMesh` keeps its key, `SkinnedLimb.Dispose` keeps the
-  limb live, and an attachment upload lease or `AttachmentSetCache` stays undisposed and resumes at the refused
-  handle on the next try, without freeing an earlier handle twice.
+- A refused unload changes nothing it owns, and the same call succeeds once the view is gone.
+  `UnloadSharedSkinnedMesh` keeps its key and `SkinnedLimb.Dispose` keeps the limb live. A skinned attachment upload
+  lease and `AttachmentSetCache.Dispose` own several handles, so they ask the scene first, through the internal
+  `Scene3D.RefuseSourcesWithLiveViews`, whether a live view draws from any of them. A refusal therefore comes before
+  the first unload, before the cache invalidates its coverage hosts and before any field changes: every handle stays
+  live, coverage stays loaded, and `Get` and draws work as before. The query is internal, granted to
+  `KhaozEngine.Attachments.Render3D`, so the public surface and `IAttachmentScene` gain nothing.
+- A cache over a custom `IAttachmentScene` holds that scene's own leases, which cannot answer the query. Such a cache
+  keeps the release behaviour it had before views existed: it marks itself disposed, then releases each lease, and
+  whatever a lease's own release does when a view is live is that scene's behaviour. `Scene3DAttachmentScene` and
+  `Scene3DTileWorldScene` hand out the renderer's own leases, so a cache over either refuses up front.
 - `Dispose` frees every view's index buffer and never a shared resource twice.
 
 `IsSkinnedMeshView` is true while the handle names a live view, including one unloaded during the current frame.

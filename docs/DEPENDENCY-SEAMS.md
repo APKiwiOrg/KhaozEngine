@@ -556,6 +556,9 @@ The arm also owns verified byte snapshots, per-scene upload sharing and transact
 uses the renderer's deferred unload APIs. The shipped tile-world scene implements this capability
 without adding attachment members to `ITileWorldScene`. The tile renderer references the attachment arm,
 and the attachment arm has no dependency back to TileWorld. Dispose attachment caches before their scene.
+Render3D grants `InternalsVisibleTo` to the arm for one member, `Scene3D.RefuseSourcesWithLiveViews`. A skinned
+lease and a cache call it before releasing anything, so a live mesh view refuses the release before any handle
+unloads. Keeping it internal leaves the public renderer surface and `IAttachmentScene` unchanged.
 
 ## Render3D ECS arm: the renderer carries no Ecs edge
 

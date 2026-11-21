@@ -106,16 +106,31 @@ public sealed partial class Scene3D
     void ReleaseViewsOfSkinnedSource(SkinnedMeshHandle h)
     {
         if (!_skinnedSlots.IsValid(h.Index, h.Generation)) return;
-        if (_skinnedLiveViews.TryGetValue(h.Index, out int live))
-            throw new SkinnedMeshViewArgumentException(SkinnedMeshViewRefusal.SourceHasLiveViews,
-                "A skinned mesh cannot unload while a view of it lives. Unload its views first.", nameof(h))
-            { SourceIndex = h.Index, SourceGeneration = h.Generation, LiveViews = live };
+        RefuseSourcesWithLiveViews(new ReadOnlySpan<SkinnedMeshHandle>(in h), nameof(h));
         for (int i = _pendingSkinnedViewReleases.Count - 1; i >= 0; i--)
         {
             SkinnedMeshHandle view = _pendingSkinnedViewReleases[i];
             if (_skinnedMeshes[view.Index]!.ViewOf != h.Index) continue;
             ReleaseSkinnedView(view);
             _pendingSkinnedViewReleases.RemoveAt(i);
+        }
+    }
+
+    /// <summary>Refuse, before anything changes, when any live handle in <paramref name="sources"/> has a live view.
+    /// Throws <see cref="SkinnedMeshViewArgumentException"/> with <see cref="SkinnedMeshViewRefusal.SourceHasLiveViews"/>
+    /// for the first such handle. Default, stale and view handles pass, and so does every handle once the scene is
+    /// disposed, because those unloads refuse nothing. A view unloaded this frame no longer counts. An owner of several
+    /// handles calls this first so a refusal leaves every handle it owns live.</summary>
+    internal void RefuseSourcesWithLiveViews(ReadOnlySpan<SkinnedMeshHandle> sources, string? paramName)
+    {
+        if (_disposalComplete) return;
+        foreach (SkinnedMeshHandle h in sources)
+        {
+            if (!_skinnedSlots.IsValid(h.Index, h.Generation) || !_skinnedLiveViews.TryGetValue(h.Index, out int live))
+                continue;
+            throw new SkinnedMeshViewArgumentException(SkinnedMeshViewRefusal.SourceHasLiveViews,
+                "A skinned mesh cannot unload while a view of it lives. Unload its views first.", paramName)
+            { SourceIndex = h.Index, SourceGeneration = h.Generation, LiveViews = live };
         }
     }
 

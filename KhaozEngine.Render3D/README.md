@@ -2597,8 +2597,9 @@ mesh. The design is in [Attachment regions and layers](../docs/design/ATTACHMENT
 when the frame is prepared. The next `Begin` frees its slot and retires its index buffer. A source refuses to unload
 while a view of it lives. A view already unloaded this frame is released with its source, and its draws this frame
 are dropped with the source's own. Views count toward the live skinned mesh slots. A refused release changes nothing
-it owns: `UnloadSharedSkinnedMesh` keeps its key and `SkinnedLimb.Dispose` keeps the limb, so the same call succeeds
-once the view is gone.
+it owns, so the same call succeeds once the view is gone. `UnloadSharedSkinnedMesh` keeps its key and
+`SkinnedLimb.Dispose` keeps the limb. A skinned attachment lease and an `AttachmentSetCache` check every handle they
+own before the first unload, through the internal `RefuseSourcesWithLiveViews`.
 
 `SkinnedMeshViewArgumentException` derives from `ArgumentException`, which skinned unload threw for a bad handle
 before, and carries `SkinnedMeshViewRefusal` with the source's `SourceIndex` and `SourceGeneration`. A refused call

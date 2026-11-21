@@ -170,14 +170,17 @@ public sealed partial class AttachmentSetCache : IDisposable
     public void Dispose()
     {
         if (_disposed) return;
+        // A live mesh view over any skinned mesh this cache owns refuses before anything changes, so the cache, its
+        // coverage and every handle stay exactly as they were and a later Dispose releases everything once. Only the
+        // renderer's own uploads can answer, so a custom IAttachmentScene's leases keep their own release behaviour.
+        foreach (CachedMesh mesh in _meshes.Values)
+            if (mesh.Lease is IAttachmentUpload upload) upload.RefuseLiveViews();
+        _disposed = true;
         foreach (var host in _coverageLifetimes.Keys) host.Invalidate();
         _coverageLifetimes.Clear(); _coverage.Clear(); _coverageSources.Clear();
-        // A skinned mesh a live view still draws from refuses its unload. The cache then stays undisposed, and a
-        // retry once the view is gone resumes where the refusal stopped.
         Release(_meshes.Values);
         _meshes.Clear();
         _definitions.Clear();
-        _disposed = true;
     }
 
     static void Release(IEnumerable<CachedMesh> meshes)

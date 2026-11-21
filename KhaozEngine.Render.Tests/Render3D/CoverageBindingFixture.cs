@@ -9,6 +9,7 @@ using KhaozEngine.Gpu;
 using KhaozEngine.Attachments.Render3D;
 using KhaozEngine.Render3D;
 using KhaozEngine.Tests.Attachments;
+using KhaozEngine.Tests.Gpu;
 
 namespace KhaozEngine.Tests.Render3D;
 
@@ -16,6 +17,8 @@ internal sealed class CoverageBindingFixture : IDisposable
 {
     readonly AttachmentAssetHarness harness;
     internal Scene3D Scene => harness.Scene;
+    internal FakeGpuResourceFactory Factory => harness.Factory;
+    internal void DrainRetired() => harness.DrainRetired();
     internal readonly AttachmentTestSource Source = new();
     internal readonly AttachmentRecordingScene Adapter;
     internal readonly AttachmentSetCache Cache;

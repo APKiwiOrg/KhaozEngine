@@ -312,50 +312,78 @@ public sealed class SkinnedAttachmentAssetTests
     }
 
     [Fact]
-    public void Skinned_cache_disposal_under_a_live_view_refuses_and_resumes_once_the_view_goes()
+    public void Skinned_cache_disposal_under_a_live_view_refuses_before_changing_anything()
     {
-        using var harness = new AttachmentAssetHarness();
-        var source = new AttachmentTestSource();
-        AttachmentMeshRef skin = source.Mesh("skin.glb", Glb(materials: 2));
-        string hash = Set(source, "set.json", Skin(1, skin));
-        var cache = new AttachmentSetCache(harness.Scene, source);
-        int from = harness.Factory.Buffers.Count;
-        LoadedAttachmentSet loaded = cache.Get("set.json", hash);
-        List<FakeBuffer> buffers = harness.Factory.Buffers.Skip(from).ToList();
-        // A view over the second material handle, so the first is already unloaded when the second refuses.
-        SkinnedMeshHandle view = harness.Scene.CreateSkinnedMeshView(loaded.Resources[0].SkinnedHandles[1], [0, 1, 2]);
+        using var fixture = new CoverageBindingFixture();
+        Scene3D scene = fixture.Scene;
+        AttachmentMeshRef skin = fixture.Source.Mesh("skin.glb", Glb(materials: 2));
+        string hash = Set(fixture.Source, "skin.json", Skin(1, skin));
+        int from = fixture.Factory.Buffers.Count;
+        LoadedAttachmentSet loaded = fixture.Cache.Get("skin.json", hash);
+        List<FakeBuffer> buffers = fixture.Factory.Buffers.Skip(from).ToList();
+        IReadOnlyList<SkinnedMeshHandle> handles = loaded.Resources[0].SkinnedHandles;
+        Matrix4x4[] rest = loaded.Resources[0].RestPose.ToArray();
+        using HostCoverageBinding binding = fixture.Binding();
+        Assert.True(binding.TrySetEquipment([fixture.Equipment()], out _));
+        // A view over the second material handle, so an unload in handle order would already have freed the first.
+        SkinnedMeshHandle view = scene.CreateSkinnedMeshView(handles[1], [0, 1, 2]);
+        int live = scene.LiveSkinnedMeshCount;
 
-        var refusal = Assert.Throws<SkinnedMeshViewArgumentException>(cache.Dispose);
+        try
+        {
+            var refusal = Assert.Throws<SkinnedMeshViewArgumentException>(fixture.Cache.Dispose);
 
-        Assert.Equal(SkinnedMeshViewRefusal.SourceHasLiveViews, refusal.Reason);
-        Assert.Equal(hash, loaded.DefinitionSha256);
-        // Control: with the view gone the retry frees the rest, and freeing nothing twice is what lets it return.
-        harness.Scene.UnloadSkinnedMesh(view);
-        cache.Dispose();
-        Assert.Throws<ObjectDisposedException>(() => loaded.Definition);
-        harness.DrainRetired();
-        Assert.Equal(0, harness.Scene.LiveSkinnedMeshCount);
+            Assert.Equal(SkinnedMeshViewRefusal.SourceHasLiveViews, refusal.Reason);
+            Assert.Equal((handles[1].Index, handles[1].Generation), (refusal.SourceIndex, refusal.SourceGeneration));
+            Assert.Equal(live, scene.LiveSkinnedMeshCount);
+            Assert.Same(loaded, fixture.Cache.Get("skin.json", hash));
+            Assert.Same(fixture.Coverage,
+                fixture.Cache.GetCoverage(fixture.Loaded, "coverage.json", fixture.Coverage.CompanionSha256));
+            Assert.True(binding.TrySetEquipment([fixture.Equipment()], out _));
+            int queued = scene.SkinnedInstanceCount;
+            scene.DrawSkinned(new SkinnedInstanceDraw(handles[0], Matrix4x4.Identity), rest);
+            Assert.Equal(queued + 1, scene.SkinnedInstanceCount);
+        }
+        finally
+        {
+            // The fixture disposes the cache, which a live view would refuse and so hide the failing assertion.
+            scene.UnloadSkinnedMesh(view);
+        }
+        // Control: with the view gone the same call releases every cached mesh once.
+        fixture.Cache.Dispose();
+        Assert.Throws<ObjectDisposedException>(() => fixture.Cache.Get("skin.json", hash));
+        Assert.Equal(live - 3, scene.LiveSkinnedMeshCount);
+        fixture.DrainRetired();
         Assert.All(buffers, b => Assert.True(b.Disposed));
     }
 
     [Fact]
-    public void Skinned_lease_disposal_under_a_live_view_refuses_and_keeps_the_lease()
+    public void Skinned_lease_disposal_under_a_live_view_refuses_before_changing_anything()
     {
         using var harness = new AttachmentAssetHarness();
         IAttachmentScene attachmentScene = new Scene3DAttachmentScene(harness.Scene);
         IReadOnlyList<GltfSkinnedMeshPart> parts = GltfLoader.LoadSkinnedPartsWithMaterials(Glb(materials: 2), "fixture");
+        int from = harness.Factory.Buffers.Count;
         ISkinnedAttachmentMeshLease lease = attachmentScene.UploadSkinnedAttachment(parts);
+        List<FakeBuffer> buffers = harness.Factory.Buffers.Skip(from).ToList();
         SkinnedMeshHandle view = harness.Scene.CreateSkinnedMeshView(lease.Handles[1], [0, 1, 2]);
+        int live = harness.Scene.LiveSkinnedMeshCount;
 
         var refusal = Assert.Throws<SkinnedMeshViewArgumentException>(lease.Dispose);
 
         Assert.Equal(SkinnedMeshViewRefusal.SourceHasLiveViews, refusal.Reason);
-        Assert.Equal(2, lease.Handles.Count);
-        // Control: with the view gone the same dispose is accepted.
+        Assert.Equal((lease.Handles[1].Index, lease.Handles[1].Generation), (refusal.SourceIndex, refusal.SourceGeneration));
+        Assert.Equal(live, harness.Scene.LiveSkinnedMeshCount);
+        int queued = harness.Scene.SkinnedInstanceCount;
+        harness.Scene.DrawSkinned(new SkinnedInstanceDraw(lease.Handles[0], Matrix4x4.Identity), parts[0].Mesh.RestPose);
+        Assert.Equal(queued + 1, harness.Scene.SkinnedInstanceCount);
+        // Control: with the view gone the same call releases both meshes once.
         harness.Scene.UnloadSkinnedMesh(view);
         lease.Dispose();
         Assert.Throws<ObjectDisposedException>(() => lease.Handles);
-        Assert.Equal(0, harness.Scene.LiveSkinnedMeshCount);
+        Assert.Equal(live - 3, harness.Scene.LiveSkinnedMeshCount);
+        harness.DrainRetired();
+        Assert.All(buffers, b => Assert.True(b.Disposed));
     }
 
     [Fact]

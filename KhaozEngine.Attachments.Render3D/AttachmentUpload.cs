@@ -8,6 +8,10 @@ namespace KhaozEngine.Attachments.Render3D;
 internal interface IAttachmentUpload : IDisposable
 {
     void UnloadMeshes();
+
+    /// <summary>Refuse, before anything changes, when a live mesh view still draws from a mesh this upload owns.
+    /// </summary>
+    void RefuseLiveViews();
 }
 
 /// <summary>Owns only the mesh and texture handles created by one upload transaction.</summary>
@@ -53,6 +57,9 @@ internal sealed class AttachmentUpload : IAttachmentMeshLease, IAttachmentUpload
     {
         get { ObjectDisposedException.ThrowIf(_disposed, this); return _view; }
     }
+
+    // Rigid meshes have no views.
+    public void RefuseLiveViews() { }
 
     public void UnloadMeshes()
     {

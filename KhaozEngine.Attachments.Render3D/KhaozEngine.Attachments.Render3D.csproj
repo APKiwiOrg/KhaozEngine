@@ -2,7 +2,7 @@
   <PropertyGroup>
     <PackageId>KhaozEngine.Attachments.Render3D</PackageId>
     <Version>$(KhaozEngineVersion)</Version>
-    <Description>Rigid attachment definitions bound to posed Render3D skeletons.</Description>
+    <Description>Rigid and skinned attachment sets bound to posed Render3D skeletons, with shared uploads, drawing, outlines and outfits that hide covered body and lower layer triangles through skinned mesh views.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>

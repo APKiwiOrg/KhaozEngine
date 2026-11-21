@@ -13,7 +13,13 @@ public interface IAttachmentMeshLease : IDisposable
 }
 
 /// <summary>Owns the skinned resources from one successful attachment upload. Dispose before its scene.</summary>
-/// <remarks>Disposal is idempotent and releases meshes before their textures. Handles are immutable and borrowed.</remarks>
+/// <remarks>
+/// A completed disposal is idempotent and releases meshes before their textures. Handles are immutable and borrowed.
+/// A lease from the shipped Scene3D adapters refuses disposal with <see cref="SkinnedMeshViewArgumentException"/> and
+/// <see cref="SkinnedMeshViewRefusal.SourceHasLiveViews"/> while a skinned mesh view lives over any of its handles. The
+/// refusal comes before anything is released, so every handle stays live and the same call succeeds once the view is
+/// gone.
+/// </remarks>
 public interface ISkinnedAttachmentMeshLease : IDisposable
 {
     IReadOnlyList<SkinnedMeshHandle> Handles { get; }

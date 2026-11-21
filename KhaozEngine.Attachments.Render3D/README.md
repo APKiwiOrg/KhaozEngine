@@ -108,9 +108,13 @@ no disposal operation. Their properties and binding operations throw `ObjectDisp
 cache disposal.
 
 Dispose the cache before its scene and stop using its views first. The declaration order above enforces
-that disposal order. Dispose every `BoundOutfit` before its cache, as [Outfits](#outfits) explains. Cache disposal is idempotent and releases each unique upload once, meshes before
-textures, through Scene3D's deferred retirement APIs. Use the cache and its bindings on their owning
-render thread, with no overlapping calls.
+that disposal order. Dispose every `BoundOutfit` before its cache, as [Outfits](#outfits) explains. Cache
+disposal releases each unique upload once, meshes before textures, through Scene3D's deferred retirement
+APIs, and a completed disposal is idempotent. A cache disposal and a skinned lease disposal refuse with
+`SkinnedMeshViewArgumentException` and `SkinnedMeshViewRefusal.SourceHasLiveViews` while a mesh view lives
+over any of their handles. The refusal comes first and changes nothing: every handle stays live, coverage
+stays loaded and `Get` works as before, so the same call succeeds once the view is gone. Use the cache and
+its bindings on their owning render thread, with no overlapping calls.
 
 The `IAttachmentScene` overload accepts an optional scene capability for recording or headless
 consumers. `Scene3DAttachmentScene` uploads through Scene3D and forwards complete `RigidInstanceDraw`

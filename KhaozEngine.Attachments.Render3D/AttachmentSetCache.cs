@@ -168,6 +168,12 @@ public sealed partial class AttachmentSetCache : IDisposable
 
     internal void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
 
+    /// <summary>
+    /// Release every unique upload once, meshes before textures. A completed disposal is idempotent. While a skinned mesh
+    /// view lives over a skinned mesh the cache owns, disposal over the shipped Scene3D adapters refuses with
+    /// <see cref="SkinnedMeshViewArgumentException"/> and <see cref="SkinnedMeshViewRefusal.SourceHasLiveViews"/> before
+    /// anything changes, and the same call succeeds once the view is gone.
+    /// </summary>
     public void Dispose()
     {
         if (_disposed) return;

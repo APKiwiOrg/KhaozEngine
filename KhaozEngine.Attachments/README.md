@@ -99,7 +99,10 @@ The example hash is a placeholder. Hash the exact self-contained GLB bytes. `loc
 row-major finite numbers and must be affine and invertible. Unknown or duplicate members, missing
 fields, unsupported versions and invalid parts throw `AttachmentSetDataException` with `SourceName`.
 Invalid constructor definitions throw `AttachmentSetArgumentException`. Both carry `AttachmentSetRefusal`
-and the identifiers listed in [Set refusals](#set-refusals).
+and the identifiers listed in [Set refusals](#set-refusals). Root members are checked against the union of
+every format's root members before the version is read, and against the declared format's own list after. A
+document with a `layer` and no `formatVersion` is therefore refused as `JsonPropertyMissing` for the version,
+not as `JsonPropertyUnknown` for the layer, because the version decides what every other member means.
 
 `Write(definition)` emits the lowest format that expresses the definition. A set with a layer writes
 format 3, even when all its parts are rigid. Otherwise a set whose parts are all rigid writes format 1, even after
@@ -190,11 +193,14 @@ material part order. Each part declares its triangle count and lists `[region, t
 triangle order, which must add up to it. `BodyRegionMap` exposes `RigIdentity`, `Regions`, `Parts` and
 `TryRegion(name, out index)` with ordinal names. `TriangleCount(part)` is the sum of a part's runs.
 `WriteTriangleRegions(part, span)` fills one region index per triangle and needs a span of exactly that
-length. Both refuse a part index outside `Parts` with `ArgumentOutOfRangeException`. Adjacent runs of one region
-merge, so `Write(map)` is canonical and `Sha256` is the lowercase SHA-256 of those bytes.
+length. Both refuse a part index outside `Parts` with `ArgumentOutOfRangeException`. Adjacent runs of one
+region merge, so `Write(map)` is canonical and `Sha256` is the lowercase SHA-256 of those bytes.
 
 Refusals throw `BodyRegionMapDataException`, derived from `MalformedDataException`, with a
-`BodyRegionMapRefusal Reason` and `SourceName` from `Parse`. The constructor applies the same rules.
+`BodyRegionMapRefusal Reason` and `SourceName` from `Parse`. The `BodyRegionMap(rigIdentity, regions, parts)`
+constructor applies every content rule except `TriangleCountMismatch`, because only JSON declares a part's
+triangle count. `Parse` builds the map through that constructor, so a constructor refusal from `Parse` has
+`SourceName` but no `JsonPath`.
 
 | Reason | What it refuses | Other identifiers |
 |---|---|---|
@@ -208,7 +214,7 @@ Refusals throw `BodyRegionMapDataException`, derived from `MalformedDataExceptio
 | `RegionIndexOutOfRange` | a run naming an undeclared region. | `PartIndex`, `RunIndex`, `RegionIndex`, `RegionCount` |
 | `RunEmpty` | a run of fewer than one triangle. | `PartIndex`, `RunIndex` |
 | `TriangleCountMismatch` | runs that do not add up to the part's declared triangle count. | `PartIndex`, `DeclaredTriangleCount`, `ActualTriangleCount` |
-| `TriangleCountOverflow` | a part whose runs add up past Int32, from the constructor. | `PartIndex`, `RunIndex`, `ActualTriangleCount` |
+| `TriangleCountOverflow` | a part whose runs add up past Int32 at some run, from the constructor or from `Parse` through it. | `PartIndex`, `RunIndex`, `ActualTriangleCount` |
 
 ## Outfit coverage
 
@@ -278,8 +284,11 @@ with the reason for each:
   barycentric bounds rounds both halves of the seam the same way and misses both. The test moves every vertex into the
   ray's frame by the same arithmetic in every triangle and uses edge side tests that change sign exactly when an edge
   is walked the other way, so it needs no tolerance: a ray that passes outside the piece's outline by more than
-  rounding error never counts as a hit. Shared vertices must have identical positions. A real crack between two piece triangles is a
-  hole, and rays through it are uncovered.
+  rounding error never counts as a hit. Shared vertices must have identical positions. A real crack between two
+  piece triangles is a hole, and rays through it are uncovered. An unwelded mirror seam whose two halves round
+  their seam vertices to different positions is a crack, and so is a T junction, where one triangle's vertex sits
+  on another triangle's edge, because the edges on either side are no longer the same edge. The check reports a
+  ray that lands in either as uncovered. Weld the seam and split the long edge at the junction's vertex.
 - A zero area body triangle has no normal. It is counted in its region's `TriangleCount` and `DegenerateCount` and
   never makes a claim dishonest, because it cannot show through anything. A sliver, a triangle of nearly zero area,
   does get a normal, but its direction is only as good as its winding and its rounded positions, so a sliver may test

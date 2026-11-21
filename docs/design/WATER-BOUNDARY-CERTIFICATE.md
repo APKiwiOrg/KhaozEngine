@@ -96,4 +96,5 @@ refusal differences. `WaterBoundaryCertificateMovementParityTests` compares move
 and none with it, on the steep bank in both directions, the flat shelf and dry ground. `WaterBoundaryScopeTests`
 pins that serial, parallel, Drop and terrain Drop bakes never consult the certificate and that runtime steps do.
 `ContactTileWaterNavigationBaselineTests` pins 45 serial Contact bakes over the tile sampler to the files the commit
-before the certificate wrote.
+before the certificate wrote. The 15 with terrain Drops are pinned per architecture, because a bake payload carries
+the baking machine's float decisions.

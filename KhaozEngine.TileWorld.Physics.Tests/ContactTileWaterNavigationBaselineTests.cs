@@ -1,7 +1,9 @@
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Movement;
@@ -25,7 +27,8 @@ public class ContactTileWaterNavigationBaselineTests(ITestOutputHelper output)
     // version and a terrain Drop payload binds a digest of that block, so the test rebinds both to 24.2.0 before
     // hashing and the pins stay the base commit's raw file hashes across version bumps. A failing row means the bake
     // or one of these fixtures changed. Do not re-pin it to the new output. Restore the fixture, or treat the row as a
-    // bake change.
+    // bake change. The 30 rows without terrain Drops are one file on Arm64 and x64. A terrain Drop row holds its Arm64
+    // file here and its x64 file in X64TerrainDrops.
     const string BaseEngineVersion = "24.2.0";
     public static TheoryData<string, WaterTraversalMode, string, string> Baselines => new()
     {
@@ -76,6 +79,36 @@ public class ContactTileWaterNavigationBaselineTests(ITestOutputHelper output)
         { "terrain-pool", WaterTraversalMode.DryOnly, "terrain-drop", "9d6fa4b523071cb9824016602448bc09a2b64b5b00b32ddfbbf2cae5c060302e" },
     };
 
+    // A bake payload carries the baking machine's float decisions, and a terrain Drop payload adds canonical physical
+    // evidence, so the 15 terrain Drop files differ between Arm64 and x64 while the other 30 do not. These are the x64
+    // files, baked at the same commit e937df491 as the Arm64 rows above.
+    static readonly Dictionary<(string World, WaterTraversalMode Mode), string> X64TerrainDrops = new()
+    {
+        [("census-bank", WaterTraversalMode.SurfaceSwimmer)] = "d8eb923011e42b58bdb2a9ef48a947147a968cc3a308e448808b943137fda2fb",
+        [("census-bank", WaterTraversalMode.WadeOnly)] = "d3c98c1c9dcff17fbeb457e2e44f545a53d08a7c279af2a83270e4df9b1bb485",
+        [("census-bank", WaterTraversalMode.DryOnly)] = "bc3b08b1c7f5bd59c30eddf6723b40ff997bfcbc05c60f6e542a3fc7ebf484cf",
+        [("shore-1697", WaterTraversalMode.SurfaceSwimmer)] = "bfc118326a15132689266b99856ff1f29ef3c658a04e127431eaaa3d82eb586c",
+        [("shore-1697", WaterTraversalMode.WadeOnly)] = "96a9a4176550ae710bb8fb3106c099b7d9daca1ce428a7965acc7474a120fe14",
+        [("shore-1697", WaterTraversalMode.DryOnly)] = "e407a5f808a8baa8ee4771e96463bb21ef730e926b5ad38ae1ffdd2bf84e6799",
+        [("drawn-bed-sloped", WaterTraversalMode.SurfaceSwimmer)] = "9256aa4df7a9559adef6c4d3be04872296858bd4196ee4fbe1bfc036f5a770c5",
+        [("drawn-bed-sloped", WaterTraversalMode.WadeOnly)] = "36e5ccd4bd7caaf6e2fbb48d8dc5d25c9e868fface64f54441687aecbcee1009",
+        [("drawn-bed-sloped", WaterTraversalMode.DryOnly)] = "a77665e09c89f60d65658df798311b67d5c07008a88243541b75d673e4760af9",
+        [("drawn-bed-level", WaterTraversalMode.SurfaceSwimmer)] = "4d306dd53c59bf79c3af61357e8469d5aade489adda48c07c0f56256feabde8b",
+        [("drawn-bed-level", WaterTraversalMode.WadeOnly)] = "75ff6cd7092eb7c9a758d73040cde70b49de57f14a1753ea2215e703eb8dc790",
+        [("drawn-bed-level", WaterTraversalMode.DryOnly)] = "f13517a5ab48b8d656f25c37e5cadb6e0ac8f0568a1de560d393b1ae1e22490e",
+        [("terrain-pool", WaterTraversalMode.SurfaceSwimmer)] = "e05b47d24ebc82dfdb0df984875b32b3701de5e51daa377478cc33532a4eb1ed",
+        [("terrain-pool", WaterTraversalMode.WadeOnly)] = "2bef0e0a28a4f837537b732947dae4f351924e65fe2b47985487fb865632e097",
+        [("terrain-pool", WaterTraversalMode.DryOnly)] = "df4e84735bd3d01ee94146f605bb7752c1214f163c68e59a30f6259ceb9f512e",
+    };
+
+    static string TerrainDropPin(string world, WaterTraversalMode mode, string arm64) =>
+        RuntimeInformation.ProcessArchitecture switch
+        {
+            Architecture.Arm64 => arm64,
+            Architecture.X64 => X64TerrainDrops[(world, mode)],
+            var other => throw new InvalidOperationException($"No terrain Drop bake is pinned for {other}."),
+        };
+
     [Theory]
     [MemberData(nameof(Baselines))]
     public void SerialBakeMatchesTheBaseCommitFullFile(string world, WaterTraversalMode mode, string drops, string sha256)
@@ -99,7 +132,7 @@ public class ContactTileWaterNavigationBaselineTests(ITestOutputHelper output)
 
         string actualHash = Convert.ToHexStringLower(SHA256.HashData(AtBaseVersion(bake, expectation, "probe")));
         output.WriteLine($"{world} {mode} {drops}: {actualHash}");
-        Assert.Equal(sha256, actualHash);
+        Assert.Equal(terrain ? TerrainDropPin(world, mode, sha256) : sha256, actualHash);
     }
 
     static byte[] AtBaseVersion(GroundNavigationBake bake, NavBakeExpectation expectation, string profile)

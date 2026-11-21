@@ -55,7 +55,6 @@ public sealed partial class MoveToRange
         if (options.Stall is { } stall) _stallRing = new RangeProgressRing(stall.WindowTicks);
         _follower = new PathFollower(_straightener ?? planner,
             StrictConfig(follow ?? PathFollowConfig.Default, options.CarryThroughStraightRuns), space);
-        _contains = Contains;
         _admits = AllowsStep;
     }
 

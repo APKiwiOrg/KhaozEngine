@@ -1047,7 +1047,9 @@ validates and evaluates current reach, then an unrelated airborne body or a comm
 preference to `InRange`, with zero requested input. An active proved Contact Drop owns its airborne traversal.
 A swimming body is not grounded, so it is suspended too unless the driver opts into swim steering.
 `InRange` means the supplied current body already passes
-`ReachGeometry.Within`, never that a waypoint or predicted endpoint would.
+`ReachGeometry.Within`, never that a waypoint or predicted endpoint would. Each `NavGoalRegion` the driver gives
+its planner keeps the target, range and capsule it was made for, so a planner that holds a region past its query
+still tests that reach after a retarget or a `Reset`.
 
 The public driver surface is:
 

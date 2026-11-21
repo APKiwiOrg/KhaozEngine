@@ -31,9 +31,10 @@ namespace KhaozEngine.Navigation;
 /// For synchronous queries the planner keeps one set of search scratch, allocated on its first query and reused by each later
 /// one: generation-stamped per-node g-scores, parents, incoming edge kinds and closed marks across all
 /// layers, plus region flags, the open set and reconstruction lists, each kept at the largest query seen.
-/// A query touches only the nodes it visits, except for clearing stamps on generation wrap. A warmed query allocates only the path
-/// it returns. Queries may run concurrently from several threads: a query that finds the scratch already
-/// taken uses a fresh one of its own.
+/// A search writes stamps for visited nodes and clears them on generation wrap.
+/// With sufficient scratch capacity, the planner allocates only for nonempty results.
+/// Caller region predicates may allocate their own storage. Queries may run concurrently from several threads:
+/// a query that finds the scratch already taken uses a fresh one of its own.
 /// </para>
 /// </summary>
 public sealed partial class GridPathPlanner : IIncrementalRegionPathPlanner

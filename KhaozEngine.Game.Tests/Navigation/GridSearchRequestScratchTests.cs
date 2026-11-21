@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Numerics;
 using KhaozEngine.Navigation;
 using Xunit;
 using static KhaozEngine.Tests.Navigation.DisconnectedPlannerFixture;
@@ -85,6 +87,17 @@ public class GridSearchRequestScratchTests
         var warmup = new GridPathPlanner(space);
         warmup.FindPath(Start, goal, 0f, PathQueryBudget.Default);
 
+        // The reference is the base planner's cold allocation graph, built beside the planner on this runtime.
+        (BaseColdScratch Scratch, NavPath Path) AllocateBase() =>
+            (new BaseColdScratch(layers.Length * 2, layers.Length),
+                new NavPath(NavPathStatus.Complete, new[] { new NavWaypoint(new Vector2(goal.X, goal.Z), 0) }));
+
+        var reference = AllocateBase();
+        long expectedBytes = AllocationMeasurement.Measure("base cold synchronous point query",
+            () => { reference = AllocateBase(); });
+        GC.KeepAlive(reference.Scratch);
+        GC.KeepAlive(reference.Path);
+
         var planner = new GridPathPlanner(space);
         NavPath? result = null;
         long allocated = AllocationMeasurement.Measure("cold synchronous point query", () =>
@@ -93,8 +106,43 @@ public class GridSearchRequestScratchTests
         var path = Assert.IsType<NavPath>(result);
         Assert.Equal(NavPathStatus.Complete, path.Status);
         Assert.Single(path.Waypoints);
-        // The base planner's cold allocation on 64-bit .NET 10, including the returned path.
-        Assert.Equal(1744L, allocated);
+        Assert.Equal(expectedBytes, allocated);
+    }
+
+    readonly record struct BaseMemberBox(int X, int Z, int Width, int Height, int Offset);
+
+    // The fields and first allocations of the scratch a synchronous query rented before the kernel was shared.
+    sealed class BaseColdScratch
+    {
+        internal readonly double[] Scores;
+        internal readonly int[] Parents;
+        internal readonly NavLinkKind?[] Incoming;
+        internal readonly int[] Stamps;
+        internal int Generation = 0;
+        internal readonly BaseMemberBox[] Boxes;
+        internal readonly bool[] Layers;
+        internal bool[] Flags = Array.Empty<bool>();
+        internal (int, int, int)[] Cells = Array.Empty<(int, int, int)>();
+        internal NavGrid? RayGrid = null;
+        internal float RayRadius = 0f;
+        internal readonly Func<int, int, bool> RayBlocks;
+        internal readonly PriorityQueue<int, (double F, int Seq)> Open = new();
+        internal readonly List<int> Chain = new();
+        internal readonly List<NavWaypoint> Waypoints = new();
+        internal readonly List<Vector3> Members = new();
+        internal readonly List<int> MemberNodeIds = new();
+        internal (int, int, int, int) MemberBounds = default;
+
+        internal BaseColdScratch(int nodes, int layers)
+        {
+            Scores = new double[nodes];
+            Parents = new int[nodes];
+            Incoming = new NavLinkKind?[nodes];
+            Stamps = new int[nodes];
+            Boxes = new BaseMemberBox[layers];
+            Layers = new bool[layers];
+            RayBlocks = (x, z) => !RayGrid!.IsPassable(x, z, RayRadius);
+        }
     }
 
     [Fact]

@@ -325,8 +325,8 @@ A* implementation over a `NavSpace`.
 
 A query snaps both endpoints onto a passable cell (within `PathQueryBudget.SnapRadius`, else
 `NavPath.Unreachable`), tries a same-layer line-of-sight shortcut, then searches eight-connected grid exits and
-accepted links. If a snap reaches the integer cell boundary without finding a passable cell, the query returns
-`NavPath.Unreachable`. Diagonals require both companion cells. Stair costs the greater of its spatial metric span
+accepted links. A legacy snap whose ring reaches `int.MaxValue` on either cell axis returns `NavPath.Unreachable`.
+Snapping also stops before entering a ring whose cell coordinates cannot be represented as integers. Diagonals require both companion cells. Stair costs the greater of its spatial metric span
 and one source cell, rounded upward when needed to cover that span. Hop costs `hopCostCells`
 source cells and Drop costs world XZ octile displacement plus positive physical descent in metres. Expansion is
 bounded by `MaxExpandedNodes`. An incomplete query returns its closest reached node as Partial or Unreachable
@@ -355,14 +355,15 @@ Construction takes `O((N + L) log N)` worst-case work with union by size and pat
 is the total layer cell count and `L` is the accepted link count. Persistent array payload is
 `4 * (N + P + C + 1)` bytes, where `P` is the number of raw-passable profile nodes and `C` their weak
 component count. Construction temporarily adds `4 * (N + layerCount)` bytes. No feet-position cache or serialized
-metadata is added. Certified warmed queries allocate nothing, and other warmed queries still allocate
-only their returned paths. Engine-version identity still requires normal consumer rebaking.
+metadata is added. With sufficient synchronous scratch capacity, a certified query allocates no planner storage.
+The planner allocates result storage only for nonempty paths. Caller region predicates may allocate their own
+storage. Engine-version identity still requires normal consumer rebaking.
 
 A planner allocates synchronous search scratch on its first query and reuses it for later ones. Scratch
 holds generation-stamped per-node g-scores, parents, incoming edge kinds and closed marks, plus region flags,
 the open set and reconstruction lists kept at the largest query seen. A search writes stamps only for
 visited nodes and clears them when the generation wraps. A region query scans each layer's cell box around
-the region's extent. A warmed query allocates only the path it returns. Keep one planner per `NavSpace`
+the region's extent. Keep one planner per `NavSpace`
 and reuse it across queries. Overlapping synchronous queries use separate scratch.
 
 These are the legacy point-query rules. The original `GridPathPlanner(NavSpace space, float hopCostCells =

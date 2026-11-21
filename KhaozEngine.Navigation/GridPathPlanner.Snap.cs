@@ -73,6 +73,14 @@ public sealed partial class GridPathPlanner
                 return;
             }
 
+            // A ring whose inclusive right or bottom bound is int.MaxValue ends the snap without a result, even with a
+            // passable cell on it. No loop over that ring can finish without passing the bound.
+            if (right == int.MaxValue || bottom == int.MaxValue)
+            {
+                Done = true;
+                return;
+            }
+
             if (_bestDistance < float.PositiveInfinity)
             {
                 Result = _bestCentre;

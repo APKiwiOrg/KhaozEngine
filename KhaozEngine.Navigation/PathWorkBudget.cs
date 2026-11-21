@@ -9,12 +9,14 @@ namespace KhaozEngine.Navigation;
 /// order and stops before one that would pass its quota, except that a call's first operation always runs.
 /// Every call on a pending request that holds a workspace therefore makes progress and spends at most the
 /// larger of the quota and the largest weight. The excess shows in <see cref="PathPlanRequest.WorkSpent"/> and
-/// is never repaid, so a request's total work is the same for every quota schedule. The quota may differ on every call.
+/// is never repaid. A request run to completion spends the same total work under every quota schedule. The quota
+/// may differ on every call.
 /// </summary>
 /// <remarks>
-/// A quota bounds work. Equal inputs spend equal units on every machine. A request holding a workspace
-/// completes within W owner calls, where W is its final <see cref="PathPlanRequest.WorkSpent"/>, and within
-/// ceil(W / (q - L + 1)) calls at a fixed quota q of at least the largest operation weight L.
+/// A quota bounds work. Equal inputs spend equal units on every machine. A request completes on the advance that
+/// runs its last operation, or on its first advance with a workspace if it has no operations. For positive final
+/// work W, its final <see cref="PathPlanRequest.WorkSpent"/>, it completes within W advances with a workspace,
+/// and within ceil(W / (q - L + 1)) such advances at a fixed quota q of at least the largest operation weight L.
 /// Elapsed time per unit varies with the machine, runtime tier, cache and heap state, interruption, open set
 /// size, column depth and the cost of a caller's region predicate, which counts as one operation whatever it
 /// costs. A quota does not bound first use or JIT time.

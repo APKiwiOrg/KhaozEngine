@@ -57,8 +57,10 @@ public class MoveToRangeGoalSnapshotTests
         Assert.True(changed > 0, $"the {change} retarget changed no probe's reach");
     }
 
-    [Fact]
-    public void AnchorHoldingReachChangeMakesANewRegion()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AnchorHoldingReachChangeMakesANewRegion(bool flipAnchorZero)
     {
         const float halfHeight = 0.875f;
         float centreY = MathF.BitDecrement(0.125f);
@@ -67,7 +69,10 @@ public class MoveToRangeGoalSnapshotTests
             BitConverter.SingleToInt32Bits(nextCentreY - halfHeight));
 
         ReachTarget first = ReachTarget.Capsule(new MovementBody(new(2f, centreY, 0f), 0.25f, halfHeight));
-        ReachTarget next = ReachTarget.Capsule(new MovementBody(new(2f, nextCentreY, 0f), 0.25f, halfHeight));
+        float nextZ = flipAnchorZero ? BitConverter.Int32BitsToSingle(int.MinValue) : 0f;
+        ReachTarget next = ReachTarget.Capsule(new MovementBody(new(2f, nextCentreY, nextZ), 0.25f, halfHeight));
+        Assert.Equal(flipAnchorZero ? int.MinValue : 0,
+            BitConverter.SingleToInt32Bits(ReachGoalSnapshot.AnchorFor(next).Z));
         NavGoalRegion? queried = null;
         var mover = new MoveToRange(new ScriptPlanner((_, goal) =>
         {
@@ -183,7 +188,7 @@ public class MoveToRangeGoalSnapshotTests
 
     // One fresh region and snapshot per change to the reach bits. A held reach needs neither.
     [Fact]
-    public void ChasingMoverAllocatesOneGoalPerReachChange()
+    public void ChasingMoverAllocatesAtMostOneGoalPerReachChange()
     {
         const int Moves = 30;
         NavPath route = Route(NavPathStatus.Complete, new Vector2(6f, 0f));

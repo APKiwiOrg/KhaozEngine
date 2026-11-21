@@ -18,12 +18,11 @@ namespace KhaozEngine.Navigation;
 /// <see cref="IIncrementalRegionPathPlanner.BeginPath"/> until the request is Ready or Cancelled, not only during
 /// one call. A predicate that reads state its owner changes later, such as the mover's current target, plans
 /// against a goal that no longer exists. A predicate must not call back into the planner or its pool.</para>
-/// <para>Publication. The call on which a request becomes Ready depends on four things and nothing else, never on
-/// a clock, thread, task, allocation, collection, JIT tier, another pool or a synchronous query: the ordered
-/// work operations and their weights, set by its frozen inputs, the quota on each owner call and which calls its
-/// owner makes, the call on which it gets a workspace (see <see cref="PathPlanWorkspaces"/>), and the owner's adoption
-/// rule. With one workspace per sharing owner no request waits, and publication depends only on the request's own
-/// inputs, quotas and owner calls.</para>
+/// <para>Publication. The call on which a request becomes Ready depends on its ordered operations and weights,
+/// the quotas on the owner's advances, and the advance on which it first holds a workspace (see
+/// <see cref="PathPlanWorkspaces"/>). It does not depend on clocks, task or thread scheduling, allocations,
+/// collections, JIT tier, other pools or synchronous queries. With one workspace per sharing owner, no request
+/// waits. The owner's adoption rule determines when it uses the Ready result.</para>
 /// <para>Lifetime. A request is not serializable. Cancel or dispose a request its owner no longer needs, before
 /// dropping it, so its workspace passes to the next waiter. A dropped pending request keeps its lease. Cancel and
 /// Dispose are idempotent, and neither changes a Ready request or its result.</para>
@@ -45,8 +44,8 @@ internal abstract class PathPlanRequest : IDisposable
     /// which may be <see cref="NavPath.Unreachable"/>. Null after a cancel.</summary>
     public NavPath? Result => State == PathPlanState.Ready ? _result : null;
 
-    /// <summary>The work units this request has spent so far. The final value depends only on the frozen inputs
-    /// and the operation weights, never on the quota schedule.</summary>
+    /// <summary>The work units this request has spent so far. For a completed request, the final value depends
+    /// only on the frozen inputs and the operation weights. Cancellation preserves the work already spent.</summary>
     public long WorkSpent { get; private set; }
 
     /// <summary>

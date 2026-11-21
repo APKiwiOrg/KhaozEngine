@@ -23,7 +23,9 @@ public class ContactTileWaterNavigationBaselineTests(ITestOutputHelper output)
     // SHA-256 of the whole bake file: header, identity and payload. Every value was baked at e937df491, the commit
     // before the water boundary certificate, whose engine version was 24.2.0. The identity block names the engine
     // version and a terrain Drop payload binds a digest of that block, so the test rebinds both to 24.2.0 before
-    // hashing and the pins stay the base commit's raw file hashes across version bumps.
+    // hashing and the pins stay the base commit's raw file hashes across version bumps. A failing row means the bake
+    // or one of these fixtures changed. Do not re-pin it to the new output. Restore the fixture, or treat the row as a
+    // bake change.
     const string BaseEngineVersion = "24.2.0";
     public static TheoryData<string, WaterTraversalMode, string, string> Baselines => new()
     {

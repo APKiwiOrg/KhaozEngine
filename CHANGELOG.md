@@ -23,21 +23,27 @@ geometry, and a step whose full solve would refuse such a proof now continues pa
   `IMovementWaterField`. Its `CertifyBoundaryReach` returns a `MovementWaterReach`, whose `MovementWaterReachKind`
   is `Declined`, `Empty` or `OneFreeSurface`. The default `MovementWaterReach` declines. `TileMediumSampler`
   implements it as the public `TileMediumSampler.CertifyBoundaryReach`, and declines on two levels in reach, on
-  more than 256 columns, on a query its trace would refuse as invalid and on a capture whose facts it did not
-  verify. The analytic level field does not implement it.
+  more than 256 columns, on a query its trace would refuse as invalid and on every query of a sampler whose
+  capture holds more than 256 water domains, one per water body per region. The analytic level field does not
+  implement it.
 - What does not change. Wherever the full solve returns Known, every output bit of a step is what it was. Navigation
   bakes always take the full solve, so their links, refusals and exceptions are unchanged. A new golden pins 45
   Contact bakes over tile water to their files before this change.
-- What does change. Where the full solve would refuse a proof, a runtime step continues past that proof and its
-  later checks decide the outcome. The refusals are a coverage error above 0.001 m, an evaluation that does not
+- What does change. Where the certificate answers a proof whose full solve would have refused, a runtime step now
+  continues past that proof and its later checks decide the outcome. A proof the certificate declines refuses as
+  before. The refusals are a coverage error above 0.001 m, an evaluation that does not
   resolve or is not finite, a kernel capacity limit, and a result rejected as malformed, which includes an exception
-  raised inside the producer. Runtime Drop following can therefore continue past a proof a bake refused. Point
-  samples, support, shell sweeps, solid contacts, route boundary proofs, frame checks and authentication are
-  unaffected.
+  raised inside the producer's trace. Runtime Drop following can therefore continue past a proof a bake refused. Point
+  samples, support, shell sweeps, solid contacts, `MovementBoundary` checks on a route, frame checks and
+  authentication are unaffected.
 - Cost. A clean grounded moving step makes seven boundary proofs. On a bank or a shelf over one level and on dry
   ground with no column in reach, the tests pin seven coverage traces for such a SurfaceSwimmer step without the
   certificate and none with it. The saving is counted in traces. No measured time is recorded.
-- What a consumer must do. Nothing, to keep working. A consumer that wraps its water field must forward
+- What a consumer must do. Nothing, to keep working. The server and every client that predicts or replays the same
+  movement must either all expose the interface or all hide it, and run the same engine version. A field that
+  forwards it on one head only changes the outcome of a step whose full solve refuses, so prediction disagrees with
+  the server there. A replay recorded before 24.3.0 can differ at such steps. A consumer that wraps its water field
+  must forward
   `IMovementWaterBoundaryReachProof` to get the saving, because a wrapper that forwards only the trace keeps the
   full solve. A producer may implement the interface only if it guarantees four facts for every answer other than a
   decline: every contact its trace can report is free surface, every such contact carries its own column's top as

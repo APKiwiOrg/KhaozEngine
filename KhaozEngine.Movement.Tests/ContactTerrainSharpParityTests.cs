@@ -29,7 +29,7 @@ public class ContactTerrainSharpParityTests
         bool Prove(bool terrain, List<ContactDropStepObservation> steps)
         {
             using var hooks = ContactNavigationBuildHooks.Install(new() { DropStep = steps.Add });
-            using var binding = fixture.Context.CreateNavigationBinding(ContactDropFixture.Tuning);
+            using var binding = fixture.Context.CreateNavigationBakeBinding(ContactDropFixture.Tuning);
             using var proof = new ContactNavigationProof(fixture.Capture, fixture.Context, binding, nav.Footprint, maxDropMetres: 6);
             if (terrain) proof.EnableTerrainDescents(empty, sources);
             return proof.TryDrop(nav.Space, link);

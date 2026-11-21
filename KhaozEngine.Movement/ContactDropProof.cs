@@ -24,7 +24,7 @@ internal sealed partial class ContactDropProof : IDisposable
         NavAreaFootprint ground, float allowance, bool reuse)
     {
         _options = options;
-        _binding = source.CreateFallProofBinding();
+        _binding = ContactNavigationBakeScope.Require(source).CreateFallProofBinding();
         _frame = frame;
         _acquire = acquire;
         _ground = ground;

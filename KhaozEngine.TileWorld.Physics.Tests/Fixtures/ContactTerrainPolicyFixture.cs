@@ -49,7 +49,7 @@ public sealed class ContactTerrainPolicyFixture : IDisposable
         using var hooks = ContactNavigationBuildHooks.Install(new() { DropStep = steps.Add });
         var body = tuning ?? ContactTerrainScene.Tuning;
         var ground = areas is { } filter ? new NavAreaFootprint(Capture.Columns, Capture.Options, body, filter) : Navigation.Footprint;
-        using var binding = Scene.Context.CreateNavigationBinding(body);
+        using var binding = Scene.Context.CreateNavigationBakeBinding(body);
         using var proof = new ContactNavigationProof(Capture, Scene.Context, binding, ground, maxDropMetres: 6);
         proof.EnableTerrainDescents(Capture.DescentEvidence!, Sources);
         bool accepted = proof.TryDrop(space ?? Navigation.Space, link ?? Link);

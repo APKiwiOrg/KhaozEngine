@@ -64,8 +64,8 @@ public class ContactNavigationTraversalTests
         Assert.False(wet.AllowsSegment(from, to));
         Assert.True(dry.AllowsSegment(from, to));
 
-        using var wetSource = wetContext.CreateNavigationBinding(tuning);
-        using var drySource = dryContext.CreateNavigationBinding(tuning);
+        using var wetSource = wetContext.CreateNavigationBakeBinding(tuning);
+        using var drySource = dryContext.CreateNavigationBakeBinding(tuning);
         using var wetProof = new ContactNavigationProof(wetCapture, wetContext, wetSource,
             new(wetCapture.Columns, options, tuning, default));
         using var dryProof = new ContactNavigationProof(dryCapture, dryContext, drySource,

@@ -42,7 +42,7 @@ public class ContactDropTopologyProofTests
         var traversal = new NavTraversalLayer(first.Width, first.Height, accepted, exits);
         var candidates = ContactDropCandidates.Generate([grid], [traversal], tuning, 6);
         var space = new NavSpace([grid], candidates);
-        using var source = fixture.Context.CreateNavigationBinding(tuning);
+        using var source = fixture.Context.CreateNavigationBakeBinding(tuning);
         using var proof = new ContactNavigationProof(fixture.Capture, fixture.Context, source, ground.Footprint, maxDropMetres: 6);
         Assert.Contains(candidates, link => link.FromLayer == link.ToLayer && link.ToX - link.FromX == span && proof.TryDrop(space, link));
     }

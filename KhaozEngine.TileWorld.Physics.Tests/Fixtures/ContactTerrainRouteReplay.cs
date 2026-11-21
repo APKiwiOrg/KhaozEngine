@@ -12,7 +12,7 @@ internal static class ContactTerrainRouteReplay
     internal static bool Prove(PhysicsNavBake capture, GroundMoveContext context, GroundNavigation navigation,
         NavLink link, PhysicsNavDescentEvidence? originalEvidence = null)
     {
-        using var binding = context.CreateNavigationBinding(navigation.Identity.Tuning);
+        using var binding = context.CreateNavigationBakeBinding(navigation.Identity.Tuning);
         if (navigation.Terrain!.Route(link) == ContactDropRoute.Sharp)
         {
             using var sharp = new ContactNavigationProof(capture, context, binding, navigation.Footprint,

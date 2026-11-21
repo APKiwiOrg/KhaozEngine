@@ -20,6 +20,9 @@ public sealed partial class EffectiveMovementBinding : IDisposable
     public MoveTuning Tuning { get; }
     public WaterTraversalPolicy Water { get; }
     public bool UsesLease => Kind != EffectiveMovementBindingKind.Legacy;
+    /// <summary>Which evidence answers the water boundary question for this binding's leases. A binding with no
+    /// environment context has no leases and reports runtime.</summary>
+    internal MovementWaterBoundaryScope WaterBoundaryScope => _context?.WaterBoundaryScope ?? MovementWaterBoundaryScope.Runtime;
 
     EffectiveMovementBinding(EffectiveMovementBindingKind kind, in MoveTuning tuning, in WaterTraversalPolicy water,
         MovementEnvironmentContext? context = null, OrdinaryMovementEnvironment? ordinary = null,

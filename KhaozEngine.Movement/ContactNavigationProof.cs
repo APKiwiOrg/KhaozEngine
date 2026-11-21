@@ -26,6 +26,7 @@ internal sealed partial class ContactNavigationProof : IDisposable
     internal ContactNavigationProof(PhysicsNavBake bake, GroundMoveContext context, EffectiveMovementBinding source,
         NavAreaFootprint footprint, ContactNavigationReusePolicy? reuse = null, float maxDropMetres = 0)
     {
+        ContactNavigationBakeScope.Require(source);
         _bake = bake;
         _context = context;
         _reuse = reuse ?? ContactNavigationReusePolicy.Capture();
@@ -53,6 +54,7 @@ internal sealed partial class ContactNavigationProof : IDisposable
     internal ContactNavigationProof(PhysicsNavBake bake, ContactNavigationSnapshot snapshot,
         EffectiveMovementBinding source, NavAreaFootprint footprint, ContactNavigationReusePolicy reuse, float maxDropMetres = 0)
     {
+        ContactNavigationBakeScope.Require(source);
         _bake = bake;
         _basis = snapshot.Basis;
         _reuse = reuse;

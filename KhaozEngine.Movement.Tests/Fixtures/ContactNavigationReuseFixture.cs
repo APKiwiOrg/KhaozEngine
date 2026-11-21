@@ -56,7 +56,7 @@ internal sealed class ContactNavigationReuseFixture : IDisposable
             GroundNavigation original = baked.GetProfile(name);
             if (original.Identity.Kind != EffectiveMovementBindingKind.OrdinaryContact) continue;
             MoveTuning tuning = original.Identity.Tuning;
-            using var source = context.CreateNavigationBinding(tuning);
+            using var source = context.CreateNavigationBakeBinding(tuning);
             using var proof = new ContactNavigationProof(capture, context, source, original.Footprint, policy);
             var cells = new List<(int Layer, int X, int Z)>();
             var nodes = new bool[original.Space.Layers.Count][];
@@ -162,7 +162,7 @@ internal sealed class ContactNavigationReuseFixture : IDisposable
 
     internal ContactNavigationProof Proof(bool reuse = true, bool holds = false)
     {
-        using var source = Context.CreateNavigationBinding(Tuning);
+        using var source = Context.CreateNavigationBakeBinding(Tuning);
         source.DecorateProviderForTests(provider => new TracedProvider(provider, this));
         return new(Bake, Context, source, new NavAreaFootprint(Bake.Columns, Bake.Options, Tuning, default),
             new ContactNavigationReusePolicy(reuse, holds, false));

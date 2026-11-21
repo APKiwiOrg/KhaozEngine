@@ -29,7 +29,7 @@ public class ContactDropLaunchPrefixTests
         {
             DropStep = step => { if (step.Grounded) peak = MathF.Max(peak, step.Feet.Y); },
         });
-        using var source = fixture.Context.CreateNavigationBinding(ContactDropFixture.Tuning);
+        using var source = fixture.Context.CreateNavigationBakeBinding(ContactDropFixture.Tuning);
         using var proof = new ContactNavigationProof(fixture.Capture, fixture.Context, source, ground.Footprint,
             maxDropMetres: allowance);
         bool accepted = proof.TryDrop(ground.Space,

@@ -61,7 +61,7 @@ public class ContactDropCorrectnessTests
     public void FallBindingNeverNormalizesActualFlightTuning()
     {
         using var fixture = new ContactDropFixture();
-        using var source = fixture.Context.CreateNavigationBinding(ContactDropFixture.Tuning with { AirMomentum = true });
+        using var source = fixture.Context.CreateNavigationBakeBinding(ContactDropFixture.Tuning with { AirMomentum = true });
         using var fall = source.CreateFallProofBinding();
         using var ground = source.CreateProofBinding();
         Assert.Equal(source.Tuning, fall.Tuning);

@@ -31,7 +31,7 @@ public class ContactTerrainDropProofTests
         var link = new NavLink(from, sx, sz, to, tx, tz) { Kind = NavLinkKind.Drop };
         var steps = new List<ContactDropStepObservation>();
         using var hooks = ContactNavigationBuildHooks.Install(new() { DropStep = steps.Add });
-        using var binding = scene.Context.CreateNavigationBinding(ContactTerrainScene.Tuning);
+        using var binding = scene.Context.CreateNavigationBakeBinding(ContactTerrainScene.Tuning);
         using var proof = new ContactNavigationProof(capture, scene.Context, binding, nav.Footprint, maxDropMetres: 6);
         Assert.False(proof.TryDrop(nav.Space, link));
         proof.EnableTerrainDescents(evidence, sources);

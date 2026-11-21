@@ -95,7 +95,7 @@ public class ContactDropAdversarialGeometryTests(ITestOutputHelper output)
             DropCandidate = _ => candidates++,
             DropStep = step => { steps++; flew |= !step.Grounded; steep |= step.UnwalkableSupport; output.WriteLine($"{step.Outcome} feet={step.Feet} ground={step.Grounded}"); },
         });
-        using var source = context.CreateNavigationBinding(ContactDropFixture.Tuning);
+        using var source = context.CreateNavigationBakeBinding(ContactDropFixture.Tuning);
         using var proof = new ContactNavigationProof(capture, context, source, footprint, maxDropMetres: 6);
         Assert.False(proof.TryDrop(space, link));
         Assert.Equal(1, candidates);

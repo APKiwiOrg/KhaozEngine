@@ -21,7 +21,7 @@ public class ContactTerrainEvidenceSubsetTests
         var sources = new ContactTerrainProfileEvidence(subset, fixture.Navigation);
         if (rim)
         {
-            using var binding = fixture.Scene.Context.CreateNavigationBinding(ContactTerrainScene.Tuning);
+            using var binding = fixture.Scene.Context.CreateNavigationBakeBinding(ContactTerrainScene.Tuning);
             using var proof = new ContactNavigationProof(fixture.Capture, fixture.Scene.Context, binding, fixture.Navigation.Footprint, maxDropMetres: 6);
             proof.EnableTerrainDescents(subset, sources);
             Assert.True(proof.TryDrop(fixture.Navigation.Space, fixture.Link), proof.TerrainRefusal.ToString());

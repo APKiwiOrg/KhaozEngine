@@ -24,7 +24,8 @@ internal sealed class ContactTerrainFixture : IDisposable, IMovementAnalyticSupp
     internal Vector3 From { get; }
     internal Vector3 To => new(1.375f, 0, 0.125f);
 
-    internal ContactTerrainFixture(float height, bool terrainEvidence = false, NavAreaClassifier? classify = null)
+    internal ContactTerrainFixture(float height, bool terrainEvidence = false, NavAreaClassifier? classify = null,
+        IMovementWaterField? water = null)
     {
         From = new(-0.375f, height, 0.125f);
         _height = (x, _) => x <= 0 ? height : x >= 1 ? 0 : height * (1 - x);
@@ -33,7 +34,7 @@ internal sealed class ContactTerrainFixture : IDisposable, IMovementAnalyticSupp
             new(-8, height, 8), new(0, height, 8), new(1, 0, 8), new(8, 0, 8)];
         // Mirror certified tile ground. Capture reads the genuine mesh, while the registered movement selection
         // uses its exact height field and normal, as the installed terrain producer does.
-        Scene = new(Tuning, _height, _normal, extent: new(new(-20, -10, -20), new(20, 12, 20), -10, 10),
+        Scene = new(Tuning, _height, _normal, extent: new(new(-20, -10, -20), new(20, 12, 20), -10, 10), water: water,
             install: (world, builder) =>
             {
                 var handle = world.AddStatic(new TriangleMeshShape(_vertices, _indices), Pose.Identity);
@@ -41,7 +42,7 @@ internal sealed class ContactTerrainFixture : IDisposable, IMovementAnalyticSupp
                 builder.Exclude(handle);
                 if (terrainEvidence) builder.WithAnalyticSupport(this);
             });
-        Context = ContactNavigationFixture.Context(Scene);
+        Context = ContactNavigationFixture.Context(Scene, water);
         Capture = PhysicsNavBake.Capture(Context, Options with { CaptureTerrainDescentEvidence = terrainEvidence }, classify ?? (_ => 0));
     }
 

@@ -41,7 +41,7 @@ public class ContactTerrainPersistenceTests
         Assert.DoesNotContain(loaded.Bake.GetProfile("creature").Space.Links, link => link.Kind == NavLinkKind.Drop);
         using var rewritten = new MemoryStream(); loaded.Bake.WriteTo(rewritten);
         Assert.Equal(bytes, rewritten.ToArray());
-        using var binding = scene.Context.CreateNavigationBinding(ContactTerrainScene.Tuning);
+        using var binding = scene.Context.CreateNavigationBakeBinding(ContactTerrainScene.Tuning);
         using var proof = new ContactNavigationProof(capture, scene.Context, binding, fresh.Footprint, maxDropMetres: 6);
         // Refusals belong to bake time. Keep every refusal case on the original complete capture.
         proof.EnableTerrainDescents(capture.DescentEvidence!, new(capture.DescentEvidence!, fresh));

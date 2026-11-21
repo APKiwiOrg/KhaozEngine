@@ -117,7 +117,7 @@ public sealed class ContactNavigationProofReuseProtectionTests
             sample => scenario == "forbidden-corner" && sample.X >= 0 && sample.Z >= 0 ? 1u : 0u);
         var areas = new NavAreaFilter(0, 1);
         var footprint = new NavAreaFootprint(capture.Columns, options, tuning, areas);
-        using var source = context.CreateNavigationBinding(tuning);
+        using var source = context.CreateNavigationBakeBinding(tuning);
         Vector3 from = scenario == "forbidden-corner" ? new(-0.125f, 0, -0.125f) : new(-0.5f, 0, 0.125f);
         Vector3 to = scenario == "forbidden-corner" ? from : new(0.5f, 0, 0.125f);
         bool expected;
@@ -160,7 +160,7 @@ public sealed class ContactNavigationProofReuseProtectionTests
             install: (world, builder) => Box(world, builder, "floor", new(-8, -0.25f, -8), new(8, 0, 8)));
         using var context = Context(scene);
         using var capture = PhysicsNavBake.Capture(context, Options with { MaxEdgeProbeSteps = budget }, _ => 0);
-        using var source = context.CreateNavigationBinding(Tuning);
+        using var source = context.CreateNavigationBakeBinding(Tuning);
         var footprint = new NavAreaFootprint(capture.Columns, capture.Options, Tuning, default);
         using var reference = new ContactNavigationProof(capture, context, source, footprint, new(false, false, false));
         using var reused = new ContactNavigationProof(capture, context, source, footprint, new(true, true, false));

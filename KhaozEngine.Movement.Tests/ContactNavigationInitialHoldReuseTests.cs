@@ -317,7 +317,7 @@ public class ContactNavigationInitialHoldReuseTests(ITestOutputHelper output)
     {
         using var fixture = new ContactNavigationReuseFixture();
         using var otherWorld = new ContactNavigationReuseFixture();
-        using var binding = fixture.Context.CreateNavigationBinding(Tuning);
+        using var binding = fixture.Context.CreateNavigationBakeBinding(Tuning);
         var frame = fixture.Context.NavigationFrame;
         var scope = binding.CreateOrdinaryScope(frame);
         Assert.Equal(MovementAvailability.Known, binding.TryAcquire(scope, out var lease));
@@ -412,7 +412,7 @@ public class ContactNavigationInitialHoldReuseTests(ITestOutputHelper output)
     public void SuccessfulHoldCopiesEveryNumericStateBitWithoutSelection()
     {
         using var fixture = new ContactNavigationReuseFixture();
-        using var binding = fixture.Context.CreateNavigationBinding(Tuning);
+        using var binding = fixture.Context.CreateNavigationBakeBinding(Tuning);
         var frame = fixture.Context.NavigationFrame;
         var scope = binding.CreateOrdinaryScope(frame);
         Assert.Equal(MovementAvailability.Known, binding.TryAcquire(scope, out var lease));

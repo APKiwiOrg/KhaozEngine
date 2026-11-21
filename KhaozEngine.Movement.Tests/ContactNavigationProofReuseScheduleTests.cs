@@ -48,7 +48,7 @@ public sealed class ContactNavigationProofReuseScheduleTests
             }
             throw new OrderedProviderFailure(row);
         };
-        using var source = fixture.Context.CreateNavigationBinding(Tuning);
+        using var source = fixture.Context.CreateNavigationBakeBinding(Tuning);
         var prior = SupportQueryDiagnostics.Exchange(SupportQueryDiagnostics.ThreadState.Fresh(true));
         try
         {
@@ -104,7 +104,7 @@ public sealed class ContactNavigationProofReuseScheduleTests
     public void WorkerPhaseThreadChangeCannotInheritAReuseSession(bool changeThread)
     {
         using var fixture = new ContactNavigationReuseFixture();
-        using var source = fixture.Context.CreateNavigationBinding(Tuning);
+        using var source = fixture.Context.CreateNavigationBakeBinding(Tuning);
         using var firstThread = new ProofThread();
         using var secondThread = changeThread ? new ProofThread() : null;
         ProofThread linksThread = secondThread ?? firstThread;

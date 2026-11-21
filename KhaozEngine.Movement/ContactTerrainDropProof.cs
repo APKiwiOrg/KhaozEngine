@@ -12,7 +12,7 @@ internal sealed class ContactTerrainDropProof(PhysicsNavBakeOptions options, Eff
     MovementFrameDescriptor frame, Func<Vector3, MovementQueryLease> acquire, NavAreaFootprint ground,
     float allowance, bool reuse, PhysicsNavDescentEvidence evidence, ContactTerrainProfileEvidence sources, float slopeCos) : IDisposable
 {
-    readonly EffectiveMovementBinding _binding = source.CreateFallProofBinding();
+    readonly EffectiveMovementBinding _binding = ContactNavigationBakeScope.Require(source).CreateFallProofBinding();
     readonly ContactNavigationBuildHooks? _hooks = ContactNavigationBuildHooks.Current;
     internal ContactTerrainDropRefusal Refusal { get; private set; }
     internal bool IsTerrain(NavSpace space, NavLink link) => ContactTerrainDropCertificate.HasSteep(evidence,

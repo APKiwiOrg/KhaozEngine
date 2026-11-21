@@ -379,6 +379,12 @@ use value equality, so +0 and -0 are compatible. File identity and load comparis
 Legacy directed proofs use unit walk and run pace, dry medium, grounded state, no jump, no airborne momentum and
 no movement commitment. Contact proofs use a separate unit-pace binding over the ordinary source environment,
 including its water policy, while preserving the context's runtime binding.
+Every Contact proof, Drop proof and terrain Drop proof answers its water boundary questions with the full coverage
+solve, never with the producer's capture certificate (`IMovementWaterBoundaryReachProof`), because a refusal there
+rejects a link or a Drop or refuses the whole bake. The serial build source and every parallel worker source take
+that scope, and each proof constructor refuses a source without it, so no bake path can reach the certificate.
+Bakes keep their links, refusals and exceptions bit for bit, while runtime movement and runtime Drop following may
+continue past a proof the bake refused.
 The initial hold is slice one of the bounded probe. The default is `1 / 30` seconds and at most 64 core calls.
 Arrival uses a 1 mm proof tolerance. This is a bounded proof tolerance, not a gameplay reach epsilon.
 

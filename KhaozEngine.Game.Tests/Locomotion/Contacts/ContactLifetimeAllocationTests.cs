@@ -145,7 +145,7 @@ public sealed partial class ContactLifetimeAllocationTests(ITestOutputHelper out
         var workspace = new ContactTickWorkspace();
         before = GC.GetAllocatedBytesForCurrentThread();
         var movement = new MovementQueryLease(view, physics, pin, witness, pin.Frame, pin.EnvironmentGeneration,
-            new Action(Released), workspace);
+            new Action(Released), workspace, MovementWaterBoundaryScope.Runtime);
         long movementBytes = GC.GetAllocatedBytesForCurrentThread() - before;
         movement.Dispose();
         return (movementBytes, physicsBytes, pinBytes);

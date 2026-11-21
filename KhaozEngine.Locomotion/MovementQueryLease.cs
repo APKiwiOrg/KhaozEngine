@@ -58,7 +58,7 @@ public sealed partial class MovementQueryLease : IDisposable
     internal MovementQueryLease(IPhysicsWorldQueryView view, IPhysicsQueryLease physics,
         IMovementEnvironmentPin pin, MovementScopeWitness witness, MovementFrameDescriptor frame,
         long environmentGeneration, Action releaseContext, ContactTickWorkspace workspace,
-        MovementWaterBoundaryScope waterBoundary = MovementWaterBoundaryScope.Runtime)
+        MovementWaterBoundaryScope waterBoundary)
     {
         _view = view;
         _physics = physics;

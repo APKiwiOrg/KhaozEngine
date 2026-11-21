@@ -152,7 +152,7 @@ public sealed class OrdinaryContactAllocationTests(ITestOutputHelper output)
         var witness = pin!.Witness;
         before = GC.GetAllocatedBytesForCurrentThread();
         var movement = new MovementQueryLease(view, physics, pin, witness, frame, pin.EnvironmentGeneration,
-            new Action(Released), workspace);
+            new Action(Released), workspace, MovementWaterBoundaryScope.Runtime);
         long movementBytes = GC.GetAllocatedBytesForCurrentThread() - before;
         movement.Dispose();
         using (var coldRead = new PlayerMoveReadScope(null, MovementStepOutcome.Advanced, releaseRead)) { }

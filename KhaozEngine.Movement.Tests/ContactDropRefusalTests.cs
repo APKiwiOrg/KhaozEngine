@@ -94,7 +94,7 @@ public class ContactDropRefusalTests
         }
         Assert.NotEqual(-1, fromLayer);
         Assert.NotEqual(-1, toLayer);
-        using var source = fixture.Context.CreateNavigationBinding(ContactDropFixture.Tuning);
+        using var source = fixture.Context.CreateNavigationBakeBinding(ContactDropFixture.Tuning);
         using var proof = new ContactNavigationProof(fixture.Capture, fixture.Context, source,
             ground.Footprint, maxDropMetres: 6);
         Assert.False(proof.TryDrop(ground.Space, new NavLink(fromLayer, 2, 1, toLayer, 3, 1) { Kind = NavLinkKind.Drop }));

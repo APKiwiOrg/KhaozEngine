@@ -293,7 +293,8 @@ numerical, capacity or validation evidence, the step now continues past that pro
 outcome. Point samples, support, shell sweeps, solid contacts, route boundary proofs, frame checks and all
 authentication still run. Navigation bake proofs always take the full solve. The bake sets this where it creates its
 movement binding, and every proof and fall binding derived from it inherits it, because a refusal there rejects a
-Drop link, refuses a terrain Drop or refuses the whole profile bake. Bakes therefore keep their links, refusals and
+Drop link, refuses a terrain Drop or refuses the whole profile bake. Every navigation proof constructor refuses a
+binding without it, so a bake cannot forget it. Bakes therefore keep their links, refusals and
 exceptions bit for bit, while runtime movement, runtime Drop following included, may continue where a bake refused.
 
 `EffectiveMovementBinding.SampleWaterForPacing(state, queries, out swimming)` reads frame-local point water and

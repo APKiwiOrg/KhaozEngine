@@ -106,31 +106,44 @@ public static class CoverageClaimCheck
         return new CoverageClaimReport(report.ToArray());
     }
 
-    // Moller and Trumbore's ray and triangle test without back face culling, so a piece covers whichever way its
-    // triangles wind. A garment's inner surface faces the skin, and that is the surface an outward ray meets first.
+    // Woop, Benthin and Wald's watertight ray and triangle test, without back face culling so a piece covers whichever
+    // way its triangles wind. A garment's inner surface faces the skin, and that is the surface an outward ray meets
+    // first. Each vertex moves into the ray's frame by the same arithmetic whichever triangle lists it, and an edge's
+    // side test changes sign exactly when the edge is walked the other way. So a ray that crosses an edge or a vertex
+    // two triangles share lands inside at least one of them, whatever their index order, and no tolerance lets a ray
+    // that passes outside the piece count as a hit.
     static bool Hits(PieceTriangle[] targets, Point origin, Point direction, double maxDistance)
     {
+        var frame = new RayFrame(direction);
         foreach (PieceTriangle target in targets)
         {
-            Point p = Point.Cross(direction, target.Edge2);
-            double determinant = Point.Dot(target.Edge1, p);
+            double along = Point.Dot(target.Normal, direction);
             // Zero for a ray in the triangle's plane or a zero area piece triangle, neither of which lies over the skin.
-            if (determinant == 0)
+            if (along == 0)
                 continue;
-            Point s = origin - target.Corner;
-            double u = Point.Dot(s, p) / determinant;
-            if (u < 0 || u > 1)
+            Point toA = target.A - origin;
+            // Taken from the triangle's plane, so the distance does not depend on where in the triangle the ray lands.
+            double distance = Point.Dot(target.Normal, toA) / along;
+            if (distance < 0 || distance > maxDistance)
                 continue;
-            Point q = Point.Cross(s, target.Edge1);
-            double v = Point.Dot(direction, q) / determinant;
-            if (v < 0 || u + v > 1)
+            (double X, double Y) a = frame.Project(toA);
+            (double X, double Y) b = frame.Project(target.B - origin);
+            (double X, double Y) c = frame.Project(target.C - origin);
+            double u = Edge(b, c);
+            double v = Edge(c, a);
+            double w = Edge(a, b);
+            if ((u < 0 || v < 0 || w < 0) && (u > 0 || v > 0 || w > 0))
                 continue;
-            double distance = Point.Dot(target.Edge2, q) / determinant;
-            if (distance >= 0 && distance <= maxDistance)
+            // All three are zero only when the triangle projects to a line or a point along the ray.
+            if (u + v + w != 0)
                 return true;
         }
         return false;
     }
+
+    // Twice the signed area of the ray, the edge's start and its end in the ray's frame. The two products only swap
+    // places when the ends swap, so the value is exactly negated.
+    static double Edge((double X, double Y) start, (double X, double Y) end) => end.X * start.Y - end.Y * start.X;
 
     static PieceTriangle[] PieceTriangles(IReadOnlyList<CoverageClaimMesh> pieceMeshes)
     {
@@ -142,8 +155,10 @@ public static class CoverageClaimCheck
             ReadOnlySpan<uint> indices = pieceMeshes[mesh].Indices.Span;
             for (int index = 0; index < indices.Length; index += 3)
             {
-                Point corner = new(positions[(int)indices[index]]);
-                triangles.Add(new PieceTriangle(corner, new Point(positions[(int)indices[index + 1]]) - corner, new Point(positions[(int)indices[index + 2]]) - corner));
+                Point a = new(positions[(int)indices[index]]);
+                Point b = new(positions[(int)indices[index + 1]]);
+                Point c = new(positions[(int)indices[index + 2]]);
+                triangles.Add(new PieceTriangle(a, b, c, Point.Cross(b - a, c - a)));
             }
         }
         return triangles.ToArray();
@@ -169,13 +184,39 @@ public static class CoverageClaimCheck
         }
     }
 
-    readonly record struct PieceTriangle(Point Corner, Point Edge1, Point Edge2);
+    readonly record struct PieceTriangle(Point A, Point B, Point C, Point Normal);
+
+    // The ray's frame: the axis of the direction's largest component is the depth axis, and the other two are sheared
+    // so the ray runs straight down it. Only the two sheared coordinates are needed for the side tests.
+    readonly struct RayFrame
+    {
+        readonly int x;
+        readonly int y;
+        readonly int z;
+        readonly double shearX;
+        readonly double shearY;
+
+        internal RayFrame(Point direction)
+        {
+            z = Math.Abs(direction.X) >= Math.Abs(direction.Y)
+                ? (Math.Abs(direction.X) >= Math.Abs(direction.Z) ? 0 : 2)
+                : (Math.Abs(direction.Y) >= Math.Abs(direction.Z) ? 1 : 2);
+            x = (z + 1) % 3;
+            y = (x + 1) % 3;
+            shearX = direction[x] / direction[z];
+            shearY = direction[y] / direction[z];
+        }
+
+        internal (double X, double Y) Project(Point offset) => (offset[x] - shearX * offset[z], offset[y] - shearY * offset[z]);
+    }
 
     // Double precision, so cross products of float coordinates neither overflow nor underflow, and a normal is zero
     // only for a triangle of truly zero area.
     readonly record struct Point(double X, double Y, double Z)
     {
         public Point(Vector3 value) : this(value.X, value.Y, value.Z) { }
+
+        public double this[int axis] => axis == 0 ? X : axis == 1 ? Y : Z;
 
         public static Point operator +(Point left, Point right) => new(left.X + right.X, left.Y + right.Y, left.Z + right.Z);
 

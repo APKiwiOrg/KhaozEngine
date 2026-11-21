@@ -270,9 +270,20 @@ with the reason for each:
 - A hit counts when its distance is from 0 to `maxDistanceMetres`, both ends included. A piece surface behind the
   skin does not cover it, because the skin would be drawn over it. The consumer supplies the distance and the engine
   sets no default, because how far a piece may stand off the skin depends on the game's art and scale. It must be
-  finite and greater than zero, or `ArgumentOutOfRangeException` is thrown.
+  finite and greater than zero, or `ArgumentOutOfRangeException` is thrown. The distance is taken from the hit
+  triangle's plane.
+- The ray and triangle test is watertight (Woop, Benthin and Wald), so a ray that crosses the piece's surface always
+  hits at least one of its triangles, even where it lands on an edge or a vertex that triangles share, and whatever
+  their index order. Mirrored bodies and garments put centroid rays exactly on a seam edge, and a test with exact
+  barycentric bounds rounds both halves of the seam the same way and misses both. The test moves every vertex into the
+  ray's frame by the same arithmetic in every triangle and uses edge side tests that change sign exactly when an edge
+  is walked the other way, so it needs no tolerance: a ray that passes outside the piece's outline by more than
+  rounding error never counts as a hit. Shared vertices must have identical positions. A real crack between two piece triangles is a
+  hole, and rays through it are uncovered.
 - A zero area body triangle has no normal. It is counted in its region's `TriangleCount` and `DegenerateCount` and
-  never makes a claim dishonest, because it cannot show through anything.
+  never makes a claim dishonest, because it cannot show through anything. A sliver, a triangle of nearly zero area,
+  does get a normal, but its direction is only as good as its winding and its rounded positions, so a sliver may test
+  along a noisy direction.
 - A piece with no layer, as formats 1 and 2 read, claims nothing. It is honest with an empty report.
 
 The `CoverageClaimReport` lists each claimed region in the body map's region order as a `CoverageClaimRegion` with

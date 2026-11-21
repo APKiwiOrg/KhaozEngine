@@ -127,15 +127,69 @@ public class CoverageClaimCheckTests
     }
 
     [Theory]
-    [InlineData(float.NaN)]
-    [InlineData(float.PositiveInfinity)]
-    [InlineData(0f)]
-    [InlineData(-0.05f)]
-    public void The_distance_must_be_finite_and_positive(float distance)
+    [InlineData(float.Epsilon, true)]
+    [InlineData(float.MaxValue, true)]
+    [InlineData(0f, false)]
+    [InlineData(-0.05f, false)]
+    [InlineData(float.NaN, false)]
+    [InlineData(float.PositiveInfinity, false)]
+    public void The_distance_must_be_finite_and_positive(float distance, bool admitted)
     {
-        Assert.True(CoverageClaimCheck.Verify(FlatBody, FlatMap, Piece("upper"), [PlateOverUpper(0.01f)], Limit).Honest);
+        CoverageClaimReport Check() => CoverageClaimCheck.Verify(FlatBody, FlatMap, Piece("upper"), [PlateOverUpper(0f)], distance);
 
-        Assert.Throws<ArgumentOutOfRangeException>(() => CoverageClaimCheck.Verify(FlatBody, FlatMap, Piece("upper"), [PlateOverUpper(0.01f)], distance));
+        if (admitted)
+            Assert.True(Check().Honest);
+        else
+            Assert.Throws<ArgumentOutOfRangeException>(() => Check());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_ray_along_a_mirrored_seam_hits_the_piece_whichever_corner_leads(bool seamVertexFirst)
+    {
+        // A body triangle with its apex on the mirror plane x = 0 and a mirrored base, so its centroid ray lies in that
+        // plane. The piece is mirrored too, its two halves sharing a seam edge on x = 0 about a centimetre out. With the
+        // off seam vertex first, rounding once pushed the hit just outside both halves and the claim read dishonest.
+        Vector3[] body = [new(0f, 1.07432425f, 0.189967826f), new(-0.0392811075f, 1.06269586f, 0.183984891f), new(0.0392811075f, 1.06269586f, 0.183984891f)];
+        BodyRegionMap map = new(Rig, ["upper"], [[new RegionRun(0, 1)]]);
+        Vector3[] piece =
+        [
+            new(0.0839095637f, 1.06517303f, 0.199883938f), new(-0.0839095637f, 1.06517303f, 0.199883938f),
+            new(0f, 1.1243242f, 0.202806234f), new(0f, 1.01269591f, 0.195597202f),
+        ];
+        uint[] indices = seamVertexFirst ? [2, 3, 0, 3, 2, 1] : [0, 2, 3, 1, 3, 2];
+
+        CoverageClaimReport report = CoverageClaimCheck.Verify([new(body, new uint[] { 0, 1, 2 })], map, Piece("upper"), [new(piece, indices)], Limit);
+
+        Assert.True(report.Honest);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_ray_through_a_shared_piece_vertex_hits_the_piece_whichever_corner_leads(bool sharedVertexFirst)
+    {
+        // The body triangle's centroid is the origin, right under the vertex four piece triangles share.
+        Vector3[] body = [new(-1, -1, 0), new(2, -1, 0), new(-1, 2, 0)];
+        BodyRegionMap map = new(Rig, ["upper"], [[new RegionRun(0, 1)]]);
+        Vector3[] piece = [new(0, 0, 0.01f), new(1, 0, 0.01f), new(0, 1, 0.01f), new(-1, 0, 0.01f), new(0, -1, 0.01f)];
+        uint[] indices = sharedVertexFirst
+            ? [0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 1]
+            : [1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 1, 0];
+
+        CoverageClaimReport report = CoverageClaimCheck.Verify([new(body, new uint[] { 0, 1, 2 })], map, Piece("upper"), [new(piece, indices)], Limit);
+
+        Assert.True(report.Honest);
+    }
+
+    [Fact]
+    public void A_ray_past_the_piece_outline_misses()
+    {
+        // The plate stops at x = 0.6, a clear margin short of the first upper triangle's centroid at x = 2/3.
+        CoverageClaimReport report = CoverageClaimCheck.Verify(FlatBody, FlatMap, Piece("upper"), [PlateOverUpper(0.01f, right: 0.6f)], Limit);
+
+        Assert.Equal(new[] { new CoverageClaimTriangle(0, 0) }, report.Regions[0].Uncovered);
     }
 
     [Theory]
@@ -220,9 +274,9 @@ public class CoverageClaimCheckTests
 
     // A plate over the upper square only, wide enough to cover its edges, at the given height above the skin. Its
     // triangles face away from the skin unless facingTheSkin, the way a garment's inner surface is wound.
-    static CoverageClaimMesh PlateOverUpper(float height, bool facingTheSkin = false)
+    static CoverageClaimMesh PlateOverUpper(float height, bool facingTheSkin = false, float right = 1)
     {
-        Vector3[] positions = [new(-1, -1, height), new(1, -1, height), new(1, 2, height), new(-1, 2, height)];
+        Vector3[] positions = [new(-1, -1, height), new(right, -1, height), new(right, 2, height), new(-1, 2, height)];
         uint[] indices = facingTheSkin ? [0, 2, 1, 0, 3, 2] : [0, 1, 2, 0, 2, 3];
         return new(positions, indices);
     }

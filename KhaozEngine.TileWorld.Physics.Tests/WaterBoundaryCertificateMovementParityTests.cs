@@ -64,7 +64,7 @@ public class WaterBoundaryCertificateMovementParityTests(ITestOutputHelper outpu
             run.Tick(hidden.Step, certified.Step, command);
             if (name == "shore-traverse" && outward && run.Hidden.Move.Position.Z >= -235.8f) break;
         }
-        Report(run, $"{name} {body}");
+        Report(run, $"{name} {body}", meetsWater: name != "dry-control");
     }
 
     // The drawn-bed pool, sloped and with a level triangle at the free surface, crossed from dry ground through the
@@ -88,29 +88,36 @@ public class WaterBoundaryCertificateMovementParityTests(ITestOutputHelper outpu
         }
         run.Settled(a, b);
         for (int tick = 0; tick < 90; tick++) run.Tick(hidden.Step, certified.Step, new(Vector2.UnitX, false, 0));
-        Report(run, $"drawn-bed level={levelTriangle} {body}");
+        Report(run, $"drawn-bed level={levelTriangle} {body}", meetsWater: true);
     }
 
-    void Report(ParityRun run, string label)
+    void Report(ParityRun run, string label, bool meetsWater)
     {
         output.WriteLine($"{label}: ticks={run.Ticks} outcomes=[{string.Join(", ", run.Outcomes.Select(p => $"{p.Key}={p.Value}"))}] " +
-            $"full-solve-traces={run.HiddenTraces} certified-traces={run.CertifiedTraces}");
+            $"full-solve-traces={run.HiddenTraces} wet-full-solve-traces={run.HiddenWetTraces} certified-traces={run.CertifiedTraces}");
         Assert.True(run.Ticks > 0);
         // The certificate answered at least one proof of every run, so no row compares the full solve with itself.
         Assert.True(run.CertifiedTraces < run.HiddenTraces);
+        // A walk that never met water is answered by empty reaches alone and compares no free level, so every row
+        // but the dry control must have traced water contacts on its full-solve side.
+        Assert.Equal(meetsWater, run.HiddenWetTraces > 0);
     }
 
     delegate PlayerMoveState Stepper(PlayerMoveState state, MoveCommand command, out MovementStepOutcome? outcome);
 
     sealed class ParityRun
     {
-        internal int HiddenTraces, CertifiedTraces, Ticks;
+        internal int HiddenTraces, HiddenWetTraces, CertifiedTraces, Ticks;
         internal readonly Dictionary<MovementStepOutcome, int> Outcomes = [];
         internal PlayerMoveState Hidden, Certified;
 
         internal ParityRun(RecordingWaterField hidden, RecordingWaterField certified)
         {
-            hidden.Recorded = (_, _, _, _) => HiddenTraces++;
+            hidden.Recorded = (_, result, _, _) =>
+            {
+                HiddenTraces++;
+                if (result.ContactsWritten > 0) HiddenWetTraces++;
+            };
             certified.Recorded = (_, _, _, _) => CertifiedTraces++;
         }
 

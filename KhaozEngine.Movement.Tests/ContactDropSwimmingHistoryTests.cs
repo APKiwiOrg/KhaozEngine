@@ -19,7 +19,7 @@ public class ContactDropSwimmingHistoryTests(ITestOutputHelper output)
         // puts that selected substep on the swimmer line, with a dry start and dry final landing.
         var water = new ObservedWater(MovementWaterField.Level("world", 0.985f, 0.01f));
         using var fixture = new ContactDropFixture(tuning: tuning, water: water);
-        using var source = fixture.Context.CreateNavigationBinding(tuning);
+        using var source = fixture.Context.CreateNavigationBakeBinding(tuning);
         var frame = fixture.Context.NavigationFrame;
         var scope = source.CreateOrdinaryScope(frame);
         var state = new FramedMovementState(new MoveState { Position = new(-0.25f, 4.75f, 0), Grounded = true }, frame, null);

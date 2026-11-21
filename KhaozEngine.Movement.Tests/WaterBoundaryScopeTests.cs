@@ -13,7 +13,7 @@ using static KhaozEngine.Tests.Movement.Fixtures.ContactNavigationFixture;
 namespace KhaozEngine.Tests.Movement;
 
 /// <summary>Navigation bake proofs answer every water boundary question with the full coverage solve, while runtime
-/// movement may take the capture certificate. A bake that refuses today must still refuse.</summary>
+/// movement may take the capture certificate. A bake that refuses with the full solve must still refuse.</summary>
 public class WaterBoundaryScopeTests
 {
     static MoveTuning Swimmer => Tuning with { Water = new(WaterTraversalMode.SurfaceSwimmer) };

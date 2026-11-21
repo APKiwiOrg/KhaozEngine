@@ -51,6 +51,7 @@ internal sealed class SkinnedAttachmentUpload : ISkinnedAttachmentMeshLease, IAt
     /// <summary>Each handle's index list as the renderer holds it, in material order, borrowed.</summary>
     public ReadOnlyMemory<uint>[] SourceIndices()
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         var indices = new ReadOnlyMemory<uint>[_handles.Length];
         for (int i = 0; i < indices.Length; i++) indices[i] = _scene.SkinnedSourceIndices(_handles[i]);
         return indices;

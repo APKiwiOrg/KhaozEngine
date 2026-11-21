@@ -31,6 +31,21 @@ namespace KhaozEngine.Render3D
             return TranslateModelErrors(identity, () => BuildSkinnedParts(LoadModel(glb, identity), identity, assetDirectory: null));
         }
 
+        /// <summary>The index list of each skinned material part, in the same order and with the same geometry as
+        /// <see cref="LoadSkinnedPartsWithMaterials(ReadOnlyMemory{byte}, string)"/>, without decoding any material
+        /// map. The attachment outfit layer reads a custom scene's mesh this way when it binds an outfit.</summary>
+        internal static uint[][] LoadSkinnedPartIndices(ReadOnlyMemory<byte> glb, string identity)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(identity);
+            return TranslateModelErrors(identity, () =>
+            {
+                var meshes = DecodeSkinned(LoadModel(glb, identity), identity, splitByMaterial: true);
+                var indices = new uint[meshes.Count][];
+                for (int i = 0; i < indices.Length; i++) indices[i] = meshes[i].Mesh.Indices32;
+                return indices;
+            });
+        }
+
         static IReadOnlyList<GltfSkinnedMeshPart> BuildSkinnedParts(ModelRoot root, string identity, string? assetDirectory)
         {
             var meshes = DecodeSkinned(root, identity, splitByMaterial: true);

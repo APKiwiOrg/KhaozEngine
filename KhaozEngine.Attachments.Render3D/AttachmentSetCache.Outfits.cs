@@ -157,8 +157,9 @@ public sealed partial class AttachmentSetCache
         return tagged;
     }
 
-    // The renderer's own upload lends the index lists it already holds. A custom scene's lease cannot, so its mesh
-    // is decoded again from the verified bytes the cache keeps, once per bind however many parts wear it.
+    // The renderer's own upload lends the index lists it already holds. A custom scene's lease cannot, so its mesh's
+    // geometry is decoded again from the verified bytes the cache keeps, with no material map, once per bind however
+    // many parts wear it.
     ReadOnlyMemory<uint>[] SkinnedIndices(AttachmentMeshRef reference, Dictionary<MeshIdentity, ReadOnlyMemory<uint>[]> read)
     {
         var identity = new MeshIdentity(reference, true);
@@ -166,8 +167,8 @@ public sealed partial class AttachmentSetCache
         CachedMesh mesh = _meshes[identity];
         ReadOnlyMemory<uint>[] indices = mesh.Lease is SkinnedAttachmentUpload upload
             ? upload.SourceIndices()
-            : GltfLoader.LoadSkinnedPartsWithMaterials(mesh.Bytes, reference.Key)
-                .Select(part => (ReadOnlyMemory<uint>)part.Mesh.Indices32).ToArray();
+            : GltfLoader.LoadSkinnedPartIndices(mesh.Bytes, reference.Key)
+                .Select(part => (ReadOnlyMemory<uint>)part).ToArray();
         read.Add(identity, indices);
         return indices;
     }

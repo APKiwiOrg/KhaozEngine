@@ -35,7 +35,10 @@
     <InternalsVisibleTo Include="Coverage.Verify.Tests" />
     <InternalsVisibleTo Include="Coverage.Verify" />
     <InternalsVisibleTo Include="KhaozEngine.MapDoc.Render3D" />
-    <!-- Attachment leases and caches refuse a release up front while a mesh view is live (RefuseSourcesWithLiveViews). -->
+    <!-- The attachment arm uses three internals. Leases and caches refuse a release up front while a mesh view is
+         live (Scene3D.RefuseSourcesWithLiveViews). An outfit reads a cached mesh's index lists when it binds, borrowed
+         from the renderer (Scene3D.SkinnedSourceIndices) or decoded without material maps for a custom scene's
+         lease (GltfLoader.LoadSkinnedPartIndices). -->
     <InternalsVisibleTo Include="KhaozEngine.Attachments.Render3D" />
     <InternalsVisibleTo Include="Renderer.Perf.Tooling.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.MapEditor.Tests" />

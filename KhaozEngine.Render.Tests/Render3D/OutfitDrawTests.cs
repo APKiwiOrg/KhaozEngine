@@ -240,7 +240,7 @@ public sealed class OutfitDrawTests
         // second unload. The garment's view is the outfit's first, so the body's view comes after the refusal.
         rig.Scene.UnloadSkinnedMesh(garmentView);
 
-        Assert.ThrowsAny<ArgumentException>(() => outfit.Dispose());
+        Assert.Throws<ArgumentException>(() => outfit.Dispose());
 
         outfit.Dispose();
         rig.Scene.Begin();

@@ -240,8 +240,8 @@ A skinned part's region runs cover its triangles in the mesh's material order, t
 triangle order. Each material group is its own skinned handle, so a run that crosses from one group into the
 next splits at the boundary, and each handle gets its own view of its visible triangles. `BindOutfit` reads
 each tagged mesh's index lists when it binds, borrowed from the renderer for the shipped adapters, so a cache
-that never binds an outfit keeps no extra copy. A custom scene's lease cannot lend them, so its meshes are
-decoded again from the verified bytes the cache keeps, once per bind.
+that never binds an outfit keeps no extra copy. A custom scene's lease cannot lend them, so the geometry of its
+meshes is decoded again from the verified bytes the cache keeps, with no material map, once per bind.
 
 Hidden triangles are cut through skinned mesh views (see the
 [regions and layers design](../docs/design/ATTACHMENT-REGIONS-AND-LAYERS-DESIGN.md#skinned-mesh-views)).

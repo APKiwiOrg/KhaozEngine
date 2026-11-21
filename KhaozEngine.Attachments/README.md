@@ -127,6 +127,42 @@ member `Path`, independent of UTF-8 or Unicode-escaped spelling. Longer names ha
 `MemberNameOmitted = true` and the actual containing-object `Path`. Diagnostic decoding uses a fixed
 buffer and never publishes a fabricated name or a partial name.
 
+## Body region maps
+
+A body region map names up to 128 regions of one body and tags every triangle of the body's skinned
+material parts with one of them. `RegionSet` is a 128 bit value holding region indices 0 to 127, so a
+set of covered regions copies without allocating. `With` and `Contains` refuse an index outside that
+range with `ArgumentOutOfRangeException`.
+
+`BodyRegionMapJson.Parse(utf8, sourceName)` reads format 1:
+
+```json
+{"formatVersion":1,"rig":"rig-v1:<sha256>","regions":["a","b"],"parts":[{"triangles":4,"runs":[[0,3],[1,1]]}]}
+```
+
+`rig` is the body's complete [rig identity](#body-rig-identity). `parts` follow the body GLB's skinned
+material part order. Each part declares its triangle count and lists `[region, triangleCount]` runs in
+triangle order, which must add up to it. `BodyRegionMap` exposes `RigIdentity`, `Regions`, `Parts` and
+`TryRegion(name, out index)` with ordinal names. `WriteTriangleRegions(part, span)` fills one region
+index per triangle and needs a span of exactly the part's triangle count. Adjacent runs of one region
+merge, so `Write(map)` is canonical and `Sha256` is the lowercase SHA-256 of those bytes.
+
+Refusals throw `BodyRegionMapDataException`, derived from `MalformedDataException`, with a
+`BodyRegionMapRefusal Reason` and `SourceName` from `Parse`. The constructor applies the same rules.
+
+| Reason | What it refuses | Other identifiers |
+|---|---|---|
+| `FormatVersionUnsupported` | a format other than 1. | `JsonPath`, `FormatVersion` |
+| `JsonPropertyUnknown`, `JsonPropertyDuplicate`, `JsonPropertyMissing` | an unknown, repeated or absent member. | `JsonPath`, `PropertyName` |
+| `JsonValueShapeInvalid` | a value of the wrong JSON shape, such as a run that is not an integer pair. | `JsonPath` |
+| `JsonMalformed` | malformed JSON syntax. | No additional identifiers |
+| `RigIdentityInvalid` | a rig that is not `rig-v1:` and a lowercase SHA-256. | `RigIdentity` |
+| `RegionNameEmpty`, `RegionNameMalformedUtf16`, `RegionNameDuplicate` | a blank, malformed or repeated region name. | `RegionIndex`, `RegionName` |
+| `TooManyRegions` | more than 128 regions. | `RegionCount` |
+| `RegionIndexOutOfRange` | a run naming an undeclared region. | `PartIndex`, `RunIndex`, `RegionIndex`, `RegionCount` |
+| `RunEmpty` | a run of fewer than one triangle. | `PartIndex`, `RunIndex` |
+| `TriangleCountMismatch` | runs that do not add up to the part's declared triangle count. | `PartIndex`, `DeclaredTriangleCount`, `ActualTriangleCount` |
+
 ## Set refusals
 
 `AttachmentSetArgumentException` derives from `ArgumentException` for constructor admission.

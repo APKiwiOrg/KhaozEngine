@@ -54,7 +54,7 @@ public sealed partial class GridPathPlanner
         readonly Vector3 _feet;
         NavSpace.LayerCursor _layerProbe;
         SnapCursor _snap;
-        int _boxLayer, _flagCount, _memberLayer, _memberX, _memberZ;
+        int _boxLayer, _flagCount, _candidateLayerCount, _memberLayerIndex, _memberLayer, _memberX, _memberZ;
 
         int _component, _componentIndex, _progressIndex;
         ProgressPurpose _progressPurpose;
@@ -122,8 +122,14 @@ public sealed partial class GridPathPlanner
                 case SearchPhase.CertificateProgress:
                 case SearchPhase.SearchProgress: CompareProgress(operations); break;
                 case SearchPhase.Wrap: ClearStampBlock(); break;
-                case SearchPhase.Seed: SeedOpen(); break;
-                case SearchPhase.Pop: Pop(); break;
+                case SearchPhase.Seed:
+                    SeedOpen();
+                    FinishUnboundedSearchProgress(operations);
+                    break;
+                case SearchPhase.Pop:
+                    Pop();
+                    FinishUnboundedSearchProgress(operations);
+                    break;
                 case SearchPhase.Neighbor: TestNeighbors(operations); break;
                 case SearchPhase.Link: TestLinks(operations); break;
                 case SearchPhase.Parent: VisitParent(); break;

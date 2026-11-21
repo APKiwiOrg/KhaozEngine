@@ -74,6 +74,30 @@ public class GridSearchRequestScratchTests
     }
 
     [Fact]
+    public void ColdSynchronousQueryKeepsBaseScratchAllocation()
+    {
+        // A clear point route rents scratch without enqueuing. Sixteen layers distinguish the
+        // reference bool array from an int array even after runtime alignment.
+        var layers = new NavGrid[16];
+        Array.Fill(layers, Grid(2, 1, (_, _) => true));
+        var space = new NavSpace(layers);
+        var goal = Start with { X = 1.5f };
+        var warmup = new GridPathPlanner(space);
+        warmup.FindPath(Start, goal, 0f, PathQueryBudget.Default);
+
+        var planner = new GridPathPlanner(space);
+        NavPath? result = null;
+        long allocated = AllocationMeasurement.Measure("cold synchronous point query", () =>
+            result = planner.FindPath(Start, goal, 0f, PathQueryBudget.Default));
+
+        var path = Assert.IsType<NavPath>(result);
+        Assert.Equal(NavPathStatus.Complete, path.Status);
+        Assert.Single(path.Waypoints);
+        // The base planner's cold allocation on 64-bit .NET 10, including the returned path.
+        Assert.Equal(1744L, allocated);
+    }
+
+    [Fact]
     public void ColdAndLargerRequestsAllocateOnlyTheirResults()
     {
         const int length = 1025;

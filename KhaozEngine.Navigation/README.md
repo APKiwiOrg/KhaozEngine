@@ -325,8 +325,9 @@ A* implementation over a `NavSpace`.
 
 A query snaps both endpoints onto a passable cell (within `PathQueryBudget.SnapRadius`, else
 `NavPath.Unreachable`), tries a same-layer line-of-sight shortcut, then searches eight-connected grid exits and
-accepted links. Diagonals require both companion cells. Stair costs the greater of its spatial metric span and
-one source cell, rounded upward when needed to cover that span. Hop costs `hopCostCells`
+accepted links. If a snap reaches the integer cell boundary without finding a passable cell, the query returns
+`NavPath.Unreachable`. Diagonals require both companion cells. Stair costs the greater of its spatial metric span
+and one source cell, rounded upward when needed to cover that span. Hop costs `hopCostCells`
 source cells and Drop costs world XZ octile displacement plus positive physical descent in metres. Expansion is
 bounded by `MaxExpandedNodes`. An incomplete query returns its closest reached node as Partial or Unreachable
 when no progress was made. Legacy point routes string-pull ordinary runs. Incoming edge identity preserves Hop

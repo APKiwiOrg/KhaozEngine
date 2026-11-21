@@ -46,6 +46,7 @@ public sealed partial class GridPathPlanner
         int _generation;
 
         readonly MemberBox[] _memberBoxes;
+        readonly Array _memberLayers;
         bool[] _memberFlags;
         (int Layer, int Cx, int Cz)[] _cells;
 
@@ -65,10 +66,10 @@ public sealed partial class GridPathPlanner
             _incoming = new NavLinkKind?[totalNodes];
             _stamp = new int[totalNodes];
             _memberBoxes = new MemberBox[layerCount];
-            MemberLayers = new int[layerCount];
+            _memberLayers = frontierCapacity == 0 ? new bool[layerCount] : new int[layerCount];
             _memberFlags = memberCapacity == 0 ? Array.Empty<bool>() : new bool[memberCapacity];
             _cells = chainCapacity == 0 ? Array.Empty<(int, int, int)>() : new (int, int, int)[chainCapacity];
-            Open = new(frontierCapacity);
+            Open = frontierCapacity == 0 ? new() : new(frontierCapacity);
             Chain = new(chainCapacity);
             Waypoints = new(chainCapacity);
             Members = new(memberCapacity);
@@ -98,10 +99,6 @@ public sealed partial class GridPathPlanner
             MemberNodeIds.Add(nodeId);
             MemberBounds = MemberBounds.Include(x, z);
         }
-
-        /// <summary>The layers with nonempty candidate boxes, in scan order.</summary>
-        public int[] MemberLayers { get; }
-        public int MemberLayerCount { get; private set; }
 
         public bool NeedsWrap => _generation >= int.MaxValue - 2;
 
@@ -150,21 +147,41 @@ public sealed partial class GridPathPlanner
             return _cells;
         }
 
-        /// <summary>Starts membership with no members or candidate layers. Each box is replaced before use.</summary>
+        /// <summary>Starts membership with no members. Each box and its candidate status are recorded before use.</summary>
         public void ResetMembers()
         {
             Members.Clear();
             MemberNodeIds.Clear();
             MemberBounds = PlannerRegionBounds.Empty;
-            MemberLayerCount = 0;
         }
 
         /// <summary>Sets <paramref name="layer"/>'s candidate box and returns the flag offset after it.</summary>
         public int SetMemberBox(int layer, int x0, int z0, int width, int height, int offset)
         {
             _memberBoxes[layer] = new MemberBox(x0, z0, width, height, offset);
-            if (width > 0 && height > 0) MemberLayers[MemberLayerCount++] = layer;
             return offset + width * height;
+        }
+
+        // Synchronous scratch keeps one flag per layer. Prewarmed scratch keeps the nonempty layers
+        // packed so a sliced advance can move to the next candidate layer in constant work.
+        internal void RecordCandidateLayer(int layer, int index, bool hasCandidates)
+        {
+            if (_memberLayers is int[] layers)
+            {
+                if (hasCandidates) layers[index] = layer;
+            }
+            else
+            {
+                ((bool[])_memberLayers)[layer] = hasCandidates;
+            }
+        }
+
+        internal int NextCandidateLayer(int previous, int index)
+        {
+            if (_memberLayers is int[] layers) return layers[index];
+            var candidates = (bool[])_memberLayers;
+            do { previous++; } while (!candidates[previous]);
+            return previous;
         }
 
         /// <summary>Ensures flags fit the candidate boxes. Only synchronous scratch can need to grow here.</summary>

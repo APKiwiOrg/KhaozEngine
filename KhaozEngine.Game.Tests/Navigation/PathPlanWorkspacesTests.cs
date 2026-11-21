@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.Navigation;
+using KhaozEngine.Tests.Physics;
 using Xunit;
 using static KhaozEngine.Tests.Navigation.GridSearchRequestFixtures;
 
@@ -56,7 +57,8 @@ public class PathPlanWorkspacesTests
     [Theory]
     [InlineData(17, 3f)]
     [InlineData(16, 4f)]
-    public void BeginAboveDeclaredBudgetIsRefusedBeforeLeasing(int maxExpandedNodes, float snapRadius)
+    [InlineData(16, float.NaN)]
+    public void BeginWithBudgetOutsideDeclaredLimitsIsRefusedBeforeLeasing(int maxExpandedNodes, float snapRadius)
     {
         var planner = Incremental(Corridor());
         var limit = new PathQueryBudget { MaxExpandedNodes = 16, SnapRadius = 3f };
@@ -76,6 +78,11 @@ public class PathPlanWorkspacesTests
     [InlineData("dispose request")]
     [InlineData("dispose pool")]
     public void ReentryIsRefusedBeforeChangingOwnerOrQueue(string call)
+    {
+        BoundedThread.Start(() => CheckReentry(call)).Join();
+    }
+
+    static void CheckReentry(string call)
     {
         var planner = Incremental(Corridor());
         using var pool = planner.CreateWorkspaces(1, PathQueryBudget.Default);
@@ -114,20 +121,25 @@ public class PathPlanWorkspacesTests
         var goal = new NavGoalRegion(End().Anchor, 0f, _ =>
         {
             entered.TrySetResult(true);
-            exit.Wait();
+            BoundedThread.Await(exit);
             return true;
         });
         using var request = planner.BeginPath(Start, goal, 0f, PathQueryBudget.Default, pool);
         Task advance = Task.Run(() => request.Advance(new PathWorkBudget(int.MaxValue)));
+        Task<Exception?>? contender = null;
         try
         {
-            Assert.Same(entered.Task, await Task.WhenAny(entered.Task, advance));
-            Assert.Throws<InvalidOperationException>(() => Begin(planner, pool));
+            Assert.Same(entered.Task, await Task.WhenAny(entered.Task, advance).WaitAsync(BoundedThread.Timeout));
+            contender = Task.Run<Exception?>(() => Record.Exception(() =>
+            {
+                using var unexpected = Begin(planner, pool);
+            }));
+            Assert.IsType<InvalidOperationException>(await contender.WaitAsync(BoundedThread.Timeout));
         }
         finally
         {
             exit.Set();
-            await advance;
+            await (contender is null ? advance : Task.WhenAll(advance, contender)).WaitAsync(BoundedThread.Timeout);
         }
         Assert.Equal(PathPlanState.Ready, request.State);
         using var later = Begin(planner, pool);

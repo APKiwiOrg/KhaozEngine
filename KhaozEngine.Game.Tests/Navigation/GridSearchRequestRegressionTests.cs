@@ -16,13 +16,14 @@ public partial class GridSearchRequestEqualityTests
     public void SnapRingAtIntegerBoundaryIsUnreachable(float x, float z, float snapRadius)
     {
         var planner = Incremental(Corridor());
-        var start = new Vector3(x, 0f, z);
+        var endpoint = new Vector3(x, 0f, z);
         NavGoalRegion goal = End();
         PathQueryBudget budget = PathQueryBudget.Default with { SnapRadius = snapRadius };
         using var pool = planner.CreateWorkspaces(1, budget);
-        Assert.Equal(NavPathStatus.Unreachable, planner.FindPath(start, goal.Anchor, 0f, budget).Status);
-        Assert.Equal(NavPathStatus.Unreachable, planner.FindPath(start, goal, 0f, budget).Status);
-        using var request = planner.BeginPath(start, goal, 0f, budget, pool);
+        Assert.Equal(NavPathStatus.Unreachable, planner.FindPath(endpoint, goal.Anchor, 0f, budget).Status);
+        Assert.Equal(NavPathStatus.Unreachable, planner.FindPath(endpoint, goal, 0f, budget).Status);
+        Assert.Equal(NavPathStatus.Unreachable, planner.FindPath(Start, endpoint, 0f, budget).Status);
+        using var request = planner.BeginPath(endpoint, goal, 0f, budget, pool);
         Assert.Equal(NavPathStatus.Unreachable, Finish(request, 64).Status);
     }
 

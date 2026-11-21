@@ -24,9 +24,9 @@ namespace KhaozEngine.Navigation;
 /// it is cancelled or disposed. A cancelled waiter leaves the queue. A cancelled request holds no lease and cannot
 /// release another's. Disposing the pool cancels every request it holds or queues, and a later begin throws
 /// <see cref="ObjectDisposedException"/>.</para>
-/// <para>Sizing. The count has no default because the engine cannot know how many owners share a pool. One
-/// workspace per sharing owner means no request ever waits. A smaller pool makes each request's publication call
-/// depend on the requests ahead of it: their begins, completions and releases and the call order within a tick.
+/// <para>Sizing. The count has no default because the engine cannot know how many owners share a pool. With
+/// at most one pending request per sharing owner, one workspace per owner prevents waiting. A request that waits
+/// also depends on the begins, completions and releases of requests ahead of it.
 /// Each workspace preallocates node and region membership storage for all layer cells, reconstruction storage
 /// up to the expansion cap or node count, whichever is smaller, and frontier storage for possible pushes
 /// within that cap. Its buffers never grow during a request. An owner dropped while its request is pending keeps

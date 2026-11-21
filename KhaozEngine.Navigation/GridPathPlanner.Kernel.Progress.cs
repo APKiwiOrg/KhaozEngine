@@ -53,6 +53,12 @@ public sealed partial class GridPathPlanner
                 ? SearchPhase.CertificateProgress : SearchPhase.SearchProgress;
         }
 
+        void FinishUnboundedSearchProgress(int operations)
+        {
+            if (operations == int.MaxValue && Phase == SearchPhase.SearchProgress)
+                CompareProgress(operations);
+        }
+
         void CompareProgress(int operations)
         {
             int members = _goal.MemberCount;

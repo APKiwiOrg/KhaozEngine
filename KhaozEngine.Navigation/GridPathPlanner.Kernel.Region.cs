@@ -50,29 +50,36 @@ public sealed partial class GridPathPlanner
         void PrepareMemberBox()
         {
             (int x0, int z0, int x1, int z1) = RegionCellBounds(_planner._space.Layers[_boxLayer], _region!);
-            _flagCount = _scratch.SetMemberBox(_boxLayer, x0, z0, x1 - x0 + 1, z1 - z0 + 1, _flagCount);
+            int width = x1 - x0 + 1, height = z1 - z0 + 1;
+            _flagCount = _scratch.SetMemberBox(_boxLayer, x0, z0, width, height, _flagCount);
+            bool hasCandidates = width > 0 && height > 0;
+            _scratch.RecordCandidateLayer(_boxLayer, _candidateLayerCount, hasCandidates);
+            if (hasCandidates) _candidateLayerCount++;
+
             if (++_boxLayer < _planner._space.Layers.Count) return;
-            if (_scratch.MemberLayerCount == 0)
+            if (_candidateLayerCount == 0)
             {
                 Publish(NavPath.Unreachable);
                 return;
             }
 
             _scratch.EnsureMemberFlags(_flagCount);
+            _memberLayer = -1;
             BeginMemberLayer();
             Phase = SearchPhase.Member;
         }
 
         void BeginMemberLayer()
         {
-            SearchScratch.MemberBox box = _scratch.CandidateBox(_scratch.MemberLayers[_memberLayer]);
+            _memberLayer = _scratch.NextCandidateLayer(_memberLayer, _memberLayerIndex);
+            SearchScratch.MemberBox box = _scratch.CandidateBox(_memberLayer);
             _memberX = box.X0;
             _memberZ = box.Z0;
         }
 
         void TestMember()
         {
-            int layer = _scratch.MemberLayers[_memberLayer];
+            int layer = _memberLayer;
             bool member = _planner.IsRegionMember(_region!, _radius, layer, _memberX, _memberZ, out Vector3 feet);
             _scratch.SetMember(layer, _memberX, _memberZ, member);
             if (member)
@@ -85,7 +92,7 @@ public sealed partial class GridPathPlanner
             if (++_memberX - box.X0 < box.Width) return;
             _memberX = box.X0;
             if (++_memberZ - box.Z0 < box.Height) return;
-            if (++_memberLayer < _scratch.MemberLayerCount)
+            if (++_memberLayerIndex < _candidateLayerCount)
                 BeginMemberLayer();
             else if (_scratch.Members.Count > 0)
                 BeginCertificate();

@@ -107,7 +107,8 @@ public sealed partial class GridPathPlanner
             using var call = new PoolCall(this);
             ObjectDisposedException.ThrowIf(_disposed, this);
             Planner.ValidateRegion(goal, radius);
-            if (budget.MaxExpandedNodes > _largestBudget.MaxExpandedNodes || budget.SnapRadius > _largestBudget.SnapRadius)
+            if (budget.MaxExpandedNodes > _largestBudget.MaxExpandedNodes ||
+                !(budget.SnapRadius <= _largestBudget.SnapRadius))
                 throw new ArgumentException("The query budget exceeds the workspace pool's declared limits.", nameof(budget));
             var request = new GridSearchRequest(this, start, goal, radius, budget);
             if (_waiters.Count == 0 && _free.TryPop(out int slot))

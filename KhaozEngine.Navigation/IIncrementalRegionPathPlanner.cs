@@ -11,9 +11,10 @@ namespace KhaozEngine.Navigation;
 internal interface IIncrementalRegionPathPlanner : IRegionPathPlanner
 {
     /// <summary>Creates a pool of <paramref name="count"/> search workspaces for this planner's requests.
-    /// Each workspace's buffers are preallocated for the grid and the expansion cap in <paramref name="largestBudget"/>,
-    /// so advances allocate only their results. The declared expansion cap and snap radius limit every begin.
-    /// Either walk policy is supported. See <see cref="PathPlanWorkspaces"/> for the lease rules.</summary>
+    /// Each workspace's buffers are preallocated for the grid and the expansion cap in <paramref name="largestBudget"/>.
+    /// The planner's workspace buffers never grow during an advance. Publishing a nonempty route allocates its
+    /// result. Caller predicates may allocate their own storage. The declared expansion cap and snap radius limit
+    /// every begin. Either walk policy is supported. See <see cref="PathPlanWorkspaces"/> for the lease rules.</summary>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="count"/> is below one or
     /// <paramref name="largestBudget"/> has a NaN snap radius.</exception>
     /// <exception cref="ArgumentException">The budget requires a frontier larger than an array.</exception>
@@ -28,7 +29,7 @@ internal interface IIncrementalRegionPathPlanner : IRegionPathPlanner
     /// <exception cref="ArgumentNullException"><paramref name="goal"/> or <paramref name="workspaces"/> is
     /// null.</exception>
     /// <exception cref="ArgumentException"><paramref name="workspaces"/> belongs to another planner, or
-    /// <paramref name="budget"/> exceeds the expansion cap or snap radius declared when the pool was created.</exception>
+    /// the query budget exceeds either declared limit or has a NaN snap radius.</exception>
     /// <exception cref="InvalidOperationException">The call overlaps another call into the same pool.</exception>
     /// <exception cref="ObjectDisposedException"><paramref name="workspaces"/> is disposed.</exception>
     PathPlanRequest BeginPath(Vector3 start, NavGoalRegion goal, float agentRadius, PathQueryBudget budget,

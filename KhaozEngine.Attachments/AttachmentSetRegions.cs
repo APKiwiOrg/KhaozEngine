@@ -23,12 +23,7 @@ internal static class AttachmentSetRegions
         {
             string name = names[index];
             string context = $"covers[{index}]";
-            if (string.IsNullOrWhiteSpace(name))
-                throw new AttachmentSetArgumentException(AttachmentSetRefusal.RegionNameEmpty, $"{context}: a region name is required.", nameof(covers))
-                { CoverIndex = index, RegionName = name };
-            if (!AttachmentText.IsWellFormedUtf16(name))
-                throw new AttachmentSetArgumentException(AttachmentSetRefusal.RegionNameMalformedUtf16, $"{context}: a region name must contain well-formed UTF-16.", nameof(covers))
-                { CoverIndex = index, RegionName = name };
+            CheckName(name, context, nameof(covers), coverIndex: index);
             if (!seen.Add(name))
                 throw new AttachmentSetArgumentException(AttachmentSetRefusal.CoveredRegionDuplicate, $"{context}: region '{name}' is already covered.", nameof(covers))
                 { CoverIndex = index, RegionName = name };
@@ -52,7 +47,7 @@ internal static class AttachmentSetRegions
                     { PartId = part.Id }
                     : rigid;
             if (!layered) throw LayerMissing(part, parameter);
-            CheckName(rigid.Region, part.Id, null, context, parameter);
+            CheckName(rigid.Region, context, parameter, partId: part.Id);
             return rigid;
         }
 
@@ -74,7 +69,7 @@ internal static class AttachmentSetRegions
         {
             NamedRegionRun run = runs[runIndex];
             string runContext = $"{context} run {runIndex}";
-            CheckName(run.Region, part.Id, runIndex, runContext, parameter);
+            CheckName(run.Region, runContext, parameter, partId: part.Id, runIndex: runIndex);
             if (run.TriangleCount < 1)
                 throw new AttachmentSetArgumentException(AttachmentSetRefusal.PartRegionRunEmpty, $"{runContext}: a run covers at least one triangle.", parameter)
                 { PartId = part.Id, RunIndex = runIndex, RegionName = run.Region };
@@ -89,14 +84,15 @@ internal static class AttachmentSetRegions
         return skinned with { Regions = Array.AsReadOnly(merged.ToArray()) };
     }
 
-    static void CheckName(string name, uint partId, int? runIndex, string context, string parameter)
+    /// <summary>Refuse a blank or malformed region name, naming the covered entry or the part and run that holds it.</summary>
+    static void CheckName(string name, string context, string parameter, int? coverIndex = null, uint? partId = null, int? runIndex = null)
     {
         if (string.IsNullOrWhiteSpace(name))
             throw new AttachmentSetArgumentException(AttachmentSetRefusal.RegionNameEmpty, $"{context}: a region name is required.", parameter)
-            { PartId = partId, RunIndex = runIndex, RegionName = name };
+            { CoverIndex = coverIndex, PartId = partId, RunIndex = runIndex, RegionName = name };
         if (!AttachmentText.IsWellFormedUtf16(name))
             throw new AttachmentSetArgumentException(AttachmentSetRefusal.RegionNameMalformedUtf16, $"{context}: a region name must contain well-formed UTF-16.", parameter)
-            { PartId = partId, RunIndex = runIndex, RegionName = name };
+            { CoverIndex = coverIndex, PartId = partId, RunIndex = runIndex, RegionName = name };
     }
 
     static AttachmentSetArgumentException LayerMissing(AttachmentPartDefinition part, string parameter) =>

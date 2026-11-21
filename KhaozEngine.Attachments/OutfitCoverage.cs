@@ -68,7 +68,8 @@ public sealed class OutfitCoverage
         Worn piece = At(wornIndex);
         if (!piece.RigidRegions.TryGetValue(partId, out int region))
             throw new ArgumentException($"worn[{wornIndex}] has no rigid part {partId}.", nameof(partId));
-        return region >= 0 && piece.Hidden.Contains(region);
+        // A rigid part of a set with no layer has no region, and RegionSet.Contains refuses its marker as out of range.
+        return region != Worn.NoRegion && piece.Hidden.Contains(region);
     }
 
     /// <summary>
@@ -94,7 +95,7 @@ public sealed class OutfitCoverage
     sealed class Worn
     {
         // A rigid part of a set with no layer maps to -1, which no region index uses.
-        const int NoRegion = -1;
+        internal const int NoRegion = -1;
 
         Worn(AttachmentLayer? layer, RegionSet covers, Dictionary<uint, int> rigidRegions, Dictionary<uint, IReadOnlyList<RegionRun>> skinnedRegions)
         {

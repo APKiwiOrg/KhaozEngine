@@ -1,8 +1,9 @@
 # Attachment regions and layers
 
-Status: in progress for 24.4.0 under [#1874](https://github.com/APKiwiOrg/KhaozEngine/issues/1874). Skinned mesh
-views are the first piece. Region maps, set format 3, the outfit rule, outfit drawing and the coverage claim check
-follow. Current use belongs in the [consumer guide](../USING-KHAOZENGINE.md#attachment-sets) once each piece ships.
+Status: implemented for 24.4.0 under [#1874](https://github.com/APKiwiOrg/KhaozEngine/issues/1874): skinned mesh
+views, body region maps, set format 3, the outfit rule, outfit drawing and the offline coverage claim check. Current
+use is in the [consumer guide](../USING-KHAOZENGINE.md#regions-layers-and-outfits) and the package READMEs. This note
+keeps the decisions and the reasons for them.
 
 A worn piece declares a layer and the body regions it covers. The engine hides covered body triangles and covered
 triangles of lower layer pieces in every render pass, so skin never shows through a garment and an undershirt never
@@ -56,10 +57,12 @@ outfit change in the middle of a frame would otherwise drop draws already queued
 the slot is freed and the index buffer goes to the scene's retire queue. The retire queue then destroys it behind a
 fence like every other unload, so no extra GPU wait is added.
 
-### 7. The engine stages 24.4.0
+### 7. The capability is a minor, 24.4.0
 
-Main sits on the released 24.3.0 with nothing staged. Region maps, format 3 and mesh views are additive, so this is
-a minor. That holds only while no public interface gains a member. See the `IAttachmentScene` correction below.
+Region maps, format 3, outfits and mesh views add types, members and overloads, and no public interface gains a
+member, so the release is additive. The `InternalsVisibleTo` grant from `KhaozEngine.Render3D` to
+`KhaozEngine.Attachments.Render3D` is package content but no public surface. See the `IAttachmentScene` correction
+below for the one shape that would have made it a major.
 
 ## Skinned mesh views
 

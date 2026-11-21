@@ -2601,6 +2601,15 @@ it owns, so the same call succeeds once the view is gone. `UnloadSharedSkinnedMe
 `SkinnedLimb.Dispose` keeps the limb. A skinned attachment lease and an `AttachmentSetCache` check every handle they
 own before the first unload, through the internal `RefuseSourcesWithLiveViews`.
 
+A view is the renderer's way to hide part of a skinned mesh without a shader mask. A mask would touch every skinned
+shader variant and the CPU skinning path, and a pass that missed it would shadow or outline triangles the colour
+pass hides. A view needs no shader, pipeline or draw call change. Its bounds stay the source's rest bounds, which is
+conservative for culling and costs nothing. A CPU skinned view deforms every source vertex, the same cost as drawing
+the source. A shadow, caustic, interior cut or sampler replacement rebinds each view to its source's rebuilt sets,
+and `Dispose` frees each view's index buffer and never a shared resource twice. The attachment arm's
+[outfits](../KhaozEngine.Attachments.Render3D/README.md#outfits) build their hidden triangles from views, and build
+them when an outfit changes, never per frame.
+
 `SkinnedMeshViewArgumentException` derives from `ArgumentException`, which skinned unload threw for a bad handle
 before, and carries `SkinnedMeshViewRefusal` with the source's `SourceIndex` and `SourceGeneration`. A refused call
 creates nothing.

@@ -12,7 +12,7 @@ public readonly struct ReachTarget
     internal Vector3 HalfExtents { get; }
     internal float YawRadians { get; }
 
-    ReachTarget(ReachTargetKind kind, MovementBody body, Vector3 centre, Vector3 halfExtents, float yawRadians)
+    internal ReachTarget(ReachTargetKind kind, MovementBody body, Vector3 centre, Vector3 halfExtents, float yawRadians)
     {
         Kind = kind;
         Body = body;

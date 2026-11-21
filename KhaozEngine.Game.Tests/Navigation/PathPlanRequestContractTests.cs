@@ -21,6 +21,7 @@ public class PathPlanRequestContractTests
     {
         NavPath result = unreachable ? NavPath.Unreachable : Route;
         using var request = new FixedWorkRequest(3, result);
+        Assert.False(request.Released);
         Assert.Equal(PathPlanState.Pending, request.State);
         Assert.Null(request.Result);
 
@@ -28,12 +29,17 @@ public class PathPlanRequestContractTests
         Assert.Equal(PathPlanState.Pending, request.State);
         Assert.Null(request.Result);
         Assert.Equal(2, request.WorkSpent);
+        Assert.False(request.Released);
 
         // Unreachable is a completed request like any other result.
         request.Advance(new PathWorkBudget(2));
         Assert.Equal(PathPlanState.Ready, request.State);
         Assert.Same(result, request.Result);
         Assert.Equal(3, request.WorkSpent);
+        Assert.True(request.Released);
+        request.Cancel();
+        request.Dispose();
+        Assert.Same(result, request.Result);
     }
 
     [Theory]
@@ -53,35 +59,48 @@ public class PathPlanRequestContractTests
         Assert.Equal(1, request.WorkSpent);
     }
 
-    [Fact]
-    public void CancelAndDisposeAreIdempotent()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CancelAndDisposeReleaseOnce(bool dispose)
     {
-        // The double refuses a second release, so a repeated Cancel or Dispose that released again throws.
-        var cancelled = new FixedWorkRequest(5, Route);
-        cancelled.Advance(new PathWorkBudget(1));
-        cancelled.Cancel();
-        cancelled.Cancel();
-        cancelled.Dispose();
-        cancelled.Dispose();
-        Assert.Equal(PathPlanState.Cancelled, cancelled.State);
-        Assert.Null(cancelled.Result);
-        Assert.Equal(1, cancelled.WorkSpent);
+        // The double refuses a second release, so all later Cancel and Dispose calls must be harmless.
+        using var request = new FixedWorkRequest(5, Route);
+        request.Advance(new PathWorkBudget(1));
+        Assert.False(request.Released);
 
-        var disposed = new FixedWorkRequest(5, Route);
-        disposed.Dispose();
-        disposed.Dispose();
-        disposed.Cancel();
-        Assert.Equal(PathPlanState.Cancelled, disposed.State);
-        Assert.Null(disposed.Result);
-        Assert.Equal(0, disposed.WorkSpent);
+        if (dispose) request.Dispose();
+        else request.Cancel();
+        Assert.True(request.Released);
 
-        // A Ready request released at completion. Cancel and Dispose keep its result.
-        var ready = new FixedWorkRequest(1, Route);
-        ready.Advance(new PathWorkBudget(1));
-        ready.Cancel();
-        ready.Dispose();
-        Assert.Equal(PathPlanState.Ready, ready.State);
-        Assert.Same(Route, ready.Result);
+        request.Cancel();
+        request.Dispose();
+        Assert.Equal(PathPlanState.Cancelled, request.State);
+        Assert.Null(request.Result);
+        Assert.Equal(1, request.WorkSpent);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void AnOperationMustSpendPositiveWork(int units)
+    {
+        using var request = new FixedWorkRequest(3, Route);
+        Assert.Throws<ArgumentOutOfRangeException>(() => request.RecordWork(units));
+        Assert.Equal(0, request.WorkSpent);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AnOperationCannotSpendWorkAfterReadyOrCancel(bool cancel)
+    {
+        using var request = new FixedWorkRequest(cancel ? 5 : 1, Route);
+        request.Advance(new PathWorkBudget(1));
+        if (cancel) request.Cancel();
+
+        Assert.Throws<InvalidOperationException>(() => request.RecordWork(1));
+        Assert.Equal(1, request.WorkSpent);
     }
 
     [Theory]
@@ -112,9 +131,13 @@ public class PathPlanRequestContractTests
         int _left = units;
         bool _released;
 
+        internal bool Released => _released;
+
+        internal void RecordWork(int units) => Spend(units);
+
         public override bool StartsFrom(Vector3 feet) => feet == Vector3.Zero;
 
-        protected override void AdvanceCore(PathWorkBudget budget)
+        private protected override void AdvanceCore(PathWorkBudget budget)
         {
             int spend = Math.Min(budget.Units, _left);
             _left -= spend;
@@ -122,7 +145,7 @@ public class PathPlanRequestContractTests
             if (_left == 0) Complete(result);
         }
 
-        protected override void Release()
+        private protected override void Release()
         {
             if (_released) throw new InvalidOperationException("A request releases its workspace once.");
             _released = true;

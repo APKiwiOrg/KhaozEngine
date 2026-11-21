@@ -4,9 +4,9 @@ using System.Numerics;
 namespace KhaozEngine.Navigation;
 
 /// <summary>
-/// A region planner whose routes can also be planned in slices, so one owner call never spends more than a fixed
-/// work quota on a route. The synchronous <see cref="IRegionPathPlanner.FindPath(Vector3, NavGoalRegion, float,
-/// PathQueryBudget)"/> is unchanged and a request returns exactly its route.
+/// A region planner whose routes can also be planned in slices under a <see cref="PathWorkBudget"/>.
+/// A request returns the same route as the synchronous <see cref="IRegionPathPlanner.FindPath(Vector3,
+/// NavGoalRegion, float, PathQueryBudget)"/>.
 /// </summary>
 internal interface IIncrementalRegionPathPlanner : IRegionPathPlanner
 {

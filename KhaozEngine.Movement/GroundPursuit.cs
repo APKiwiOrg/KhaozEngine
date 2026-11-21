@@ -67,8 +67,8 @@ public sealed class GroundPursuit
         if (!ReachGeometry.Within(shape, target, settings.TriggerRange))
             return Finish(GroundPursuitStatus.OutOfRange);
         _settings = settings;
-        var goal = new GroundPursuitGoal(tuning, target, settings.StopDistance);
-        return Plan(Feet(body, tuning), goal.Region, tuning.CapsuleRadius, GroundPursuitStatus.Ready);
+        NavGoalRegion goal = GroundPursuitGoal.Create(tuning, target, settings.StopDistance);
+        return Plan(Feet(body, tuning), goal, tuning.CapsuleRadius, GroundPursuitStatus.Ready);
     }
 
     /// <summary>Rechecks the current target's exact 3D reach before following or replanning. Trigger range
@@ -92,7 +92,7 @@ public sealed class GroundPursuit
         if (target is not { } current) return Finish(GroundPursuitStatus.TargetLost);
         if (ReachGeometry.Within(Body(body, tuning), current, _settings.StopDistance))
             return Finish(GroundPursuitStatus.Arrived);
-        var goal = new GroundPursuitGoal(tuning, current, _settings.StopDistance);
+        NavGoalRegion goal = GroundPursuitGoal.Create(tuning, current, _settings.StopDistance);
         Vector3 feet = Feet(body, tuning);
         _cooldown = MathF.Max(0, _cooldown - dt);
         bool entryAllowed = _route.Advance(feet, _follow.AcceptRadius, _allowsSegment);
@@ -100,16 +100,16 @@ public sealed class GroundPursuit
         if (!terminal) _freshTerminal = false;
         // Proximity changes refresh timing only. A valid final approach must keep its travel budget.
         // Exact horizontal exhaustion still needs a query if current 3D reach has not witnessed arrival.
-        bool due = !entryAllowed || !_route.TryDirection(feet, out _) || !goal.Region.Contains(_route.Endpoint)
-            || GroundPursuitRoute.Distance(goal.Region.Anchor, _plannedAnchor) > _follow.GoalRetargetTolerance
-            || Math.Abs((double)goal.Region.Anchor.Y - _plannedAnchor.Y) > _follow.GoalRetargetVerticalTolerance
+        bool due = !entryAllowed || !_route.TryDirection(feet, out _) || !goal.Contains(_route.Endpoint)
+            || GroundPursuitRoute.Distance(goal.Anchor, _plannedAnchor) > _follow.GoalRetargetTolerance
+            || Math.Abs((double)goal.Anchor.Y - _plannedAnchor.Y) > _follow.GoalRetargetVerticalTolerance
             || _route.CorridorDistance(feet) > _follow.CorridorTolerance
             || !_allowsSegment(feet, _route.Active);
         if (due)
         {
             if (_cooldown > 0 && !(terminal && !_freshTerminal))
                 return new(GroundPursuitStatus.Travelling, _lastDirection, 0);
-            return Plan(feet, goal.Region, tuning.CapsuleRadius, GroundPursuitStatus.Travelling);
+            return Plan(feet, goal, tuning.CapsuleRadius, GroundPursuitStatus.Travelling);
         }
         return Steering(feet, GroundPursuitStatus.Travelling);
     }

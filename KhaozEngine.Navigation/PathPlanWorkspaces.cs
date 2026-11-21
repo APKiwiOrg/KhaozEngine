@@ -34,7 +34,7 @@ namespace KhaozEngine.Navigation;
 internal abstract class PathPlanWorkspaces : IDisposable
 {
     /// <summary>Creates an empty pool shell. The planner that implements it supplies the workspaces.</summary>
-    protected PathPlanWorkspaces()
+    private protected PathPlanWorkspaces()
     {
     }
 

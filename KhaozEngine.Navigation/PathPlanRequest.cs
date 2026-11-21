@@ -6,22 +6,22 @@ namespace KhaozEngine.Navigation;
 /// <summary>
 /// One route query spread over several owner calls. <see cref="IIncrementalRegionPathPlanner.BeginPath"/> freezes
 /// its inputs: the start feet, the goal region, the agent radius and the <see cref="PathQueryBudget"/>. Each
-/// <see cref="Advance"/> call spends at most its <see cref="PathWorkBudget"/> and the request becomes
+/// <see cref="Advance"/> call spends work according to its <see cref="PathWorkBudget"/>. The request becomes
 /// <see cref="PathPlanState.Ready"/> once the whole route is planned.
 /// </summary>
 /// <remarks>
 /// <para>Route equality. For every quota schedule a Ready request holds the same status, waypoint count, kinds,
 /// layers and position bits as the synchronous <see cref="IRegionPathPlanner.FindPath(Vector3, NavGoalRegion,
-/// float, PathQueryBudget)"/> of the same planner on the same frozen inputs. A spent quota never yields a
-/// provisional route.</para>
+/// float, PathQueryBudget)"/> of the same planner on the same frozen inputs, including the one-shot fallback
+/// state read at begin by a planner that straightens routes. A spent quota never yields a provisional route.</para>
 /// <para>Region predicate. The goal region's predicate must stay pure for the request's whole life, from
 /// <see cref="IIncrementalRegionPathPlanner.BeginPath"/> until the request is Ready or Cancelled, not only during
 /// one call. A predicate that reads state its owner changes later, such as the mover's current target, plans
 /// against a goal that no longer exists. A predicate must not call back into the planner or its pool.</para>
 /// <para>Publication. The call on which a request becomes Ready depends on four things and nothing else, never on
-/// a clock, thread, task, allocation, collection, JIT tier, another pool or a synchronous query: its total work,
-/// set by its frozen inputs and the operation weights, the quota on each owner call and which calls its owner
-/// makes, the call on which it gets a workspace (see <see cref="PathPlanWorkspaces"/>), and the owner's adoption
+/// a clock, thread, task, allocation, collection, JIT tier, another pool or a synchronous query: the ordered
+/// work operations and their weights, set by its frozen inputs, the quota on each owner call and which calls its
+/// owner makes, the call on which it gets a workspace (see <see cref="PathPlanWorkspaces"/>), and the owner's adoption
 /// rule. With one workspace per sharing owner no request waits, and publication depends only on the request's own
 /// inputs, quotas and owner calls.</para>
 /// <para>Lifetime. A request is not serializable. Cancel or dispose a request its owner no longer needs, before
@@ -33,7 +33,7 @@ internal abstract class PathPlanRequest : IDisposable
     NavPath? _result;
 
     /// <summary>Creates a pending request with no work spent.</summary>
-    protected PathPlanRequest()
+    private protected PathPlanRequest()
     {
     }
 
@@ -88,21 +88,29 @@ internal abstract class PathPlanRequest : IDisposable
         GC.SuppressFinalize(this);
     }
 
-    /// <summary>Spends up to <paramref name="budget"/> on a pending request. Called only while the request is
-    /// pending, with a quota of at least one unit. An implementation reports each operation through
+    /// <summary>Spends work according to <paramref name="budget"/>. Called only while the request is pending,
+    /// with a quota of at least one unit. An implementation reports each operation through
     /// <see cref="Spend"/> and finishes through <see cref="Complete"/>.</summary>
-    protected abstract void AdvanceCore(PathWorkBudget budget);
+    private protected abstract void AdvanceCore(PathWorkBudget budget);
 
     /// <summary>Returns the request's workspace to its pool, or leaves the pool's queue. Called exactly once,
     /// when the request leaves <see cref="PathPlanState.Pending"/> by completion or cancellation.</summary>
-    protected abstract void Release();
+    private protected abstract void Release();
 
     /// <summary>Adds the <paramref name="units"/> an operation just performed to <see cref="WorkSpent"/>.</summary>
-    protected void Spend(int units) => WorkSpent += units;
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="units"/> is below one.</exception>
+    /// <exception cref="InvalidOperationException">The request is not pending.</exception>
+    private protected void Spend(int units)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(units, 1);
+        if (State != PathPlanState.Pending)
+            throw new InvalidOperationException("Only a pending request can spend work.");
+        WorkSpent += units;
+    }
 
     /// <summary>Publishes <paramref name="result"/>, makes the request Ready and releases its workspace.</summary>
     /// <exception cref="InvalidOperationException">The request is not pending.</exception>
-    protected void Complete(NavPath result)
+    private protected void Complete(NavPath result)
     {
         ArgumentNullException.ThrowIfNull(result);
         if (State != PathPlanState.Pending)

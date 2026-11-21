@@ -75,8 +75,10 @@ public static class BodyRegionMapJson
                 writer.WriteStartObject();
                 writer.WriteNumber("triangles", map.TriangleCount(part));
                 writer.WriteStartArray("runs");
-                foreach (RegionRun run in map.Parts[part])
+                IReadOnlyList<RegionRun> runs = map.Parts[part];
+                for (int index = 0; index < runs.Count; index++)
                 {
+                    RegionRun run = runs[index];
                     writer.WriteStartArray();
                     writer.WriteNumberValue(run.Region);
                     writer.WriteNumberValue(run.TriangleCount);

@@ -12,6 +12,7 @@ public class BodyRegionMapTests
     const string Rig = "rig-v1:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     const string Source = "body.regions.json";
     const string Map = $$"""{"formatVersion":1,"rig":"{{Rig}}","regions":["a","b"],"parts":[{"triangles":4,"runs":[[0,3],[1,1]]}]}""";
+    const string TwoParts = $$"""{"formatVersion":1,"rig":"{{Rig}}","regions":["a","b"],"parts":[{"triangles":4,"runs":[[0,3],[1,1]]},{"triangles":2,"runs":[[1,2]]}]}""";
 
     [Fact]
     public void A_map_round_trips_and_names_every_triangle_once()
@@ -37,6 +38,39 @@ public class BodyRegionMapTests
     }
 
     [Fact]
+    public void Each_part_of_a_two_part_map_names_its_own_triangles()
+    {
+        byte[] bytes = Encoding.UTF8.GetBytes(TwoParts);
+        BodyRegionMap map = BodyRegionMapJson.Parse(bytes, Source);
+
+        Assert.Equal((4, 2), (map.TriangleCount(0), map.TriangleCount(1)));
+        byte[] first = new byte[4];
+        byte[] second = new byte[2];
+        map.WriteTriangleRegions(0, first);
+        map.WriteTriangleRegions(1, second);
+        Assert.Equal(new byte[] { 0, 0, 0, 1 }, first);
+        Assert.Equal(new byte[] { 1, 1 }, second);
+        Assert.Throws<ArgumentException>(() => map.WriteTriangleRegions(1, new byte[4]));
+        Assert.Throws<ArgumentOutOfRangeException>(() => map.TriangleCount(2));
+        Assert.Throws<ArgumentOutOfRangeException>(() => map.TriangleCount(-1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => map.WriteTriangleRegions(2, second));
+        Assert.Equal(bytes, BodyRegionMapJson.Write(map));
+    }
+
+    [Fact]
+    public void A_part_whose_runs_pass_int32_is_refused_and_one_at_int32_max_is_kept()
+    {
+        var first = new[] { new RegionRun(0, 3), new RegionRun(1, 1) };
+        var atMax = new BodyRegionMap(Rig, new[] { "a", "b" }, new[] { first, new[] { new RegionRun(0, int.MaxValue - 1), new RegionRun(1, 1) } });
+        Assert.Equal(int.MaxValue, atMax.TriangleCount(1));
+
+        var error = Assert.Throws<BodyRegionMapDataException>(() =>
+            new BodyRegionMap(Rig, new[] { "a", "b" }, new[] { first, new[] { new RegionRun(0, int.MaxValue), new RegionRun(1, 1) } }));
+        Assert.Equal(BodyRegionMapRefusal.TriangleCountOverflow, error.Reason);
+        Assert.Equal((1, 1, int.MaxValue + 1L), (error.PartIndex, error.RunIndex, error.ActualTriangleCount));
+    }
+
+    [Fact]
     public void Adjacent_runs_of_one_region_merge_so_equal_maps_share_an_identity()
     {
         BodyRegionMap split = BodyRegionMapJson.Parse(Encoding.UTF8.GetBytes(Map.Replace("[[0,3],", "[[0,1],[0,2],", StringComparison.Ordinal)), Source);
@@ -48,6 +82,7 @@ public class BodyRegionMapTests
 
     [Theory]
     [InlineData("runs sum to 3 for 4 triangles", BodyRegionMapRefusal.TriangleCountMismatch)]
+    [InlineData("the second part's runs sum to 1 for 2 triangles", BodyRegionMapRefusal.TriangleCountMismatch)]
     [InlineData("run names region 2 of 2", BodyRegionMapRefusal.RegionIndexOutOfRange)]
     [InlineData("two regions named a", BodyRegionMapRefusal.RegionNameDuplicate)]
     [InlineData("129 regions", BodyRegionMapRefusal.TooManyRegions)]
@@ -71,9 +106,12 @@ public class BodyRegionMapTests
         switch (fault)
         {
             case "runs sum to 3 for 4 triangles":
-                Assert.Equal(0, error.PartIndex);
+                Assert.Equal(("$.parts[0]", 0), (error.JsonPath, error.PartIndex));
                 Assert.Equal(4, error.DeclaredTriangleCount);
                 Assert.Equal(3L, error.ActualTriangleCount);
+                break;
+            case "the second part's runs sum to 1 for 2 triangles":
+                Assert.Equal(("$.parts[1]", 1, 2, 1L), (error.JsonPath, error.PartIndex, error.DeclaredTriangleCount, error.ActualTriangleCount));
                 break;
             case "run names region 2 of 2":
                 Assert.Equal((0, 1, 2, 2), (error.PartIndex, error.RunIndex, error.RegionIndex, error.RegionCount));
@@ -125,6 +163,7 @@ public class BodyRegionMapTests
     static (string Control, string Broken) Case(string fault) => fault switch
     {
         "runs sum to 3 for 4 triangles" => (Map, Map.Replace("[[0,3],", "[[0,2],", StringComparison.Ordinal)),
+        "the second part's runs sum to 1 for 2 triangles" => (TwoParts, TwoParts.Replace("[[1,2]]", "[[1,1]]", StringComparison.Ordinal)),
         "run names region 2 of 2" => (Map, Map.Replace("[1,1]]", "[2,1]]", StringComparison.Ordinal)),
         "two regions named a" => (Map, Map.Replace("[\"a\",\"b\"]", "[\"a\",\"a\"]", StringComparison.Ordinal)),
         "129 regions" => (Regions(RegionSet.MaxRegions), Regions(RegionSet.MaxRegions + 1)),

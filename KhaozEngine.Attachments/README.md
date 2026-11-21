@@ -143,8 +143,9 @@ range with `ArgumentOutOfRangeException`.
 `rig` is the body's complete [rig identity](#body-rig-identity). `parts` follow the body GLB's skinned
 material part order. Each part declares its triangle count and lists `[region, triangleCount]` runs in
 triangle order, which must add up to it. `BodyRegionMap` exposes `RigIdentity`, `Regions`, `Parts` and
-`TryRegion(name, out index)` with ordinal names. `WriteTriangleRegions(part, span)` fills one region
-index per triangle and needs a span of exactly the part's triangle count. Adjacent runs of one region
+`TryRegion(name, out index)` with ordinal names. `TriangleCount(part)` is the sum of a part's runs.
+`WriteTriangleRegions(part, span)` fills one region index per triangle and needs a span of exactly that
+length. Both refuse a part index outside `Parts` with `ArgumentOutOfRangeException`. Adjacent runs of one region
 merge, so `Write(map)` is canonical and `Sha256` is the lowercase SHA-256 of those bytes.
 
 Refusals throw `BodyRegionMapDataException`, derived from `MalformedDataException`, with a
@@ -162,6 +163,7 @@ Refusals throw `BodyRegionMapDataException`, derived from `MalformedDataExceptio
 | `RegionIndexOutOfRange` | a run naming an undeclared region. | `PartIndex`, `RunIndex`, `RegionIndex`, `RegionCount` |
 | `RunEmpty` | a run of fewer than one triangle. | `PartIndex`, `RunIndex` |
 | `TriangleCountMismatch` | runs that do not add up to the part's declared triangle count. | `PartIndex`, `DeclaredTriangleCount`, `ActualTriangleCount` |
+| `TriangleCountOverflow` | a part whose runs add up past Int32, from the constructor. | `PartIndex`, `RunIndex`, `ActualTriangleCount` |
 
 ## Set refusals
 

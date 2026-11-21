@@ -44,4 +44,7 @@ public enum BodyRegionMapRefusal
 
     /// <summary>Refuses malformed JSON syntax.</summary>
     JsonMalformed,
+
+    /// <summary>Refuses a part whose runs add up to more than <see cref="int.MaxValue"/> triangles.</summary>
+    TriangleCountOverflow,
 }

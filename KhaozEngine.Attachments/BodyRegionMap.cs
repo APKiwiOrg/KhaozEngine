@@ -68,12 +68,12 @@ public sealed class BodyRegionMap
                     throw new BodyRegionMapDataException(BodyRegionMapRefusal.RunEmpty, $"parts[{partIndex}] run {runIndex}: a run covers at least one triangle.")
                     { PartIndex = partIndex, RunIndex = runIndex };
                 triangles += run.TriangleCount;
+                if (triangles > int.MaxValue)
+                    throw new BodyRegionMapDataException(BodyRegionMapRefusal.TriangleCountOverflow, $"parts[{partIndex}] run {runIndex}: runs exceed the Int32 triangle range.")
+                    { PartIndex = partIndex, RunIndex = runIndex, ActualTriangleCount = triangles };
                 if (runs.Count > 0 && runs[^1].Region == run.Region)
                     runs[^1] = runs[^1] with { TriangleCount = runs[^1].TriangleCount + run.TriangleCount };
                 else runs.Add(run);
-                if (triangles > int.MaxValue)
-                    throw new BodyRegionMapDataException(BodyRegionMapRefusal.TriangleCountMismatch, $"parts[{partIndex}]: runs exceed the Int32 triangle range.")
-                    { PartIndex = partIndex, ActualTriangleCount = triangles };
                 runIndex++;
             }
             ownedParts.Add(Array.AsReadOnly(runs.ToArray()));
@@ -111,17 +111,25 @@ public sealed class BodyRegionMap
     /// <exception cref="ArgumentException">The span length differs from the part's triangle count.</exception>
     public void WriteTriangleRegions(int part, Span<byte> regionPerTriangle)
     {
-        ArgumentOutOfRangeException.ThrowIfNegative(part);
-        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(part, Parts.Count);
-        if (regionPerTriangle.Length != triangleCounts[part])
-            throw new ArgumentException($"Part {part} has {triangleCounts[part]} triangles, not {regionPerTriangle.Length}.", nameof(regionPerTriangle));
+        int triangles = TriangleCount(part);
+        if (regionPerTriangle.Length != triangles)
+            throw new ArgumentException($"Part {part} has {triangles} triangles, not {regionPerTriangle.Length}.", nameof(regionPerTriangle));
+        IReadOnlyList<RegionRun> runs = Parts[part];
         int offset = 0;
-        foreach (RegionRun run in Parts[part])
+        for (int index = 0; index < runs.Count; index++)
         {
+            RegionRun run = runs[index];
             regionPerTriangle.Slice(offset, run.TriangleCount).Fill((byte)run.Region);
             offset += run.TriangleCount;
         }
     }
 
-    internal int TriangleCount(int part) => triangleCounts[part];
+    /// <summary>The number of triangles in <paramref name="part"/>, the sum of its runs.</summary>
+    /// <exception cref="ArgumentOutOfRangeException">The map has no such part.</exception>
+    public int TriangleCount(int part)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(part);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(part, Parts.Count);
+        return triangleCounts[part];
+    }
 }

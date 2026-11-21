@@ -53,33 +53,40 @@ public sealed class SupportCostAttributionTests(ITestOutputHelper output) : IDis
         Assert.Equal("0", Environment.GetEnvironmentVariable("DOTNET_TieredCompilation"));
         SupportQueryDiagnostics.Enable(true);
         var measurements = new List<object>();
+        // The first measured row reads high on every machine (SC-16). A fixed cheap scene takes that position
+        // under the full protocol and is recorded under the discarded leading operation, so no listed row carries
+        // the bias.
+        MeasureRow("flat box", "Find", SupportCostVerdict.DiscardedLeadingOperation);
         foreach (string name in new[] { "flat box", "flat mesh", "fan 96", "cluster 32 compound",
             "cluster 32 split", "cluster 256 mesh", "sphere", "capsule", "cylinder" })
             foreach (string operation in name is "cluster 32 split" or "cluster 256 mesh" or "sphere" or "capsule"
                 or "cylinder" ? new[] { "Find" } : new[] { "Find", "DryTick" })
-            {
-                var recorder = new PhaseRecorder(true);
-                ContactAllocationDiagnostics.SetObserver(recorder.Observe);
-                SupportCostSample sample = new SupportCostSampler(false)
-                { BeforeWarm = recorder.Reset, IsolateAllocations = true }.Measure(Row(name), operation)[0];
-                var phases = recorder.Rows();
-                measurements.Add(new
-                {
-                    Scene = name,
-                    Operation = operation,
-                    sample.WarmBytes,
-                    sample.GeometryMatchesOracle,
-                    sample.Counts,
-                    Phases = phases
-                });
-                output.WriteLine($"{name} {operation}. {sample.WarmBytes} B, {phases.Sum(p => p.Microseconds):F2} us.");
-                foreach (var phase in phases) output.WriteLine($"{phase}");
-                Assert.Equal(0, recorder.Depth);
-                Assert.Equal(sample.WarmBytes, recorder.Bytes.Sum());
-                Assert.True(sample.GeometryMatchesOracle);
-                Assert.Equal(operation == "Find" ? 0 : 64, sample.WarmBytes);
-            }
+                MeasureRow(name, operation, operation);
         File.WriteAllText(path, JsonSerializer.Serialize(measurements, new JsonSerializerOptions { WriteIndented = true }));
+
+        void MeasureRow(string name, string operation, string recorded)
+        {
+            var recorder = new PhaseRecorder(true);
+            ContactAllocationDiagnostics.SetObserver(recorder.Observe);
+            SupportCostSample sample = new SupportCostSampler(false)
+            { BeforeWarm = recorder.Reset, IsolateAllocations = true }.Measure(Row(name), operation)[0];
+            var phases = recorder.Rows();
+            measurements.Add(new
+            {
+                Scene = name,
+                Operation = recorded,
+                sample.WarmBytes,
+                sample.GeometryMatchesOracle,
+                sample.Counts,
+                Phases = phases
+            });
+            output.WriteLine($"{name} {recorded}. {sample.WarmBytes} B, {phases.Sum(p => p.Microseconds):F2} us.");
+            foreach (var phase in phases) output.WriteLine($"{phase}");
+            Assert.Equal(0, recorder.Depth);
+            Assert.Equal(sample.WarmBytes, recorder.Bytes.Sum());
+            Assert.True(sample.GeometryMatchesOracle);
+            Assert.Equal(operation == "Find" ? 0 : 64, sample.WarmBytes);
+        }
     }
 
     static SupportCostRow Row(string name) => SupportGateCostScenes.Rows()

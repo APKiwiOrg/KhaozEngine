@@ -4,7 +4,10 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
+using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using KhaozEngine.Locomotion;
 using KhaozEngine.NetWorld;
@@ -22,6 +25,9 @@ internal static partial class ShoreStepAttributionBenchmark
     const int ControlAdvanceSteps = 36;
     const int BankAdvanceSteps = 48;
     static readonly SupportQueryCounter[] SupportCounters = Enum.GetValues<SupportQueryCounter>();
+    // Certificate timing pair: full makes every boundary proof take the full coverage solve, certified lets the
+    // runtime capture certificate answer. Both modes build the same scenes through the same forwarding field.
+    static bool s_certified;
 
     internal static void Run(string[] args)
     {
@@ -42,17 +48,20 @@ internal static partial class ShoreStepAttributionBenchmark
         }
         var mode = args switch
         {
-            ["--shore-step-attribution", "--counts"] => ShoreProbeMode.Counts,
-            ["--shore-step-attribution", "--timings"] => ShoreProbeMode.Timings,
-            _ => throw new ArgumentException("Select exactly one pass with --counts or --timings.")
+            ["--shore-step-attribution", "--counts", "--full" or "--certified"] => ShoreProbeMode.Counts,
+            ["--shore-step-attribution", "--timings", "--full" or "--certified"] => ShoreProbeMode.Timings,
+            _ => throw new ArgumentException("Select one pass with --counts or --timings, then --full or --certified.")
         };
+        s_certified = args[2] == "--certified";
+        // Before any scenario exists, so no movement context of this process can take the other scope.
+        ShoreStepProbe.FullSolveContexts = !s_certified;
         if (Environment.GetEnvironmentVariable("DOTNET_TieredCompilation") != "0")
             throw new InvalidOperationException("Run with DOTNET_TieredCompilation=0.");
         if (TileMediumSampler.BypassTraceMemoForTests || TileWaterSharedProjections.BypassForTests)
             throw new InvalidOperationException("Use the released water result tiers and shared projections.");
         Console.WriteLine(JsonSerializer.Serialize(new
         {
-            kind = "metadata", mode = mode.ToString(),
+            kind = "metadata", mode = mode.ToString(), boundaryMode = s_certified ? "certified" : "full",
             utc = DateTimeOffset.UtcNow,
             runtime = RuntimeInformation.FrameworkDescription,
             os = RuntimeInformation.OSDescription,
@@ -87,7 +96,7 @@ internal static partial class ShoreStepAttributionBenchmark
 
     static void Measure(Case @case, ShoreProbeMode mode, int path)
     {
-        using var scene = new WaterPrismScenario(@case.Fixture);
+        using var scene = new WaterPrismScenario(@case.Fixture, exposeCertificate: true);
         var command = new MoveCommand(@case.Axis, false, 0);
         var basis = @case.BankStart is { } bankStart && path >= 0
             ? BankBasis(scene, 110.375f + path * 0.25f, bankStart)
@@ -106,8 +115,13 @@ internal static partial class ShoreStepAttributionBenchmark
             var input = Describe(scene, state, surface);
             var output = Describe(scene, next, surface);
             CheckFixture(@case, input, output);
+            CheckBoundaryMode(clocks);
             reachedSlope |= input.Z is <= -236 and >= -237 && input.Z != output.Z;
-            rows.Add(new { kind = "step", name = @case.Name, path, sample = i, input, output, clocks, work });
+            rows.Add(new
+            {
+                kind = "step", name = @case.Name, path, sample = i, input, output,
+                inputBits = StateBits(state), outputBits = StateBits(next), clocks, work
+            });
             state = path < 0 ? basis : next;
         }
         if (path >= 0 && @case.BankStart.HasValue && !reachedSlope)
@@ -145,6 +159,50 @@ internal static partial class ShoreStepAttributionBenchmark
             _ => throw new ArgumentOutOfRangeException(nameof(@case))
         };
         if (!valid) throw new InvalidOperationException($"Fixture {@case.Name} strayed from its intended motion: {input} -> {output}.");
+    }
+
+    // Every proof consults the certificate in certified mode and none does in full mode. Calls count in both passes.
+    static void CheckBoundaryMode(ShoreStepProbe.Reading clocks)
+    {
+        int consulted = clocks.Calls[(int)ShorePhase.WaterCertificate];
+        int proofs = clocks.Calls[(int)ShorePhase.WaterBoundary];
+        if (s_certified ? consulted != proofs : consulted != 0)
+            throw new InvalidOperationException($"Boundary mode leak: {consulted} certificate consultations for {proofs} proofs.");
+    }
+
+    // SHA-256 over every value bit of the state, the per-scene support continuity handle excluded.
+    static string StateBits(PlayerMoveState state)
+    {
+        var text = new StringBuilder();
+        AppendBits(text, state, "state");
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text.ToString())));
+    }
+
+    static void AppendBits(StringBuilder text, object value, string path)
+    {
+        switch (value)
+        {
+            case float f: text.Append(path).Append('=').Append(BitConverter.SingleToInt32Bits(f)).Append(';'); return;
+            case double d: text.Append(path).Append('=').Append(BitConverter.DoubleToInt64Bits(d)).Append(';'); return;
+        }
+        Type type = value.GetType();
+        if (type.IsPrimitive || type.IsEnum)
+        {
+            text.Append(path).Append('=').Append(value).Append(';');
+            return;
+        }
+        if (!type.IsValueType)
+        {
+            text.Append(path).Append(':').Append(type.Name).Append(';');
+            return;
+        }
+        foreach (FieldInfo field in type.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+        {
+            if (field.FieldType.Name == "SupportContinuityHandle") continue;
+            object? inner = field.GetValue(value);
+            if (inner is null) text.Append(path).Append('.').Append(field.Name).Append("=null;");
+            else AppendBits(text, inner, path + "." + field.Name);
+        }
     }
 
     static (PlayerMoveState Next, ShoreStepProbe.Reading Clocks, object? Work) Sample(

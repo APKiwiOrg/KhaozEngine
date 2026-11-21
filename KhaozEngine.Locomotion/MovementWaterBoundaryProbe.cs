@@ -9,6 +9,18 @@ namespace KhaozEngine.Locomotion;
 // released code has decided them, and evaluates two proposed capture certificates beside it.
 internal static class MovementWaterBoundaryProbe
 {
+    // The certificate consultation in its own scope, so its time is not charged to the boundary proof around it.
+    internal static bool Certify(in MovementMediumSweepQuery query, float bodyHalfHeight, float enterFraction,
+        WaterTraversalMode mode, MovementQueryLease queries, float proximity)
+    {
+        bool answered;
+        using (ShoreStepProbe.Begin(ShorePhase.WaterCertificate))
+            answered = MovementWaterBoundaryCertificate.Answers(query, bodyHalfHeight, enterFraction, mode, queries,
+                proximity);
+        ShoreStepProbe.Count(answered ? ShoreEvent.CertificateAnswer : ShoreEvent.CertificateDecline);
+        return answered;
+    }
+
     internal static void Coverage(in MovementCoverageResult result, ReadOnlySpan<MovementCoverageSpan> spans,
         ReadOnlySpan<MovementDomainContact> contacts)
     {

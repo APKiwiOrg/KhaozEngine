@@ -9,13 +9,15 @@ internal enum ShorePhase
     Step, Acquire, Dispose, Authenticate,
     WaterPlacement, WaterStep, WaterBoundary, WaterPoint, WaterTraceLease, WaterBufferReturn, WaterSampler, WaterKernel,
     FindRead, Find, Footprint, Analytic, Binding,
-    ShellPenetration, ShellSweep, SolidContacts, CertifiedSweep
+    ShellPenetration, ShellSweep, SolidContacts, CertifiedSweep,
+    WaterCertificate
 }
 
 internal enum ShoreEvent
 {
     AuthMovement, AuthPhysics, AuthPin,
-    FlatTrace, FlatResultHit, PrismResultHit, FlatSolve, PrismSolve, SharedProjectionCopies
+    FlatTrace, FlatResultHit, PrismResultHit, FlatSolve, PrismSolve, SharedProjectionCopies,
+    CertificateAnswer, CertificateDecline
 }
 
 internal enum ShoreProbeMode { Off, Counts, Timings }
@@ -41,6 +43,11 @@ internal static class ShoreStepProbe
         Array.Clear(state.Exclusive);
         _mode = mode;
     }
+
+    // Full mode of the certificate timing pair. Set before any scenario is built, so every movement context the
+    // thread builds takes the navigation bake scope and each boundary proof takes the full coverage solve. Read
+    // once per context construction, never on a step.
+    [ThreadStatic] internal static bool FullSolveContexts;
 
     [ThreadStatic] internal static bool TraceLabelsEnabled;
     [ThreadStatic] internal static string? TraceLabel;

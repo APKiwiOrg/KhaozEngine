@@ -58,8 +58,13 @@ internal static class MovementWaterBoundary
         var query = new MovementMediumSweepQuery(enclosure, delta);
         // Before any coverage buffer is borrowed. A certified answer is the one every Known full solve gives here.
         // Navigation bake leases always take the full solve, see MovementWaterBoundaryScope.
+#if CONTACT_SHORE_ATTRIBUTION
+        if (certify && queries.WaterBoundaryScope == MovementWaterBoundaryScope.Runtime &&
+            MovementWaterBoundaryProbe.Certify(query, bodyHalfHeight, enterFraction, mode, queries, proximity))
+#else
         if (certify && queries.WaterBoundaryScope == MovementWaterBoundaryScope.Runtime &&
             MovementWaterBoundaryCertificate.Answers(query, bodyHalfHeight, enterFraction, mode, queries, proximity))
+#endif
         {
             certified = true;
             return MovementAvailability.Known;

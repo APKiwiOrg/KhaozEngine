@@ -37,6 +37,9 @@ public sealed class MovementEnvironmentContext
         _identity = identity;
         _worldId = provider.WorldId;
         MovementEnvironmentValidation.RequireName(_worldId, nameof(provider));
+#if CONTACT_SHORE_ATTRIBUTION
+        if (ShoreStepProbe.FullSolveContexts) waterBoundary = MovementWaterBoundaryScope.NavigationBake;
+#endif
         WaterBoundaryScope = waterBoundary;
     }
 

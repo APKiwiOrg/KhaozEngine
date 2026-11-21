@@ -4,6 +4,19 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 24.4.1
+
+2026-11-22
+
+- A goal region built by `MoveToRange` now owns the reach it was made for: the target, the range and the mover's
+  capsule, frozen when the region is built. A change to any bit of the reach builds a new region, so every route
+  query still tests the current reach and every route is unchanged. A custom planner that keeps a `NavGoalRegion`
+  after its query returns now sees that frozen reach, not the mover's later target
+  ([#1290](https://github.com/APKiwiOrg/KhaozEngine/issues/1290)).
+- Internal groundwork in `KhaozEngine.Navigation` for route requests that plan across calls under a fixed work
+  quota. The contract types have no planner behind them yet. No public API, route, tolerance or navigation
+  format changes.
+
 ## 24.4.0
 
 2026-11-22

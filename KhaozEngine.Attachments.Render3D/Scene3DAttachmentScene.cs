@@ -5,8 +5,8 @@ using KhaozEngine.Render3D;
 
 namespace KhaozEngine.Attachments.Render3D;
 
-/// <summary>Attachment uploads and complete mixed draws and outlines through an existing Scene3D.</summary>
-public sealed class Scene3DAttachmentScene : IAttachmentCoverageScene
+/// <summary>Attachment uploads, mesh views and complete mixed draws and outlines through an existing Scene3D.</summary>
+public sealed class Scene3DAttachmentScene : IAttachmentCoverageScene, IAttachmentViewScene
 {
     readonly Scene3D _scene;
     public object CoverageResourceOwner => _scene;
@@ -38,4 +38,8 @@ public sealed class Scene3DAttachmentScene : IAttachmentCoverageScene
     public void DrawSkinnedOutlineDissolved(MeshOutlineGroup group, SkinnedMeshHandle mesh,
         ReadOnlySpan<Matrix4x4> boneMatrices, Matrix4x4 world, float dissolve, bool dissolveComplement) =>
         _scene.DrawSkinnedOutlineDissolved(group, mesh, boneMatrices, world, dissolve, dissolveComplement);
+    public SkinnedMeshHandle CreateSkinnedView(SkinnedMeshHandle source, ReadOnlySpan<uint> indices) =>
+        _scene.CreateSkinnedMeshView(source, indices);
+    /// <summary>Unloads the view. Scene3D keeps it drawing until the frame ends, then frees it.</summary>
+    public void ReleaseSkinnedView(SkinnedMeshHandle view) => _scene.UnloadSkinnedMesh(view);
 }

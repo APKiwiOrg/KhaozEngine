@@ -7,14 +7,16 @@ namespace KhaozEngine.Attachments.Render3D;
 public sealed class LoadedAttachmentSet
 {
     readonly AttachmentSetCache _owner;
+    readonly string _key;
     readonly AttachmentSetDefinition _definition;
     readonly string _definitionSha256;
     readonly IReadOnlyList<AttachmentPartResources> _resources;
 
-    internal LoadedAttachmentSet(AttachmentSetCache owner, AttachmentSetDefinition definition,
+    internal LoadedAttachmentSet(AttachmentSetCache owner, string key, AttachmentSetDefinition definition,
         string definitionSha256, AttachmentPartResources[] resources)
     {
         _owner = owner;
+        _key = key;
         _definition = definition;
         _definitionSha256 = definitionSha256;
         _resources = System.Array.AsReadOnly(resources);
@@ -40,7 +42,7 @@ public sealed class LoadedAttachmentSet
     public BoundAttachmentSet Bind(ContractJointMap map)
     {
         _owner.ThrowIfDisposed();
-        return new BoundAttachmentSet(_owner, _definition, _resources, new AttachmentSetBinding(_definition, map));
+        return new BoundAttachmentSet(_owner, _key, _definition, _resources, new AttachmentSetBinding(_definition, map));
     }
 
     /// <summary>Bind garment metadata to the explicit host skin and snapshot every joint index once.</summary>
@@ -48,7 +50,7 @@ public sealed class LoadedAttachmentSet
     {
         _owner.ThrowIfDisposed();
         System.ArgumentNullException.ThrowIfNull(hostMesh);
-        return new BoundAttachmentSet(_owner, _definition, _resources,
+        return new BoundAttachmentSet(_owner, _key, _definition, _resources,
             new AttachmentSetBinding(_definition, map, hostMesh, _resources));
     }
 }

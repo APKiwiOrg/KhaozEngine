@@ -108,7 +108,7 @@ no disposal operation. Their properties and binding operations throw `ObjectDisp
 cache disposal.
 
 Dispose the cache before its scene and stop using its views first. The declaration order above enforces
-that disposal order. Cache disposal is idempotent and releases each unique upload once, meshes before
+that disposal order. Dispose every `BoundOutfit` before its cache, as [Outfits](#outfits) explains. Cache disposal is idempotent and releases each unique upload once, meshes before
 textures, through Scene3D's deferred retirement APIs. Use the cache and its bindings on their owning
 render thread, with no overlapping calls.
 
@@ -200,6 +200,67 @@ Calls on the same bound view must not overlap.
 For the version-21 set-level rename and its rationale, see the
 [skinned attachment design](../docs/design/SKINNED-ATTACHMENT-PARTS-DESIGN-2026-10-15.md).
 
+## Outfits
+
+An outfit is a body and the sets worn on it, drawn with the outfit rule applied. A set with a layer (set
+format 3) hides the body regions it covers, and the same regions of every set in a lower layer. The body
+draws only its uncovered triangles, a lower piece draws only what no higher piece covers, and a rigid part
+whose region is covered draws nothing. A set with no layer (formats 1 and 2) covers nothing, nothing hides
+it, and it draws exactly as `BoundAttachmentSet.WriteDraws` draws it. The rule itself is
+`OutfitCoverage.Resolve` in the GPU free package.
+
+```csharp
+LoadedBodyRegions body = cache.GetBodyRegions(regionMapKey, regionMapHash, bodyRigIdentity,
+    bodyHandles, bodyMeshes);
+using BoundOutfit outfit = cache.BindOutfit(body, [shirt.Bind(map, bodyMesh), plate.Bind(map, bodyMesh)]);
+
+for (int part = 0; part < outfit.BodyPartCount; part++)
+    if (outfit.TryBodyMesh(part, out SkinnedMeshHandle mesh))
+        scene.DrawSkinned(new SkinnedInstanceDraw(mesh, characterWorld), bodyPalette);
+var draws = new AttachmentDraw[outfit.DrawCount(0)]; // Allocate once after binding.
+int count = outfit.WriteDraws(0, map.Skeleton, jointPalette, characterWorld, visualIncarnationKey, template, draws);
+outfit.QueueOutline(0, map.Skeleton, jointPalette, characterWorld, outlineGroup);
+```
+
+`GetBodyRegions` reads and verifies a body region map like any cached asset and keeps the parsed map. Map
+part `i` tags `bodyHandles[i]`, uploaded from `bodyMeshes[i]`, the body GLB's skinned material parts in
+order. The caller supplies the body's `rig-v1:` identity, because it is computed from the body's GLB bytes
+and cannot be recovered from uploaded meshes. The body's handles stay the caller's.
+
+`BindOutfit` works everything out when the outfit changes and nothing per frame. It checks every worn set,
+resolves the rule, and then builds each view it needs. A refused view releases the ones built before it.
+`TryBodyMesh` returns the body part's own handle when nothing covers it, a view of its uncovered triangles
+when something does, and false when every triangle is covered, so a pass never draws an empty view.
+`WriteDraws` and `QueueOutline` take a worn index into the list given to `BindOutfit` and keep the set's
+part-ID and material order, motion keys and template fields. `DrawCount(wornIndex)` is the set's draw count
+less its covered rigid parts and fully covered material groups. Frame calls only read, and valid calls
+allocate no managed memory.
+
+A skinned part's region runs cover its triangles in the mesh's material order, then each material group's
+triangle order. Each material group is its own skinned handle, so a run that crosses from one group into the
+next splits at the boundary, and each handle gets its own view of its visible triangles.
+
+Hidden triangles are cut through skinned mesh views (see the
+[regions and layers design](../docs/design/ATTACHMENT-REGIONS-AND-LAYERS-DESIGN.md#skinned-mesh-views)).
+A view shares its source's vertices and materials and owns a filtered index buffer, so the colour, motion,
+shadow and outline passes all draw the same triangles. This needs the optional `IAttachmentViewScene`
+capability beside `IAttachmentScene`. `Scene3DAttachmentScene` and `Scene3DTileWorldScene` supply it.
+`BindOutfit` over any other scene refuses with `OutfitViewsUnsupported`. A view is never made over a
+coverage host, because coverage tables index the host's own triangles, so binding an outfit that partly
+covers a body uploaded with host coverage evidence refuses with `SkinnedMeshViewArgumentException` and
+`SkinnedMeshViewRefusal.SourceHasCoverage`.
+
+Views are shared. Two outfits that hide the same triangles of one mesh draw through one view, keyed by the
+source handle and the exact triangles it keeps. A view is counted by user and released once, when the last
+outfit using it is disposed. The renderer owns frame lifetime: a released view keeps drawing until the frame
+ends and is freed at the next frame boundary, so an outfit can change in the middle of a frame.
+
+Dispose order matters, because an outfit's views draw from the cache's skinned meshes and from the body's.
+Dispose the outfit first. `AttachmentSetCache.Dispose`, a skinned attachment lease and the body's own
+`UnloadSkinnedMesh` each refuse with `SkinnedMeshViewArgumentException` and
+`SkinnedMeshViewRefusal.SourceHasLiveViews` while a view lives over one of their meshes, before changing
+anything, and succeed once the outfit is gone. Outfit disposal is idempotent.
+
 ## Table coverage preparation
 
 See the living [equipment coverage guide](../docs/EQUIPMENT-COVERAGE.md) and its
@@ -287,6 +348,10 @@ developer prose. Rigid frame errors carry `PoseCompositionFailed` with the origi
 | `HostSkeletonMismatch` | a host mesh using a different contract skeleton instance | `ParamName` |
 | `HostJointPoseInvalid` | an invalid host joint model matrix before palette publication | `PartId`, `BoneIndex`, `ParamName` |
 | `GarmentPaletteOutputTooSmall` | output shorter than the garment joint count | `PartId`, `ActualCapacity`, `RequiredCapacity`, `ParamName` |
+| `BodyRegionMapMismatch` | a body region map for another rig, another part count or other part triangle counts | `SourceName` and `ExpectedRigIdentity` with `ActualRigIdentity`, or `ExpectedPartCount` with `ActualPartCount`, or `BodyPartIndex` with `ExpectedTriangleCount` and `ActualTriangleCount` |
+| `PartRegionTagsMismatch` | a skinned part whose region runs do not sum to its mesh's triangles | `SourceName`, `PartId`, `MeshKey`, `ExpectedTriangleCount`, `ActualTriangleCount` |
+| `OutfitRegionUnknown` | a worn set naming a region the body's region map does not declare | `SourceName`, `WornIndex`, `PartId`, `RunIndex`, `RegionName`, `InnerException` |
+| `OutfitViewsUnsupported` | an outfit over a scene that is not an `IAttachmentViewScene` | none |
 
 ## Submission refusals
 

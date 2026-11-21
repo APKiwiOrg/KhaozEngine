@@ -30,6 +30,10 @@ public readonly struct AttachmentDraw
         BoneMatrices = boneMatrices;
     }
 
+    /// <summary>This skinned draw over <paramref name="mesh"/>, such as a view of the part's visible triangles.</summary>
+    internal AttachmentDraw WithSkinnedMesh(SkinnedMeshHandle mesh) =>
+        new(PartId, MaterialIndex, Skinned with { Mesh = mesh }, BoneMatrices);
+
     public uint PartId { get; }
     public int MaterialIndex { get; }
     public bool IsSkinned { get; }

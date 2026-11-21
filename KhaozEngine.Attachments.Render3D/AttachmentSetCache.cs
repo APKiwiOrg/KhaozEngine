@@ -8,7 +8,8 @@ using KhaozEngine.Render3D;
 namespace KhaozEngine.Attachments.Render3D;
 
 /// <summary>Owns verified source snapshots and shared uploads for one scene.</summary>
-/// <remarks>Use on the owning render thread. Dispose before the scene, after stopping use of its views.</remarks>
+/// <remarks>Use on the owning render thread. Dispose before the scene, after stopping use of its views and after
+/// disposing every <see cref="BoundOutfit"/> bound through it.</remarks>
 public sealed partial class AttachmentSetCache : IDisposable
 {
     readonly IAttachmentAssetSource _source;
@@ -71,7 +72,7 @@ public sealed partial class AttachmentSetCache : IDisposable
                 CachedMesh upload = _meshes.TryGetValue(mesh, out CachedMesh? existing) ? existing : staged[mesh];
                 resources[i] = upload.Resources;
             }
-            var loaded = new LoadedAttachmentSet(this, definition, expectedSha256, resources);
+            var loaded = new LoadedAttachmentSet(this, key, definition, expectedSha256, resources);
             foreach (KeyValuePair<MeshIdentity, CachedMesh> mesh in staged) _meshes.Add(mesh.Key, mesh.Value);
             _definitions.Add(identity, new CachedDefinition(definitionBytes, loaded));
             return loaded;
@@ -107,7 +108,7 @@ public sealed partial class AttachmentSetCache : IDisposable
             {
                 ISkinnedAttachmentMeshLease upload = Scene.UploadSkinnedAttachment(skinned);
                 lease = upload;
-                resources = new AttachmentPartResources(upload.Handles, skinned[0].Mesh);
+                resources = new AttachmentPartResources(upload.Handles, skinned);
             }
             else
             {
@@ -171,8 +172,9 @@ public sealed partial class AttachmentSetCache : IDisposable
     {
         if (_disposed) return;
         // A live mesh view over any skinned mesh this cache owns refuses before anything changes, so the cache, its
-        // coverage and every handle stay exactly as they were and a later Dispose releases everything once. Only the
-        // renderer's own uploads can answer, so a custom IAttachmentScene's leases keep their own release behaviour.
+        // coverage and every handle stay exactly as they were and a later Dispose releases everything once. An outfit
+        // holds such views, so outfits are disposed first. Only the renderer's own uploads can answer, so a custom
+        // IAttachmentScene's leases keep their own release behaviour.
         foreach (CachedMesh mesh in _meshes.Values)
             if (mesh.Lease is IAttachmentUpload upload) upload.RefuseLiveViews();
         _disposed = true;
@@ -181,6 +183,7 @@ public sealed partial class AttachmentSetCache : IDisposable
         Release(_meshes.Values);
         _meshes.Clear();
         _definitions.Clear();
+        _bodyMaps.Clear();
     }
 
     static void Release(IEnumerable<CachedMesh> meshes)

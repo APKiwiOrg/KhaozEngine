@@ -21,15 +21,18 @@ public sealed class BoundAttachmentSet
     readonly int _drawCount;
     readonly int _skinnedPartCount;
     internal AttachmentSetCache Owner => _owner;
+    /// <summary>The cache key the set was loaded under, so an outfit refusal can name the piece.</summary>
+    internal string SourceName { get; }
     internal AttachmentSetDefinition Definition => _definition;
     internal IReadOnlyList<AttachmentPartResources> Resources => _resources;
     internal IReadOnlyList<CoverageConfigurationPart> ConfigurationParts => _binding.ConfigurationParts;
     internal bool MatchesHostSkin(SkinnedHostCoverage host) => _binding.MatchesHostSkin(host);
 
-    internal BoundAttachmentSet(AttachmentSetCache owner, AttachmentSetDefinition definition,
+    internal BoundAttachmentSet(AttachmentSetCache owner, string sourceName, AttachmentSetDefinition definition,
         IReadOnlyList<AttachmentPartResources> resources, AttachmentSetBinding binding)
     {
         _owner = owner;
+        SourceName = sourceName;
         _binding = binding;
         _definition = definition;
         _resources = resources;
@@ -153,6 +156,22 @@ public sealed class BoundAttachmentSet
             }
         }
     }
+
+    // An outfit reads the whole prepared set and keeps only the draws its coverage leaves, so a set draws alike
+    // inside and outside an outfit. The span borrows this view's scratch until its next preparation.
+    internal ReadOnlySpan<AttachmentDraw> PrepareDraws(Skeleton skeleton, ReadOnlySpan<Matrix4x4> palette,
+        in Matrix4x4 model, MotionKey instanceKey, in RigidInstanceDraw template)
+    {
+        Prepare(skeleton, palette, model, instanceKey, template);
+        return _draws;
+    }
+
+    internal void PrepareOutlinePose(Skeleton skeleton, ReadOnlySpan<Matrix4x4> palette, in Matrix4x4 model) =>
+        PreparePose(skeleton, palette, model);
+
+    internal Matrix4x4 PartWorld(int part) => _worlds[part];
+
+    internal ReadOnlySpan<Matrix4x4> PartPalette(int part) => _palettes[part];
 
     void PreparePose(Skeleton skeleton, ReadOnlySpan<Matrix4x4> palette, in Matrix4x4 model)
     {

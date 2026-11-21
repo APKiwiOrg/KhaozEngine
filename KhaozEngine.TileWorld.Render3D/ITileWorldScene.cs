@@ -275,7 +275,8 @@ public interface ITileWorldScene
 
 /// <summary>The shipped <see cref="ITileWorldScene"/>: every member forwards straight to a <see cref="Scene3D"/>
 /// and its prop-renderer extension, so the seam costs one virtual call and adds no behaviour of its own.</summary>
-public sealed class Scene3DTileWorldScene : ITileWorldScene, IAttachmentCoverageScene, ITileWorldWaterTriangleOpticsScene
+public sealed class Scene3DTileWorldScene : ITileWorldScene, IAttachmentCoverageScene, IAttachmentViewScene,
+    ITileWorldWaterTriangleOpticsScene
 {
     readonly Scene3D _scene;
     readonly Scene3DAttachmentScene _attachments;
@@ -298,6 +299,13 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene, IAttachmentCoverage
     /// <summary>Upload owned skinned attachment resources through the optional scene capability.</summary>
     public ISkinnedAttachmentMeshLease UploadSkinnedAttachment(IReadOnlyList<GltfSkinnedMeshPart> parts) =>
         _attachments.UploadSkinnedAttachment(parts);
+
+    /// <inheritdoc />
+    public SkinnedMeshHandle CreateSkinnedView(SkinnedMeshHandle source, ReadOnlySpan<uint> indices) =>
+        _attachments.CreateSkinnedView(source, indices);
+
+    /// <inheritdoc />
+    public void ReleaseSkinnedView(SkinnedMeshHandle view) => _attachments.ReleaseSkinnedView(view);
 
     /// <inheritdoc />
     public object CoverageResourceOwner => _attachments.CoverageResourceOwner;

@@ -71,4 +71,16 @@ public enum AttachmentBindingRefusal
 
     /// <summary>Refuses output shorter than the garment joint count.</summary>
     GarmentPaletteOutputTooSmall,
+
+    /// <summary>Refuses a body region map for another rig, another part count or other part triangle counts.</summary>
+    BodyRegionMapMismatch,
+
+    /// <summary>Refuses a skinned part whose region runs do not sum to its mesh's triangles.</summary>
+    PartRegionTagsMismatch,
+
+    /// <summary>Refuses a worn set naming a region the body's region map does not declare.</summary>
+    OutfitRegionUnknown,
+
+    /// <summary>Refuses an outfit over a scene that is not an <see cref="IAttachmentViewScene"/>.</summary>
+    OutfitViewsUnsupported,
 }

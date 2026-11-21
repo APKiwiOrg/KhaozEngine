@@ -202,8 +202,8 @@ capabilities. Tuning is validated on first use and cached by value. A medium del
 movement, `Medium` is one absolute-coordinate point delegate derived from that field and the last admitted tuning.
 Contact approach pacing samples the ordinary leased query with the carried centre and actual physics frame. It uses
 the controller's swimmer classification, including the converted interval, free-surface flag and support decision.
-The public `Medium` delegate retains its absolute feet contract for legacy consumers. Actual movement uses the
-certified water trace under a lease.
+The public `Medium` delegate retains its absolute feet contract for legacy consumers. Actual movement proves every
+water boundary under a lease, through the certified water trace or the producer's capture certificate.
 The dry traversal helper remains legacy-only and cannot bypass contact water proof.
 Legacy traversal reuses its resource-free binding when source and unit-speed probe tuning alternate. Each
 changed tuning still validates and drives the actual movement call, without allocating another binding.
@@ -1119,8 +1119,10 @@ input, and treat the other statuses as idle.
 including when the supplied value is zero. Its near-ring preflight keeps the same bounded float interval
 search of up to 32 candidates plus endpoint and final checks. A certified flat, unchanged analytic support
 region with no water producer evaluates the command-dependent state algebra directly under one authenticated
-read interval, with zero full movement previews inside the search. Supplied water fields retain the shared
-kernel's actual segment traces, including their independent precision and refusal results, even on flat ground.
+read interval, with zero full movement previews inside the search. Supplied water fields retain the live segment
+boundary proofs even on flat ground, so each trial takes the live step's decision: the shared kernel's trace with
+its independent precision and refusal results, or at runtime the capture certificate's answer where
+`IMovementWaterBoundaryReachProof` holds.
 Supported slopes run the shared contact kernel
 against a bounded immutable triangle capture, preserving the actual rounded support, seat and capsule mapping
 at each trial. Both paths acquire one clearance and medium certificate. The certificate requires exact field provenance, complete

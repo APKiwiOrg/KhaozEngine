@@ -10415,7 +10415,9 @@ movement previews. Slopes retain the shared contact kernel and the drawn produce
 over captured triangles, with one selected-static evidence capture shared by all trials. Water fields additionally opt into `IMovementDryTracePointProof` and certify successful dry
 point operations over the enclosure. A known dry sweep alone does not authorize skipping point refusals.
 Those point proofs do not authorize skipping other trace operations. Supplied fields keep the ordinary
-segment traces for flat and sloped trials, including trace-specific refusals and precision checks. Only
+segment boundary proofs for flat and sloped trials, so each trial takes the live step's decision: the trace with
+its trace-specific refusals and precision checks, or at runtime the capture certificate's answer where
+`IMovementWaterBoundaryReachProof` holds. Only
 intrinsic water-field absence retains the flat algebra. This fixes the same gap in the released 23.4.0 flat path.
 Wet, obstructed, steep, unsupported and refused regions keep the exact live solver and pacing reads.
 The certificate and both drivers preserve command bits and admission decisions. See the
@@ -10931,6 +10933,20 @@ prepare each selected prism and face once per computed trace, retaining hit prep
 per-thread slab. Exhaustion uses the direct evaluator without changing capacity or precision policy. Geometry
 terms are reused only under the floating point controls that produced them. Rebuild the sampler after authored
 water or bed changes.
+
+Beside the point-only `IMovementDryTracePointProof`, a water field may implement `IMovementWaterBoundaryReachProof`,
+an optional capture certificate for the water boundary question. `CertifyBoundaryReach` answers `Empty` when no
+water column lies within a path's directed lateral reach, `OneFreeSurface` when every column within reach has
+identical surface bits, and `Declined` otherwise. Runtime contact movement then answers an empty reach for every
+policy, one free level for a SurfaceSwimmer, and one free level for a WadeOnly body whose path stays strictly above
+its enter line, all without a coverage trace. No output bit changes wherever the full solve would not refuse. Where
+it would refuse with precision, numerical, capacity or validation evidence, the step continues past that proof and
+its later checks decide the outcome. Navigation bakes always take the full solve, so their links, refusals and
+exceptions do not depend on the certificate. An implementer guarantees that every contact its trace can report for
+the query is free surface, carries its own column's top as `NominalSurfaceY` and belongs to a column the
+certificate counted, and that every domain of the capture has one level. A producer that cannot guarantee all four
+must not implement it. `TileMediumSampler` implements it, and a wrapper that forwards only the trace hides it. See
+[the Locomotion water contract](../KhaozEngine.Locomotion/README.md#ground-and-read-intervals).
 
 The separate explicit environment values use `MovementAvailability.Unresolved` by default.
 `MovementWaterPoint` requires world-qualified space/domain identity and actual vertical containment

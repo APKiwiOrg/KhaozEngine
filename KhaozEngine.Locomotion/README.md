@@ -148,8 +148,10 @@ This includes optional ground-signal look-ahead, even when the kernel consumes i
 The certificate does not remove the selected physics receiver's own evidence-capture cost.
 
 `IMovementDryTracePointProof` authorizes point sampling only. With a supplied water field, both flat and
-sloped trials keep the shared kernel's actual segment traces through `MovementSegmentProof.Medium`, including
-placement and descent checks. A successful enlarged stationary trace cannot authorize a shorter trace's
+sloped trials keep their live segment boundary proofs through `MovementSegmentProof.Medium`, including placement
+and descent checks, so each trial takes the decision the live step takes: the shared kernel's trace with its
+precision and refusal outcome, or at runtime the capture certificate's answer where
+`IMovementWaterBoundaryReachProof` holds. A successful enlarged stationary trace cannot authorize a shorter trace's
 success or suppress its precision/refusal outcome. Flat trials use the same constant support and original
 height translation in that kernel. Only intrinsic water-field absence retains the flat algebra. No stronger
 promise is imposed on existing point-proof implementers, including level water and the tile sampler.
@@ -289,7 +291,9 @@ Known trace admits at most. The proof and the certificate compute that threshold
 cannot drift, and every rounding and flush mode keeps both bounds monotone. The certificate takes the single counted
 level, never a maximum over different levels, so it needs no monotonicity across levels. DryOnly uses only the empty
 reach. An answer is Known with no normals and a default hit, which every Known full solve gives in these cases, so no
-output bit changes wherever the full solve would not refuse. Where the full solve would refuse with precision,
+output bit changes wherever the full solve would not refuse. A clean grounded step makes seven boundary proofs, the
+placement proof and three that repeat it, then the lift, the traverse and the seat, so on a bank or shelf over one
+level, and on dry ground with no column in reach, it traces no coverage at all. Where the full solve would refuse with precision,
 numerical, capacity or validation evidence, the step continues past that proof and its later checks decide the
 outcome. Point samples, support, shell sweeps, solid contacts, route boundary proofs, frame checks and all
 authentication still run. Navigation bake proofs always take the full solve. The bake sets this where it creates its
@@ -302,7 +306,7 @@ exceptions bit for bit, while runtime movement, runtime Drop following included,
 shares the controller's tick-start swimmer classification, including supported footing and the free-surface flag.
 Use the returned local interval and the carried local feet for approach settling. This point query authorizes no
 motion or placement. A refused point returns its availability with `swimming` false. Movement still requires the
-certified whole-path water trace.
+whole-path water boundary proof, answered by the certified coverage trace or by the capture certificate.
 
 Live reads throw `MovementReadException`, derived from `InvalidOperationException`, with a non-nullable
 `MovementReadRefusal Reason`. Existing invalid-operation catches keep working. Messages remain developer prose.

@@ -113,8 +113,8 @@ and counts its domains. More than 256 columns within reach, two surfaces among t
 capture or an unverified capture declines. A body that crosses a region border is two clipped domains that can sit
 at different heights, so a reach across that border declines as it does at a weir. A sampler built from borrowed
 test geometry is unverified, because its point index addresses another column array.
-Runtime contact movement answers its water boundary proofs from this certificate when it holds, so a bank step over
-one lake level traces no coverage for them. Navigation bakes keep the full trace, as the
+Runtime contact movement answers its water boundary proofs from this certificate when it holds, so a grounded step
+on a bank or shelf over one lake level, or on dry ground with no column in reach, traces no coverage for them. Navigation bakes keep the full trace, as the
 [Locomotion README](../KhaozEngine.Locomotion/README.md#ground-and-read-intervals) describes.
 A point is in a column when the exact framed centre lies in X [minimum, maximum), Z (minimum, maximum] and its
 feet in [bed, surface). Support and water share captured drawn triangles, triangle selection and anchored height

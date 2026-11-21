@@ -105,6 +105,49 @@ public class OutfitCoverageTests
         Assert.True(outfit.HiddenFor(2).IsEmpty);
     }
 
+    [Fact]
+    public void One_set_worn_twice_resolves_each_entry_on_its_own()
+    {
+        AttachmentSetDefinition shirt = new([Rigid(1, "a"), Skinned(2, "a", "b")], AttachmentLayer.Garment, ["a", "b"]);
+        OutfitCoverage outfit = OutfitCoverage.Resolve(Body, [shirt, Piece(AttachmentLayer.Armour, "b"), shirt]);
+
+        Assert.Equal(3, outfit.WornCount);
+        Assert.Equal(Regions("b"), outfit.HiddenFor(0));
+        Assert.Equal(Regions("b"), outfit.HiddenFor(2));
+        Assert.True(outfit.HiddenFor(1).IsEmpty);
+        Assert.False(outfit.RigidPartHidden(0, 1));
+        Assert.False(outfit.RigidPartHidden(2, 1));
+        Assert.Equal(outfit.SkinnedPartRegions(0, 2), outfit.SkinnedPartRegions(2, 2));
+        Assert.Equal(Regions("a", "b"), outfit.BodyHidden);
+    }
+
+    [Fact]
+    public void Regions_past_index_63_hide_through_the_high_word()
+    {
+        var names = new string[70];
+        var runs = new RegionRun[names.Length];
+        for (int index = 0; index < names.Length; index++)
+        {
+            names[index] = $"r{index}";
+            runs[index] = new RegionRun(index, 1);
+        }
+        var body = new BodyRegionMap(Rig, names, [runs]);
+        var low = new RigidAttachmentPartDefinition(1, new("parts/rigid.glb", Hash), "root", Matrix4x4.Identity) { Region = "r2" };
+        var high = new RigidAttachmentPartDefinition(2, new("parts/rigid.glb", Hash), "root", Matrix4x4.Identity) { Region = "r66" };
+        var skinned = new SkinnedAttachmentPartDefinition(3, new("parts/skinned.glb", Hash)) { Regions = [new("r2", 1), new("r66", 1)] };
+        AttachmentSetDefinition shirt = new([low, high, skinned], AttachmentLayer.Garment, ["r1", "r66"]);
+        AttachmentSetDefinition plate = new([high with { Id = 1 }], AttachmentLayer.Armour, ["r66", "r68"]);
+
+        OutfitCoverage outfit = OutfitCoverage.Resolve(body, [shirt, plate]);
+
+        // Region 66 sits in the high word at bit 2, so a high word read as the low word would hide region 2 instead.
+        Assert.Equal(RegionSet.Empty.With(66).With(68), outfit.HiddenFor(0));
+        Assert.Equal(RegionSet.Empty.With(1).With(66).With(68), outfit.BodyHidden);
+        Assert.False(outfit.RigidPartHidden(0, 1));
+        Assert.True(outfit.RigidPartHidden(0, 2));
+        Assert.Equal(new[] { new RegionRun(2, 1), new RegionRun(66, 1) }, outfit.SkinnedPartRegions(0, 3));
+    }
+
     [Theory]
     [InlineData("a covered region", null, null)]
     [InlineData("a rigid part's region", 1u, null)]

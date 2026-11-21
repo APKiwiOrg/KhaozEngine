@@ -154,6 +154,8 @@ public sealed class AttachmentSchemaRefusalTests
     [InlineData("a run of zero triangles", AttachmentSetRefusal.PartRegionRunEmpty)]
     [InlineData("layer on a format 2 set", AttachmentSetRefusal.JsonPropertyUnknown)]
     [InlineData("region on a format 2 part", AttachmentSetRefusal.JsonPropertyUnknown)]
+    [InlineData("regions on a rigid part", AttachmentSetRefusal.JsonPropertyUnknown)]
+    [InlineData("region on a skinned part", AttachmentSetRefusal.JsonPropertyUnknown)]
     [InlineData("covers missing in format 3", AttachmentSetRefusal.JsonPropertyMissing)]
     [InlineData("a run that is not a pair", AttachmentSetRefusal.JsonValueShapeInvalid)]
     [InlineData("runs past Int32", AttachmentSetRefusal.RegionTriangleCountOverflow)]
@@ -172,6 +174,8 @@ public sealed class AttachmentSchemaRefusalTests
             "layer on a format 2 set" => control.Replace("\"formatVersion\":3", "\"formatVersion\":2", StringComparison.Ordinal),
             "region on a format 2 part" => control.Replace("\"formatVersion\":3,\"layer\":\"garment\",\"covers\":[\"a\",\"b\"]", "\"formatVersion\":2", StringComparison.Ordinal),
             "covers missing in format 3" => control.Replace("\"covers\":[\"a\",\"b\"],", "", StringComparison.Ordinal),
+            "regions on a rigid part" => control.Replace(",\"region\":\"a\"", ",\"region\":\"a\",\"regions\":[[\"a\",1]]", StringComparison.Ordinal),
+            "region on a skinned part" => control.Replace(",\"regions\":[[\"a\",3],[\"b\",1]]", ",\"regions\":[[\"a\",3],[\"b\",1]],\"region\":\"a\"", StringComparison.Ordinal),
             "a run that is not a pair" => control.Replace("[\"a\",3]", "[\"a\"]", StringComparison.Ordinal),
             "runs past Int32" => control.Replace("[\"a\",3]", "[\"a\",2147483647]", StringComparison.Ordinal),
             _ => throw new ArgumentException(fault),
@@ -184,16 +188,16 @@ public sealed class AttachmentSchemaRefusalTests
         {
             "layer missing in format 3" or "layer on a format 2 set" or "covers missing in format 3" => "$",
             "layer is 'cloak'" => "$.layer",
-            "rigid part without region" or "region on a format 2 part" => "$.parts[0]",
-            "skinned part without regions" => "$.parts[1]",
+            "rigid part without region" or "region on a format 2 part" or "regions on a rigid part" => "$.parts[0]",
+            "skinned part without regions" or "region on a skinned part" => "$.parts[1]",
             "a run that is not a pair" => "$.parts[1].regions[0]",
             _ => null,
         }, error.JsonPath);
         Assert.Equal(fault switch
         {
             "layer missing in format 3" or "layer on a format 2 set" => "layer",
-            "rigid part without region" or "region on a format 2 part" => "region",
-            "skinned part without regions" => "regions",
+            "rigid part without region" or "region on a format 2 part" or "region on a skinned part" => "region",
+            "skinned part without regions" or "regions on a rigid part" => "regions",
             "covers missing in format 3" => "covers",
             _ => null,
         }, error.PropertyName);

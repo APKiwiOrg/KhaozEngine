@@ -4,6 +4,86 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 24.4.0
+
+2026-11-22
+
+A minor with additive API in `KhaozEngine.Render3D`, `KhaozEngine.Attachments`, `KhaozEngine.Attachments.Render3D`
+and `KhaozEngine.TileWorld.Render3D`. A worn attachment set can declare a layer and the body regions it covers, and
+an outfit hides the covered body triangles and the covered triangles of lower layer pieces in every render pass, so
+skin never shows through a garment and an undershirt never pokes through a breastplate. Existing sets and draws are
+unchanged.
+
+**Skinned mesh views.**
+
+- `Scene3D.CreateSkinnedMeshView(source, indices)` returns a `SkinnedMeshHandle` that draws a subset of a loaded
+  skinned mesh's triangles with its vertices, materials, alpha cutoff, bounds and inverse binds. It draws, outlines
+  and casts cascade and point shadows through every existing skinned API, on GPU and CPU skinning, with no shader,
+  pipeline or draw call change, because every skinned pass already draws one entry's whole index buffer.
+  `Scene3D.IsSkinnedMeshView` tells a view from a loaded mesh. Views count toward the live skinned mesh slots.
+- `UnloadSkinnedMesh(view)` keeps the view drawable until the frame ends and frees it at the next `Begin` or
+  `BeginFrame`, so a view released in the middle of a frame does not drop draws already queued through it.
+- Refusals throw `SkinnedMeshViewArgumentException`, an `ArgumentException`, with `SkinnedMeshViewRefusal`:
+  `SourceNotLive`, `SourceIsView`, `SourceHasCoverage`, `IndicesEmpty`, `IndexCountNotTriangles`,
+  `IndexOutOfRange` and `SourceHasLiveViews`, with the source's `SourceIndex` and `SourceGeneration`. A source with
+  host coverage evidence is never viewed, because its coverage tables index its own triangles.
+- `UnloadSkinnedMesh`, `UnloadSharedSkinnedMesh` and `SkinnedLimb.Dispose` refuse a source while a view of it
+  lives, with `SourceHasLiveViews`, and change nothing they own, so the same call succeeds once the view is gone.
+  A view already unloaded this frame is released with its source.
+
+**Body region maps and set format 3.**
+
+- `BodyRegionMapJson` reads and writes a body region map, format 1: a body's `rig-v1:` identity, up to 128 named
+  regions and `[region, triangleCount]` runs in triangle order for each skinned material part. `BodyRegionMap`
+  exposes the regions, the runs, `TryRegion`, `TriangleCount`, `WriteTriangleRegions` and a canonical `Sha256`.
+  `RegionSet` is a 128 bit value of region indices that copies without allocating. Refusals throw
+  `BodyRegionMapDataException`, a `MalformedDataException`, with `BodyRegionMapRefusal`.
+- `AttachmentSetJson` reads format 3: a root `layer` and `covers`, a `region` on each rigid part and `regions` runs
+  on each skinned part. `AttachmentLayer` orders `Body`, `Underclothes`, `Garment`, `Armour` and `Outerwear` from
+  the skin outward. `AttachmentSetDefinition` gains `Layer`, `Covers` and a constructor overload taking them.
+  `RigidAttachmentPartDefinition.Region` and `SkinnedAttachmentPartDefinition.Regions`, of `NamedRegionRun`, are
+  init only properties, so existing constructors and deconstruction are unchanged. A set with a layer writes format
+  3. `AttachmentSetJson.RegionsFormatVersion` is 3 and `CurrentFormatVersion` stays 2.
+- `AttachmentSetRefusal` appends `LayerMissing`, `LayerUnknown`, `CoveredRegionDuplicate`, `PartRegionMissing`,
+  `PartRegionRunEmpty`, `RegionNameEmpty`, `RegionNameMalformedUtf16` and `RegionTriangleCountOverflow`, and both
+  set refusal types gain `Layer`, `RegionName`, `CoverIndex`, `RunIndex` and `ActualTriangleCount`. The data
+  refusal also gains `LayerName`.
+
+**The outfit rule and outfits.**
+
+- `OutfitCoverage.Resolve(bodyMap, worn)` works out what an outfit hides without a renderer. The body hides every
+  region a layered set covers, a set hides what a strictly higher layer covers, two sets on one layer never hide
+  each other and a covered rigid part hides whole. An unknown region throws `OutfitDataException` with
+  `OutfitRefusal.RegionUnknown`.
+- `AttachmentSetCache.GetBodyRegions` loads a verified region map and checks it against the uploaded body.
+  `AttachmentSetCache.BindOutfit(body, worn)` applies the rule once per outfit and returns a `BoundOutfit`, whose
+  `TryBodyMesh`, `DrawCount`, `WriteDraws` and `QueueOutline` draw the body and each worn set with covered
+  triangles hidden through shared skinned mesh views. Frame calls only read and allocate nothing.
+- Outfits need the new optional `IAttachmentViewScene` capability. `Scene3DAttachmentScene` and
+  `Scene3DTileWorldScene` implement it. `AttachmentBindingRefusal` appends `BodyRegionMapMismatch`,
+  `PartRegionTagsMismatch`, `OutfitRegionUnknown` and `OutfitViewsUnsupported`, and
+  `AttachmentBindingDataException` gains the identifiers they carry.
+
+**Coverage claim check.**
+
+- `CoverageClaimCheck.Verify` checks offline that a piece lies over every body triangle of every region it claims
+  at the rest pose, within a consumer supplied distance, from plain `CoverageClaimMesh` positions and indices. Its
+  `CoverageClaimReport` lists each claimed region's uncovered triangles. The ray test is watertight, so a ray on an
+  edge two piece triangles share always hits one of them. Refusals throw `CoverageClaimDataException` with
+  `CoverageClaimRefusal`.
+
+**What does not change.** Sets of format 1 and 2 parse, write and hash exactly as before, have no layer, cover
+nothing and are never hidden. `IAttachmentScene` and `ITileWorldScene` gain no member. `BoundAttachmentSet` draws
+exactly as before. A scene with no views behaves exactly as before.
+
+**What a consumer must do.** Nothing, to keep working. To use outfits, publish a region map per body and format 3
+sets, bind through `BindOutfit` when the outfit changes, and dispose every outfit before its cache and before
+unloading the body's meshes: while a view lives over one of their meshes, `AttachmentSetCache.Dispose`, a skinned
+attachment lease and `UnloadSkinnedMesh` refuse with `SourceHasLiveViews` before changing anything. A custom
+`IAttachmentScene` implements `IAttachmentViewScene` to support outfits. A body uploaded with host coverage
+evidence cannot be partly hidden: an outfit that covers part of such a body part refuses with `SourceHasCoverage`.
+The [consumer guide](docs/USING-KHAOZENGINE.md#regions-layers-and-outfits) walks through the whole flow.
+
 ## 24.3.0
 
 2026-11-21

@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Numerics;
 
 namespace KhaozEngine.Navigation;
@@ -56,23 +55,5 @@ public sealed partial class GridPathPlanner
     {
         snappedToOwnCell = !Blocks(layer, 0f, x, z);
         return snappedToOwnCell ? _space.Layers[layer].CellCenter(x, z) : null;
-    }
-
-    NavPath ReconstructTraversal(SearchScratch scratch, bool reachedGoal)
-    {
-        List<int> chain = scratch.Chain;
-        List<NavWaypoint> waypoints = scratch.Waypoints;
-        waypoints.Clear();
-        int first = chain.Count > 1 && scratch.Incoming(chain[1]) is null ? 1 : 0;
-        for (int i = first; i < chain.Count; i++)
-        {
-            (int layer, int x, int z) = Decode(chain[i]);
-            NavWaypointKind kind = i > 0 ? WaypointKind(scratch.Incoming(chain[i])) : NavWaypointKind.Walk;
-            waypoints.Add(new NavWaypoint(_space.Layers[layer].CellCenter(x, z), layer)
-            {
-                Kind = kind,
-            });
-        }
-        return new NavPath(reachedGoal ? NavPathStatus.Complete : NavPathStatus.Partial, waypoints.ToArray());
     }
 }

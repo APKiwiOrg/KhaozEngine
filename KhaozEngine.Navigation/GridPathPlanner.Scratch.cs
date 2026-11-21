@@ -37,7 +37,7 @@ public sealed partial class GridPathPlanner
     /// by two, so nothing is cleared between queries. When the counter would overflow, the stamps are
     /// cleared once and counting restarts.
     /// </summary>
-    sealed class SearchScratch
+    internal sealed class SearchScratch
     {
         readonly double[] _gScore;
         readonly int[] _cameFrom;
@@ -60,7 +60,7 @@ public sealed partial class GridPathPlanner
             _incoming = new NavLinkKind?[totalNodes];
             _stamp = new int[totalNodes];
             _memberBoxes = new MemberBox[layerCount];
-            MemberLayers = new bool[layerCount];
+            MemberLayers = new int[layerCount];
             _rayBlocks = (x, z) => Blocks(_rayGrid!, _rayRadius, x, z);
         }
 
@@ -87,16 +87,24 @@ public sealed partial class GridPathPlanner
             MemberBounds = MemberBounds.Include(x, z);
         }
 
-        /// <summary>Per layer, whether a region query found any member on it.</summary>
-        public bool[] MemberLayers { get; }
+        /// <summary>The layers with nonempty candidate boxes, in scan order.</summary>
+        public int[] MemberLayers { get; }
+        public int MemberLayerCount { get; private set; }
+
+        public bool NeedsWrap => _generation >= int.MaxValue - 2;
+
+        public int ClearStampBlock(int offset)
+        {
+            int count = Math.Min(256, _stamp.Length - offset);
+            Array.Clear(_stamp, offset, count);
+            int end = offset + count;
+            // Keep a wrapping generation until the last block. A cancelled wrap starts over on reuse.
+            if (end == _stamp.Length) _generation = 0;
+            return end;
+        }
 
         public void BeginSearch()
         {
-            if (_generation >= int.MaxValue - 2)
-            {
-                Array.Clear(_stamp);
-                _generation = 0;
-            }
             _generation += 2;
             Open.Clear();
         }
@@ -130,20 +138,20 @@ public sealed partial class GridPathPlanner
             return _cells;
         }
 
-        /// <summary>Starts a region's membership: no members, no member layers, empty boxes.</summary>
+        /// <summary>Starts membership with no members or candidate layers. Each box is replaced before use.</summary>
         public void ResetMembers()
         {
             Members.Clear();
             MemberNodeIds.Clear();
             MemberBounds = PlannerRegionBounds.Empty;
-            Array.Clear(MemberLayers);
-            Array.Clear(_memberBoxes);
+            MemberLayerCount = 0;
         }
 
         /// <summary>Sets <paramref name="layer"/>'s candidate box and returns the flag offset after it.</summary>
         public int SetMemberBox(int layer, int x0, int z0, int width, int height, int offset)
         {
             _memberBoxes[layer] = new MemberBox(x0, z0, width, height, offset);
+            if (width > 0 && height > 0) MemberLayers[MemberLayerCount++] = layer;
             return offset + width * height;
         }
 
@@ -160,6 +168,8 @@ public sealed partial class GridPathPlanner
             MemberBox box = _memberBoxes[layer];
             _memberFlags[box.Offset + (z - box.Z0) * box.Width + (x - box.X0)] = member;
         }
+
+        public MemberBox CandidateBox(int layer) => _memberBoxes[layer];
 
         public bool IsMember(int layer, int x, int z)
         {
@@ -189,6 +199,6 @@ public sealed partial class GridPathPlanner
 
         /// <summary>One layer's region candidate cells: a <c>Width</c> by <c>Height</c> box at
         /// (<c>X0</c>, <c>Z0</c>), its flags starting at <c>Offset</c>. A zero width holds no cells.</summary>
-        readonly record struct MemberBox(int X0, int Z0, int Width, int Height, int Offset);
+        public readonly record struct MemberBox(int X0, int Z0, int Width, int Height, int Offset);
     }
 }

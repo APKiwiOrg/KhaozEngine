@@ -28,15 +28,15 @@ namespace KhaozEngine.Navigation;
 /// one flat index space. Deterministic: fixed neighbor order and a monotone insertion counter break
 /// every tie the same way.
 /// <para>
-/// The planner keeps one set of search scratch, allocated on its first query and reused by every later
+/// For synchronous queries the planner keeps one set of search scratch, allocated on its first query and reused by each later
 /// one: generation-stamped per-node g-scores, parents, incoming edge kinds and closed marks across all
 /// layers, plus region flags, the open set and reconstruction lists, each kept at the largest query seen.
-/// A query touches only the nodes it visits and clears nothing, and a warmed query allocates only the path
+/// A query touches only the nodes it visits, except for clearing stamps on generation wrap. A warmed query allocates only the path
 /// it returns. Queries may run concurrently from several threads: a query that finds the scratch already
 /// taken uses a fresh one of its own.
 /// </para>
 /// </summary>
-public sealed partial class GridPathPlanner : IRegionPathPlanner
+public sealed partial class GridPathPlanner : IIncrementalRegionPathPlanner
 {
     /// <summary>Diagonal step-cost multiplier over the orthogonal step (in cell units).</summary>
     static readonly float Sqrt2 = MathF.Sqrt(2f);
@@ -50,6 +50,7 @@ public sealed partial class GridPathPlanner : IRegionPathPlanner
     static readonly int[] NeighborDz = { 0, 0, 1, -1, 1, -1, 1, -1 };
 
     readonly NavSpace _space;
+    readonly bool _hasRegionSurfaces;
 
     /// <summary>Running sum of each earlier layer's cell count, so node id
     /// <c>layerOffset[layer] + z * layer.Width + x</c> is unique across the whole space.</summary>
@@ -89,9 +90,11 @@ public sealed partial class GridPathPlanner : IRegionPathPlanner
         IReadOnlyList<NavGrid> layers = _space.Layers;
         _layerOffset = new int[layers.Count];
         int total = 0;
+        _hasRegionSurfaces = true;
         for (int i = 0; i < layers.Count; i++)
         {
             _layerOffset[i] = total;
+            _hasRegionSurfaces &= layers[i].HasSurfaceHeights;
             total += layers[i].Width * layers[i].Height;
         }
         _totalNodes = total;
@@ -194,53 +197,10 @@ public sealed partial class GridPathPlanner : IRegionPathPlanner
     /// </summary>
     Vector2? SnapToPassable(int layer, NavGrid grid, Vector2 worldXz, float agentRadius, float snapRadius, out bool snappedToOwnCell)
     {
-        (int queryX, int queryZ) = grid.CellOf(worldXz.X, worldXz.Y);
-        if (_traversal is not null) return SnapTraversal(layer, queryX, queryZ, out snappedToOwnCell);
-        int maxRing = (int)MathF.Ceiling(snapRadius / grid.CellSize);
-
-        for (int ring = 0; ring <= maxRing; ring++)
-        {
-            bool found = false;
-            int bestX = 0, bestZ = 0;
-            Vector2 bestCenter = default;
-            float bestDistanceSq = float.PositiveInfinity;
-
-            for (int z = queryZ - ring; z <= queryZ + ring; z++)
-            {
-                for (int x = queryX - ring; x <= queryX + ring; x++)
-                {
-                    if (Math.Max(Math.Abs(x - queryX), Math.Abs(z - queryZ)) != ring)
-                    {
-                        continue;
-                    }
-
-                    if (!grid.InBounds(x, z) || Blocks(layer, agentRadius, x, z))
-                    {
-                        continue;
-                    }
-
-                    Vector2 center = grid.CellCenter(x, z);
-                    float distanceSq = Vector2.DistanceSquared(center, worldXz);
-                    if (distanceSq < bestDistanceSq)
-                    {
-                        bestDistanceSq = distanceSq;
-                        bestCenter = center;
-                        bestX = x;
-                        bestZ = z;
-                        found = true;
-                    }
-                }
-            }
-
-            if (found)
-            {
-                snappedToOwnCell = bestX == queryX && bestZ == queryZ;
-                return bestCenter;
-            }
-        }
-
-        snappedToOwnCell = false;
-        return null;
+        var cursor = new SnapCursor(this, layer, grid, worldXz, agentRadius, snapRadius);
+        while (!cursor.Done) cursor.Probe();
+        snappedToOwnCell = cursor.SnappedToOwnCell;
+        return cursor.Result;
     }
 
     /// <summary>True when an agent of <paramref name="agentRadius"/> does not fit at

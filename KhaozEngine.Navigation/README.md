@@ -357,13 +357,12 @@ component count. Construction temporarily adds `4 * (N + layerCount)` bytes. No 
 metadata is added. Certified warmed queries allocate nothing, and other warmed queries still allocate
 only their returned paths. Engine-version identity still requires normal consumer rebaking.
 
-A planner allocates its search scratch on its first query and reuses it for every later one: generation
-stamped per-node g-scores, parents, incoming edge kinds and closed marks plus region flags,
-the open set and reconstruction lists, each kept at the largest query seen. A query touches only the nodes it
-visits, a region query scans only each layer's cell box around the region's extent, and a warmed query
-allocates only the path it returns. Keep one planner
-per `NavSpace` and reuse it rather than building one per query. Queries may overlap from several threads, and
-an overlapping query uses a fresh scratch of its own.
+A planner allocates synchronous search scratch on its first query and reuses it for later ones. Scratch
+holds generation-stamped per-node g-scores, parents, incoming edge kinds and closed marks, plus region flags,
+the open set and reconstruction lists kept at the largest query seen. A search writes stamps only for
+visited nodes and clears them when the generation wraps. A region query scans each layer's cell box around
+the region's extent. A warmed query allocates only the path it returns. Keep one planner per `NavSpace`
+and reuse it across queries. Overlapping synchronous queries use separate scratch.
 
 These are the legacy point-query rules. The original `GridPathPlanner(NavSpace space, float hopCostCells =
 4f)` constructor keeps radius-aware clearance, endpoint ring snapping, line-of-sight shortcuts,

@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Numerics;
 
 namespace KhaozEngine.Navigation;
@@ -20,16 +19,12 @@ public sealed partial class GridPathPlanner
 
     NavPath FindPathCore(Vector3 start, NavGoalRegion goal, float agentRadius, PathQueryBudget budget, bool useCertificate)
     {
-        ArgumentNullException.ThrowIfNull(goal);
-        ValidateTraversalRadius(agentRadius);
-        for (int layer = 0; layer < _space.Layers.Count; layer++)
-            if (!_space.Layers[layer].HasSurfaceHeights)
-                throw new ArgumentException("Region queries require surface heights on every grid.", nameof(goal));
-
+        ValidateRegion(goal, agentRadius);
         SearchScratch scratch = RentScratch();
         try
         {
-            return FindPath(scratch, start, goal, agentRadius, budget, useCertificate);
+            var kernel = CreateRegionSearch(scratch, start, goal, agentRadius, budget, useCertificate);
+            return kernel.RunUnbounded();
         }
         finally
         {
@@ -37,53 +32,17 @@ public sealed partial class GridPathPlanner
         }
     }
 
-    NavPath FindPath(SearchScratch scratch, Vector3 start, NavGoalRegion goal, float agentRadius, PathQueryBudget budget, bool useCertificate)
+    SearchKernel<RegionGoal> CreateRegionSearch(SearchScratch scratch, Vector3 start, NavGoalRegion goal,
+        float agentRadius, PathQueryBudget budget, bool useCertificate)
+        => new(this, scratch, start, goal, new RegionGoal(this, scratch,
+            new Vector2(goal.Anchor.X, goal.Anchor.Z), goal.HorizontalExtent), agentRadius, budget, useCertificate);
+
+    void ValidateRegion(NavGoalRegion goal, float agentRadius)
     {
-        int startLayer = _space.LayerAt(start);
-        NavGrid startGrid = _space.Layers[startLayer];
-        Vector2? startPoint = SnapToPassable(startLayer, startGrid, new Vector2(start.X, start.Z),
-            agentRadius, budget.SnapRadius, out _);
-        if (startPoint is null) return NavPath.Unreachable;
-
-        if (!FindMembers(scratch, goal, agentRadius)) return NavPath.Unreachable;
-
-        var regionGoal = new RegionGoal(this, scratch,
-            new Vector2(goal.Anchor.X, goal.Anchor.Z), goal.HorizontalExtent);
-        return RunSearch(scratch, startLayer, startPoint.Value, regionGoal, null, agentRadius, budget, useCertificate);
-    }
-
-    /// <summary>
-    /// Records the region's passable member cells in the scratch, layer by layer in z then x order. Only
-    /// the cells of each layer's <see cref="RegionCellBounds"/> box are visited, and each takes the exact
-    /// extent and predicate test, so the members match a whole-grid scan without one. False when no cell is
-    /// a member.
-    /// </summary>
-    bool FindMembers(SearchScratch scratch, NavGoalRegion goal, float agentRadius)
-    {
-        scratch.ResetMembers();
-        int flags = 0;
-        for (int layer = 0; layer < _space.Layers.Count; layer++)
-        {
-            (int x0, int z0, int x1, int z1) = RegionCellBounds(_space.Layers[layer], goal);
-            if (x0 <= x1 && z0 <= z1)
-                flags = scratch.SetMemberBox(layer, x0, z0, x1 - x0 + 1, z1 - z0 + 1, flags);
-        }
-        scratch.EnsureMemberFlags(flags);
-
-        for (int layer = 0; layer < _space.Layers.Count; layer++)
-        {
-            (int x0, int z0, int x1, int z1) = RegionCellBounds(_space.Layers[layer], goal);
-            for (int z = z0; z <= z1; z++)
-                for (int x = x0; x <= x1; x++)
-                {
-                    bool member = IsRegionMember(goal, agentRadius, layer, x, z, out Vector3 feet);
-                    scratch.SetMember(layer, x, z, member);
-                    if (!member) continue;
-                    scratch.MemberLayers[layer] = true;
-                    scratch.AddMember(feet, x, z, _layerOffset[layer] + z * _space.Layers[layer].Width + x);
-                }
-        }
-        return scratch.Members.Count > 0;
+        ArgumentNullException.ThrowIfNull(goal);
+        ValidateTraversalRadius(agentRadius);
+        if (!_hasRegionSurfaces)
+            throw new ArgumentException("Region queries require surface heights on every grid.", nameof(goal));
     }
 
     bool IsRegionMember(NavGoalRegion goal, float agentRadius, int layer, int x, int z, out Vector3 feet)
@@ -135,32 +94,13 @@ public sealed partial class GridPathPlanner
         public bool IsGoal(int layer, int x, int z) => scratch.IsMember(layer, x, z);
         public int MemberCount => scratch.Members.Count;
 
-        public bool IsDisconnected(PlannerConnectivity connectivity, int startComponent)
-        {
-            foreach (int node in scratch.MemberNodeIds)
-            {
-                int component = connectivity.ComponentOf(node);
-                if (component < 0 || component == startComponent) return false;
-            }
-            return true;
-        }
+        public int MemberNode(int index) => scratch.MemberNodeIds[index];
+
+        public Vector3 MemberFeet(int index) => scratch.Members[index];
 
         public double Priority(int layer, int x, int z)
             => planner._spatialBound.Region(layer, x, z, scratch.MemberBounds, anchorXz, horizontalExtent);
 
-        public double Progress(int layer, int x, int z)
-        {
-            Vector3 feet = planner.CellFeet(layer, x, z);
-            double closest = double.PositiveInfinity;
-            foreach (Vector3 member in scratch.Members)
-            {
-                double dx = (double)feet.X - member.X;
-                double dy = (double)feet.Y - member.Y;
-                double dz = (double)feet.Z - member.Z;
-                closest = Math.Min(closest, dx * dx + dy * dy + dz * dz);
-            }
-            return closest;
-        }
     }
 
     Vector3 CellFeet(int layer, int x, int z)

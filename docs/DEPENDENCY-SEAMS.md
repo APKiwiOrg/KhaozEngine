@@ -537,7 +537,8 @@ canonical JSON, reference checks, the `IAttachmentAssetSource` byte seam, direct
 embedded rigid and skinned GLB preflight. `AttachmentGlb.ComputeRigIdentity` provides versioned body
 fit evidence from raw accessor bytes and canonical rest frames, excluding animation and appearance.
 Body region maps, the outfit rule and the coverage claim check live here too. The check takes plain
-positions and indices rather than a renderer mesh, so a tool can explain or check an outfit offline. JSON uses `System.Text.Json` and hashing uses SHA-256 from the BCL. No renderer or particular
+positions and indices rather than a renderer mesh, so a tool can explain or check an outfit offline.
+JSON uses `System.Text.Json` and hashing uses SHA-256 from the BCL. No renderer or particular
 skeleton type appears in its API. Publishers reference it directly. Foundation and Server do not
 gain an attachment dependency.
 
@@ -556,8 +557,9 @@ The arm also owns verified byte snapshots, per-scene upload sharing and transact
 `IAttachmentScene` is an optional upload and full-descriptor draw capability. Its Scene3D adapter
 uses the renderer's deferred unload APIs. The shipped tile-world scene implements this capability
 without adding attachment members to `ITileWorldScene`. Outfits need the separate optional
-`IAttachmentViewScene`, which both shipped adapters implement, so `IAttachmentScene` gained no member. The tile renderer references the attachment arm,
-and the attachment arm has no dependency back to TileWorld. Dispose attachment caches before their scene.
+`IAttachmentViewScene`, which both shipped adapters implement, so `IAttachmentScene` gained no
+member. The tile renderer references the attachment arm, and the attachment arm has no dependency
+back to TileWorld. Dispose attachment caches before their scene.
 Render3D grants `InternalsVisibleTo` to the arm for three members. A skinned lease and a cache call
 `Scene3D.RefuseSourcesWithLiveViews` before releasing anything, so a live mesh view refuses the release before any
 handle unloads. An outfit reads each tagged mesh's index lists when it binds, to build mesh views without the cache

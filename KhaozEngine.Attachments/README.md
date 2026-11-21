@@ -95,6 +95,10 @@ refused as unknown members in formats 1 and 2:
 `AttachmentSetJson.CurrentFormatVersion` stays 2 and `RegionsFormatVersion` is 3. A public constant is compiled
 into its callers, so changing the value of an existing one would silently change what their code means.
 
+An engine at 24.3.0 or earlier checks root members against `formatVersion` and `parts` before it reads the
+version, so it refuses a format 3 set as `JsonPropertyUnknown` on its first format 3 member, `layer` in canonical
+bytes, not as `FormatVersionUnsupported`. Publish format 3 only after every reader is on 24.4.0 or later.
+
 The example hash is a placeholder. Hash the exact self-contained GLB bytes. `local` contains 16
 row-major finite numbers and must be affine and invertible. Unknown or duplicate members, missing
 fields, unsupported versions and invalid parts throw `AttachmentSetDataException` with `SourceName`.

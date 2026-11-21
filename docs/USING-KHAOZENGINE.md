@@ -7620,6 +7620,11 @@ only checked for well formed names. Whether the body declares each name is check
 one set can be worn on several bodies. The [set format reference](../KhaozEngine.Attachments/README.md) has the
 member rules and the format 3 refusals.
 
+Roll format 3 out reader first. An engine at 24.3.0 or earlier checks root members against `formatVersion` and
+`parts` before it reads the version, so it refuses a format 3 set as `JsonPropertyUnknown` on its first format 3
+member, `layer` in canonical bytes, not as `FormatVersionUnsupported`. Publish format 3 sets only after every
+client, server and tool that reads them is on 24.4.0 or later.
+
 **The rule.** `OutfitCoverage.Resolve(bodyMap, worn)` works out the hidden regions offline with no renderer:
 
 - The body hides the union of `Covers` over every worn set with a layer, because any layered piece lies over the
@@ -7676,10 +7681,10 @@ boundary, so an outfit can change in the middle of a frame without dropping draw
 [skinned mesh views](../KhaozEngine.Render3D/README.md#skinned-mesh-views).
 
 **Dispose in order.** An outfit's views draw from the cache's skinned meshes and from the body's, so dispose the
-outfit before the cache and before unloading the body's meshes, and all of them before the scene. While a view lives over one of
-their meshes, `AttachmentSetCache.Dispose`, a skinned attachment lease and `UnloadSkinnedMesh` on a body handle each
-refuse with `SkinnedMeshViewArgumentException` and `SkinnedMeshViewRefusal.SourceHasLiveViews` before changing
-anything, and the same call succeeds once the outfit is gone. Outfit disposal is idempotent.
+outfit before the cache and before unloading the body's meshes, and all of them before the scene. While a view lives
+over one of their meshes, `AttachmentSetCache.Dispose`, a skinned attachment lease and `UnloadSkinnedMesh` on a body
+handle each refuse with `SkinnedMeshViewArgumentException` and `SkinnedMeshViewRefusal.SourceHasLiveViews` before
+changing anything, and the same call succeeds once the outfit is gone. Outfit disposal is idempotent.
 
 **Refusals to expect.** Each carries a typed reason, and the package tables list every identifier:
 

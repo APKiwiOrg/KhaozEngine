@@ -12,10 +12,11 @@ REQUIRED_CLASSES = {
     'KhaozEngine.TileWorld.Physics.Tests': (
         'ContactQueryCostOracleTests', 'WaterQueryCostMutationTests', 'WaterCoverageComparisonTests',
         'WaterKernelFrozenReferenceTests', 'WaterProjectionWindowTests', 'WaterProjectionMutationTests',
-        'WaterProjectionMapTests', 'WaterSharedProjectionTests', 'WaterSharedProjectionCoverageTests'),
+        'WaterProjectionMapTests', 'WaterSharedProjectionTests', 'WaterSharedProjectionCoverageTests',
+        'WaterBoundaryWadeCertificateTests'),
     'KhaozEngine.TileWorld.Physics.FloatingPoint.Tests': (
         'MovingShoreProjectionOracleTests', 'WaterProjectionWindowTests', 'WaterProjectionMutationTests',
-        'WaterSharedProjectionTests'),
+        'WaterSharedProjectionTests', 'WaterBoundaryWadeCertificateTests'),
 }
 
 

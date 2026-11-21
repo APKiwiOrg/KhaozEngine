@@ -4,6 +4,7 @@ using KhaozEngine.Locomotion;
 using KhaozEngine.Physics.Bepu;
 using KhaozEngine.Primitives;
 using KhaozEngine.Tests.TileWorld.Physics.Fixtures;
+using KhaozEngine.Tests.WaterPrismCensus;
 using Xunit;
 
 namespace KhaozEngine.Tests.TileWorld.Physics;
@@ -29,16 +30,26 @@ public class TileWaterGrazingBankTests
         Assert.All(contacts.Take(result.ContactsWritten), contact => Assert.Equal(GrazingWaterBank.Space, contact.Space));
     }
 
+    // #1761 at movement level, through the capture certificate and through a field that hides it, so a kernel
+    // regression on this bank still fails here when the certificate answers the lift and seat proofs.
     [Theory]
-    [InlineData(110.375f, -0.45409524f, -236.89905f)]
-    [InlineData(110.5f, -0.45409524f, -236.89905f)]
-    [InlineData(110.375f, -0.5200002f, -237.09906f)]
-    [InlineData(110.375f, -0.5200002f, -237.07406f)]
-    [InlineData(110.375f, -0.5200002f, -237.04906f)]
-    [InlineData(110.375f, -0.5200002f, -237.02406f)]
-    public void SurfaceSwimmerHoldingTowardTheCapturedBankReachesSupportedDryGround(float x, float y, float z)
+    [InlineData(110.375f, -0.45409524f, -236.89905f, false)]
+    [InlineData(110.5f, -0.45409524f, -236.89905f, false)]
+    [InlineData(110.375f, -0.5200002f, -237.09906f, false)]
+    [InlineData(110.375f, -0.5200002f, -237.07406f, false)]
+    [InlineData(110.375f, -0.5200002f, -237.04906f, false)]
+    [InlineData(110.375f, -0.5200002f, -237.02406f, false)]
+    [InlineData(110.375f, -0.45409524f, -236.89905f, true)]
+    [InlineData(110.5f, -0.45409524f, -236.89905f, true)]
+    [InlineData(110.375f, -0.5200002f, -237.09906f, true)]
+    [InlineData(110.375f, -0.5200002f, -237.07406f, true)]
+    [InlineData(110.375f, -0.5200002f, -237.04906f, true)]
+    [InlineData(110.375f, -0.5200002f, -237.02406f, true)]
+    public void SurfaceSwimmerHoldingTowardTheCapturedBankReachesSupportedDryGround(float x, float y, float z,
+        bool hideCertificate)
     {
         var colliders = GrazingWaterBank.Capture();
+        IMovementWaterField field = hideCertificate ? new RecordingWaterField(colliders.Medium) : colliders.Medium;
         using var physics = new BepuPhysicsWorld(Vector3.Zero);
         var builder = OrdinaryMovementRegistration.CreateBuilder(GrazingWaterBank.Space.WorldId, physics,
             new(new(109, -4, -240), new(113, 4, -233), -1.3f, 0));
@@ -46,7 +57,7 @@ public class TileWaterGrazingBankTests
         using (var read = physics.AcquireQueryReadLease()) registration = builder.Build(read);
         using var binding = EffectiveMovementBinding.Ordinary(GrazingWaterBank.Tuning, physics, registration,
             colliders.MovementGroundHeight, colliders.MovementGroundNormal,
-            MovementBoundary.Rectangle(109, -240, 113, -233), colliders.Medium);
+            MovementBoundary.Rectangle(109, -240, 113, -233), field);
         var frame = new MovementFrameDescriptor(WorldFrame.Origin, Vector3.Zero, 1);
         Assert.Equal(MovementAvailability.Known, binding.TryAcquire(binding.CreateOrdinaryScope(frame), out var lease));
         using (lease)

@@ -17,6 +17,10 @@ internal sealed class WaterBoundaryParityReport(string name)
     internal int Certified { get; set; }
     internal Dictionary<WaterTraversalMode, int> CertifiedByMode { get; } = [];
     internal Dictionary<MovementAvailability, int> FullSolve { get; } = [];
+    /// <summary>Full solves that returned Known with a constraint: normals, a blocked hit or an initial overlap.</summary>
+    internal Dictionary<WaterTraversalMode, int> ConstrainedKnown { get; } = [];
+    /// <summary>Whether the world has a tile producer, so its trace contacts were checked against the reach.</summary>
+    internal bool Sampled { get; set; }
     /// <summary>Differences of the listed kinds: the full solve refused and the certificate answered Known.</summary>
     internal Dictionary<MovementAvailability, int> Listed { get; } = [];
     internal List<string> Unlisted { get; } = [];
@@ -27,6 +31,7 @@ internal sealed class WaterBoundaryParityReport(string name)
     public override string ToString() => $"{Name}: questions={Questions} comparisons={Comparisons} " +
         $"certified={Certified} ({string.Join(", ", CertifiedByMode.Select(p => $"{p.Key}={p.Value}"))}) " +
         $"full=[{string.Join(", ", FullSolve.Select(p => $"{p.Key}={p.Value}"))}] " +
+        $"constrained=[{string.Join(", ", ConstrainedKnown.Select(p => $"{p.Key}={p.Value}"))}] " +
         $"listed=[{string.Join(", ", Listed.Select(p => $"{p.Key}={p.Value}"))}] unlisted={Unlisted.Count} " +
         $"known-contacts={KnownContacts} uncollected={UncollectedContacts.Count} two-level={TwoLevelQuestions}";
 }
@@ -41,7 +46,7 @@ internal static class WaterBoundaryParityRun
     internal static WaterBoundaryParityReport Run(string name)
     {
         WaterBoundaryParityWorld world = WaterBoundaryParityCorpus.Create(name);
-        var report = new WaterBoundaryParityReport(name);
+        var report = new WaterBoundaryParityReport(name) { Sampled = world.Sampler is not null };
         foreach (var (origin, recorded) in world.Groups)
         {
             using var parity = new WaterBoundaryParityLease(world.Field, WaterBoundaryParityCorpus.World, origin,
@@ -71,6 +76,8 @@ internal static class WaterBoundaryParityRun
             mode, lease, certifiedNormals, out int count, out var hit, proximity, certify: true, out bool certified);
         report.Comparisons++;
         report.FullSolve[full] = report.FullSolve.GetValueOrDefault(full) + 1;
+        if (full == MovementAvailability.Known && (fullCount > 0 || fullHit.Blocked || fullHit.InitialOverlap))
+            report.ConstrainedKnown[mode] = report.ConstrainedKnown.GetValueOrDefault(mode) + 1;
         if (fullCertified) report.Unlisted.Add($"{mode} {proximity}: the full solve reported a certificate answer");
         if (certified)
         {

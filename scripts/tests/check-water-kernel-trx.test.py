@@ -73,9 +73,10 @@ class WaterKernelTrxTests(unittest.TestCase):
         self.assertEqual({
             DEFAULT: ('ContactQueryCostOracleTests', 'WaterQueryCostMutationTests', 'WaterCoverageComparisonTests',
                       'WaterKernelFrozenReferenceTests', 'WaterProjectionWindowTests', 'WaterProjectionMutationTests',
-                      'WaterProjectionMapTests', 'WaterSharedProjectionTests', 'WaterSharedProjectionCoverageTests'),
+                      'WaterProjectionMapTests', 'WaterSharedProjectionTests', 'WaterSharedProjectionCoverageTests',
+                      'WaterBoundaryWadeCertificateTests'),
             FLOATING: ('MovingShoreProjectionOracleTests', 'WaterProjectionWindowTests', 'WaterProjectionMutationTests',
-                       'WaterSharedProjectionTests')}, guard.REQUIRED_CLASSES)
+                       'WaterSharedProjectionTests', 'WaterBoundaryWadeCertificateTests')}, guard.REQUIRED_CLASSES)
         for assembly, roster in guard.REQUIRED_CLASSES.items():
             other = FLOATING if assembly == DEFAULT else DEFAULT
             for missing in roster:

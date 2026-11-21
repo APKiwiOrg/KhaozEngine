@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using System.Threading;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Physics.Bepu;
 using KhaozEngine.TileWorld.Physics;
@@ -127,17 +128,36 @@ public class WaterBoundaryReachLeaseTests
         }
     }
 
-    [Fact]
-    public void ADisposedLeaseThrowsFromItsCertificateAsFromItsTrace()
+    [Theory]
+    [InlineData("disposed")]
+    [InlineData("foreign-thread")]
+    public void AnUnusableLeaseThrowsFromItsCertificateAsFromItsTrace(string misuse)
     {
         using var parity = Lease(new ReachRecordingWaterField(Sampler()), Vector3.Zero);
         MovementQueryLease lease = parity.Lease;
         Assert.Equal(MovementWaterReachKind.OneFreeSurface, lease.CertifyWaterBoundary(GrazingWaterBank.Lift()).Kind);
-        lease.Dispose();
-        Assert.Throws<ObjectDisposedException>(() => lease.TraceWater(GrazingWaterBank.Lift(),
-            new MovementCoverageSpan[MovementQueryLease.MaxCoverageSpans], new MovementDomainContact[MovementQueryLease.MaxDomainContacts]));
-        Assert.Throws<ObjectDisposedException>(() => lease.CertifyWaterBoundary(GrazingWaterBank.Lift()));
+        if (misuse == "disposed")
+        {
+            lease.Dispose();
+            Assert.Throws<ObjectDisposedException>(() => Trace(lease));
+            Assert.Throws<ObjectDisposedException>(() => lease.CertifyWaterBoundary(GrazingWaterBank.Lift()));
+            return;
+        }
+        // A lease belongs to its acquiring thread. Both entries refuse another thread before any producer work.
+        Exception? traced = null, certified = null;
+        var thread = new Thread(() =>
+        {
+            traced = Record.Exception(() => Trace(lease));
+            certified = Record.Exception(() => lease.CertifyWaterBoundary(GrazingWaterBank.Lift()));
+        });
+        thread.Start();
+        thread.Join();
+        Assert.Equal(MovementReadRefusal.LeaseThreadMismatch, Assert.IsType<MovementReadException>(traced).Reason);
+        Assert.Equal(MovementReadRefusal.LeaseThreadMismatch, Assert.IsType<MovementReadException>(certified).Reason);
     }
+
+    static MovementCoverageResult Trace(MovementQueryLease lease) => lease.TraceWater(GrazingWaterBank.Lift(),
+        new MovementCoverageSpan[MovementQueryLease.MaxCoverageSpans], new MovementDomainContact[MovementQueryLease.MaxDomainContacts]);
 
     static TileMediumSampler Sampler() => MovementWaterFieldTests.Field(GrazingWaterBank.Document(109, 3));
 

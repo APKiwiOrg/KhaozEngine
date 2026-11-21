@@ -5,11 +5,10 @@ using KhaozEngine.TileWorld.Physics;
 
 namespace KhaozEngine.Tests.TileWorld.Physics.Fixtures;
 
-/// <summary>A tile sampler behind a wrapper that forwards the boundary reach certificate. It records whether the
-/// certificate was consulted, can throw from it, and can advance its generation to make a held pin stale.</summary>
+/// <summary>A tile sampler behind a wrapper that forwards the boundary reach certificate. It can throw from the
+/// certificate and can advance its generation to make a held pin stale.</summary>
 internal sealed class ReachRecordingWaterField(TileMediumSampler inner) : IMovementWaterBoundaryReachProof
 {
-    internal int Consulted { get; private set; }
     internal Func<Exception>? Fault { get; set; }
     internal long Revision { get; set; }
     public string SemanticIdentity => inner.SemanticIdentity;
@@ -26,7 +25,6 @@ internal sealed class ReachRecordingWaterField(TileMediumSampler inner) : IMovem
     public MovementWaterReach CertifyBoundaryReach(in MovementMediumSweepQuery query, Vector3 physicsOrigin,
         in MovementQueryIdentity identity)
     {
-        Consulted++;
         if (Fault is { } fault) throw fault();
         return inner.CertifyBoundaryReach(query, physicsOrigin, identity);
     }

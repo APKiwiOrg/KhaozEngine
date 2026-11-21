@@ -31,6 +31,9 @@ internal static class WaterBoundaryParityCorpus
 
     internal static readonly string[] Declining = ["weir", "closed-level", "region-seam"];
 
+    /// <summary>Every world with a tile producer, whatever its level count. The producer guarantees hold for each.</summary>
+    internal static readonly string[] Sampled = [.. Certifying, "weir", "region-seam"];
+
     // The scenario's own resident declaration, so replayed questions meet the envelope they met when recorded.
     static readonly Vector3 ScenarioMinimum = new(63, -120, -321), ScenarioMaximum = new(129, 20, -191);
 

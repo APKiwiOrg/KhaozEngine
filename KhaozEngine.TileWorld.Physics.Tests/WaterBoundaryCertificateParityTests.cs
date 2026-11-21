@@ -27,6 +27,18 @@ public class WaterBoundaryCertificateParityTests(WaterBoundaryParityRuns runs, I
     public static TheoryData<string> Certifying => [.. WaterBoundaryParityCorpus.Certifying];
     public static TheoryData<string> Declining => [.. WaterBoundaryParityCorpus.Declining];
     public static TheoryData<string> TwoLevelTile => ["weir", "region-seam"];
+    public static TheoryData<string> Sampled => [.. WaterBoundaryParityCorpus.Sampled];
+
+    // The class C cases the certificate exists to allow, pinned as exact counts of listed differences. Every other
+    // world lists none. real-shore: the #1697 seating sweep refuses with PrecisionExceeded under every policy, and
+    // the certificate answers it for SurfaceSwimmer and WadeOnly at both proximities. drawn-bed/coarse: five
+    // questions at the 4194304 m origin refuse with PrecisionExceeded, and the certificate answers them for
+    // SurfaceSwimmer at both proximities. WadeOnly bodies there are below their line and DryOnly declines.
+    static readonly Dictionary<string, Dictionary<MovementAvailability, int>> ExpectedListed = new()
+    {
+        ["real-shore"] = new() { [MovementAvailability.PrecisionExceeded] = 4 },
+        ["drawn-bed/coarse"] = new() { [MovementAvailability.PrecisionExceeded] = 10 },
+    };
 
     [Theory]
     [MemberData(nameof(All))]
@@ -34,10 +46,8 @@ public class WaterBoundaryCertificateParityTests(WaterBoundaryParityRuns runs, I
     {
         WaterBoundaryParityReport report = Report(world);
         Assert.True(report.Questions > 0);
-        Assert.Equal(report.Questions * 6, report.Comparisons);
         Assert.Empty(report.Unlisted);
-        Assert.All(report.Listed.Keys, kind => Assert.Contains(kind, new[] { MovementAvailability.PrecisionExceeded,
-            MovementAvailability.Unresolved, MovementAvailability.CapacityExceeded, MovementAvailability.Invalid }));
+        Assert.Equal(ExpectedListed.GetValueOrDefault(world, []), report.Listed);
     }
 
     // The guard that the parity comparison is not the full path compared with itself.
@@ -61,19 +71,25 @@ public class WaterBoundaryCertificateParityTests(WaterBoundaryParityRuns runs, I
         Assert.Equal(report.Questions, report.TwoLevelQuestions);
     }
 
+    // Guarantees 1 to 3 are producer facts, whatever the level count, so every world with a tile producer is checked.
     [Theory]
-    [MemberData(nameof(Certifying))]
+    [MemberData(nameof(Sampled))]
     public void EveryKnownTraceContactLiesInACollectedColumnAtItsOwnLevel(string world)
     {
         WaterBoundaryParityReport report = Report(world);
+        Assert.True(report.Sampled);
         Assert.Empty(report.UncollectedContacts);
     }
 
+    // The WadeOnly and DryOnly comparisons have teeth only if their full solves are sometimes Known with a constraint
+    // in a world the certificate answers.
     [Fact]
-    public void TheCorpusExercisesContactsAndBothCertifiedPolicies()
+    public void TheCorpusExercisesContactsConstraintsAndBothCertifiedPolicies()
     {
         var reports = WaterBoundaryParityCorpus.Certifying.Select(Report).ToArray();
         Assert.True(reports.Sum(r => r.KnownContacts) > 0);
+        Assert.True(reports.Sum(r => r.ConstrainedKnown.GetValueOrDefault(WaterTraversalMode.WadeOnly)) > 0);
+        Assert.True(reports.Sum(r => r.ConstrainedKnown.GetValueOrDefault(WaterTraversalMode.DryOnly)) > 0);
         Assert.True(reports.Sum(r => r.CertifiedByMode.GetValueOrDefault(WaterTraversalMode.SurfaceSwimmer)) > 0);
         Assert.True(reports.Sum(r => r.CertifiedByMode.GetValueOrDefault(WaterTraversalMode.WadeOnly)) > 0);
     }

@@ -54,6 +54,7 @@ public sealed class SupportCostAttributionTests(ITestOutputHelper output) : IDis
         Assert.True(deck.GeometryMatchesOracle);
         Assert.Equal(0, deck.WarmBytes);
         SupportQueryCounts c = deck.Counts;
+        // The whole tuple is a deck's Find shape, so the attribution's thin deck rows speak for a deck.
         Assert.Equal((1L, 1L, 1L, 6L, 2L, 2L, 3L, 2L, 2L, 10L, 1L, 2L),
             (c.Find, c.Volumes, c.SelectedStatics, c.Polygons, c.PolygonOperands, c.Members, c.Extrema,
                 c.StairStratum, c.PrefilterRejects, c.SharedMemberFacts, c.JoinsSkipped, c.Proposals));

@@ -24,10 +24,10 @@ unchanged.
   or `BeginFrame`, so a view released in the middle of a frame does not drop draws already queued through it.
   `UnloadSkinnedMesh`, `UnloadSharedSkinnedMesh`, `SkinnedLimb.Dispose`, a skinned attachment lease and
   `AttachmentSetCache.Dispose` refuse a source while a view of it lives, before changing anything, so the same call
-  succeeds once the view is gone. Every other outcome, a stale handle's throw included, is unchanged for a consumer
-  that creates no views. A view already unloaded this frame
-  is released with its source. A source with host coverage evidence is never viewed, because its coverage tables
-  index its own triangles.
+  succeeds once the view is gone. A cache over a custom `IAttachmentScene` holds that scene's own leases and keeps
+  the release behaviour it had before views existed. Every other outcome, a stale handle's throw included, is
+  unchanged for a consumer that creates no views. A view already unloaded this frame is released with its source. A
+  source with host coverage evidence is never viewed, because its coverage tables index its own triangles.
 - API in `KhaozEngine.Render3D`. `Scene3D.CreateSkinnedMeshView(source, indices)` returns a `SkinnedMeshHandle`, and
   `Scene3D.IsSkinnedMeshView(handle)` tells a view from a loaded mesh. `SkinnedMeshViewArgumentException`, an
   `ArgumentException`, carries `Reason`, `SourceIndex`, `SourceGeneration`, `IndexCount`, `IndexPosition`,
@@ -112,8 +112,9 @@ exactly as before. A scene with no views behaves exactly as before.
 changes, and dispose every outfit before its cache and before unloading the body's meshes: while a view lives over
 one of their meshes, `AttachmentSetCache.Dispose`, a skinned attachment lease and `UnloadSkinnedMesh` refuse with
 `SourceHasLiveViews` before changing anything. A custom `IAttachmentScene` implements `IAttachmentViewScene` to
-support outfits. A body uploaded with host coverage evidence cannot be partly hidden: an outfit that covers part of
-such a body part refuses with `SourceHasCoverage`. The
+support outfits, and a cache over it keeps the release behaviour it had before views existed, because that scene's
+own leases cannot answer the live view query. A body uploaded with host coverage evidence cannot be partly hidden:
+an outfit that covers part of such a body part refuses with `SourceHasCoverage`. The
 [consumer guide](docs/USING-KHAOZENGINE.md#regions-layers-and-outfits) walks through the whole flow.
 
 ## 24.3.0

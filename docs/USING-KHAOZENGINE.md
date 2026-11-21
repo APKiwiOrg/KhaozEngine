@@ -10129,6 +10129,9 @@ trigonometric classification on load. Disabled profiles keep their original poli
 Finite water-coverage uncertainty above the existing 1 mm budget refuses a Drop as `PrecisionExceeded`.
 The Contact step reports `PrecisionRefused`, so sharp and terrain following return `Blocked`, including during
 alignment. Actual unresolved, invalid or mismatched environment evidence retains its prior error/suspension path.
+A navigation bake always runs this full coverage solve. At runtime, a water boundary proof that the producer's
+capture certificate answers (`IMovementWaterBoundaryReachProof`) computes no coverage, so following can continue
+past a proof the bake refused, and the later checks decide the tick.
 No precision threshold or physical gate is widened.
 
 Call `GroundNavigation.PrepareTerrainDescents()` during loading, outside a frame or simulation tick. It builds the

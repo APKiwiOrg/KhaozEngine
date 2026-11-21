@@ -107,8 +107,9 @@ public sealed partial class MovementQueryLease
         // Hoist that exact operation once under this generation, not a rounded feet/centre substitute.
         if (ExplicitCharacterMovement.WaterPlacement(request.Body, tuning, tuning.Water, this, boundary) !=
             MovementStepOutcome.Advanced) return false;
-        // Point closure never authorizes skipping trace operations. A supplied field keeps the shared
-        // kernel's real traces even on flat ground. Only intrinsic absence retains the flat algebra.
+        // Point closure never authorizes skipping boundary operations. With a supplied field every trial keeps its
+        // live boundary proof, answered by the capture certificate or the shared kernel. Only intrinsic absence
+        // retains the flat algebra.
         if (region is null && !points.HasIntrinsicDryTrace)
         {
             if (!Workspace.TryGetAnalytic(selection.Space, query.Axis, out var fact) || fact is not { } ground)

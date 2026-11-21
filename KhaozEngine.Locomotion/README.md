@@ -276,7 +276,8 @@ every contact level, so a Known trace's levels equal the certified one bit for b
 trace and is not a certificate producer. `MovementQueryLease` runs the trace's own pre-checks in the same order and
 under the same catches before it asks the pin: a usable lease, a ready selection, a valid query in this world and the
 skinned path inside the witness. Every failure, a stale pin and a producer exception included, declines, so the full
-trace that follows reproduces today's refusal for it. A disposed lease or a foreign thread throws as the trace does.
+trace that follows reproduces the trace's own refusal for it. A disposed lease or a foreign thread throws as the trace
+does.
 A wrapper that forwards only the inner field's trace hides the certificate, and its leases keep the full trace.
 
 Runtime movement consults the certificate at the start of every water boundary proof, after the policy check and
@@ -289,7 +290,7 @@ cannot drift, and every rounding and flush mode keeps both bounds monotone. The 
 level, never a maximum over different levels, so it needs no monotonicity across levels. DryOnly uses only the empty
 reach. An answer is Known with no normals and a default hit, which every Known full solve gives in these cases, so no
 output bit changes wherever the full solve would not refuse. Where the full solve would refuse with precision,
-numerical, capacity or validation evidence, the step now continues past that proof and its later checks decide the
+numerical, capacity or validation evidence, the step continues past that proof and its later checks decide the
 outcome. Point samples, support, shell sweeps, solid contacts, route boundary proofs, frame checks and all
 authentication still run. Navigation bake proofs always take the full solve. The bake sets this where it creates its
 movement binding, and every proof and fall binding derived from it inherits it, because a refusal there rejects a

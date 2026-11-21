@@ -104,8 +104,9 @@ internal sealed class CertifiedGroundRangeQueries(MovementQueryLease lease, Supp
     {
         MovementBodyQuery body = Body(from);
         CheckBody(body, BodyCentre(to) - body.Centre, MovementQueryLease.CoverageSkinMetres);
-        // Geometric dryness and point closure do not promise that this trace operation succeeds.
-        // Keep the live operation, including its precision, scope and producer refusal decisions.
+        // Geometric dryness and point closure do not promise that this boundary proof succeeds. Keep the live
+        // operation, so the shortcut takes the decision the unshortcut step takes: the full trace with its precision,
+        // scope and producer refusals, or at runtime the capture certificate's answer where it holds.
         if (!_medium.AcceptSegment(from, to)) Decline();
         return true;
     }

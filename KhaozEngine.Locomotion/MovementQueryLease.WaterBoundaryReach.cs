@@ -7,8 +7,8 @@ public sealed partial class MovementQueryLease
     /// <summary>The water boundary reach certificate for one path in this lease's frame. It runs
     /// <see cref="TraceWater"/>'s own pre-checks in the same order: a usable lease, a ready selection, a valid query in
     /// this world and the skinned affine path inside the witness. It then calls the pin under the same
-    /// authentication and catches. Every failure declines, so the full trace that follows reproduces today's refusal
-    /// for it. A disposed lease or a foreign thread throws, as the trace does.</summary>
+    /// authentication and catches. Every failure declines, so the full trace that follows reproduces the trace's own
+    /// refusal for it. A disposed lease or a foreign thread throws, as the trace does.</summary>
     internal MovementWaterReach CertifyWaterBoundary(in MovementMediumSweepQuery query)
     {
         AssertUsable();

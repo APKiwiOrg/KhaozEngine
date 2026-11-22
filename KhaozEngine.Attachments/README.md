@@ -1,7 +1,7 @@
 # KhaozEngine.Attachments
 
-GPU-free definitions for rigid and skinned mesh parts. Rigid parts attach to named joints,
-while skinned parts declare garment meshes that use the host body's pose. Reference this package
+GPU-free definitions and chain simulation for attachments. Rigid parts attach to named joints.
+Skinned parts use the host body's pose and can declare their own swinging chains. Reference this package
 explicitly from headless publishers or consumers. Its only engine dependency is the dependency-free
 Primitives package, which supplies `MalformedDataException`. It is not included in Foundation or Server.
 
@@ -24,12 +24,14 @@ and deconstruction are unchanged. A set without a layer refuses parts that carry
 
 The set owns its region data. `Covers` holds unique names in ordinal order, and a skinned part's runs are copied
 with adjacent runs of one region merged, so two sets that tag every triangle alike and cover the same regions in
-any listing order share their canonical bytes and `SemanticSha256`. Two skinned parts are equal when their runs
-are equal run by run. Region names need well-formed UTF-16 and keep their ordinal identity. A name is only a name
+any listing order share their canonical bytes and `SemanticSha256`. Equality of skinned parts compares region runs
+and authored motion by value. Region names need well-formed UTF-16 and keep their ordinal identity. A name is only a name
 in the set: whether the body has that region is checked when an [outfit is resolved](#outfit-coverage) against the
 body's [region map](#body-region-maps).
 
-`AttachmentSetJson.Parse(utf8, sourceName)` accepts formats 1, 2 and 3. Format 1 contains only rigid parts
+## Attachment set JSON
+
+`AttachmentSetJson.Parse(utf8, sourceName)` accepts formats 1, 2, 3 and 4. Format 1 contains only rigid parts
 and has no `kind` member:
 
 ```json
@@ -99,6 +101,66 @@ An engine at 24.3.0 or earlier checks root members against `formatVersion` and `
 version, so it refuses a format 3 set as `JsonPropertyUnknown` on its first format 3 member, `layer` in canonical
 bytes, not as `FormatVersionUnsupported`. Publish format 3 only after every reader is on 24.4.0 or later.
 
+### Format 4
+
+Format 4 adds optional root `colliders` and optional skinned part `motion` to the layered format. Formats 1 to 3
+refuse either member as unknown. Rigid parts never accept `motion`.
+
+```json
+{
+  "formatVersion": 4,
+  "layer": "outerwear",
+  "covers": [],
+  "colliders": [
+    { "joint": "upper", "start": [0, 1.05, 0], "end": [0, 1.4, 0], "radius": 0.14 }
+  ],
+  "parts": [
+    {
+      "id": 1,
+      "kind": "skinned",
+      "mesh": {
+        "key": "parts/garment.glb",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "regions": [["a", 4]],
+      "motion": {
+        "kind": "chains",
+        "chains": [
+          {
+            "joints": ["left0", "left1"], "tip": [0, -0.25, 0],
+            "stiffness": 6, "damping": 3, "gravity": 1, "trail": 0.7, "angleLimit": 1.4, "radius": 0.02
+          },
+          {
+            "joints": ["right0"], "tip": [0, -0.25, 0],
+            "stiffness": 6, "damping": 3, "gravity": 1, "trail": 0.7, "angleLimit": 1.4, "radius": 0.02
+          }
+        ],
+        "links": [[0, 1]]
+      }
+    }
+  ]
+}
+```
+
+Set `SkinnedAttachmentPartDefinition.Motion` to a `ChainMotionDefinition` to declare chains, or leave it null for a
+part that only follows the body. A part declares 1 to 32 chains and each chain orders 1 to 16 garment joint names
+from its anchor toward its tip. Names are nonblank, well-formed UTF-16 and ordinally unique across the part's
+chains. The tip is a finite, nonzero vector in the last joint's rest frame. Every chain includes all six settings.
+Stiffness, damping and radius are finite and nonnegative. Gravity is 0 to 10 and trail is 0 to 1, both inclusive.
+The angle limit is greater than zero and at most pi radians. An optional link pairs distinct zero-based chain
+indices. A part can list up to 64 links and each pair can appear only once in either direction.
+
+Use `new AttachmentSetDefinition(parts, layer, covers, colliders)` to add up to `MaxColliders` (8) capsules while
+the set is worn. Colliders use the same joint, points and radius as the [body collider file](#body-colliders).
+The set owns copies of its motion and colliders. A layer is required when either is present.
+
+`AttachmentSetJson.MotionFormatVersion` is 4. A 24.4.x reader checks root members before it checks the version.
+It refuses a format 4 set with a root `colliders` member, even an empty array, as `JsonPropertyUnknown` for
+`colliders`, and any other format 4 set as `FormatVersionUnsupported`. Earlier readers refuse the first unfamiliar root member, which is `layer` in canonical
+bytes. Move every reader to 24.5.0 or later before publishing format 4.
+
+### Canonical set bytes
+
 The example hash is a placeholder. Hash the exact self-contained GLB bytes. `local` contains 16
 row-major finite numbers and must be affine and invertible. Unknown or duplicate members, missing
 fields, unsupported versions and invalid parts throw `AttachmentSetDataException` with `SourceName`.
@@ -108,14 +170,22 @@ every format's root members before the version is read, and against the declared
 document with a `layer` and no `formatVersion` is therefore refused as `JsonPropertyMissing` for the version,
 not as `JsonPropertyUnknown` for the layer, because the version decides what every other member means.
 
-`Write(definition)` emits the lowest format that expresses the definition. A set with a layer writes
-format 3, even when all its parts are rigid. Otherwise a set whose parts are all rigid writes format 1, even after
-parsing format 2, and a set containing skinned parts writes format 2. Existing canonical format 1 and 2 bytes and
-semantic hashes stay unchanged. Property order is `id, mesh, joint, local` in format 1 and `id, kind, mesh` followed
-by rigid `joint, local` in format 2. Format 3 writes `formatVersion, layer, covers, parts` at the root and appends
-`region` to a rigid part and `regions` to a skinned part. Signed zero is normalized without changing other float values.
-The writer emits canonical UTF-8 with no trailing newline. Its SHA-256 is
-`SemanticSha256`. Source whitespace and part-array order do not change that revision.
+`Write(definition)` emits the lowest format that expresses the definition. A set with motion or colliders writes
+format 4. A layered set with neither writes format 3, even when all its parts are rigid. A set without a layer
+writes format 1 if all its parts are rigid, even after parsing format 2, and format 2 if it contains skinned
+parts. Existing canonical format 1 to 3 bytes and semantic hashes stay unchanged.
+
+Property order is `id, mesh, joint, local` in format 1 and `id, kind, mesh` followed by rigid `joint, local` in
+format 2. Format 3 writes `formatVersion, layer, covers, parts` at the root and appends `region` to a rigid part
+and `regions` to a skinned part. Format 4 writes nonempty `colliders` between `covers` and `parts`, in ordinal
+joint, start, end and radius order. A skinned part writes `motion` after `regions`. Motion writes `kind, chains`
+and then `links` when nonempty. Each chain writes `joints, tip, stiffness, damping, gravity, trail, angleLimit,
+radius`. Chain and joint order are preserved. Links put the lower index first and sort by the two indices.
+
+Signed zero is normalized without changing other float values. The writer emits canonical UTF-8 with no trailing
+newline. Its SHA-256 is `SemanticSha256`. Source whitespace, part and collider listing order, and link listing
+order and direction do not change that revision.
+
 Keep each part ID stable across source reordering. The renderer derives temporal identities from
 that semantic revision, the part ID and material ordinal. A changed declared mesh hash changes
 the revision, including changes to embedded material images.
@@ -220,6 +290,43 @@ triangle count. `Parse` builds the map through that constructor, so a constructo
 | `TriangleCountMismatch` | runs that do not add up to the part's declared triangle count. | `PartIndex`, `DeclaredTriangleCount`, `ActualTriangleCount` |
 | `TriangleCountOverflow` | a part whose runs add up past Int32 at some run, from the constructor or from `Parse` through it. | `PartIndex`, `RunIndex`, `ActualTriangleCount` |
 
+## Body colliders
+
+`BodyCollidersJson.Parse(utf8, sourceName)` reads format 1:
+
+```json
+{"formatVersion":1,"rig":"rig-v1:<sha256>","colliders":[{"joint":"upper","start":[0,1,0],"end":[0,2,0],"radius":0.125}]}
+```
+
+`rig` is the body's complete [rig identity](#body-rig-identity). A `ColliderDefinition` names a host joint and
+describes a capsule in the body's rest model space, in metres. Equal endpoints describe a sphere. Each point
+has three finite coordinates, the radius is finite and positive, and the joint name uses well-formed UTF-16.
+`new BodyColliderSet(rigIdentity, colliders)` applies the same content rules and copies zero to 32 colliders.
+The [renderer binding](../KhaozEngine.Attachments.Render3D/README.md#hanging-chains-and-wearer-motion)
+keeps the authored radius in the bind pose and applies the largest axis scale of the composed rest-to-world
+transform in a posed frame.
+
+`Colliders` is read-only and orders the capsules by ordinal joint name, then the start X, Y and Z, the end X, Y
+and Z, and the radius. `BodyCollidersJson.Write(set)` emits UTF-8 with the member order shown above, without
+whitespace or a trailing newline. It writes signed zero as `0`. `Sha256` is the lowercase SHA-256 of those bytes.
+Changing the order of the input list keeps the same bytes and hash.
+
+Refusals throw `BodyCollidersDataException`, derived from `MalformedDataException`, with a `BodyCollidersRefusal
+Reason` and `SourceName` from `Parse`. A collider index refers to the input order. An escaped lone surrogate in a
+joint name has an index and path, with no decoded `JointName`.
+
+| Reason | What it refuses | Other identifiers |
+|---|---|---|
+| `FormatVersionUnsupported` | a format other than 1. | `JsonPath`, `FormatVersion` when Int32 |
+| `JsonPropertyUnknown`, `JsonPropertyDuplicate`, `JsonPropertyMissing` | an unknown, repeated or absent member. | `JsonPath`, `PropertyName`, `ColliderIndex` within a collider |
+| `JsonValueShapeInvalid` | a value of the wrong JSON shape, such as a point with the wrong number of coordinates. | `JsonPath`, `ColliderIndex` within a collider |
+| `JsonMalformed` | malformed JSON or invalid UTF-8. | No additional identifiers |
+| `RigIdentityInvalid` | a rig that is not `rig-v1:` and a lowercase SHA-256. | `JsonPath`, `RigIdentity` |
+| `JointNameEmpty`, `JointNameMalformedUtf16` | a blank or malformed joint name. | `JsonPath`, `ColliderIndex`, `JointName` when available |
+| `PointInvalid` | a nonfinite coordinate. | `JsonPath`, `ColliderIndex`, `JointName` |
+| `RadiusInvalid` | a nonfinite or nonpositive radius. | `JsonPath`, `ColliderIndex`, `JointName` |
+| `TooManyColliders` | more than 32 colliders. | `JsonPath`, `ColliderCount` |
+
 ## Outfit coverage
 
 `OutfitCoverage.Resolve(body, worn)` works out what an outfit hides on one body from the body's region map and
@@ -260,18 +367,23 @@ with an `OutfitRefusal Reason`.
 
 A piece's `Covers` hides the skin in those regions, so a false claim opens a hole in the body.
 `CoverageClaimCheck.Verify(bodyMeshes, body, piece, pieceMeshes, maxDistanceMetres)` checks the claim offline: at
-the rest pose the piece must lie over every triangle of every region it claims. A tool runs it when a piece is made.
-It casts one ray per claimed body triangle against every piece triangle, which suits low poly meshes, so it is never
-meant to run per frame and builds no acceleration structure.
+the rest pose the fixed part of the piece must lie over every triangle of every region it claims. A tool runs it when
+a piece is made. It casts one ray per claimed body triangle against the fixed piece triangles, which suits low poly
+meshes, so it is never meant to run per frame and builds no acceleration structure.
 
 Geometry arrives as `CoverageClaimMesh(Positions, Indices)`, plain `ReadOnlyMemory<Vector3>` positions and a
-`ReadOnlyMemory<uint>` triangle list, so publishers and tools stay GPU free and never need a renderer mesh. The rules,
-with the reason for each:
+`ReadOnlyMemory<uint>` triangle list, so publishers and tools stay GPU free.
 
 - `bodyMeshes` follow the region map's part order, one mesh per part with the part's triangle count, because the map
   tags triangles by part and position and a mesh that disagrees would be checked against the wrong regions.
 - `pieceMeshes` are already in the body's rest frame. A rigid part is placed by its joint's rest transform and its
-  local transform before the call, since the check has no rig to place it with.
+  local transform before the call, since the check has no rig to place it with. For a piece with motion, give one
+  mesh per definition part in any order, combining any material groups within that part. Set each mesh's init-only
+  `PartId` to the corresponding definition part ID. Zero leaves the ID unstated. The check ignores `PartId` on
+  body meshes and on pieces without motion.
+- Each part with motion needs a nonempty `Swinging` mask with one `bool` per position. An empty mask on a part
+  without motion means all its vertices are fixed. The check skips a piece triangle if any of its vertices swings.
+  The hidden body regions are fixed when the outfit binds, so a moving piece triangle could swing away and leave a hole.
 - The ray starts at each claimed body triangle's centroid and runs along its outward normal, taken from counter
   clockwise winding as glTF front faces. The centroid is the one point that always lies inside the triangle, and the
   outward normal is the direction a piece worn over the skin lies in.
@@ -297,17 +409,26 @@ with the reason for each:
   never makes a claim dishonest, because it cannot show through anything. A sliver, a triangle of nearly zero area,
   does get a normal, but its direction is only as good as its winding and its rounded positions, so a sliver may test
   along a noisy direction.
-- A piece with no layer, as formats 1 and 2 read, claims nothing. It is honest with an empty report.
+- A piece with no layer, as formats 1 and 2 read, claims nothing. It is honest and its report has no region entries.
+
+For a skinned part, pass the joint names from its `ChainMotionDefinition.Chains` to
+`AttachmentGlb.SwingingVertices(glb, sourceName, chainJoints)` and use the returned flags as the mask. The helper
+validates the bytes with the skinned embedded GLB policy. It returns flags in flattened skinned import order (mesh,
+primitive, vertex). A vertex swings if it has a positive weight on any named joint. Joint names use ordinal matching.
+Names absent from the skin match no vertices.
 
 The `CoverageClaimReport` lists each claimed region in the body map's region order as a `CoverageClaimRegion` with
 its `Name`, `TriangleCount`, `DegenerateCount`, `UncoveredCount` and the `Uncovered` triangles as
 `CoverageClaimTriangle(PartIndex, TriangleIndex)`, in part then triangle order, so a tool can show them. `Honest` is
-true when no claimed triangle is uncovered. The ray test runs in double precision, so float geometry neither
+true when no claimed triangle is uncovered. `IgnoredSwingingTriangleCount` counts the piece triangles skipped across
+all piece meshes, even outside the claimed regions. The ray test runs in double precision, so float geometry neither
 overflows nor underflows and only a triangle of truly zero area counts as degenerate.
 
-A null argument throws `ArgumentNullException`. Every other refusal throws `CoverageClaimDataException`, derived from
-`MalformedDataException`, with a `CoverageClaimRefusal Reason`. `MeshKind` says whether a refused mesh is a `Body`
-or `Piece` mesh and `MeshIndex` is its zero-based position in that list, which for a body mesh is its map part.
+A null argument throws `ArgumentNullException`. An invalid maximum distance throws `ArgumentOutOfRangeException`.
+A nonempty `Swinging` mask with a length different from its mesh's position count throws `ArgumentException`.
+The refusals below throw `CoverageClaimDataException`, derived from `MalformedDataException`, with a
+`CoverageClaimRefusal Reason`. `MeshKind` says whether a refused or missing mesh is a `Body` or `Piece` mesh.
+`MeshIndex` is the mesh's zero-based position when it is present, which for a body mesh is its map part.
 
 | Reason | What it refuses | Other identifiers |
 |---|---|---|
@@ -317,9 +438,68 @@ or `Piece` mesh and `MeshIndex` is its zero-based position in that list, which f
 | `IndexCountNotTriangles` | a mesh whose index count is not a multiple of three. | `MeshKind`, `MeshIndex`, `IndexCount` |
 | `IndexOutOfRange` | an index past the mesh's positions. | `MeshKind`, `MeshIndex`, `IndexPosition`, `VertexIndex`, `VertexCount` |
 | `PositionNotFinite` | a position with a NaN or infinite component. | `MeshKind`, `MeshIndex`, `VertexIndex` |
+| `SwingMaskMissing` | a piece mesh without the mask required by its part's motion. | `MeshKind`, `MeshIndex`, `PartId`, `MeshKey` |
+| `PieceMeshPartIdMissing` | a piece mesh with `PartId` zero when the definition has motion. | `MeshKind`, `MeshIndex`, `PartId` (zero) |
+| `PieceMeshPartIdUnknown` | a piece mesh naming a part ID absent from a definition with motion. | `MeshKind`, `MeshIndex`, `PartId` |
+| `PieceMeshPartIdDuplicate` | a second piece mesh naming the same part ID in a definition with motion. | `MeshKind`, `MeshIndex` (the second mesh), `PartId`, `MeshKey` |
+| `PiecePartMeshMissing` | a part with no mesh in a piece with motion. | `MeshKind`, `PartId`, `MeshKey` |
 
 The check has its own refusal family rather than `OutfitDataException`, because it resolves no worn list, so the
 outfit refusal's `WornIndex` would have nothing to name.
+
+## Chain simulation
+
+Build a `ChainRig` with an anchor count, ordered chains and optional `ChainLink` pairs. Each chain names
+its anchor index and supplies one to sixteen `ChainJointRest` transforms in parent-to-child order. The
+first joint stays on its anchor and can turn. The tip is a point in the last joint's local frame, so
+even a one-joint chain can swing. A link keeps corresponding movable joints and both virtual tips near
+their rest spacing. The link springs have a natural frequency of 10 radians per second. All links
+read the same substep poses. When several links touch a joint or tip, it receives their average
+correction.
+The rig owns its rest data and can be shared. Create a `ChainSimulation` for each wearer with a fixed
+collider count.
+
+Pose the wearer first, then call `Step` with the world-space anchors, capsule endpoints and radii,
+the wearer matrix and elapsed seconds. Equal capsule endpoints describe a sphere. Anchor matrices must
+be finite, invertible affine transforms. The wearer matrix must be finite and affine. Distances are in
+metres, Y is up, and local transforms compose as scale, rotation, translation in that order.
+
+The solver uses damped Verlet particles with implicit midpoint springs. Stiffness is the nonnegative
+natural frequency in radians per second for a segment returning to its rest direction. Damping is a
+nonnegative velocity decay rate per second.
+Gravity scales world gravity from 0 to 10. Half of the gravity displacement goes into the position
+prediction and half into the stored previous position, so the next substep carries the full velocity
+change even when its duration differs. Trail ranges from 0, carrying the chain with the wearer's
+rigid movement, to 1, giving the chain full inertia. The bend limit is greater than zero and at most
+pi radians. The nonnegative chain radius adds clearance against capsules. `Tune` applies settings
+starting at the next substep.
+
+Substeps interpolate the input poses and end on the current frame, so chains follow their anchors
+through fast movement. A hitch may drop integration time to stay within the step budget while still
+reaching the current pose. `MaxStepSeconds` is greater than zero and at most 1/30 s.
+`MaxStepsPerFrame` is from 1 through 64. Segment lengths use the posed rest scale. Capsule correction keeps the
+root and segment lengths fixed and can exceed the bend limit to clear a collider. The first step,
+`Reset()`, a teleport or a long gap places the chain at rest with zero velocity. `Held` blends from the
+last shape to rest without stepping physics. On resume, physics starts from the held shape with zero
+velocity. The displayed joint swings blend from that shape toward the live solution over
+`HoldBlendSeconds`. Each frame continues from the last displayed swing, so an anchor turning through
+a half turn keeps a continuous blend. During the blend, display can still intersect a collider the
+live solution clears.
+Use `MotionLevels.Assign` to select the nearest wearers within a range and budget, with ties in input order.
+
+Read `JointsFromAnchor` in rig joint order or call `ComposeJointWorlds` with the latest anchors and an
+output span. The solver stores its results relative to each anchor so callers can draw on a new body
+pose without stepping again. The results start at the rest hang. Stepping and composing use buffers
+allocated at construction.
+
+| `ChainSimulationOptions` property | Default |
+| --- | --- |
+| `MaxStepSeconds` | 1/120 s |
+| `MaxStepsPerFrame` | 8 |
+| `TeleportDistance` | 2 m |
+| `LongestGapSeconds` | 0.5 s |
+| `HoldBlendSeconds` | 0.25 s |
+| `Gravity` | (0, -9.81, 0) m/s² |
 
 ## Set refusals
 
@@ -369,14 +549,31 @@ Every JSON refusal also carries `SourceName`. Direct constructor and reference c
 | `JsonPropertyMissing` | a required property absent from attachment JSON. | `JsonPath`, `PropertyName` |
 | `JsonStringRequired` | a non-string attachment schema member. | `JsonPath`, `PropertyName` |
 | `JsonMalformed` | malformed JSON syntax while retaining the caller source name. | `InnerException` |
-| `JsonValueShapeInvalid` | a JSON value shape rejected by a framework accessor, or a `covers` entry or region run of the wrong shape. | `InnerException`, or `JsonPath` with `CoverIndex` or `PartId` and `RunIndex` |
-| `LayerMissing` | format 3 without a layer, or a part with a region tag in a set built without a layer. | `JsonPath` and `PropertyName`, or `PartId` |
+| `JsonValueShapeInvalid` | a JSON value shape rejected by a framework accessor, or a `covers` entry, region run or format 4 member of the wrong shape. | `InnerException` or `JsonPath` with the applicable indices |
+| `LayerMissing` | a region-tagged format without a layer, or a part with a region tag in a set built without a layer. | `JsonPath` and `PropertyName`, or `PartId` |
 | `LayerUnknown` | a layer that names no defined layer. | `JsonPath` and `LayerName`, or `Layer` |
 | `CoveredRegionDuplicate` | a covered region listed more than once. | `CoverIndex`, `RegionName` |
 | `PartRegionMissing` | a part without its `region` or `regions` in a set with a layer. | `PartId`, and `JsonPath` and `PropertyName` from JSON |
 | `PartRegionRunEmpty` | a skinned part's run of fewer than one triangle. | `PartId`, `RunIndex`, `RegionName` |
 | `RegionNameEmpty`, `RegionNameMalformedUtf16` | a blank or malformed covered or part region name. | `RegionName`, with `CoverIndex` or `PartId` and `RunIndex` |
 | `RegionTriangleCountOverflow` | a skinned part whose runs add up past Int32. | `PartId`, `RunIndex`, `RegionName`, `ActualTriangleCount` |
+| `MotionKindUnsupported` | a motion kind the reader cannot represent. | `PartId`, `PartIndex`, and `Kind` from JSON or `ActualType` from the constructor |
+| `ChainsEmpty`, `TooManyChains` | a motion with fewer than 1 or more than 32 chains. | `PartId`, `PartIndex`, `ActualCount`, `ExpectedCount` |
+| `ChainJointsEmpty`, `TooManyChainJoints` | a chain with fewer than 1 or more than 16 joints. | `PartId`, `PartIndex`, `ChainIndex`, `ActualCount`, `ExpectedCount` |
+| `ChainJointNameEmpty`, `ChainJointNameMalformedUtf16`, `ChainJointDuplicate` | a blank, malformed or repeated joint name in a part's chains. | `PartId`, `PartIndex`, `ChainIndex`, `JointIndex`, `JointName` when available |
+| `ChainTipInvalid` | a tip without three finite components or with all three zero. | `PartId`, `PartIndex`, `ChainIndex` |
+| `ChainSettingOutOfRange` | a chain setting outside its range. | `PartId`, `PartIndex`, `ChainIndex`, `SettingName` |
+| `ChainLinkInvalid`, `ChainLinkDuplicate` | a link that fails to pair distinct existing chains or repeats an existing pair. | `PartId`, `PartIndex`, `LinkIndex` |
+| `TooManyLinks` | a part with more than 64 links. | `PartId`, `PartIndex`, `ActualCount`, `ExpectedCount` |
+| `ColliderJointNameEmpty`, `ColliderJointNameMalformedUtf16` | a collider with a blank or malformed joint name. | `ColliderIndex`, `JointName` when available |
+| `ColliderPointInvalid`, `ColliderRadiusInvalid` | a collider with non-finite endpoint components or a radius that is non-finite or nonpositive. | `ColliderIndex`, `JointName` |
+| `TooManyColliders` | a set with more than 8 colliders. | `ActualCount`, `ExpectedCount` |
+| `MotionWithoutLayer` | motion or colliders on a set with no layer. | `PartId` and `PartIndex` for motion, plus `PropertyName` from JSON |
+
+Format 4 JSON refusals above include `JsonPath`. Chain, joint, link and collider indices are zero-based and refer
+to input order. Counts report the supplied size and the required minimum or allowed maximum. For a collider
+sequence without a known count, construction stops at the first item past the cap, so `ActualCount` is the number
+read, one more than the cap, and a lower bound on the sequence's length.
 
 ## GLB refusals
 

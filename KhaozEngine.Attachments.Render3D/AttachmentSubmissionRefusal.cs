@@ -8,4 +8,7 @@ public enum AttachmentSubmissionRefusal
 
     /// <summary>Refuses rigid descriptors for a set containing skinned parts.</summary>
     MixedDrawRequired,
+
+    /// <summary>Refuses motion created by a different bound set or outfit.</summary>
+    MotionMismatch,
 }

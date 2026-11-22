@@ -4460,10 +4460,12 @@ scene.Draw(gun, sockets["socket_nose"] * shipWorld, Color.White);
   only. metallicRoughness passes through unchanged since the shader reads roughness from `.g`, and normal stays
   tangent-space RGB). Upload them with `scene.LoadSurfaceMaps(maps)` → `SurfaceMaps`, or skip a step with the
   one-call overloads `scene.LoadMesh(mesh, maps)` / `scene.LoadSkinnedMesh(mesh, maps)` (both taking a
-  `GltfMaterialMaps`), whose mesh owns its map references and releases them when it unloads. Embedded GLB images
-  and external image files are both read. A material with no textures, or a missing/undecodable image, yields an
+  `GltfMaterialMaps`), whose mesh owns its map references and releases them when it unloads. Path overloads read
+  embedded GLB images and external image files. A material with no textures, or a missing/undecodable image, yields an
   all-absent bundle (`maps.IsEmpty`) and falls back to the renderer defaults, never a throw. The default
   explicit-`SurfaceMaps` path is unchanged, so this is purely a convenience on top.
+  For a GLB snapshot, use `LoadSkinnedWithMaterial(glb, identity)` and
+  [read the clips from the same bytes](#under-the-hood-the-pieces-characteravatar-composes).
 - Shared material textures: every image the glTF loader reads carries `DecodedImage.Identity`, `file:` plus the
   absolute path for an external image URI (resolved against its glb's folder) or `sha256:` plus the hex SHA-256 of
   the encoded bytes for an embedded one. The loader decodes each identity once while any loaded part list still
@@ -6850,14 +6852,16 @@ clips* (idle/walk/run/jump, plus swim/tread in water) and crossfade them off a c
 through the skinned loader (which now also reads the joint hierarchy) and read its clips:
 
 ```csharp
-// Skinned-ingest a rigged + animated glb (rig + animation channels preserved; NOT the flatten-prop path).
-var (mesh, maps) = GltfLoader.LoadSkinnedWithMaterial("player.glb");
+// Read the rigged and animated body once, then import mesh, maps and clips from that snapshot.
+const string identity = "body.glb";
+byte[] glb = File.ReadAllBytes(identity);
+var (mesh, maps) = GltfLoader.LoadSkinnedWithMaterial(glb, identity);
 SkinnedMeshHandle handle = scene.LoadSkinnedMesh(mesh, maps);
 Skeleton skeleton = mesh.Skeleton!;                       // the joint hierarchy LoadSkinned now attaches
 
 // Read every clip and map the ones you want to locomotion states (clip names are whatever your asset uses).
 var byName = new Dictionary<string, AnimationClip>();
-foreach (AnimationClip c in GltfLoader.LoadAnimations("player.glb")) byName[c.Name] = c;
+foreach (AnimationClip c in GltfLoader.LoadAnimations(glb, identity)) byName[c.Name] = c;
 var clips = new Dictionary<LocomotionState, AnimationClip>
 {
     [LocomotionState.Idle] = byName["Idle"],
@@ -6872,6 +6876,11 @@ var clips = new Dictionary<LocomotionState, AnimationClip>
 // AnimatedCharacter (KhaozEngine.Game / Game.Render3D) wraps the skeleton + clips + player + state machine.
 var character = new AnimatedCharacter(skeleton, clips, new LocomotionThresholds(0.1f, 9f), crossfade: 0.15f);
 ```
+
+Use `LoadSkinnedWithMaterial(path)` and `LoadAnimations(path)` for assets with external images.
+The byte overloads accept images in the GLB buffer or in data URIs. An external image anywhere in
+the GLB, including an unused one, raises `GltfImportDataException` with
+`ExternalImageInByteImport`, the supplied identity and the image index.
 
 For headless asset checks, `PoseProbe` samples the same local tracks and composes every skeleton node without a
 mesh or graphics device:
@@ -7432,11 +7441,11 @@ because no rigid orientation can be recovered.
 values whose `AttachmentPartDefinition` parts are either `RigidAttachmentPartDefinition` or
 `SkinnedAttachmentPartDefinition`. `AttachmentSetJson` reads format 1 as rigid and format 2 with a
 required exact `rigid` or `skinned` kind on every part. Rigid parts keep `joint` and `local`. Skinned
-parts contain only `id`, `kind` and `mesh`. Format 3 adds a worn layer and covered body regions, described
-under [Regions, layers and outfits](#regions-layers-and-outfits). Unknown or duplicate members are refused.
-Rigid-only sets write the original canonical format-1 bytes and keep their semantic hashes. Mixed or skinned
-sets write format 2, and a set with a layer writes format 3. Reference this package explicitly from headless
-publishers.
+parts in format 2 contain only `id`, `kind` and `mesh`. Format 3 adds a
+[worn layer and covered body regions](#regions-layers-and-outfits). Format 4 adds
+[skinned part motion and worn set colliders](#hanging-parts-that-swing). Unknown or duplicate members are refused.
+The writer uses the lowest format that expresses the set, preserving canonical bytes and semantic hashes for
+existing sets. Reference this package explicitly from headless publishers.
 
 Set constructor admission throws `AttachmentSetArgumentException`, which remains catchable as
 `ArgumentException` and retains `ParamName`. `ValidateReferences` and `AttachmentSetJson.Parse`
@@ -7498,10 +7507,11 @@ bound.Queue(map.Skeleton, jointPalette, characterWorld, visualIncarnationKey);
 ```
 
 The explicit host mesh carries the exact `map.Skeleton` instance and its actual inverse binds.
-Garment joints match host skin bones by ordinal name, including reordered subsets. A matching node
-outside the skin is insufficient. Every garment inverse bind must be finite and match the host
-within an inclusive absolute `1e-4` per element over all 16 elements. Binding precomputes the index
-table. Rigid parts retain part-local correction, body alignment and scale-free joint composition.
+Garment joints outside declared chains match host skin bones by ordinal name, including reordered subsets.
+Each matching garment inverse bind must be finite and match the host within an inclusive absolute `1e-4`
+per element over all 16 elements. Binding precomputes the index table and resolves any
+[chain joints](#hanging-parts-that-swing). Rigid parts retain part-local correction, body alignment and
+scale-free joint composition.
 Rigid-only `loaded.Bind(map)` remains valid and refuses garments with `AttachmentBindingDataException`,
 `AttachmentBindingRefusal.HostMeshRequired` and `PartId`. Binding data refusals derive from
 `MalformedDataException`. Callers handling malformed data from either `AttachmentSetBinding`
@@ -7709,11 +7719,96 @@ draws its own handle, and one that is wholly covered draws nothing, so both stil
 
 **Check a claim offline.** A false `Covers` claim hides skin that nothing replaces and opens a hole in the body.
 `CoverageClaimCheck.Verify(bodyMeshes, body, piece, pieceMeshes, maxDistanceMetres)` checks at the rest pose that
-the piece lies over every triangle of every region it claims, and its report lists the uncovered triangles by part.
+fixed triangles of the piece lie over every triangle of every region it claims. For a piece with motion, pass
+one mesh per definition part in any order and set each mesh's `CoverageClaimMesh.PartId` to its definition ID.
+Use `AttachmentGlb.SwingingVertices(glb, sourceName, chainJoints)` to populate `CoverageClaimMesh.Swinging`
+for each chained part. An omitted or empty mask for a part with motion raises `CoverageClaimDataException`
+with `SwingMaskMissing` and the part's ID and mesh key.
+The report lists the uncovered triangles by part and counts the skipped piece triangles in
+`IgnoredSwingingTriangleCount`.
 A tool runs it when a piece is made, never per frame. The consumer chooses the distance, because how far a piece
 may stand off the skin depends on the game's art and scale. The
 [coverage claim check reference](../KhaozEngine.Attachments/README.md#coverage-claim-check) gives the ray rules and
 why an unwelded seam or a T junction reads as uncovered.
+
+#### Hanging parts that swing
+
+A skinned part can declare its own chains for pieces such as a cloak or strap. The first joint's parent
+names a host skin joint as the anchor. The chain joints belong to the garment skin and form a direct parent
+line with names distinct from the host skin. The first joint stays anchored, and a virtual tip lets the last
+joint turn. The GPU-free solver uses gravity, springs and capsules to move the chains. Drawing without a
+`WornMotion` poses them at their authored rest hang.
+
+Format 4 keeps the layer and region tags of format 3. Add `motion` with kind `chains` to a skinned part and
+optional root `colliders` for capsules contributed by the worn set. Either addition requires a layer.
+A separate body collider file declares capsules against the body's `rig-v1` identity. Capsules name a host skin
+joint and use endpoints and a radius in the body's rest model space. Chains collide with the body and all worn
+set capsules on that wearer. In the bind pose the radius keeps its authored size before wearer scaling.
+During motion it follows the largest axis scale of the composed rest-to-world transform.
+The [format 4 reference](../KhaozEngine.Attachments/README.md#format-4)
+gives the schema and limits.
+
+Publish format 4 after every reader moves to 24.5.0 or later. A 24.4.0 reader raises
+`AttachmentSetDataException` with `JsonPropertyUnknown` for root `colliders` if the member is present,
+even when empty. Without `colliders` it raises `FormatVersionUnsupported` for version 4.
+Readers at 24.3.0 or earlier raise `JsonPropertyUnknown` for `layer` in canonical format 4 bytes.
+
+Load the body collider file and bind when the outfit changes. The example uses the cache, loaded body
+regions, map and host mesh from the preceding section, a loaded `cape` set and an animation clip for the
+same skeleton. Keep one motion and one set of frame buffers per wearer.
+
+```csharp
+LoadedBodyColliders colliders = cache.GetBodyColliders(colliderKey, colliderSha256, bodyRigIdentity, hostMesh: bodyMesh);
+using BoundOutfit outfit = cache.BindOutfit(body, [cape.Bind(map, bodyMesh)]);
+WornMotion motion = outfit.CreateMotion(colliders);
+Skeleton skeleton = map.Skeleton;
+var player = new AnimationPlayer(skeleton);
+player.Play(clip);
+var jointPalette = new Matrix4x4[skeleton.BoneCount];
+var draws = new AttachmentDraw[outfit.DrawCount(0)];
+var template = new RigidInstanceDraw(default, Matrix4x4.Identity);
+
+// Call once per frame with an outline group created for this frame.
+void DrawSwingingFrame(float deltaSeconds, Matrix4x4 characterWorld, MeshOutlineGroup outlineGroup,
+    MotionLevel level)
+{
+    player.Update(deltaSeconds);
+    player.GetBonePalette(jointPalette);
+    motion.Step(skeleton, jointPalette, characterWorld, deltaSeconds, level);
+
+    for (int part = 0; part < outfit.BodyPartCount; part++)
+        if (outfit.TryBodyMesh(part, out SkinnedMeshHandle mesh))
+            scene.DrawSkinned(new SkinnedInstanceDraw(mesh, characterWorld), jointPalette);
+
+    int count = outfit.WriteDraws(0, motion, skeleton, jointPalette, characterWorld, visualIncarnationKey,
+        template, draws);
+    for (int i = 0; i < count; i++)
+    {
+        AttachmentDraw draw = draws[i];
+        if (draw.IsSkinned) scene.DrawSkinned(draw.Skinned, draw.BoneMatrices.Span);
+        else scene.Draw(draw.Rigid);
+    }
+    outfit.QueueOutline(0, motion, skeleton, jointPalette, characterWorld, outlineGroup);
+}
+```
+
+Load colliders for the binding's skeleton instance. `CreateMotion` raises `BodyCollidersMismatch` for a
+different skeleton instance, even when the joint names match. Pass null to use only the worn sets'
+capsules. A single bound set also supports
+`CreateMotion` and takes that motion in its `Queue`, `WriteDraws` and `QueueOutline` overloads. Keep each
+motion with its originating binding and animate before stepping. A skipped step keeps the last chain shape
+on the current anchor. Use `Reset()` to restore the rest hang immediately.
+
+For multiple wearers, call `MotionLevels.Assign(wearerPositions, viewerPosition, simulateWithin, maxSimulated,
+scratch, levels)` before stepping. It assigns `Simulated` to the nearest wearers within the distance limit
+up to the count limit. The rest receive `Held` and blend toward the rest hang. Reuse the scratch span with
+space for the smaller of the wearer count and the count limit, and one output level per wearer.
+
+The shipped Scene3D upload leases expand the source mesh and its views' culling bounds for chain reach
+around the rest anchor. Animation that translates or scales the anchor far from rest can carry the chain beyond the
+bounds. Custom `IAttachmentScene` leases use their own culling policy and must account for the swing.
+See the [renderer reference](../KhaozEngine.Attachments.Render3D/README.md#hanging-chains-and-wearer-motion)
+for binding, resets and culling details.
 
 #### Migrating from 20.x
 
@@ -9813,7 +9908,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="24.4.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="24.5.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -10424,7 +10519,7 @@ See the [Movement arrival contract](../KhaozEngine.Movement/README.md#range-stee
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="24.4.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="24.5.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -11435,7 +11530,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="24.4.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="24.5.0" />
 ```
 
 ```csharp
@@ -21460,7 +21555,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="24.4.1" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="24.5.0" />
 ```
 
 ```csharp
@@ -21496,7 +21591,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="24.4.1" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="24.5.0" />
 ```
 
 ```csharp
@@ -21747,7 +21842,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="24.4.1" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="24.5.0" />
 ```
 
 ```csharp
@@ -26693,7 +26788,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="24.4.1" />
+  <PackageReference Include="KhaozEngine.Automation" Version="24.5.0" />
 </ItemGroup>
 ```
 

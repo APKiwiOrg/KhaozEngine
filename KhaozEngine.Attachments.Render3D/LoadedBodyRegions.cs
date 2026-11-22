@@ -10,15 +10,18 @@ public sealed class LoadedBodyRegions
 {
     readonly BodyRegionMap _map;
 
-    internal LoadedBodyRegions(AttachmentSetCache owner, BodyRegionMap map, SkinnedMeshHandle[] parts, uint[][] indices)
+    internal LoadedBodyRegions(AttachmentSetCache owner, BodyRegionMap map, SkinnedMeshHandle[] parts, uint[][] indices,
+        Skeleton? hostSkeleton)
     {
         Owner = owner;
         _map = map;
         Parts = parts;
         Indices = indices;
+        HostSkeleton = hostSkeleton;
     }
 
     internal AttachmentSetCache Owner { get; }
+    internal Skeleton? HostSkeleton { get; }
 
     /// <summary>The body's material part handles, in the map's part order.</summary>
     internal IReadOnlyList<SkinnedMeshHandle> Parts { get; }

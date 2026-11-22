@@ -3,11 +3,11 @@ using System.Numerics;
 namespace KhaozEngine.Render3D
 {
     /// <summary>The optional textures auto-read from a glTF material by <see cref="GltfLoader.LoadWithMaterial(string)"/> /
-    /// <see cref="GltfLoader.LoadSkinnedWithMaterial"/>, each decoded to raw RGBA8 (the loader has no GPU device, so
-    /// it never creates a <see cref="Scene3D.TextureHandle"/>; the upload stays in <see cref="Scene3D"/>). Any map a
-    /// material doesn't reference - or whose image is missing/external-unresolved/undecodable - is left
-    /// <c>null</c> (absent, never a throw), so a material with no textures yields an all-null
-    /// <see cref="GltfMaterialMaps"/>. <see cref="Roughness"/> is glTF's packed ORM-style texture passed
+    /// <see cref="GltfLoader.LoadSkinnedWithMaterial(string)"/> or its byte overload, each decoded to raw RGBA8
+    /// (upload to a <see cref="Scene3D.TextureHandle"/> stays in <see cref="Scene3D"/>). A map stays <c>null</c>
+    /// when the material does not reference it or when its image cannot be decoded. The byte overload of
+    /// <see cref="GltfLoader.LoadSkinnedWithMaterial(System.ReadOnlyMemory{byte},string)"/> refuses external
+    /// image URIs before decoding maps. <see cref="Roughness"/> is glTF's packed ORM-style texture passed
     /// through unchanged (the model shader samples <c>.g</c> for roughness); <see cref="Normal"/> is the
     /// tangent-space RGB normal map unchanged. <see cref="AlphaCutoff"/> carries the material's alpha-cutout
     /// threshold (0 = OPAQUE, no clip). <see cref="Emissive"/> and <see cref="EmissiveFactor"/> carry the material's

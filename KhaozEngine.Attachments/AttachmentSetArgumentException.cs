@@ -24,7 +24,7 @@ public sealed class AttachmentSetArgumentException : ArgumentException, IAttachm
     /// <summary>The stable identifier of the refused part.</summary>
     public uint? PartId { get; init; }
 
-    /// <summary>The unsupported runtime part type.</summary>
+    /// <summary>The unsupported runtime part or motion type.</summary>
     public Type? ActualType { get; init; }
 
     /// <summary>The refused mesh asset key.</summary>
@@ -36,7 +36,7 @@ public sealed class AttachmentSetArgumentException : ArgumentException, IAttachm
     /// <summary>The previously declared hash for a conflicting mesh key.</summary>
     public string? ExistingHash { get; init; }
 
-    /// <summary>The malformed rigid joint name.</summary>
+    /// <summary>The rigid, chain or collider joint name involved in the refusal.</summary>
     public string? JointName { get; init; }
 
     /// <summary>The undefined layer value given to the constructor.</summary>
@@ -54,9 +54,40 @@ public sealed class AttachmentSetArgumentException : ArgumentException, IAttachm
     /// <summary>The run sum that passed the Int32 triangle range.</summary>
     public long? ActualTriangleCount { get; init; }
 
+    /// <summary>The zero-based chain index within the refused part.</summary>
+    public int? ChainIndex { get; init; }
+
+    /// <summary>The zero-based joint index within the refused chain.</summary>
+    public int? JointIndex { get; init; }
+
+    /// <summary>The zero-based input link index within the refused part.</summary>
+    public int? LinkIndex { get; init; }
+
+    /// <summary>The zero-based input collider index within the refused set.</summary>
+    public int? ColliderIndex { get; init; }
+
+    /// <summary>The JSON member name of the refused chain setting.</summary>
+    public string? SettingName { get; init; }
+
+    /// <summary>The supplied item count for a motion or collider count refusal.</summary>
+    public int? ActualCount { get; init; }
+
+    /// <summary>The required minimum or allowed maximum for a motion or collider count refusal.</summary>
+    public int? ExpectedCount { get; init; }
+
+    internal string? JsonPath { get; init; }
+
     MalformedDataException IAttachmentDataException.WithSource(string sourceName) => new AttachmentSetDataException(Reason, $"{sourceName}: {Message}", this)
     {
         SourceName = sourceName,
+        JsonPath = JsonPath,
+        ActualCount = ActualCount,
+        ExpectedCount = ExpectedCount,
+        ChainIndex = ChainIndex,
+        JointIndex = JointIndex,
+        LinkIndex = LinkIndex,
+        ColliderIndex = ColliderIndex,
+        SettingName = SettingName,
         ParamName = ParamName,
         PartCount = PartCount,
         PartIndex = PartIndex,

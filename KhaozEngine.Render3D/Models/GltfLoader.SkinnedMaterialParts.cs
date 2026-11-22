@@ -46,6 +46,14 @@ namespace KhaozEngine.Render3D
             });
         }
 
+        /// <summary>Read the skeleton of an already admitted skinned attachment without decoding geometry or
+        /// material maps. The attachment policy admits exactly one skin.</summary>
+        internal static Skeleton LoadAttachmentSkeleton(ReadOnlyMemory<byte> glb, string identity)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(identity);
+            return TranslateModelErrors(identity, () => BuildSkeleton(LoadModel(glb, identity).LogicalSkins[0]));
+        }
+
         static IReadOnlyList<GltfSkinnedMeshPart> BuildSkinnedParts(ModelRoot root, string identity, string? assetDirectory)
         {
             var meshes = DecodeSkinned(root, identity, splitByMaterial: true);

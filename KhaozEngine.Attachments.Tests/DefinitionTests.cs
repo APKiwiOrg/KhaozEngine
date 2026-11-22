@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using KhaozEngine.Attachments;
 using Xunit;
@@ -268,6 +269,173 @@ public class DefinitionTests
         Assert.Equal(fault == "runs past Int32" ? (long?)int.MaxValue + 1 : null, error.ActualTriangleCount);
     }
 
+    [Fact]
+    public void Skinned_part_value_equality_includes_motion_and_joint_order()
+    {
+        SkinnedAttachmentPartDefinition follows = AttachmentFixtures.TaggedSkinned();
+        SkinnedAttachmentPartDefinition swings = follows with { Motion = AttachmentFixtures.Motion() };
+        SkinnedAttachmentPartDefinition copy = follows with { Motion = AttachmentFixtures.Motion() };
+        Assert.NotEqual(follows, swings);
+        Assert.NotEqual(follows.GetHashCode(), swings.GetHashCode());
+        Assert.Equal(swings, copy);
+        Assert.Equal(swings.GetHashCode(), copy.GetHashCode());
+
+        var motion = Assert.IsType<ChainMotionDefinition>(copy.Motion);
+        SkinnedAttachmentPartDefinition reordered = copy with
+        {
+            Motion = motion with { Chains = [motion.Chains[0] with { Joints = ["left1", "left0"] }, motion.Chains[1], motion.Chains[2]] },
+        };
+        Assert.NotEqual(swings, reordered);
+    }
+
+    [Fact]
+    public void A_worn_set_owns_motion_lists_and_colliders()
+    {
+        string[] joints = ["left0", "left1"];
+        ChainDefinition[] chains = [AttachmentFixtures.Chain(0) with { Joints = joints }, AttachmentFixtures.Chain(1)];
+        ChainLink[] links = [new(1, 0)];
+        ColliderDefinition[] colliders = AttachmentFixtures.Colliders();
+        var part = AttachmentFixtures.TaggedSkinned() with { Motion = new ChainMotionDefinition(chains, links) };
+        var set = new AttachmentSetDefinition([part], AttachmentLayer.Garment, [], colliders);
+        byte[] before = AttachmentSetJson.Write(set);
+
+        joints[0] = "other";
+        chains[1] = AttachmentFixtures.Chain(2);
+        links[0] = new(0, 0);
+        colliders[0] = default;
+
+        ChainMotionDefinition admitted = Assert.IsType<ChainMotionDefinition>(Assert.IsType<SkinnedAttachmentPartDefinition>(Assert.Single(set.Parts)).Motion);
+        Assert.Equal([AttachmentFixtures.Chain(0), AttachmentFixtures.Chain(1)], admitted.Chains);
+        Assert.Equal(new ChainLink(0, 1), Assert.Single(admitted.Links));
+        Assert.Equal(AttachmentFixtures.Colliders(), set.Colliders);
+        Assert.Equal(before, AttachmentSetJson.Write(set));
+    }
+
+    [Theory]
+    [InlineData(AttachmentSetRefusal.MotionKindUnsupported)]
+    [InlineData(AttachmentSetRefusal.ChainsEmpty)]
+    [InlineData(AttachmentSetRefusal.TooManyChains)]
+    [InlineData(AttachmentSetRefusal.ChainJointsEmpty)]
+    [InlineData(AttachmentSetRefusal.TooManyChainJoints)]
+    [InlineData(AttachmentSetRefusal.ChainJointNameEmpty)]
+    [InlineData(AttachmentSetRefusal.ChainJointNameMalformedUtf16)]
+    [InlineData(AttachmentSetRefusal.ChainJointDuplicate)]
+    [InlineData(AttachmentSetRefusal.ChainTipInvalid)]
+    [InlineData(AttachmentSetRefusal.ChainSettingOutOfRange)]
+    [InlineData(AttachmentSetRefusal.ChainLinkInvalid)]
+    [InlineData(AttachmentSetRefusal.ChainLinkDuplicate)]
+    [InlineData(AttachmentSetRefusal.TooManyLinks)]
+    [InlineData(AttachmentSetRefusal.ColliderJointNameEmpty)]
+    [InlineData(AttachmentSetRefusal.ColliderJointNameMalformedUtf16)]
+    [InlineData(AttachmentSetRefusal.ColliderPointInvalid)]
+    [InlineData(AttachmentSetRefusal.ColliderRadiusInvalid)]
+    [InlineData(AttachmentSetRefusal.TooManyColliders)]
+    [InlineData(AttachmentSetRefusal.MotionWithoutLayer)]
+    public void Motion_and_colliders_are_admitted_with_typed_constructor_refusals(AttachmentSetRefusal reason)
+    {
+        var part = AttachmentFixtures.TaggedSkinned();
+        ChainMotionDefinition motion = AttachmentFixtures.Motion();
+        ColliderDefinition[] colliders = AttachmentFixtures.Colliders();
+        ChainDefinition first = motion.Chains[0];
+        ColliderDefinition firstCollider = colliders[0];
+        switch (reason)
+        {
+            case AttachmentSetRefusal.ChainsEmpty:
+                motion = new([first], []);
+                break;
+            case AttachmentSetRefusal.TooManyChains:
+                motion = motion with { Chains = AttachmentFixtures.NumberedChains(32) };
+                break;
+            case AttachmentSetRefusal.TooManyChainJoints:
+                first = first with { Joints = AttachmentFixtures.NumberedJoints(16) };
+                motion = motion with { Chains = [first, motion.Chains[1], motion.Chains[2]] };
+                break;
+            case AttachmentSetRefusal.TooManyLinks:
+                motion = new(AttachmentFixtures.NumberedChains(12), AttachmentFixtures.NumberedLinks(64));
+                break;
+            case AttachmentSetRefusal.TooManyColliders:
+                colliders = Enumerable.Repeat(firstCollider, 8).ToArray();
+                break;
+        }
+        ChainDefinition ChangeFirstJoint(string joint) => first with { Joints = [joint, first.Joints[1]] };
+        ChainMotionDefinition ChangeFirstChain(ChainDefinition chain) => motion with { Chains = [chain, motion.Chains[1], motion.Chains[2]] };
+        var refusedMotion = reason switch
+        {
+            AttachmentSetRefusal.MotionKindUnsupported => (PartMotionDefinition)new UnknownMotion(),
+            AttachmentSetRefusal.ChainsEmpty => motion with { Chains = [] },
+            AttachmentSetRefusal.TooManyChains => motion with { Chains = AttachmentFixtures.NumberedChains(33) },
+            AttachmentSetRefusal.ChainJointsEmpty => ChangeFirstChain(first with { Joints = [] }),
+            AttachmentSetRefusal.TooManyChainJoints => ChangeFirstChain(first with { Joints = AttachmentFixtures.NumberedJoints(17) }),
+            AttachmentSetRefusal.ChainJointNameEmpty => ChangeFirstChain(ChangeFirstJoint(" ")),
+            AttachmentSetRefusal.ChainJointNameMalformedUtf16 => ChangeFirstChain(ChangeFirstJoint("\uD800")),
+            AttachmentSetRefusal.ChainJointDuplicate => ChangeFirstChain(ChangeFirstJoint("right0")),
+            AttachmentSetRefusal.ChainTipInvalid => ChangeFirstChain(first with { Tip = Vector3.Zero }),
+            AttachmentSetRefusal.ChainSettingOutOfRange => ChangeFirstChain(first with { Settings = first.Settings with { Trail = 1.25f } }),
+            AttachmentSetRefusal.ChainLinkInvalid => motion with { Links = [new(0, 3), motion.Links[1]] },
+            AttachmentSetRefusal.ChainLinkDuplicate => motion with { Links = [..motion.Links, new(1, 0)] },
+            AttachmentSetRefusal.TooManyLinks => motion with { Links = AttachmentFixtures.NumberedLinks(65) },
+            _ => motion,
+        };
+        var refusedColliders = reason switch
+        {
+            AttachmentSetRefusal.ColliderJointNameEmpty => [firstCollider with { Joint = " " }, colliders[1]],
+            AttachmentSetRefusal.ColliderJointNameMalformedUtf16 => [firstCollider with { Joint = "\uD800" }, colliders[1]],
+            AttachmentSetRefusal.ColliderPointInvalid => [firstCollider with { Start = new(float.PositiveInfinity, 0, 0) }, colliders[1]],
+            AttachmentSetRefusal.ColliderRadiusInvalid => [firstCollider with { Radius = 0 }, colliders[1]],
+            AttachmentSetRefusal.TooManyColliders => [..colliders, firstCollider],
+            _ => colliders,
+        };
+
+        bool noLayer = reason == AttachmentSetRefusal.MotionWithoutLayer;
+        if (noLayer) part = part with { Regions = [] };
+        AttachmentSetDefinition Admit(PartMotionDefinition? candidate, ColliderDefinition[] candidates) => noLayer
+            ? new([part with { Motion = candidate }])
+            : new([part with { Motion = candidate }], AttachmentLayer.Garment, [], candidates);
+
+        Assert.Single(Admit(noLayer ? null : motion, colliders).Parts);
+        var error = Assert.Throws<AttachmentSetArgumentException>(() => Admit(refusedMotion, refusedColliders));
+        Assert.Equal(reason, error.Reason);
+        bool colliderFault = reason is AttachmentSetRefusal.ColliderJointNameEmpty or AttachmentSetRefusal.ColliderJointNameMalformedUtf16
+            or AttachmentSetRefusal.ColliderPointInvalid or AttachmentSetRefusal.ColliderRadiusInvalid or AttachmentSetRefusal.TooManyColliders;
+        Assert.Equal(colliderFault ? "colliders" : "parts", error.ParamName);
+        Assert.Equal(colliderFault ? null : (uint?)2, error.PartId);
+        Assert.Equal(reason == AttachmentSetRefusal.MotionKindUnsupported ? typeof(UnknownMotion) : null, error.ActualType);
+        Assert.Equal(reason switch
+        {
+            AttachmentSetRefusal.ChainJointsEmpty or AttachmentSetRefusal.TooManyChainJoints or AttachmentSetRefusal.ChainJointNameEmpty
+                or AttachmentSetRefusal.ChainJointNameMalformedUtf16 or AttachmentSetRefusal.ChainTipInvalid or AttachmentSetRefusal.ChainSettingOutOfRange => 0,
+            AttachmentSetRefusal.ChainJointDuplicate => 1,
+            _ => (int?)null,
+        }, error.ChainIndex);
+        Assert.Equal(reason switch
+        {
+            AttachmentSetRefusal.ChainJointNameEmpty or AttachmentSetRefusal.ChainJointNameMalformedUtf16 or AttachmentSetRefusal.ChainJointDuplicate => 0,
+            _ => (int?)null,
+        }, error.JointIndex);
+        Assert.Equal(reason switch { AttachmentSetRefusal.ChainLinkInvalid => 0, AttachmentSetRefusal.ChainLinkDuplicate => 2, _ => (int?)null }, error.LinkIndex);
+        Assert.Equal(colliderFault && reason != AttachmentSetRefusal.TooManyColliders ? 0 : (int?)null, error.ColliderIndex);
+        Assert.Equal(reason == AttachmentSetRefusal.ChainSettingOutOfRange ? "trail" : null, error.SettingName);
+        Assert.Equal(reason switch
+        {
+            AttachmentSetRefusal.ChainJointNameEmpty or AttachmentSetRefusal.ColliderJointNameEmpty => " ",
+            AttachmentSetRefusal.ChainJointNameMalformedUtf16 or AttachmentSetRefusal.ColliderJointNameMalformedUtf16 => "\uD800",
+            AttachmentSetRefusal.ChainJointDuplicate => "right0",
+            AttachmentSetRefusal.ColliderPointInvalid or AttachmentSetRefusal.ColliderRadiusInvalid => "legL",
+            _ => null,
+        }, error.JointName);
+        Assert.Equal(reason switch
+        {
+            AttachmentSetRefusal.ChainsEmpty or AttachmentSetRefusal.ChainJointsEmpty => 0,
+            AttachmentSetRefusal.TooManyChains => 33,
+            AttachmentSetRefusal.TooManyChainJoints => 17,
+            AttachmentSetRefusal.TooManyLinks => 65,
+            AttachmentSetRefusal.TooManyColliders => 9,
+            _ => (int?)null,
+        }, error.ActualCount);
+    }
+
+    sealed record UnknownMotion : PartMotionDefinition;
+
     sealed record UnknownAttachmentPart(uint Id, AttachmentMeshRef Mesh) : AttachmentPartDefinition(Id, Mesh);
 }
 
@@ -290,4 +458,35 @@ internal static class AttachmentFixtures
     // The canonical format 3 bytes of RegionsSet(), member order as Write emits it.
     internal static string RegionsSetJson(string layer = "garment") =>
         $$"""{"formatVersion":3,"layer":"{{layer}}","covers":["a","b"],"parts":[{"id":1,"kind":"rigid","mesh":{"key":"parts/plate.glb","sha256":"{{Hash}}"},"joint":"hip","local":{{Identity}},"region":"a"},{"id":2,"kind":"skinned","mesh":{"key":"parts/garment.glb","sha256":"{{Hash}}"},"regions":[["a",3],["b",1]]}]}""";
+
+    internal static ChainDefinition Chain(int index) => index switch
+    {
+        0 => new(["left0", "left1"], new(0, -0.25f, 0), new(6, 3, 1, 0.7f, 1.4f, 0.02f)),
+        1 => new(["right0"], new(0, -0.5f, 0), new(8, 4, 2, 0.5f, 1, 0)),
+        2 => new(["rear0"], new(0, -0.125f, 0), new(0, 0, 0, 0, 0.5f, 0)),
+        _ => throw new ArgumentOutOfRangeException(nameof(index)),
+    };
+
+    internal static ChainMotionDefinition Motion() => new([Chain(0), Chain(1), Chain(2)], [new(0, 1), new(1, 2)]);
+
+    internal static ColliderDefinition[] Colliders() => [new("legL", Vector3.Zero, Vector3.UnitY, 0.125f), new("upper", Vector3.UnitY, Vector3.UnitY, 0.25f)];
+
+    internal static string[] NumberedJoints(int count) => Enumerable.Range(0, count).Select(i => $"joint{i}").ToArray();
+
+    internal static ChainDefinition[] NumberedChains(int count) => NumberedJoints(count).Select(name => Chain(0) with { Joints = [name] }).ToArray();
+
+    internal static ChainLink[] NumberedLinks(int count) =>
+        (from first in Enumerable.Range(0, 12)
+         from second in Enumerable.Range(first + 1, 11 - first)
+         select new ChainLink(first, second)).Take(count).ToArray();
+
+    internal const string Chain0Json = """{"joints":["left0","left1"],"tip":[0,-0.25,0],"stiffness":6,"damping":3,"gravity":1,"trail":0.7,"angleLimit":1.4,"radius":0.02}""";
+    internal const string Chain1Json = """{"joints":["right0"],"tip":[0,-0.5,0],"stiffness":8,"damping":4,"gravity":2,"trail":0.5,"angleLimit":1,"radius":0}""";
+    internal const string Chain2Json = """{"joints":["rear0"],"tip":[0,-0.125,0],"stiffness":0,"damping":0,"gravity":0,"trail":0,"angleLimit":0.5,"radius":0}""";
+    internal const string Collider0Json = """{"joint":"legL","start":[0,0,0],"end":[0,1,0],"radius":0.125}""";
+    internal const string Collider1Json = """{"joint":"upper","start":[0,1,0],"end":[0,1,0],"radius":0.25}""";
+
+    internal static string MotionSetJson() =>
+        $$$"""{"formatVersion":4,"layer":"garment","covers":[],"colliders":[{{{Collider0Json}}},{{{Collider1Json}}}],"parts":[{"id":2,"kind":"skinned","mesh":{"key":"parts/garment.glb","sha256":"{{{Hash}}}"},"regions":[["a",4]],"motion":{"kind":"chains","chains":[{{{Chain0Json}}},{{{Chain1Json}}},{{{Chain2Json}}}],"links":[[0,1],[1,2]]}}]}""";
+
 }

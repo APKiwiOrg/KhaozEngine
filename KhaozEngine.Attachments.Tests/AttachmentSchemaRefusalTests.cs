@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -215,4 +216,191 @@ public sealed class AttachmentSchemaRefusalTests
         if (fault is "covers lists 'a' twice")
             Assert.Equal("covers", error.ParamName);
     }
+
+    [Theory]
+    [InlineData(AttachmentSetRefusal.MotionKindUnsupported, "$.parts[0].motion.kind")]
+    [InlineData(AttachmentSetRefusal.JsonPropertyDuplicate, "$.parts[0].motion")]
+    [InlineData(AttachmentSetRefusal.ChainsEmpty, "$.parts[0].motion.chains")]
+    [InlineData(AttachmentSetRefusal.TooManyChains, "$.parts[0].motion.chains")]
+    [InlineData(AttachmentSetRefusal.ChainJointsEmpty, "$.parts[0].motion.chains[0].joints", 0)]
+    [InlineData(AttachmentSetRefusal.TooManyChainJoints, "$.parts[0].motion.chains[0].joints", 0)]
+    [InlineData(AttachmentSetRefusal.ChainJointNameEmpty, "$.parts[0].motion.chains[0].joints[0]", 0, 0)]
+    [InlineData(AttachmentSetRefusal.ChainJointNameMalformedUtf16, "$.parts[0].motion.chains[0].joints[0]", 0, 0)]
+    [InlineData(AttachmentSetRefusal.ChainJointDuplicate, "$.parts[0].motion.chains[1].joints[0]", 1, 0)]
+    [InlineData(AttachmentSetRefusal.ChainTipInvalid, "$.parts[0].motion.chains[0].tip", 0)]
+    [InlineData(AttachmentSetRefusal.ChainSettingOutOfRange, "$.parts[0].motion.chains[0].trail", 0)]
+    [InlineData(AttachmentSetRefusal.ChainLinkInvalid, "$.parts[0].motion.links[0]", -1, -1, 0)]
+    [InlineData(AttachmentSetRefusal.ChainLinkDuplicate, "$.parts[0].motion.links[2]", -1, -1, 2)]
+    [InlineData(AttachmentSetRefusal.TooManyLinks, "$.parts[0].motion.links")]
+    [InlineData(AttachmentSetRefusal.ColliderJointNameEmpty, "$.colliders[0].joint", -1, -1, -1, 0)]
+    [InlineData(AttachmentSetRefusal.ColliderJointNameMalformedUtf16, "$.colliders[0].joint", -1, -1, -1, 0)]
+    [InlineData(AttachmentSetRefusal.ColliderPointInvalid, "$.colliders[0].end", -1, -1, -1, 0)]
+    [InlineData(AttachmentSetRefusal.ColliderRadiusInvalid, "$.colliders[0].radius", -1, -1, -1, 0)]
+    [InlineData(AttachmentSetRefusal.TooManyColliders, "$.colliders")]
+    [InlineData(AttachmentSetRefusal.MotionWithoutLayer, "$")]
+    public void A_bad_format_4_set_reports_the_rule_and_location(AttachmentSetRefusal reason, string path,
+        int chain = -1, int joint = -1, int link = -1, int collider = -1)
+    {
+        const string linkPair = ",\"links\":[[0,1],[1,2]]";
+        string allChains = string.Join(",", AttachmentFixtures.Chain0Json, AttachmentFixtures.Chain1Json, AttachmentFixtures.Chain2Json);
+        string allColliders = string.Join(",", AttachmentFixtures.Collider0Json, AttachmentFixtures.Collider1Json);
+        string canonical = AttachmentFixtures.MotionSetJson();
+        string control = reason switch
+        {
+            AttachmentSetRefusal.ChainsEmpty => Replace(canonical, linkPair, ""),
+            AttachmentSetRefusal.TooManyChains => Replace(canonical, allChains, JsonChains(32)),
+            AttachmentSetRefusal.TooManyChainJoints => Replace(canonical, "[\"left0\",\"left1\"]", JsonJoints(16)),
+            AttachmentSetRefusal.TooManyLinks => Replace(Replace(canonical, allChains, JsonChains(12)), "[[0,1],[1,2]]", JsonLinks(64)),
+            AttachmentSetRefusal.TooManyColliders => Replace(canonical, allColliders, JsonColliders(8)),
+            _ => canonical,
+        };
+        string json = reason switch
+        {
+            AttachmentSetRefusal.MotionKindUnsupported => Replace(control, "\"kind\":\"chains\"", "\"kind\":\"cloth\""),
+            // A second, unsupported kind must still read as a duplicate, never as the kind a reader happened to keep.
+            AttachmentSetRefusal.JsonPropertyDuplicate => Replace(control, "\"kind\":\"chains\"", "\"kind\":\"chains\",\"kind\":\"cloth\""),
+            AttachmentSetRefusal.ChainsEmpty => Replace(control, allChains, ""),
+            AttachmentSetRefusal.TooManyChains => Replace(control, JsonChains(32), JsonChains(33)),
+            AttachmentSetRefusal.ChainJointsEmpty => Replace(control, "\"left0\",\"left1\"", ""),
+            AttachmentSetRefusal.TooManyChainJoints => Replace(control, JsonJoints(16), JsonJoints(17)),
+            AttachmentSetRefusal.ChainJointNameEmpty => Replace(control, "\"left0\"", "\" \""),
+            AttachmentSetRefusal.ChainJointNameMalformedUtf16 => Replace(control, "\"left0\"", """ "\uD800" """),
+            AttachmentSetRefusal.ChainJointDuplicate => Replace(control, "\"right0\"", "\"left0\""),
+            AttachmentSetRefusal.ChainTipInvalid => Replace(control, "[0,-0.25,0]", "[0,0,0]"),
+            AttachmentSetRefusal.ChainSettingOutOfRange => Replace(control, "\"trail\":0.7", "\"trail\":1.25"),
+            AttachmentSetRefusal.ChainLinkInvalid => Replace(control, "[[0,1],[1,2]]", "[[0,0],[1,2]]"),
+            AttachmentSetRefusal.ChainLinkDuplicate => Replace(control, "[[0,1],[1,2]]", "[[0,1],[1,2],[1,0]]"),
+            AttachmentSetRefusal.TooManyLinks => Replace(control, JsonLinks(64), JsonLinks(65)),
+            AttachmentSetRefusal.ColliderJointNameEmpty => Replace(control, "\"legL\"", "\"\""),
+            AttachmentSetRefusal.ColliderJointNameMalformedUtf16 => Replace(control, "\"legL\"", """ "\uD800" """),
+            AttachmentSetRefusal.ColliderPointInvalid => Replace(control, "\"end\":[0,1,0]", "\"end\":[0,1e100,0]", firstOnly: true),
+            AttachmentSetRefusal.ColliderRadiusInvalid => Replace(control, "\"radius\":0.125", "\"radius\":-1"),
+            AttachmentSetRefusal.TooManyColliders => Replace(control, JsonColliders(8), JsonColliders(9)),
+            AttachmentSetRefusal.MotionWithoutLayer => Replace(control, "\"layer\":\"garment\",", ""),
+            _ => throw new ArgumentOutOfRangeException(nameof(reason)),
+        };
+
+        Assert.Equal(AttachmentLayer.Garment, ParseSet(control).Layer);
+        Assert.NotEqual(control, json);
+        var error = Assert.Throws<AttachmentSetDataException>(() => ParseSet(json));
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal("format4.json", error.SourceName);
+        Assert.Equal(path, error.JsonPath);
+        Assert.Equal(path.StartsWith("$.colliders", StringComparison.Ordinal) ? null : (uint?)2, error.PartId);
+        Assert.Equal(chain >= 0 ? chain : (int?)null, error.ChainIndex);
+        Assert.Equal(joint >= 0 ? joint : (int?)null, error.JointIndex);
+        Assert.Equal(link >= 0 ? link : (int?)null, error.LinkIndex);
+        Assert.Equal(collider >= 0 ? collider : (int?)null, error.ColliderIndex);
+        Assert.Equal(reason == AttachmentSetRefusal.ChainSettingOutOfRange ? "trail" : null, error.SettingName);
+        Assert.Equal(reason == AttachmentSetRefusal.MotionKindUnsupported ? "cloth" : null, error.Kind);
+        Assert.Equal(reason switch
+        {
+            AttachmentSetRefusal.MotionWithoutLayer => "layer",
+            AttachmentSetRefusal.JsonPropertyDuplicate => "kind",
+            _ => null,
+        }, error.PropertyName);
+        Assert.Equal(reason switch
+        {
+            AttachmentSetRefusal.ChainJointNameEmpty => " ",
+            AttachmentSetRefusal.ColliderJointNameEmpty => "",
+            AttachmentSetRefusal.ChainJointDuplicate => "left0",
+            AttachmentSetRefusal.ColliderPointInvalid or AttachmentSetRefusal.ColliderRadiusInvalid => "legL",
+            _ => null,
+        }, error.JointName);
+        (int? actual, int? expected) = reason switch
+        {
+            AttachmentSetRefusal.ChainsEmpty or AttachmentSetRefusal.ChainJointsEmpty => (0, 1),
+            AttachmentSetRefusal.TooManyChains => (33, 32),
+            AttachmentSetRefusal.TooManyChainJoints => (17, 16),
+            AttachmentSetRefusal.TooManyLinks => (65, 64),
+            AttachmentSetRefusal.TooManyColliders => (9, 8),
+            _ => ((int?)null, (int?)null),
+        };
+        Assert.Equal(actual, error.ActualCount);
+        Assert.Equal(expected, error.ExpectedCount);
+    }
+
+    [Theory]
+    [InlineData(1, "colliders", "$")]
+    [InlineData(2, "colliders", "$")]
+    [InlineData(3, "colliders", "$")]
+    [InlineData(1, "motion", "$.parts[0]")]
+    [InlineData(2, "motion", "$.parts[0]")]
+    [InlineData(3, "motion", "$.parts[0]")]
+    [InlineData(4, "motion", "$.parts[0]")]
+    public void The_new_members_are_unknown_to_older_formats_and_motion_is_unknown_on_rigid_parts(int version, string member, string path)
+    {
+        string rigid = AttachmentFixtures.PartJson().TrimEnd();
+        string taggedRigid = Replace(Replace(rigid, "\"id\":1", "\"id\":1,\"kind\":\"rigid\""), "}", ",\"region\":\"a\"}", lastOnly: true);
+        string control = version switch
+        {
+            1 => AttachmentFixtures.SetJson(rigid),
+            2 => $$$"""{"formatVersion":2,"parts":[{"id":1,"kind":"skinned","mesh":{"key":"parts/garment.glb","sha256":"{{{AttachmentFixtures.Hash}}}"}}]}""",
+            3 => $$"""{"formatVersion":3,"layer":"garment","covers":[],"parts":[{"id":1,"kind":"skinned","mesh":{"key":"parts/garment.glb","sha256":"{{AttachmentFixtures.Hash}}"},"regions":[["a",1]]}]}""",
+            4 => $$"""{"formatVersion":4,"layer":"garment","covers":[],"parts":[{{taggedRigid}}]}""",
+            _ => throw new ArgumentOutOfRangeException(nameof(version)),
+        };
+        string json = member == "colliders"
+            ? Replace(control, "\"parts\":", "\"colliders\":[" + AttachmentFixtures.Collider0Json + "],\"parts\":")
+            : Replace(control, "}]", $$$""","motion":{"kind":"chains","chains":[{{{AttachmentFixtures.Chain0Json}}}]}}]""", lastOnly: true);
+        Assert.Single(ParseSet(control).Parts);
+        Assert.NotEqual(control, json);
+        var error = Assert.Throws<AttachmentSetDataException>(() => ParseSet(json));
+        Assert.Equal(AttachmentSetRefusal.JsonPropertyUnknown, error.Reason);
+        Assert.Equal(path, error.JsonPath);
+        Assert.Equal(member, error.PropertyName);
+    }
+
+    [Theory]
+    [InlineData("stiffness", "6")]
+    [InlineData("damping", "3")]
+    [InlineData("gravity", "1")]
+    [InlineData("trail", "0.7")]
+    [InlineData("angleLimit", "1.4")]
+    [InlineData("radius", "0.02")]
+    public void Every_chain_setting_is_required_and_reports_its_chain(string setting, string value)
+    {
+        string control = AttachmentFixtures.MotionSetJson();
+        string json = Replace(control, $",\"{setting}\":{value}", "", firstOnly: true);
+        Assert.Single(ParseSet(control).Parts);
+        Assert.NotEqual(control, json);
+        var error = Assert.Throws<AttachmentSetDataException>(() => ParseSet(json));
+        Assert.Equal(AttachmentSetRefusal.JsonPropertyMissing, error.Reason);
+        Assert.Equal("$.parts[0].motion.chains[0]", error.JsonPath);
+        Assert.Equal(setting, error.PropertyName);
+        Assert.Equal(2u, error.PartId);
+        Assert.Equal(0, error.ChainIndex);
+    }
+
+    [Fact]
+    public void Colliders_alone_require_a_layer_in_format_4()
+    {
+        string control = Replace(AttachmentFixtures.RegionsSetJson(), "\"formatVersion\":3,", "\"formatVersion\":4,\"colliders\":[" + AttachmentFixtures.Collider0Json + "],");
+        Assert.Single(ParseSet(control).Colliders);
+        string json = Replace(control, "\"layer\":\"garment\",", "");
+        var error = Assert.Throws<AttachmentSetDataException>(() => ParseSet(json));
+        Assert.Equal(AttachmentSetRefusal.MotionWithoutLayer, error.Reason);
+        Assert.Equal("$", error.JsonPath);
+        Assert.Equal("layer", error.PropertyName);
+        Assert.Null(error.PartId);
+    }
+
+    static AttachmentSetDefinition ParseSet(string json) => AttachmentSetJson.Parse(Encoding.UTF8.GetBytes(json), "format4.json");
+
+    static string Replace(string text, string oldValue, string newValue, bool firstOnly = false, bool lastOnly = false)
+    {
+        if (!firstOnly && !lastOnly) return text.Replace(oldValue, newValue, StringComparison.Ordinal);
+        int index = lastOnly ? text.LastIndexOf(oldValue, StringComparison.Ordinal) : text.IndexOf(oldValue, StringComparison.Ordinal);
+        return index < 0 ? text : text[..index] + newValue + text[(index + oldValue.Length)..];
+    }
+
+    static string JsonJoints(int count) => JsonSerializer.Serialize(AttachmentFixtures.NumberedJoints(count));
+
+    static string JsonChains(int count) => string.Join(",", AttachmentFixtures.NumberedJoints(count)
+        .Select(name => Replace(AttachmentFixtures.Chain0Json, "[\"left0\",\"left1\"]", JsonSerializer.Serialize(new[] { name }))));
+
+    static string JsonLinks(int count) => JsonSerializer.Serialize(AttachmentFixtures.NumberedLinks(count)
+        .Select(link => new[] { link.First, link.Second }));
+
+    static string JsonColliders(int count) => string.Join(",", Enumerable.Repeat(AttachmentFixtures.Collider0Json, count));
 }

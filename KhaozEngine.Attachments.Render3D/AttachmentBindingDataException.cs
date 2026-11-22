@@ -58,7 +58,7 @@ public sealed class AttachmentBindingDataException : MalformedDataException
     /// <summary>The maximum garment joint count.</summary>
     public int? MaximumJointCount { get; init; }
 
-    /// <summary>The cache key of the refused region map or worn set.</summary>
+    /// <summary>The cache key of the refused region map, collider file or worn set.</summary>
     public string? SourceName { get; init; }
 
     /// <summary>The zero-based position of the refused set in the outfit's worn list.</summary>
@@ -73,7 +73,7 @@ public sealed class AttachmentBindingDataException : MalformedDataException
     /// <summary>The rig identity the consumer gave for the body.</summary>
     public string? ExpectedRigIdentity { get; init; }
 
-    /// <summary>The rig identity the region map declares.</summary>
+    /// <summary>The rig identity the region map or body collider file declares.</summary>
     public string? ActualRigIdentity { get; init; }
 
     /// <summary>The number of skinned material parts the body has.</summary>
@@ -90,4 +90,16 @@ public sealed class AttachmentBindingDataException : MalformedDataException
 
     /// <summary>The triangle count the region runs cover.</summary>
     public int? ActualTriangleCount { get; init; }
+
+    /// <summary>The zero-based position of the chain in its garment part.</summary>
+    public int? ChainIndex { get; init; }
+
+    /// <summary>The zero-based position of the collider in its normalized source list.</summary>
+    public int? ColliderIndex { get; init; }
+
+    /// <summary>The total number of colliders requested for the wearer.</summary>
+    public long? ColliderCount { get; init; }
+
+    /// <summary>The maximum number of colliders supported for a wearer.</summary>
+    public int? MaximumColliderCount { get; init; }
 }

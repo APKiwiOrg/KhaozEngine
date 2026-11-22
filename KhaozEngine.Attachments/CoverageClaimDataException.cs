@@ -12,7 +12,7 @@ public sealed class CoverageClaimDataException : MalformedDataException
     /// <summary>The stable reason the input was refused.</summary>
     public CoverageClaimRefusal Reason { get; }
 
-    /// <summary>The input list holding the refused mesh.</summary>
+    /// <summary>The input list holding the refused mesh or missing a required mesh.</summary>
     public CoverageClaimMeshKind? MeshKind { get; init; }
 
     /// <summary>The zero-based index of the refused mesh in its list. A body mesh's index is its region map part.</summary>
@@ -44,4 +44,10 @@ public sealed class CoverageClaimDataException : MalformedDataException
 
     /// <summary>The covered region name the body does not declare.</summary>
     public string? RegionName { get; init; }
+
+    /// <summary>The piece part ID involved in the refusal, or zero when a required ID was omitted.</summary>
+    public uint? PartId { get; init; }
+
+    /// <summary>The asset key of the piece part involved in the refusal, when the definition declares that part.</summary>
+    public string? MeshKey { get; init; }
 }

@@ -63,7 +63,7 @@ public enum AttachmentBindingRefusal
     /// <summary>Refuses a garment joint count outside the renderer capacity.</summary>
     GarmentJointCountOutsideRange,
 
-    /// <summary>Refuses a host mesh using a different contract skeleton instance.</summary>
+    /// <summary>Refuses a host mesh or worn set using a different skeleton instance from its binding.</summary>
     HostSkeletonMismatch,
 
     /// <summary>Refuses an invalid host joint model matrix before palette publication.</summary>
@@ -83,4 +83,31 @@ public enum AttachmentBindingRefusal
 
     /// <summary>Refuses an outfit over a scene that is not an <see cref="IAttachmentViewScene"/>.</summary>
     OutfitViewsUnsupported,
+
+    /// <summary>Refuses a declared chain joint absent from the garment skin.</summary>
+    ChainJointMissing,
+
+    /// <summary>Refuses a chain joint that is also a host skin joint.</summary>
+    ChainJointIsHostJoint,
+
+    /// <summary>Refuses a chain joint whose parent is not the preceding chain joint.</summary>
+    ChainNotParentLine,
+
+    /// <summary>Refuses a first chain joint without a named host skin joint as its parent.</summary>
+    ChainAnchorNotHostJoint,
+
+    /// <summary>Refuses a chain joint whose inverse bind does not match its rest frame on the host anchor.</summary>
+    ChainBindMismatch,
+
+    /// <summary>Refuses body colliders for another rig identity or skeleton instance.</summary>
+    BodyCollidersMismatch,
+
+    /// <summary>Refuses a collider whose joint name does not resolve to a host skin joint.</summary>
+    ColliderJointUnresolved,
+
+    /// <summary>Refuses a wearer's combined body and set colliders above the simulation limit.</summary>
+    WearerCollidersTooMany,
+
+    /// <summary>Refuses collider binding without the host skin's inverse binds.</summary>
+    ColliderHostMeshRequired,
 }

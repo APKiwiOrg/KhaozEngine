@@ -51,6 +51,6 @@ public sealed class LoadedAttachmentSet
         _owner.ThrowIfDisposed();
         System.ArgumentNullException.ThrowIfNull(hostMesh);
         return new BoundAttachmentSet(_owner, _key, _definition, _resources,
-            new AttachmentSetBinding(_definition, map, hostMesh, _resources));
+            new AttachmentSetBinding(_definition, map, hostMesh, _resources, _owner));
     }
 }

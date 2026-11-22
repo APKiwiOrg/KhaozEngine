@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using System.Text.Json.Nodes;
 using KhaozEngine.Attachments;
 using KhaozEngine.Attachments.Render3D;
 using KhaozEngine.Primitives;
@@ -541,28 +540,7 @@ internal sealed class OutfitRig : IDisposable
         glb.SetInverseBind(0, Binds[1]);
         glb.SetInverseBind(1, Binds[0]);
         glb.SetElement(0, 0, seed, 0, 0);
-        byte[] indices = new byte[GarmentTriangles.Length * sizeof(ushort)];
-        for (int i = 0; i < GarmentTriangles.Length; i++)
-            BitConverter.TryWriteBytes(indices.AsSpan(i * sizeof(ushort)), GarmentTriangles[i]);
-        glb.Accessors.Add(new JsonObject
-        {
-            ["bufferView"] = glb.AddView(indices),
-            ["componentType"] = 5123,
-            ["count"] = GarmentTriangles.Length,
-            ["type"] = "SCALAR",
-        });
-        var materialList = new JsonArray();
-        for (int i = 0; i < materials; i++) materialList.Add(new JsonObject());
-        glb.Root["materials"] = materialList;
-        JsonObject first = glb.Primitives[0]!.AsObject();
-        first["indices"] = glb.Accessors.Count - 1;
-        first["material"] = 0;
-        for (int i = 1; i < materials; i++)
-        {
-            JsonObject next = first.DeepClone().AsObject();
-            next["material"] = i;
-            glb.Primitives.Add(next);
-        }
+        glb.SetIndexedMaterialParts(GarmentTriangles, materials);
         return Source.Mesh(key, glb.Build());
     }
 

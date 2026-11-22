@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Text.Json.Nodes;
 using KhaozEngine.Attachments;
 using KhaozEngine.Attachments.Render3D;
 using KhaozEngine.Render3D;
@@ -56,6 +57,146 @@ public sealed class SkinnedAttachmentBindingTests
         Assert.Equal(model, worlds[1]);
         Assert.Equal(Matrix4x4.CreateTranslation(98, 0, 0), worlds[2]);
     }
+
+    [Fact]
+    public void Chained_draw_composes_rest_joints_on_the_posed_anchor_in_skin_order()
+    {
+        using var rig = new OutfitRig();
+        BoundAttachmentSet set = WearChain(rig, "chain.json", SkinnedAttachmentGlbFixture.Chained());
+        Matrix4x4[] posed = RotatedPalette(rig.Skeleton);
+        var draw = new AttachmentDraw[1];
+
+        Assert.Equal(1, set.WriteDraws(rig.Skeleton, posed, rig.Model, rig.Key,
+            new RigidInstanceDraw(default, Matrix4x4.Identity), draw));
+
+        Assert.True(draw[0].IsSkinned);
+        Assert.Equal(rig.Model, draw[0].Skinned.Model);
+        Matrix4x4 first = Matrix4x4.CreateTranslation(.25f, 0, 0) * posed[1];
+        Matrix4x4 second = Matrix4x4.CreateTranslation(.5f, 0, 0) * first;
+        Assert.Equal(new[] { second, posed[0], first, posed[1] }, draw[0].BoneMatrices.ToArray());
+        AllocAssert.NoPerCallAllocation("a chained attachment's rest draw", () =>
+            set.WriteDraws(rig.Skeleton, posed, rig.Model, rig.Key, new RigidInstanceDraw(default, Matrix4x4.Identity), draw));
+    }
+
+    [Fact]
+    public void Chain_metadata_is_cached_only_after_a_successful_bind_from_verified_bytes()
+    {
+        using var rig = new OutfitRig();
+        AttachmentMeshRef mesh = rig.Source.Mesh("chain.glb", SkinnedAttachmentGlbFixture.Chained().Build());
+        LoadedAttachmentSet invalid = rig.Load("invalid.json", ChainSet(mesh, ["left0", "left1", "absent"]));
+        LoadedAttachmentSet valid = rig.Load("valid.json", ChainSet(mesh));
+        Assert.Null(rig.Cache.CachedChainJointsForTests(mesh));
+        Assert.True(rig.Source.Bytes.Remove(mesh.Key));
+        int live = rig.Scene.LiveSkinnedMeshCount;
+
+        var error = Assert.Throws<AttachmentBindingDataException>(() => rig.Bind(invalid));
+
+        Assert.Equal(AttachmentBindingRefusal.ChainJointMissing, error.Reason);
+        Assert.Equal(live, rig.Scene.LiveSkinnedMeshCount);
+        Assert.Null(rig.Cache.CachedChainJointsForTests(mesh));
+        Assert.Equal(1, rig.Bind(valid).DrawCount);
+        var metadata = rig.Cache.CachedChainJointsForTests(mesh);
+        Assert.NotNull(metadata);
+        Assert.Equal(1, rig.Bind(valid).DrawCount);
+        Assert.Same(metadata, rig.Cache.CachedChainJointsForTests(mesh));
+    }
+
+    [Theory]
+    [InlineData(AttachmentBindingRefusal.ChainJointMissing, "absent")]
+    [InlineData(AttachmentBindingRefusal.ChainJointIsHostJoint, "left1")]
+    [InlineData(AttachmentBindingRefusal.ChainNotParentLine, "left1")]
+    [InlineData(AttachmentBindingRefusal.ChainAnchorNotHostJoint, "root")]
+    [InlineData(AttachmentBindingRefusal.ChainBindMismatch, "left1")]
+    public void Chain_binding_refusal_identifies_the_bad_chain_and_joint(AttachmentBindingRefusal reason, string joint)
+    {
+        using var rig = new OutfitRig();
+        var fixture = SkinnedAttachmentGlbFixture.Chained();
+        Assert.Equal(1, WearChain(rig, "control.json", fixture).DrawCount);
+        IReadOnlyList<string>? joints = null;
+        SkinnedGltfMesh host = rig.Body;
+        ContractJointMap map = rig.Map;
+        switch (reason)
+        {
+            case AttachmentBindingRefusal.ChainJointMissing:
+                joints = ["left0", "left1", "absent"];
+                break;
+            case AttachmentBindingRefusal.ChainJointIsHostJoint:
+                var skeleton = new Skeleton([-1, 0, 1, 1], [..rig.Skeleton.RestLocal, JointPose.Identity],
+                    [0, 1, 2, 3], [2, 1, 3], ["root", "hip", "knee", "left1"]);
+                host = Mesh(skeleton, [..rig.Body.InverseBind, Matrix4x4.CreateTranslation(0, -2, 0)]);
+                map = Map(skeleton);
+                break;
+            case AttachmentBindingRefusal.ChainNotParentLine:
+                fixture.Nodes[2]!.AsObject().Remove("children");
+                fixture.Nodes[0]!["children"]!.AsArray().Add(3);
+                break;
+            case AttachmentBindingRefusal.ChainAnchorNotHostJoint:
+                int extraNode = fixture.Nodes.Count;
+                fixture.Nodes.Add(new JsonObject
+                {
+                    ["name"] = "root",
+                    ["children"] = new JsonArray(2),
+                });
+                fixture.Nodes[0]!["children"]![1] = extraNode;
+                break;
+            case AttachmentBindingRefusal.ChainBindMismatch:
+                fixture.SetInverseBind(0, Matrix4x4.CreateTranslation(-.875f, -1, 0));
+                break;
+        }
+        AttachmentMeshRef mesh = rig.Source.Mesh("candidate.glb", fixture.Build());
+        LoadedAttachmentSet loaded = rig.Load("candidate.json", ChainSet(mesh, joints));
+
+        var error = Assert.Throws<AttachmentBindingDataException>(() => loaded.Bind(map, host));
+
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal(ChainPartId, error.PartId);
+        Assert.Equal(mesh.Key, error.MeshKey);
+        Assert.Equal(0, error.ChainIndex);
+        Assert.Equal(joint, error.JointName);
+        if (reason == AttachmentBindingRefusal.ChainBindMismatch)
+            Assert.Equal(1e-4f, error.BindTolerance);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_set_without_chains_keeps_its_full_draw_and_host_palette(bool layered)
+    {
+        using var rig = new OutfitRig();
+        var part = new SkinnedAttachmentPartDefinition(2, rig.Garment("plain.glb"));
+        var definition = layered
+            ? new AttachmentSetDefinition([part with { Regions = [new NamedRegionRun("alpha", 4)] }], AttachmentLayer.Garment, [])
+            : new AttachmentSetDefinition([part]);
+        LoadedAttachmentSet loaded = rig.Load("plain.json", definition);
+        BoundAttachmentSet bound = rig.Bind(loaded);
+        Assert.Null(rig.Cache.CachedChainJointsForTests(part.Mesh));
+        Matrix4x4[] pose = RotatedPalette(rig.Skeleton);
+        var actual = new AttachmentDraw[1];
+
+        Assert.Equal(1, bound.WriteDraws(rig.Skeleton, pose, rig.Model, MotionKey.None,
+            new RigidInstanceDraw(default, Matrix4x4.Identity), actual));
+
+        AttachmentDraw draw = Assert.Single(actual);
+        Assert.Equal(part.Id, draw.PartId);
+        Assert.True(draw.IsSkinned);
+        Assert.Equal(new SkinnedInstanceDraw(Assert.Single(loaded.Resources[0].SkinnedHandles), rig.Model)
+            { CastsShadows = true }, draw.Skinned);
+        Assert.Equal(new[] { pose[1], pose[0] }, draw.BoneMatrices.ToArray());
+    }
+
+    internal const uint ChainPartId = 2;
+    internal static readonly ChainSettings FallSettings = new(0, 2, 1, 1, MathF.PI, .01f);
+
+    internal static AttachmentSetDefinition ChainSet(AttachmentMeshRef mesh, IReadOnlyList<string>? joints = null,
+        IReadOnlyList<ColliderDefinition>? colliders = null) =>
+        new([new SkinnedAttachmentPartDefinition(ChainPartId, mesh)
+        {
+            Regions = [new NamedRegionRun("alpha", 1)],
+            Motion = new ChainMotionDefinition([new ChainDefinition(joints ?? ["left0", "left1"], Vector3.UnitX * .5f, FallSettings)], []),
+        }], AttachmentLayer.Garment, [], colliders ?? []);
+
+    static BoundAttachmentSet WearChain(OutfitRig rig, string key, SkinnedAttachmentGlbFixture fixture) =>
+        rig.Wear(key, ChainSet(rig.Source.Mesh(key + ".glb", fixture.Build())));
 
     [Theory]
     [InlineData("root")]

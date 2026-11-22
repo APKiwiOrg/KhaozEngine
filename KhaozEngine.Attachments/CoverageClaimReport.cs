@@ -36,9 +36,10 @@ public sealed class CoverageClaimRegion
 /// <summary>The result of checking a piece's coverage claim against a body at the rest pose.</summary>
 public sealed class CoverageClaimReport
 {
-    internal CoverageClaimReport(CoverageClaimRegion[] regions)
+    internal CoverageClaimReport(CoverageClaimRegion[] regions, int ignoredSwingingTriangleCount)
     {
         Regions = Array.AsReadOnly(regions);
+        IgnoredSwingingTriangleCount = ignoredSwingingTriangleCount;
         bool honest = true;
         foreach (CoverageClaimRegion region in regions)
             honest &= region.UncoveredCount == 0;
@@ -47,6 +48,9 @@ public sealed class CoverageClaimReport
 
     /// <summary>Each region the piece claims, in the body region map's region order. Empty for a piece with no layer.</summary>
     public IReadOnlyList<CoverageClaimRegion> Regions { get; }
+
+    /// <summary>The number of piece triangles skipped because at least one of their vertices swings.</summary>
+    public int IgnoredSwingingTriangleCount { get; }
 
     /// <summary>True when no claimed triangle is uncovered.</summary>
     public bool Honest { get; }

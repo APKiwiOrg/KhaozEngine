@@ -32,20 +32,20 @@ The map keeps the alignment's homogeneous component exactly one despite general 
 
 For skinned or mixed definitions, construct `AttachmentSetBinding(definition, map, hostMesh,
 skinnedMeshes)`. The dictionary maps each skinned mesh reference to its imported `SkinnedGltfMesh`.
-The host mesh must carry the exact `map.Skeleton` instance. Garment skin joints resolve by ordinal
-name against host skin bones, so a named node outside the skin cannot bind. A garment may use a
-subset of the host and a different skin order. Its skin must contain 1 to 128 joints, with one
-inverse bind and rest pose per joint. Every inverse-bind matrix must be finite and match the
-corresponding actual host inverse bind with an inclusive absolute tolerance of `1e-4` over all 16
-elements. Rest poses are never inverted to infer binds. Missing mesh metadata, unresolved joints or
+The host mesh must carry the exact `map.Skeleton` instance. Garment joints outside declared chains
+resolve by ordinal name against host skin bones. A garment may use a subset of the host and a
+different skin order. Its skin must contain 1 to 128 joints, including chain joints, with one
+inverse bind and rest pose per joint. Each joint that follows the host must have a finite inverse
+bind matching the actual host inverse bind within an inclusive absolute tolerance of `1e-4` over
+all 16 elements. Missing mesh metadata, unresolved joints or
 mismatched binds throw `AttachmentBindingDataException`. `Reason` identifies the rule, and `PartId`,
 `MeshKey` and `JointName` identify the garment and joint where applicable. `GarmentBindMismatch` also
 carries `BindTolerance`. `GarmentJointCountOutsideRange` carries the actual and allowed joint counts.
 
 `SkinnedJointCount(partId)` gives the destination capacity for a garment, or zero for a rigid part.
 Allocate the destination once in the caller. `CopySkinnedPalette(skeleton, hostPalette, partId,
-destination)` copies host joint model matrices into garment skin order. It does not multiply inverse
-binds. The renderer alone applies the garment's inverse binds. The binding snapshots index tables
+destination)` copies host joints and any chain rest poses into garment skin order. The renderer
+alone applies the garment's inverse binds. The binding snapshots index tables
 and owns no garment frame palettes. Later source-skeleton changes cannot reorder its copies.
 An unknown part, a rigid palette-copy request, a foreign skeleton, a palette whose length differs
 from the full host skin, insufficient destination capacity or invalid referenced joint matrices
@@ -76,7 +76,9 @@ all references before using warm uploads. A reference requested under both kinds
 reuse after a different set warmed the cache. The cache copies source memory and shares each compatible
 `(key, hash, kind)` upload across its parts and sets. A failure releases newly acquired resources and
 preserves earlier cached assets. Skinned material groups retain their skin-order joint names, inverse
-binds and rest poses as immutable metadata. Loading allocates no frame palettes.
+binds and rest poses as immutable metadata. At the first successful chained bind, the cache also
+captures the parent nodes and local rest transforms from the verified GLB bytes. Loading allocates
+no frame palettes.
 
 GLB preflight propagates `AttachmentGlbContainerDataException`, `AttachmentAccessorDataException`,
 `AttachmentHierarchyDataException`, `AttachmentRigidGeometryDataException` and
@@ -144,8 +146,8 @@ The convenience overload constructs opaque white, matte, solid, visible descript
 casting enabled. Both overloads submit rigid, skinned and mixed sets. The template overload replaces
 `Mesh`, `World` or `Model`, and `Motion`. It preserves every other field, including tint, material,
 dissolve and edge, casting, shadow-only, inverted shadow dissolve and dissolve complement. Skinned
-parts receive the unchanged character model and host joint model matrices reordered into garment
-skin order. Scene3D alone applies inverse binds. The entire pose and template are prepared before
+parts receive the unchanged character model and joint model matrices in garment skin order.
+Scene3D alone applies inverse binds. The entire pose and template are prepared before
 any scene call or output write. An invalid later joint or shadow-only template without casting
 cannot publish a prefix.
 
@@ -207,7 +209,7 @@ For the version-21 set-level rename and its rationale, see the
 ## Outfits
 
 An outfit is a body and the sets worn on it, drawn with the outfit rule applied. A set with a layer (set
-format 3) hides the body regions it covers, and the same regions of every set in a lower layer. The body
+formats 3 and 4) hides the body regions it covers, and the same regions of every set in a lower layer. The body
 draws only its uncovered triangles, a lower piece draws only what no higher piece covers, and a rigid part
 whose region is covered draws nothing. A set with no layer (formats 1 and 2) covers nothing, nothing hides
 it, and it draws exactly as `BoundAttachmentSet.WriteDraws` draws it. The rule itself is
@@ -269,6 +271,60 @@ Dispose the outfit first. `AttachmentSetCache.Dispose`, a skinned attachment lea
 anything, and succeed once the outfit is gone. Outfit disposal is idempotent. It gives back every view even
 when the scene refuses one, for example a view the caller unloaded itself, and then rethrows the first
 refusal. A refused view is forgotten and never handed to another outfit.
+
+## Hanging chains and wearer motion
+
+Bind a format 4 skinned part with chains through `loaded.Bind(map, hostMesh)`. The first chain
+joint's garment parent must name a host skin joint, the anchor. Each later chain joint must be a
+direct child of the preceding one. Chain joints belong to the garment skin and have names distinct
+from the host's skin joints. Each chain joint's inverse bind must match the inverse of its rest
+transform composed on the host anchor's bind frame, within the same per-element tolerance. Binding
+validates the chain before allocating draw scratch. Ordinary draws pose each chain at its authored
+rest hang on the current anchor, so they work as soon as a chained set binds.
+
+Load a body's collider file with `cache.GetBodyColliders(key, expectedSha256, bodyRigIdentity, hostMesh)`,
+using the same host mesh as the binding and the full rig identity from its body GLB. The mesh must
+carry a skeleton. The cache verifies the exact bytes and returns the same `LoadedBodyColliders` for
+the same key, SHA-256 and skeleton instance. `Set` gives the verified `BodyColliderSet` while its cache
+is alive. A bound set or outfit refuses colliders loaded for another skeleton instance with
+`BodyCollidersMismatch`. An outfit also compares the file's rig with its body region map.
+
+Call `outfit.CreateMotion(bodyColliders, options)` or `bound.CreateMotion(bodyColliders, options)`
+once per wearer. The motion combines the visible chains on their distinct host anchors. It uses
+capsules from the body file and all worn sets, with a limit of 64 per wearer. Passing null for body
+colliders still includes worn set capsules. For each step, the host inverse bind, current joint
+matrix and model compose the rest-to-world transform. It places the endpoints and scales the radius
+by its largest axis scale. The bind pose preserves the authored radius before wearer scaling.
+Collider motion needs a set bound with the explicit host mesh, even if its parts are rigid.
+An outfit uses the inverse binds already held by
+its first such worn set. A collider index names its position in the normalized source list.
+
+Animate the host, call `motion.Step(skeleton, palette, model, deltaSeconds)` once with its current
+pose, then draw and outline as often as needed. Pass the motion first to the set's mixed
+`WriteDraws`, `Queue` or `QueueOutline`, or after `wornIndex` to the outfit's `WriteDraws` or
+`QueueOutline`. These calls only read the motion. If a frame skips the step, each chain keeps its
+latest shape and follows its current anchor. Overloads without motion draw the rest hang.
+
+`Step` uses the binding's exact skeleton and full host skin palette. It validates the model and
+the joint matrices it reads for anchors and capsules. Each draw validates the matrices it reads.
+Valid steps and draws allocate nothing once warm. Use `MotionLevels.Assign` to select simulated wearers
+by distance and count and pass each level to `Step`. `MotionLevel.Held` blends toward rest. `Reset()`
+restores the rest hang immediately and clears velocity on the next valid step. `Tune(wornIndex, partId, chain, settings)`
+changes settings on the next substep. Worn and chain indices are zero-based and a bare set uses
+worn index zero. A fully hidden part has no tunable chains. Wearers can share a binding and have
+independent motions. Each motion belongs to its originating set or outfit and owns no disposable
+scene state. Passing it to another binding raises `MotionMismatch` before submitting any draw.
+
+When the cache loads a chained set through a shipped `Scene3D` upload lease, it expands the
+chained meshes' rest bounds for culling. Each chain contributes a sphere at its first joint's
+rest position. The radius covers the rest segments and tip, plus the farthest weighted vertex
+from its chain joint. This growth covers the chain's swing around the anchor. An anchor animated
+far from rest by translation or scale can take the whole chain outside the culling bounds.
+Ordinary skinned meshes share this limit
+([#1492](https://github.com/APKiwiOrg/KhaozEngine/issues/1492) and
+[#1538](https://github.com/APKiwiOrg/KhaozEngine/issues/1538)).
+A shared mesh keeps the union of every loaded definition's reach. Existing and future views use
+the grown source bounds. A custom `IAttachmentScene` lease keeps its own culling policy.
 
 ## Table coverage preparation
 
@@ -354,13 +410,22 @@ developer prose. Rigid frame errors carry `PoseCompositionFailed` with the origi
 | `GarmentSkeletonMissing` | garment metadata without a skeleton | `PartId`, `MeshKey` |
 | `GarmentNodeMissing` | a garment joint referring outside its skeleton | `PartId`, `MeshKey`, `BoneIndex`, `NodeIndex`, `NodeCount` |
 | `GarmentJointCountOutsideRange` | a garment joint count outside the renderer capacity | `PartId`, `MeshKey`, `JointCount`, `MinimumJointCount`, `MaximumJointCount` |
-| `HostSkeletonMismatch` | a host mesh using a different contract skeleton instance | `ParamName` |
-| `HostJointPoseInvalid` | an invalid host joint model matrix before palette publication | `PartId`, `BoneIndex`, `ParamName` |
+| `HostSkeletonMismatch` | a host mesh using a different contract skeleton instance, or a worn set using a different skeleton from the wearer's | `ParamName` for mesh binding, `SourceName` and `WornIndex` for motion creation |
+| `HostJointPoseInvalid` | an invalid host joint matrix or composed pose before palette publication or a motion step | `BoneIndex`, `ParamName`, `PartId` for a garment palette |
 | `GarmentPaletteOutputTooSmall` | output shorter than the garment joint count | `PartId`, `ActualCapacity`, `RequiredCapacity`, `ParamName` |
 | `BodyRegionMapMismatch` | a body region map for another rig, another part count or other part triangle counts | `SourceName` and `ExpectedRigIdentity` with `ActualRigIdentity`, or `ExpectedPartCount` with `ActualPartCount`, or `BodyPartIndex` with `ExpectedTriangleCount` and `ActualTriangleCount` |
 | `PartRegionTagsMismatch` | a skinned part whose region runs do not sum to its mesh's triangles | `SourceName`, `PartId`, `MeshKey`, `ExpectedTriangleCount`, `ActualTriangleCount` |
 | `OutfitRegionUnknown` | a worn set naming a region the body's region map does not declare | `SourceName`, `WornIndex`, `PartId`, `RunIndex`, `RegionName`, `InnerException` |
 | `OutfitViewsUnsupported` | an outfit over a scene that is not an `IAttachmentViewScene` | none |
+| `ChainJointMissing` | a declared chain joint absent from the garment skin | `PartId`, `MeshKey`, `ChainIndex`, `JointName` |
+| `ChainJointIsHostJoint` | a chain joint whose name resolves to a host skin joint | `PartId`, `MeshKey`, `ChainIndex`, `JointName` |
+| `ChainNotParentLine` | a chain joint that is not a direct child of its predecessor | `PartId`, `MeshKey`, `ChainIndex`, `JointName` |
+| `ChainAnchorNotHostJoint` | a first chain joint whose parent does not name a host skin joint | `PartId`, `MeshKey`, `ChainIndex`, `JointName` (the parent name when present, otherwise the first chain joint) |
+| `ChainBindMismatch` | a chain joint whose inverse bind does not match its rest frame on the host anchor | `PartId`, `MeshKey`, `ChainIndex`, `JointName`, `BindTolerance` |
+| `BodyCollidersMismatch` | body colliders for another rig identity or skeleton instance | `SourceName`, `ActualRigIdentity`, `ExpectedRigIdentity` when loading or creating outfit motion |
+| `ColliderJointUnresolved` | a collider whose name is absent from the host skin | `SourceName`, `ColliderIndex`, `JointName` |
+| `WearerCollidersTooMany` | more than 64 colliders across the body and worn sets | `ColliderCount`, `MaximumColliderCount` |
+| `ColliderHostMeshRequired` | colliders whose motion binding has no host inverse binds | `SourceName` |
 
 ## Submission refusals
 
@@ -373,3 +438,4 @@ eligibility uses the shared [DrawAdmission family](../KhaozEngine.Render3D/READM
 |---|---|---|
 | `OutputTooSmall` | Output shorter than the attachment draw count | `ActualCapacity`, `RequiredCapacity`, `ParamName` |
 | `MixedDrawRequired` | Rigid descriptors for a set containing skinned parts | `SkinnedPartCount` |
+| `MotionMismatch` | Motion created by another bound set or outfit | `ParamName` |

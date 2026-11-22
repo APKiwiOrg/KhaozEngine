@@ -4,24 +4,24 @@ using System.Numerics;
 
 namespace KhaozEngine.Attachments;
 
-/// <summary>Plain triangle geometry: positions and a triangle list of indices into them, three per triangle.</summary>
-public readonly record struct CoverageClaimMesh(ReadOnlyMemory<Vector3> Positions, ReadOnlyMemory<uint> Indices);
-
 /// <summary>
-/// Checks offline that a piece really lies over every body triangle of every region it claims to cover, at the rest
-/// pose. A tool runs it when a piece is made. It casts one ray per claimed body triangle against every piece triangle,
-/// which suits low poly meshes and is never meant to run per frame.
+/// Checks offline that the fixed triangles of a piece lie over every body triangle of every region it claims to
+/// cover at the rest pose. It casts one ray per claimed body triangle against the fixed piece triangles, which
+/// suits low poly meshes and is never meant to run per frame.
 /// </summary>
 public static class CoverageClaimCheck
 {
     /// <summary>
     /// Check <paramref name="piece"/>'s covered regions against the body. <paramref name="bodyMeshes"/> follow
-    /// <paramref name="body"/>'s part order. <paramref name="pieceMeshes"/> are already in the body's rest frame. A
-    /// claimed body triangle is covered when a ray from its centroid along its outward normal, from counter clockwise
-    /// winding, meets a piece triangle from either side at a distance from 0 to <paramref name="maxDistanceMetres"/>
-    /// inclusive.
+    /// <paramref name="body"/>'s part order. <paramref name="pieceMeshes"/> are already in the body's rest frame.
+    /// For a piece with motion, supply one mesh per definition part in any order and set each mesh's
+    /// <see cref="CoverageClaimMesh.PartId"/>. Every part with motion needs a swinging mask. A claimed body triangle
+    /// is covered when a ray from its centroid along its outward normal, from counter clockwise winding, meets a
+    /// fixed piece triangle from either side at a distance from 0 to
+    /// <paramref name="maxDistanceMetres"/> inclusive.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">The distance is not finite or not greater than zero.</exception>
+    /// <exception cref="ArgumentException">A nonempty swinging mask has a different length than its mesh's positions.</exception>
     /// <exception cref="CoverageClaimDataException">The geometry or the claim breaks a rule.</exception>
     public static CoverageClaimReport Verify(IReadOnlyList<CoverageClaimMesh> bodyMeshes, BodyRegionMap body, AttachmentSetDefinition piece,
         IReadOnlyList<CoverageClaimMesh> pieceMeshes, float maxDistanceMetres)
@@ -39,8 +39,10 @@ public static class CoverageClaimCheck
             { ExpectedMeshCount = body.Parts.Count, ActualMeshCount = bodyMeshes.Count };
         for (int part = 0; part < bodyMeshes.Count; part++)
         {
-            CheckMesh(CoverageClaimMeshKind.Body, part, bodyMeshes[part]);
-            int triangles = bodyMeshes[part].Indices.Length / 3;
+            CoverageClaimMesh mesh = bodyMeshes[part];
+            mesh.ValidateSwingingMask(nameof(bodyMeshes), part);
+            CheckMesh(CoverageClaimMeshKind.Body, part, mesh);
+            int triangles = mesh.Indices.Length / 3;
             int expected = body.TriangleCount(part);
             if (triangles != expected)
                 throw new CoverageClaimDataException(CoverageClaimRefusal.BodyTriangleCountMismatch,
@@ -54,11 +56,13 @@ public static class CoverageClaimCheck
                 ? region
                 : throw new CoverageClaimDataException(CoverageClaimRefusal.RegionUnknown, $"The body has no region '{name}'.") { RegionName = name });
 
-        PieceTriangle[] targets = PieceTriangles(pieceMeshes);
-        return Report(bodyMeshes, body, claimed, targets, maxDistanceMetres);
+        CoverageClaimSwingEvidence.Validate(piece, pieceMeshes);
+        PieceTriangle[] targets = PieceTriangles(pieceMeshes, out int ignoredSwingingTriangleCount);
+        return Report(bodyMeshes, body, claimed, targets, maxDistanceMetres, ignoredSwingingTriangleCount);
     }
 
-    static CoverageClaimReport Report(IReadOnlyList<CoverageClaimMesh> bodyMeshes, BodyRegionMap body, RegionSet claimed, PieceTriangle[] targets, double maxDistance)
+    static CoverageClaimReport Report(IReadOnlyList<CoverageClaimMesh> bodyMeshes, BodyRegionMap body, RegionSet claimed,
+        PieceTriangle[] targets, double maxDistance, int ignoredSwingingTriangleCount)
     {
         int regionCount = body.Regions.Count;
         var triangleCounts = new int[regionCount];
@@ -103,7 +107,7 @@ public static class CoverageClaimCheck
         for (int region = 0; region < regionCount; region++)
             if (claimed.Contains(region))
                 report.Add(new CoverageClaimRegion(body.Regions[region], triangleCounts[region], degenerateCounts[region], uncovered[region].ToArray()));
-        return new CoverageClaimReport(report.ToArray());
+        return new CoverageClaimReport(report.ToArray(), ignoredSwingingTriangleCount);
     }
 
     // Woop, Benthin and Wald's watertight ray and triangle test, without back face culling so a piece covers whichever
@@ -145,19 +149,31 @@ public static class CoverageClaimCheck
     // places when the ends swap, so the value is exactly negated.
     static double Edge((double X, double Y) start, (double X, double Y) end) => end.X * start.Y - end.Y * start.X;
 
-    static PieceTriangle[] PieceTriangles(IReadOnlyList<CoverageClaimMesh> pieceMeshes)
+    static PieceTriangle[] PieceTriangles(IReadOnlyList<CoverageClaimMesh> pieceMeshes, out int ignoredSwingingTriangleCount)
     {
         var triangles = new List<PieceTriangle>();
-        for (int mesh = 0; mesh < pieceMeshes.Count; mesh++)
+        ignoredSwingingTriangleCount = 0;
+        for (int part = 0; part < pieceMeshes.Count; part++)
         {
-            CheckMesh(CoverageClaimMeshKind.Piece, mesh, pieceMeshes[mesh]);
-            ReadOnlySpan<Vector3> positions = pieceMeshes[mesh].Positions.Span;
-            ReadOnlySpan<uint> indices = pieceMeshes[mesh].Indices.Span;
+            CoverageClaimMesh mesh = pieceMeshes[part];
+            mesh.ValidateSwingingMask(nameof(pieceMeshes), part);
+            CheckMesh(CoverageClaimMeshKind.Piece, part, mesh);
+            ReadOnlySpan<Vector3> positions = mesh.Positions.Span;
+            ReadOnlySpan<uint> indices = mesh.Indices.Span;
+            ReadOnlySpan<bool> swinging = mesh.Swinging.Span;
             for (int index = 0; index < indices.Length; index += 3)
             {
-                Point a = new(positions[(int)indices[index]]);
-                Point b = new(positions[(int)indices[index + 1]]);
-                Point c = new(positions[(int)indices[index + 2]]);
+                int aIndex = (int)indices[index];
+                int bIndex = (int)indices[index + 1];
+                int cIndex = (int)indices[index + 2];
+                if (!swinging.IsEmpty && (swinging[aIndex] || swinging[bIndex] || swinging[cIndex]))
+                {
+                    ignoredSwingingTriangleCount++;
+                    continue;
+                }
+                Point a = new(positions[aIndex]);
+                Point b = new(positions[bIndex]);
+                Point c = new(positions[cIndex]);
                 triangles.Add(new PieceTriangle(a, b, c, Point.Cross(b - a, c - a)));
             }
         }

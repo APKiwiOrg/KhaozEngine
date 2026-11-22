@@ -9,6 +9,8 @@ using KhaozEngine.Attachments;
 using KhaozEngine.Imaging;
 using KhaozEngine.Render3D;
 using KhaozEngine.Tests.Attachments;
+using KhaozEngine.Tests.Render3D.Animation;
+using KhaozEngine.Tests.TileWorld;
 using Xunit;
 
 namespace KhaozEngine.Tests.Render3D;
@@ -170,10 +172,95 @@ public sealed class GltfSkinnedMaterialPartsTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Flattened_skinned_mesh_and_maps_match_path_import(bool dataUri)
+    {
+        var fixture = Fixture(dataUri: dataUri);
+        var materials = fixture.Root["materials"]!.AsArray();
+        var firstMaterial = materials[1]!.DeepClone();
+        firstMaterial["pbrMetallicRoughness"]!["baseColorTexture"]!["index"] = 2;
+        firstMaterial["emissiveFactor"] = new JsonArray(0.5f, 0.25f, 1f);
+        firstMaterial["emissiveTexture"] = new JsonObject { ["index"] = 1 };
+        materials[0] = firstMaterial;
+
+        using var dir = new TempDir();
+        string path = dir.Sub("body.glb");
+        byte[] glb = fixture.Build();
+        File.WriteAllBytes(path, glb);
+        var expected = GltfLoader.LoadSkinnedWithMaterial(path);
+        File.Delete(path);
+
+        var actual = GltfLoader.LoadSkinnedWithMaterial(glb, path);
+
+        AssertMesh(expected.Mesh, actual.Mesh);
+        Assert.NotNull(actual.Maps.Albedo);
+        Assert.Equal(new byte[] { 0, 180, 40, 255, 10, 90, 30, 255 }, actual.Maps.Albedo.Value.Rgba);
+        AssertMaps(expected.Maps, actual.Maps);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    [InlineData(false, true)]
+    public void Byte_import_refuses_external_images_by_logical_index(bool usedByMaterial, bool repeatedImages)
+    {
+        var fixture = Fixture();
+        byte[] pixels = [0, 180, 40, 255, 10, 90, 30, 255];
+        var images = fixture.Root["images"]!.AsArray();
+        int materialImageCount = images.Count;
+        int imageIndex = usedByMaterial ? 2 : materialImageCount;
+        if (!usedByMaterial)
+            images.Add(new JsonObject { ["bufferView"] = fixture.AddView(PngWriter.Encode(pixels, 2, 1)), ["mimeType"] = "image/png" });
+        if (repeatedImages)
+            images.Add(images[0]!.DeepClone());
+        const string identity = " body.glb ";
+        byte[] embedded = BuildGlb();
+        Assert.NotNull(GltfLoader.LoadSkinnedWithMaterial(embedded, identity).Maps.Roughness);
+        Assert.Empty(GltfLoader.LoadAnimations(embedded, identity));
+
+        const string imageName = "surface.png";
+        images[imageIndex] = new JsonObject { ["uri"] = imageName };
+        byte[] external = BuildGlb();
+        using var dir = new TempDir();
+        string path = dir.Sub("body.glb");
+        File.WriteAllBytes(path, external);
+        File.WriteAllBytes(dir.Sub(imageName), PngWriter.Encode(pixels, 2, 1));
+        Assert.Equal(pixels, GltfLoader.LoadSkinnedWithMaterial(path).Maps.Roughness!.Value.Rgba);
+        Assert.Empty(GltfLoader.LoadAnimations(path));
+
+        AssertExternalImageRefusal(
+            Assert.Throws<GltfImportDataException>(() => GltfLoader.LoadSkinnedWithMaterial(external, identity)));
+        AssertExternalImageRefusal(
+            Assert.Throws<GltfImportDataException>(() => GltfLoader.LoadAnimations(external, identity)));
+
+        byte[] BuildGlb()
+        {
+            if (!repeatedImages) return fixture.Build();
+
+            // #1876: the decoder appends both occurrences into one logical image list.
+            string first = string.Join(",", images.Take(materialImageCount).Select(image => image!.ToJsonString()));
+            string second = string.Join(",", images.Skip(materialImageCount).Select(image => image!.ToJsonString()));
+            return fixture.Build(json => json.Replace($"\"images\":{images.ToJsonString()}",
+                $"\"images\":[{first}],\"images\":[{second}]", StringComparison.Ordinal));
+        }
+
+        void AssertExternalImageRefusal(GltfImportDataException error)
+        {
+            Assert.Equal(GltfImportRefusal.ExternalImageInByteImport, error.Reason);
+            Assert.Equal(identity, error.Identity);
+            Assert.Equal(imageIndex, error.ImageIndex);
+        }
+    }
+
+    [Theory]
     [InlineData("rigid-parts")]
     [InlineData("skinned-parts")]
     [InlineData("skinned")]
     [InlineData("flattened-albedo")] // #1415
+    [InlineData("skinned-material")]
+    [InlineData("animations")]
     public void Malformed_accessor_through_a_byte_overload_carries_its_reason_and_identity(string overload)
     {
         var fixture = new SkinnedAttachmentGlbFixture();
@@ -198,17 +285,60 @@ public sealed class GltfSkinnedMaterialPartsTests
     }
 
     public static IEnumerable<object[]> MalformedByteInputs =>
-        from overload in new[] { "rigid-parts", "skinned-parts", "skinned", "flattened-albedo", "coverage-source", "covered-skinned-parts" }
+        from overload in new[] { "rigid-parts", "skinned-parts", "skinned", "flattened-albedo", "coverage-source",
+            "covered-skinned-parts", "skinned-material", "animations" }
         from input in new[] { "empty", "header-cut-short", "chunk-header-cut-short", "chunk-past-end", "binary-cut-short", "invalid-json", "invalid-magic", "wrong-number-type" }
         select new object[] { overload, input };
 
     [Theory]
     [MemberData(nameof(MalformedByteInputs))]
+    [InlineData("skinned-material", "image-data-uri-without-base64")]
+    [InlineData("animations", "image-data-uri-without-base64")]
+    [InlineData("skinned-material", "unsupported-image-data-uri")]
+    [InlineData("animations", "unsupported-image-data-uri")]
+    [InlineData("skinned-material", "invalid-utf8-clip-name")]
+    [InlineData("animations", "invalid-utf8-clip-name")]
+    [InlineData("skinned-material", "invalid-utf8-node-name")]
+    [InlineData("animations", "invalid-utf8-node-name")]
+    [InlineData("skinned-material", "partial-chunk-header")]
+    [InlineData("animations", "partial-chunk-header")]
     public void Malformed_bytes_carry_their_reason_identity_and_original_failure(string overload, string input)
     {
         // #1791: standard reader exceptions must have the same refusal contract as SharpGLTF failures.
         const string identity = " caller-owned-malformed.glb ";
-        var error = Assert.Throws<GltfImportDataException>(() => LoadBytes(overload, MalformedGlb(input), identity));
+        byte[] glb;
+        if (input is "invalid-utf8-clip-name" or "invalid-utf8-node-name")
+        {
+            using var stream = new MemoryStream();
+            GltfLoadAnimationsTests.CreateAnimatedRiggedModel().WriteGLB(stream);
+            glb = stream.ToArray();
+            LoadBytes(overload, glb, identity);
+
+            // #1876: a UTF-8 replacement fallback must not turn this malformed name into an accepted name.
+            int jsonLength = (int)BinaryPrimitives.ReadUInt32LittleEndian(glb.AsSpan(12));
+            Span<byte> json = glb.AsSpan(20, jsonLength);
+            ReadOnlySpan<byte> name = input == "invalid-utf8-clip-name" ? "\"walk\""u8 : "\"bone1\""u8;
+            int nameOffset = json.IndexOf(name);
+            Assert.True(nameOffset >= 0);
+            json[nameOffset + 1] = 0xff;
+        }
+        else if (input == "partial-chunk-header")
+        {
+            byte[] valid = new SkinnedAttachmentGlbFixture().Build();
+            LoadBytes(overload, valid, identity);
+
+            // #1876: the model reader accepts a declared length that ends inside a chunk header, so the image policy
+            // must refuse it rather than skip its scan.
+            glb = new byte[valid.Length + 3];
+            valid.CopyTo(glb, 0);
+            BinaryPrimitives.WriteUInt32LittleEndian(glb.AsSpan(8), (uint)glb.Length);
+        }
+        else
+        {
+            glb = MalformedGlb(input);
+        }
+
+        var error = Assert.Throws<GltfImportDataException>(() => LoadBytes(overload, glb, identity));
         Assert.Equal(GltfImportRefusal.MalformedModel, error.Reason);
         Assert.Equal(identity, error.Identity);
         Assert.NotNull(error.InnerException);
@@ -253,6 +383,8 @@ public sealed class GltfSkinnedMaterialPartsTests
             case "rigid-parts": GltfLoader.LoadPartsWithMaterials(glb, identity); break;
             case "skinned-parts": GltfLoader.LoadSkinnedPartsWithMaterials(glb, identity); break;
             case "skinned": GltfLoader.LoadSkinned(glb, identity); break;
+            case "skinned-material": GltfLoader.LoadSkinnedWithMaterial(glb, identity); break;
+            case "animations": GltfLoader.LoadAnimations(glb, identity); break;
             case "flattened-albedo": GltfLoader.LoadFlattenedAlbedo(glb, identity); break;
             case "coverage-source": GltfLoader.LoadCoverageSource(glb, identity); break;
             case "covered-skinned-parts": GltfLoader.LoadSkinnedPartsWithMaterials(glb, identity, CoverageImportTests.Map(glb)); break;
@@ -263,6 +395,14 @@ public sealed class GltfSkinnedMaterialPartsTests
     static byte[] MalformedGlb(string input)
     {
         var fixture = new SkinnedAttachmentGlbFixture();
+        if (input is "image-data-uri-without-base64" or "unsupported-image-data-uri")
+        {
+            string uri = input == "image-data-uri-without-base64"
+                ? "data:image/png,invalid"
+                : "data:image/unknown;base64,AA==";
+            fixture.Root["images"] = new JsonArray(new JsonObject { ["uri"] = uri });
+            return fixture.Build();
+        }
         if (input == "wrong-number-type")
         {
             fixture.Accessors[0]!["count"] = "three";
@@ -313,7 +453,7 @@ public sealed class GltfSkinnedMaterialPartsTests
         Assert.Equal(2, error.PartIndex);
     }
 
-    static SkinnedAttachmentGlbFixture Fixture(string? colorType = "VEC4", int colorComponentType = 5126)
+    static SkinnedAttachmentGlbFixture Fixture(string? colorType = "VEC4", int colorComponentType = 5126, bool dataUri = false)
     {
         var fixture = new SkinnedAttachmentGlbFixture(2);
         fixture.Nodes[0]!["name"] = "hip";
@@ -331,9 +471,9 @@ public sealed class GltfSkinnedMaterialPartsTests
             """);
         fixture.Root["images"] = new JsonArray();
         fixture.Root["textures"] = new JsonArray();
-        AddImage(fixture, new byte[] { 220, 20, 30, 255, 40, 50, 60, 128 });
-        AddImage(fixture, new byte[] { 128, 128, 255, 255, 100, 120, 240, 255 });
-        AddImage(fixture, new byte[] { 0, 180, 40, 255, 10, 90, 30, 255 });
+        AddImage(fixture, new byte[] { 220, 20, 30, 255, 40, 50, 60, 128 }, dataUri);
+        AddImage(fixture, new byte[] { 128, 128, 255, 255, 100, 120, 240, 255 }, dataUri);
+        AddImage(fixture, new byte[] { 0, 180, 40, 255, 10, 90, 30, 255 }, dataUri);
         for (int vertex = 0; vertex < 3; vertex++)
         {
             fixture.SetElement(1, vertex, 0, 1, 0, 0);
@@ -383,10 +523,13 @@ public sealed class GltfSkinnedMaterialPartsTests
         return accessor;
     }
 
-    static void AddImage(SkinnedAttachmentGlbFixture fixture, byte[] rgba)
+    static void AddImage(SkinnedAttachmentGlbFixture fixture, byte[] rgba, bool dataUri)
     {
         JsonArray images = fixture.Root["images"]!.AsArray();
-        images.Add(new JsonObject { ["bufferView"] = fixture.AddView(PngWriter.Encode(rgba, 2, 1)), ["mimeType"] = "image/png" });
+        byte[] png = PngWriter.Encode(rgba, 2, 1);
+        images.Add(dataUri
+            ? new JsonObject { ["uri"] = "data:image/png;base64," + Convert.ToBase64String(png) }
+            : new JsonObject { ["bufferView"] = fixture.AddView(png), ["mimeType"] = "image/png" });
         fixture.Root["textures"]!.AsArray().Add(new JsonObject { ["source"] = images.Count - 1 });
     }
 
@@ -399,6 +542,9 @@ public sealed class GltfSkinnedMaterialPartsTests
         Assert.Equal(expected.RestPose, actual.RestPose);
         Assert.Equal(expected.Skeleton!.JointToNode, actual.Skeleton!.JointToNode);
         Assert.Equal(expected.Skeleton.NodeNames, actual.Skeleton.NodeNames);
+        Assert.Equal(expected.Skeleton.ParentIndices, actual.Skeleton.ParentIndices);
+        Assert.Equal(expected.Skeleton.NodeLogicalIndex, actual.Skeleton.NodeLogicalIndex);
+        Assert.Equal(expected.Skeleton.RestLocal, actual.Skeleton.RestLocal);
     }
 
     static void AssertMaps(GltfMaterialMaps expected, GltfMaterialMaps actual)
@@ -407,6 +553,8 @@ public sealed class GltfSkinnedMaterialPartsTests
         AssertMap(expected.Albedo, actual.Albedo);
         AssertMap(expected.Normal, actual.Normal);
         AssertMap(expected.Roughness, actual.Roughness);
+        AssertMap(expected.Emissive, actual.Emissive);
+        Assert.Equal(expected.EmissiveFactor, actual.EmissiveFactor);
     }
 
     static void AssertMap(DecodedImage? expected, DecodedImage? actual)
@@ -417,5 +565,6 @@ public sealed class GltfSkinnedMaterialPartsTests
         Assert.Equal(image.Width, actual.Value.Width);
         Assert.Equal(image.Height, actual.Value.Height);
         Assert.Equal(image.Rgba, actual.Value.Rgba);
+        Assert.Equal(image.Identity, actual.Value.Identity);
     }
 }

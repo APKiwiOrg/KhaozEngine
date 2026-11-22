@@ -24,4 +24,7 @@ public sealed class GltfImportDataException : MalformedDataException
 
     /// <summary>The raw asset path or caller-supplied asset identity.</summary>
     public string? Identity { get; init; }
+
+    /// <summary>The zero-based glTF image index for an external image refusal, when applicable.</summary>
+    public int? ImageIndex { get; init; }
 }

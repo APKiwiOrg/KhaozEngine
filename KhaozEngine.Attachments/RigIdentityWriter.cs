@@ -121,6 +121,6 @@ internal sealed class RigIdentityWriter : IDisposable
         Integer(normalized ? 1 : 0);
     }
 
-    internal string Finish() => "rig-v1:" + Convert.ToHexStringLower(hash.GetHashAndReset());
+    internal string Finish() => RigIdentity.Prefix + Convert.ToHexStringLower(hash.GetHashAndReset());
     public void Dispose() => hash.Dispose();
 }

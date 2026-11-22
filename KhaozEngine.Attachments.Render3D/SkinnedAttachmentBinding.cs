@@ -8,12 +8,12 @@ namespace KhaozEngine.Attachments.Render3D;
 /// <summary>An immutable garment-skin to host-skin index table. Frame palettes belong to the caller.</summary>
 internal sealed class SkinnedAttachmentBinding
 {
-    const float BindTolerance = 1e-4f;
+    internal const float BindTolerance = 1e-4f;
     readonly uint _partId;
     readonly int[] _hostBones;
 
     SkinnedAttachmentBinding(SkinnedAttachmentPartDefinition part, ContractJointMap map,
-        SkinnedGltfMesh hostMesh, IReadOnlyList<string> names, IReadOnlyList<Matrix4x4> inverseBind, int restCount)
+        SkinnedGltfMesh hostMesh, IReadOnlyList<string> names, IReadOnlyList<Matrix4x4> inverseBind, int restCount, IReadOnlyList<GarmentChainJoint> joints)
     {
         string context = Context(part);
         CheckCount(names.Count, part);
@@ -23,8 +23,15 @@ internal sealed class SkinnedAttachmentBinding
             { PartId = part.Id, MeshKey = part.Mesh.Key, JointCount = names.Count, InverseBindCount = inverseBind.Count, RestCount = restCount };
         _partId = part.Id;
         _hostBones = new int[names.Count];
+        if (part.Motion is ChainMotionDefinition motion)
+        {
+            Motion = new AttachmentChainBinding(part, motion, map, hostMesh.InverseBind, names, joints, inverseBind);
+            foreach (BoundAttachmentChain chain in Motion.Chains)
+                foreach (int bone in chain.PaletteBones) _hostBones[bone] = -1;
+        }
         for (int garmentBone = 0; garmentBone < names.Count; garmentBone++)
         {
+            if (_hostBones[garmentBone] < 0) continue;
             string name = names[garmentBone];
             int hostBone;
             try { hostBone = map.Bone(name); }
@@ -42,6 +49,8 @@ internal sealed class SkinnedAttachmentBinding
             _hostBones[garmentBone] = hostBone;
         }
     }
+
+    internal AttachmentChainBinding? Motion { get; }
 
     internal int JointCount => _hostBones.Length;
 
@@ -74,6 +83,7 @@ internal sealed class SkinnedAttachmentBinding
             { PartId = part.Id, MeshKey = part.Mesh.Key };
         CheckCount(skeleton.BoneCount, part);
         var names = new string[skeleton.BoneCount];
+        var joints = part.Motion is ChainMotionDefinition ? new GarmentChainJoint[names.Length] : [];
         for (int bone = 0; bone < names.Length; bone++)
         {
             int node = skeleton.JointToNode[bone];
@@ -82,27 +92,42 @@ internal sealed class SkinnedAttachmentBinding
                     $"{Context(part)}: garment skin joint {bone} refers to missing node {node}.")
                 { PartId = part.Id, MeshKey = part.Mesh.Key, BoneIndex = bone, NodeIndex = node, NodeCount = skeleton.NodeCount };
             names[bone] = skeleton.NodeNames[node];
+            if (joints.Length != 0) joints[bone] = GarmentChainJoint.Capture(skeleton, node);
         }
-        return new SkinnedAttachmentBinding(part, map, hostMesh, names, mesh.InverseBind, mesh.RestPose.Length);
+        return new SkinnedAttachmentBinding(part, map, hostMesh, names, mesh.InverseBind, mesh.RestPose.Length, joints);
     }
 
     internal static SkinnedAttachmentBinding FromResources(SkinnedAttachmentPartDefinition part, ContractJointMap map,
-        SkinnedGltfMesh hostMesh, AttachmentPartResources resources)
+        SkinnedGltfMesh hostMesh, AttachmentPartResources resources, IReadOnlyList<GarmentChainJoint> chainJoints)
     {
         if (!resources.IsSkinned)
             throw new AttachmentBindingDataException(AttachmentBindingRefusal.GarmentMetadataMissing,
                 $"{Context(part)}: garment skin metadata is missing.")
             { PartId = part.Id, MeshKey = part.Mesh.Key };
-        return new SkinnedAttachmentBinding(part, map, hostMesh, resources.JointNames, resources.InverseBind, resources.RestPose.Count);
+        return new SkinnedAttachmentBinding(part, map, hostMesh, resources.JointNames, resources.InverseBind, resources.RestPose.Count, chainJoints);
     }
 
     internal void ValidatePalette(ReadOnlySpan<Matrix4x4> hostPalette)
     {
+        if (Motion is not { } motion)
+        {
+            foreach (int bone in _hostBones)
+                if (!AttachmentSetBinding.ValidMatrix(hostPalette[bone]))
+                    throw new AttachmentBindingArgumentException(AttachmentBindingRefusal.HostJointPoseInvalid,
+                        $"Attachment part {_partId}: host skin bone {bone} has an invalid joint model matrix.", nameof(hostPalette))
+                    { PartId = _partId, BoneIndex = bone };
+            return;
+        }
+
         foreach (int bone in _hostBones)
-            if (!AttachmentSetBinding.ValidMatrix(hostPalette[bone]))
-                throw new AttachmentBindingArgumentException(AttachmentBindingRefusal.HostJointPoseInvalid,
-                    $"Attachment part {_partId}: host skin bone {bone} has an invalid joint model matrix.", nameof(hostPalette))
-                { PartId = _partId, BoneIndex = bone };
+            if (bone >= 0 && !AttachmentSetBinding.ValidMatrix(hostPalette[bone])) throw InvalidPose(_partId, bone);
+        foreach (BoundAttachmentChain chain in motion.Chains)
+        {
+            Matrix4x4 anchor = hostPalette[chain.AnchorBone];
+            if (!AttachmentSetBinding.ValidMatrix(anchor)) throw InvalidPose(_partId, chain.AnchorBone);
+            foreach (Matrix4x4 rest in chain.RestFromAnchor)
+                if (!AttachmentSetBinding.ValidMatrix(rest * anchor)) throw InvalidPose(_partId, chain.AnchorBone);
+        }
     }
 
     internal void CopyPalette(ReadOnlySpan<Matrix4x4> hostPalette, Span<Matrix4x4> destination)
@@ -112,8 +137,22 @@ internal sealed class SkinnedAttachmentBinding
                 $"Output capacity {destination.Length} must hold {JointCount} garment joints for attachment part {_partId}.", nameof(destination))
             { PartId = _partId, ActualCapacity = destination.Length, RequiredCapacity = JointCount };
         ValidatePalette(hostPalette);
-        for (int bone = 0; bone < _hostBones.Length; bone++) destination[bone] = hostPalette[_hostBones[bone]];
+        if (Motion is not { } motion)
+        {
+            for (int bone = 0; bone < _hostBones.Length; bone++) destination[bone] = hostPalette[_hostBones[bone]];
+            return;
+        }
+
+        for (int bone = 0; bone < _hostBones.Length; bone++)
+            if (_hostBones[bone] >= 0) destination[bone] = hostPalette[_hostBones[bone]];
+        foreach (BoundAttachmentChain chain in motion.Chains)
+            chain.CopyPalette(chain.RestFromAnchor, hostPalette[chain.AnchorBone], destination);
     }
+
+    internal static AttachmentBindingArgumentException InvalidPose(uint partId, int bone) =>
+        new(AttachmentBindingRefusal.HostJointPoseInvalid,
+            $"Attachment part {partId}: host skin bone {bone} has an invalid garment pose.", "hostPalette")
+        { PartId = partId, BoneIndex = bone };
 
     static void CheckCount(int count, SkinnedAttachmentPartDefinition part)
     {
@@ -123,7 +162,7 @@ internal sealed class SkinnedAttachmentBinding
             { PartId = part.Id, MeshKey = part.Mesh.Key, JointCount = count, MinimumJointCount = 1, MaximumJointCount = SkinningMath.MaxBonesPerDraw };
     }
 
-    static bool MatchingBind(in Matrix4x4 garment, in Matrix4x4 host)
+    internal static bool MatchingBind(in Matrix4x4 garment, in Matrix4x4 host)
     {
         if (!AttachmentSetBinding.Finite(garment) || !AttachmentSetBinding.Finite(host)) return false;
         for (int row = 0; row < 4; row++)

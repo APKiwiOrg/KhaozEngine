@@ -32,13 +32,13 @@ public sealed class AttachmentSetDataException : MalformedDataException, IAttach
     /// <summary>The refused format version when representable as an Int32.</summary>
     public int? FormatVersion { get; init; }
 
-    /// <summary>The unsupported authored part kind.</summary>
+    /// <summary>The unsupported authored part or motion kind.</summary>
     public string? Kind { get; init; }
 
-    /// <summary>The local-transform array length, or null when the value is not an array.</summary>
+    /// <summary>The supplied item count, or null when a local transform is not an array.</summary>
     public int? ActualCount { get; init; }
 
-    /// <summary>The required local-transform component count.</summary>
+    /// <summary>The required local-transform component count or the minimum or maximum for a motion or collider count refusal.</summary>
     public int? ExpectedCount { get; init; }
 
     /// <summary>The zero-based index of the refused local-transform component.</summary>
@@ -56,7 +56,7 @@ public sealed class AttachmentSetDataException : MalformedDataException, IAttach
     /// <summary>The stable identifier of the refused part.</summary>
     public uint? PartId { get; init; }
 
-    /// <summary>The unsupported runtime part type.</summary>
+    /// <summary>The unsupported runtime part or motion type.</summary>
     public Type? ActualType { get; init; }
 
     /// <summary>The refused mesh asset key.</summary>
@@ -68,7 +68,7 @@ public sealed class AttachmentSetDataException : MalformedDataException, IAttach
     /// <summary>The previously declared hash for a conflicting mesh key.</summary>
     public string? ExistingHash { get; init; }
 
-    /// <summary>The rigid joint name involved in the refusal.</summary>
+    /// <summary>The rigid, chain or collider joint name involved in the refusal when it can be decoded.</summary>
     public string? JointName { get; init; }
 
     /// <summary>The mesh hash required by the set reference closure.</summary>
@@ -95,9 +95,29 @@ public sealed class AttachmentSetDataException : MalformedDataException, IAttach
     /// <summary>The authored layer text that names no defined layer.</summary>
     public string? LayerName { get; init; }
 
+    /// <summary>The zero-based chain index within the refused part.</summary>
+    public int? ChainIndex { get; init; }
+
+    /// <summary>The zero-based joint index within the refused chain.</summary>
+    public int? JointIndex { get; init; }
+
+    /// <summary>The zero-based input link index within the refused part.</summary>
+    public int? LinkIndex { get; init; }
+
+    /// <summary>The zero-based input collider index within the refused set.</summary>
+    public int? ColliderIndex { get; init; }
+
+    /// <summary>The JSON member name of the refused chain setting.</summary>
+    public string? SettingName { get; init; }
+
     MalformedDataException IAttachmentDataException.WithSource(string sourceName) => new AttachmentSetDataException(Reason, $"{sourceName}: {Message}", this)
     {
         SourceName = sourceName,
+        ChainIndex = ChainIndex,
+        JointIndex = JointIndex,
+        LinkIndex = LinkIndex,
+        ColliderIndex = ColliderIndex,
+        SettingName = SettingName,
         JsonPath = JsonPath,
         PropertyName = PropertyName,
         FormatVersion = FormatVersion,

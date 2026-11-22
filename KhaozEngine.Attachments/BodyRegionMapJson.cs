@@ -117,33 +117,28 @@ public static class BodyRegionMapJson
         return runs;
     }
 
-    static void Members(JsonElement value, string jsonPath, params string[] allowed)
+    static void Members(JsonElement value, string jsonPath, params string[] allowed) =>
+        StrictAttachmentJson.Members(value, jsonPath, Refuse, allowed);
+
+    static JsonElement Required(JsonElement value, string name, string jsonPath) =>
+        StrictAttachmentJson.Required(value, name, jsonPath, Refuse);
+
+    static string Text(JsonElement value, string jsonPath) => StrictAttachmentJson.Text(value, jsonPath, Refuse);
+
+    static JsonElement ArrayValue(JsonElement value, string jsonPath) => StrictAttachmentJson.ArrayValue(value, jsonPath, Refuse);
+
+    static Exception Refuse(StrictAttachmentJson.Fault fault, string path, string message, string? property)
     {
-        if (value.ValueKind != JsonValueKind.Object)
-            throw new BodyRegionMapDataException(BodyRegionMapRefusal.JsonValueShapeInvalid, $"{jsonPath}: expected an object.") { JsonPath = jsonPath };
-        var found = new HashSet<string>(StringComparer.Ordinal);
-        foreach (JsonProperty member in value.EnumerateObject())
+        BodyRegionMapRefusal reason = fault switch
         {
-            if (!found.Add(member.Name))
-                throw new BodyRegionMapDataException(BodyRegionMapRefusal.JsonPropertyDuplicate, $"{jsonPath}: duplicate property '{member.Name}'.")
-                { JsonPath = jsonPath, PropertyName = member.Name };
-            if (Array.IndexOf(allowed, member.Name) < 0)
-                throw new BodyRegionMapDataException(BodyRegionMapRefusal.JsonPropertyUnknown, $"{jsonPath}: unknown property '{member.Name}'.")
-                { JsonPath = jsonPath, PropertyName = member.Name };
-        }
+            StrictAttachmentJson.Fault.UnknownProperty => BodyRegionMapRefusal.JsonPropertyUnknown,
+            StrictAttachmentJson.Fault.DuplicateProperty => BodyRegionMapRefusal.JsonPropertyDuplicate,
+            StrictAttachmentJson.Fault.MissingProperty => BodyRegionMapRefusal.JsonPropertyMissing,
+            StrictAttachmentJson.Fault.ValueShape => BodyRegionMapRefusal.JsonValueShapeInvalid,
+            _ => throw new ArgumentOutOfRangeException(nameof(fault)),
+        };
+        return new BodyRegionMapDataException(reason, message) { JsonPath = path, PropertyName = property };
     }
-
-    static JsonElement Required(JsonElement value, string name, string jsonPath) => value.TryGetProperty(name, out JsonElement result)
-        ? result : throw new BodyRegionMapDataException(BodyRegionMapRefusal.JsonPropertyMissing, $"{jsonPath}: missing '{name}'.")
-        { JsonPath = jsonPath, PropertyName = name };
-
-    static string Text(JsonElement value, string jsonPath) => value.ValueKind == JsonValueKind.String
-        ? value.GetString()!
-        : throw new BodyRegionMapDataException(BodyRegionMapRefusal.JsonValueShapeInvalid, $"{jsonPath}: expected a string.") { JsonPath = jsonPath };
-
-    static JsonElement ArrayValue(JsonElement value, string jsonPath) => value.ValueKind == JsonValueKind.Array
-        ? value
-        : throw new BodyRegionMapDataException(BodyRegionMapRefusal.JsonValueShapeInvalid, $"{jsonPath}: expected an array.") { JsonPath = jsonPath };
 
     static int Integer(JsonElement value, string jsonPath) => value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out int number)
         ? number

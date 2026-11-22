@@ -178,6 +178,9 @@ public sealed partial class PathFollower
     // NavSpace of its own) is unaffected.
     readonly NavSpace? _space;
 
+    // Keep the route reference adjacent to the index and cooldown so the synchronous reset
+    // can clear them with a paired store.
+    PathPlanRequest? _request;
     NavPath? _path;
     int _index;
     float _cooldown;

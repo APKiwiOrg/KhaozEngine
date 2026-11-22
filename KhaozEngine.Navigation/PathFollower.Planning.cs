@@ -14,7 +14,6 @@ public sealed partial class PathFollower
     /// <summary>Tick specialization that also handles fixed-quota region requests.</summary>
     internal readonly struct IncrementalPlanning;
 
-    PathPlanRequest? _request;
     Vector3 _requestOrigin;
     Vector3 _requestAnchor;
 

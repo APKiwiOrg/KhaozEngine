@@ -32,27 +32,19 @@ public sealed class OutfitLift
     }
 
     /// <summary>
-    /// Resolve lift for the same body and worn list used to resolve <paramref name="coverage"/>. Supply one mesh
-    /// per skinned part that declares lift. The result retains only its own positions and heights.
+    /// Resolve lift using the body and worn set data captured by <paramref name="coverage"/>. Supply one mesh per
+    /// skinned part that declares lift. The result retains only its own positions and heights.
     /// </summary>
-    /// <exception cref="ArgumentException">The worn count differs from coverage, or a lifting mesh has the wrong shape.</exception>
-    public static OutfitLift Resolve(BodyRegionMap body, IReadOnlyList<AttachmentSetDefinition> worn,
-        OutfitCoverage coverage, IReadOnlyList<LiftingPartMesh> meshes)
+    /// <exception cref="ArgumentException">A lifting mesh is missing, extra or has the wrong shape.</exception>
+    public static OutfitLift Resolve(OutfitCoverage coverage, IReadOnlyList<LiftingPartMesh> meshes)
     {
-        ArgumentNullException.ThrowIfNull(body);
-        ArgumentNullException.ThrowIfNull(worn);
         ArgumentNullException.ThrowIfNull(coverage);
         ArgumentNullException.ThrowIfNull(meshes);
-        if (coverage.WornCount != worn.Count)
-            throw new ArgumentException("Coverage must describe the same worn list.", nameof(coverage));
 
         var ordered = new List<(int WornIndex, AttachmentLayer Layer)>();
-        for (int wornIndex = 0; wornIndex < worn.Count; wornIndex++)
-        {
-            AttachmentSetDefinition set = worn[wornIndex] ?? throw new ArgumentNullException(nameof(worn), $"worn[{wornIndex}] is null.");
-            if (set.Layer is { } layer)
+        for (int wornIndex = 0; wornIndex < coverage.WornCount; wornIndex++)
+            if (coverage.LayerFor(wornIndex) is { } layer)
                 ordered.Add((wornIndex, layer));
-        }
         ordered.Sort((left, right) => left.Layer.CompareTo(right.Layer));
 
         var remaining = new Dictionary<(int WornIndex, uint PartId), LiftingPartMesh>(meshes.Count);
@@ -63,7 +55,7 @@ public sealed class OutfitLift
                 throw new ArgumentException($"worn[{mesh.WornIndex}] part {mesh.PartId} has more than one lifting mesh.", nameof(meshes));
         }
 
-        var result = new OutfitLift(worn.Count, body.Regions.Count);
+        var result = new OutfitLift(coverage.WornCount, coverage.RegionCount);
         var highest = new float?[result.regionCount];
         float?[] below = highest;
         AttachmentLayer? currentLayer = null;
@@ -84,15 +76,15 @@ public sealed class OutfitLift
                     effective[region] = metres;
 
             var largestLift = new float[result.regionCount];
-            foreach (AttachmentPartDefinition part in worn[wornIndex].Parts)
+            foreach (OutfitCoverage.SkinnedPart part in coverage.SkinnedPartsFor(wornIndex))
             {
-                if (part is not SkinnedAttachmentPartDefinition { Lift: { } lift })
+                if (part.LiftClearanceMetres is not { } clearance)
                     continue;
                 if (!remaining.Remove((wornIndex, part.Id), out LiftingPartMesh? mesh))
                     throw new ArgumentException($"worn[{wornIndex}] part {part.Id} is missing its lifting mesh.", nameof(meshes));
 
-                IReadOnlyList<ReadOnlyMemory<Vector3>>? positions = OutfitPartLift.Resolve(mesh, lift.ClearanceMetres,
-                    coverage.SkinnedPartRegions(wornIndex, part.Id), below, effective, largestLift, nameof(meshes));
+                IReadOnlyList<ReadOnlyMemory<Vector3>>? positions = OutfitPartLift.Resolve(mesh, clearance,
+                    part.Regions, below, effective, largestLift, nameof(meshes));
                 if (positions is not null)
                     result.lifted.Add((wornIndex, part.Id), positions);
             }

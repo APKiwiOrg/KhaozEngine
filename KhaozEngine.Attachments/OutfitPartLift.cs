@@ -134,7 +134,11 @@ internal static class OutfitPartLift
             if (distance == 0)
                 return false;
 
-            Position += direction * distance;
+            // A positive lift can round away when added to the source position.
+            Vector3 liftedPosition = Position + direction * distance;
+            if (new PositionBits(liftedPosition) == new PositionBits(Position))
+                return false;
+            Position = liftedPosition;
             // Visit only the standoff regions this weld touches, clearing the lowest bit each time.
             for (UInt128 regions = standoffRegions; regions != UInt128.Zero; regions &= regions - UInt128.One)
             {

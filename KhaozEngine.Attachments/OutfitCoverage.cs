@@ -12,10 +12,11 @@ public sealed class OutfitCoverage
 {
     readonly Worn[] worn;
 
-    OutfitCoverage(Worn[] worn, RegionSet bodyHidden)
+    OutfitCoverage(Worn[] worn, RegionSet bodyHidden, int regionCount)
     {
         this.worn = worn;
         BodyHidden = bodyHidden;
+        RegionCount = regionCount;
     }
 
     /// <summary>The number of worn sets the outfit was resolved from.</summary>
@@ -23,6 +24,8 @@ public sealed class OutfitCoverage
 
     /// <summary>The body regions covered by any worn set that has a layer.</summary>
     public RegionSet BodyHidden { get; }
+
+    internal int RegionCount { get; }
 
     /// <summary>
     /// Resolve <paramref name="worn"/> against <paramref name="body"/>, refusing with <see cref="OutfitDataException"/>
@@ -52,7 +55,7 @@ public sealed class OutfitCoverage
                     hidden = hidden.Union(other.Covers);
             resolved[index].Hidden = hidden;
         }
-        return new OutfitCoverage(resolved, bodyHidden);
+        return new OutfitCoverage(resolved, bodyHidden, body.Regions.Count);
     }
 
     /// <summary>
@@ -80,10 +83,14 @@ public sealed class OutfitCoverage
     public IReadOnlyList<RegionRun> SkinnedPartRegions(int wornIndex, uint partId)
     {
         Worn piece = At(wornIndex);
-        return piece.SkinnedRegions.TryGetValue(partId, out IReadOnlyList<RegionRun>? runs)
-            ? runs
+        return piece.SkinnedParts.TryGetValue(partId, out SkinnedPart part)
+            ? part.Regions
             : throw new ArgumentException($"worn[{wornIndex}] has no skinned part {partId}.", nameof(partId));
     }
+
+    internal AttachmentLayer? LayerFor(int wornIndex) => At(wornIndex).Layer;
+
+    internal Dictionary<uint, SkinnedPart>.ValueCollection SkinnedPartsFor(int wornIndex) => At(wornIndex).SkinnedParts.Values;
 
     internal ReadOnlySpan<(int Region, float Metres)> StandoffFor(int wornIndex) => At(wornIndex).Standoff;
 
@@ -94,18 +101,20 @@ public sealed class OutfitCoverage
         return worn[wornIndex];
     }
 
+    internal readonly record struct SkinnedPart(uint Id, IReadOnlyList<RegionRun> Regions, float? LiftClearanceMetres);
+
     sealed class Worn
     {
         // A rigid part of a set with no layer maps to -1, which no region index uses.
         internal const int NoRegion = -1;
 
         Worn(AttachmentLayer? layer, RegionSet covers, Dictionary<uint, int> rigidRegions,
-            Dictionary<uint, IReadOnlyList<RegionRun>> skinnedRegions, (int Region, float Metres)[] standoff)
+            Dictionary<uint, SkinnedPart> skinnedParts, (int Region, float Metres)[] standoff)
         {
             Layer = layer;
             Covers = covers;
             RigidRegions = rigidRegions;
-            SkinnedRegions = skinnedRegions;
+            SkinnedParts = skinnedParts;
             Standoff = standoff;
         }
 
@@ -113,7 +122,7 @@ public sealed class OutfitCoverage
         internal RegionSet Covers { get; }
         internal RegionSet Hidden { get; set; }
         internal Dictionary<uint, int> RigidRegions { get; }
-        internal Dictionary<uint, IReadOnlyList<RegionRun>> SkinnedRegions { get; }
+        internal Dictionary<uint, SkinnedPart> SkinnedParts { get; }
         internal (int Region, float Metres)[] Standoff { get; }
 
         internal static Worn Resolve(BodyRegionMap body, AttachmentSetDefinition set, int wornIndex)
@@ -130,7 +139,7 @@ public sealed class OutfitCoverage
             }
 
             var rigidRegions = new Dictionary<uint, int>();
-            var skinnedRegions = new Dictionary<uint, IReadOnlyList<RegionRun>>();
+            var skinnedParts = new Dictionary<uint, SkinnedPart>();
             foreach (AttachmentPartDefinition part in set.Parts)
             {
                 if (part is RigidAttachmentPartDefinition rigid)
@@ -138,13 +147,14 @@ public sealed class OutfitCoverage
                     rigidRegions.Add(part.Id, rigid.Region is null ? NoRegion : Region(body, rigid.Region, wornIndex, part.Id, null));
                     continue;
                 }
-                IReadOnlyList<NamedRegionRun> named = ((SkinnedAttachmentPartDefinition)part).Regions;
+                var skinned = (SkinnedAttachmentPartDefinition)part;
+                IReadOnlyList<NamedRegionRun> named = skinned.Regions;
                 var runs = new RegionRun[named.Count];
                 for (int runIndex = 0; runIndex < runs.Length; runIndex++)
                     runs[runIndex] = new RegionRun(Region(body, named[runIndex].Region, wornIndex, part.Id, runIndex), named[runIndex].TriangleCount);
-                skinnedRegions.Add(part.Id, Array.AsReadOnly(runs));
+                skinnedParts.Add(part.Id, new(part.Id, Array.AsReadOnly(runs), skinned.Lift?.ClearanceMetres));
             }
-            return new Worn(set.Layer, covers, rigidRegions, skinnedRegions, standoff);
+            return new Worn(set.Layer, covers, rigidRegions, skinnedParts, standoff);
         }
 
         static int Region(BodyRegionMap body, string name, int wornIndex, uint? partId, int? runIndex, string field = "covers")

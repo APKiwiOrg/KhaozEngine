@@ -34,6 +34,43 @@ public class OutfitLiftTests
     }
 
     [Fact]
+    public void Lift_uses_the_set_data_captured_when_coverage_was_resolved()
+    {
+        AttachmentSetDefinition[] worn = [Garment(new RegionStandoff("a", 0.008f)), Lifting(AttachmentLayer.Armour)];
+        OutfitCoverage coverage = OutfitCoverage.Resolve(Body, worn);
+        worn[0] = Garment(new RegionStandoff("a", 0.016f));
+        worn[1] = Lifting(AttachmentLayer.Armour, clearance: 0.004f);
+
+        OutfitLift lift = OutfitLift.Resolve(coverage, [new LiftingPartMesh(1, LiftingPartId, [Triangle(Vector3.Zero)])]);
+
+        Assert.Equal(0.008f, lift.HeightBelow(1, Front));
+        AssertPosition(new(0, 0, 0.007f), Assert.Single(Positions(lift, 1)).Span[0]);
+    }
+
+    [Theory]
+    [InlineData(0f, true)]
+    [InlineData(1f, false)]
+    public void A_part_reports_lift_only_when_a_rest_position_changes(float restHeight, bool moves)
+    {
+        const float heightBelow = 0.125f;
+        // The lift is 2^-27, which is representable at zero and rounds away when added to one.
+        const float distance = 1f / (1 << 27);
+        LiftMaterialMesh material = Triangle(new(0, 0, restHeight), bearing: MathF.BitDecrement(heightBelow));
+        AttachmentSetDefinition armour = Lifting(AttachmentLayer.Armour, standoff: [new("a", 0)], clearance: 0);
+
+        OutfitLift lift = Resolve([Garment(new RegionStandoff("a", heightBelow)), armour],
+            new LiftingPartMesh(1, LiftingPartId, [material]));
+
+        Assert.Equal(heightBelow, lift.HeightBelow(1, Front));
+        Assert.Equal(moves, lift.HasLift);
+        Assert.Equal(moves ? distance : 0f, lift.EffectiveStandoff(1, Front));
+        if (moves)
+            Assert.Equal(new Vector3(0, 0, distance), Assert.Single(Positions(lift, 1)).Span[0]);
+        else
+            Assert.Null(lift.LiftedPositions(1, LiftingPartId));
+    }
+
+    [Fact]
     public void A_bridging_span_keeps_its_positions_when_its_bearing_already_clears_the_garment()
     {
         LiftMaterialMesh root = Triangle(Vector3.Zero);
@@ -140,29 +177,33 @@ public class OutfitLiftTests
     }
 
     [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void A_hem_ramps_one_triangle_across_material_parts_at_bitwise_coincident_positions(bool coincident)
+    [InlineData(true, null, 0.007f, 0.012f)]
+    [InlineData(false, null, 0.007f, 0.005f)]
+    [InlineData(true, 0.012f, 0.011f, 0.016f)]
+    public void A_hem_ramps_one_triangle_across_material_parts_at_bitwise_coincident_positions(
+        bool coincident, float? backHeight, float seamLift, float backStandoff)
     {
         LiftMaterialMesh inside = Triangle(Vector3.Zero);
         Vector3 seam = coincident ? Vector3.Zero : new(BitConverter.Int32BitsToSingle(int.MinValue), 0, 0);
         // The two baked bearings at the seam can differ within the GLB policy's tolerance.
         LiftMaterialMesh outside = new(new Vector3[] { seam, new(1, 1, 0), new(2, 0, 0), new(2, 1, 0) },
             new uint[] { 0, 1, 2, 1, 3, 2 }, new[] { Vector3.UnitZ, Vector3.UnitZ, Vector3.UnitZ, Vector3.UnitZ },
-            new[] { 0.00205f, Bearing, Bearing, Bearing });
+            new[] { 0.00205f, 0.014f, 0.014f, 0.014f });
         AttachmentSetDefinition armour = Lifting(AttachmentLayer.Armour, runs: [new("a", 1), new("b", 2)],
             standoff: [new("b", 0.005f)]);
+        RegionStandoff[] lowerStandoff = backHeight is { } height ? [new("a", 0.008f), new("b", height)] : [new("a", 0.008f)];
 
-        OutfitLift lift = Resolve([Garment(new RegionStandoff("a", 0.008f)), armour],
+        OutfitLift lift = Resolve([Garment(lowerStandoff), armour],
             new LiftingPartMesh(1, LiftingPartId, [inside, outside]));
 
         IReadOnlyList<ReadOnlyMemory<Vector3>> positions = Positions(lift, 1);
         Assert.Equal(2, positions.Count);
-        Assert.Null(lift.HeightBelow(1, Back));
-        AssertPosition(new(0, 0, 0.007f), positions[0].Span[0]);
+        Assert.Equal(backHeight, lift.HeightBelow(1, Back));
+        AssertPosition(new(0, 0, seamLift), positions[0].Span[0]);
+        AssertPosition(new(1, 0, 0.007f), positions[0].Span[1]);
         Assert.Equal(coincident ? positions[0].Span[0] : seam, positions[1].Span[0]);
         Assert.Equal(outside.Positions[1..].ToArray(), positions[1][1..].ToArray());
-        Assert.Equal(coincident ? 0.012f : 0.005f, lift.EffectiveStandoff(1, Back)!.Value, precision: 6);
+        Assert.Equal(backStandoff, lift.EffectiveStandoff(1, Back)!.Value, precision: 6);
     }
 
     [Fact]
@@ -233,14 +274,14 @@ public class OutfitLiftTests
     }
 
     static OutfitLift Resolve(AttachmentSetDefinition[] worn, params LiftingPartMesh[] meshes) =>
-        OutfitLift.Resolve(Body, worn, OutfitCoverage.Resolve(Body, worn), meshes);
+        OutfitLift.Resolve(OutfitCoverage.Resolve(Body, worn), meshes);
 
     static AttachmentSetDefinition Garment(params RegionStandoff[] standoff) =>
         new([AttachmentFixtures.TaggedRigid()], AttachmentLayer.Garment, [], [], standoff);
 
     static AttachmentSetDefinition Lifting(AttachmentLayer layer, NamedRegionRun[]? runs = null,
-        string[]? covers = null, RegionStandoff[]? standoff = null) =>
-        new([AttachmentFixtures.TaggedSkinned(runs ?? [new("a", 1)]) with { Lift = new(Clearance) }],
+        string[]? covers = null, RegionStandoff[]? standoff = null, float clearance = Clearance) =>
+        new([AttachmentFixtures.TaggedSkinned(runs ?? [new("a", 1)]) with { Lift = new(clearance) }],
             layer, covers ?? [], [], standoff ?? []);
 
     static LiftMaterialMesh Triangle(Vector3 origin, float bearing = Bearing, Vector3? direction = null)

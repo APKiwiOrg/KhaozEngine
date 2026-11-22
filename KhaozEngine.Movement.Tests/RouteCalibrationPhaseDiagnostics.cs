@@ -21,9 +21,10 @@ public sealed partial class RouteCalibrationDiagnosticsTests
         }
 
         var rows = RouteCalibrationPhases.ProjectedRows();
-        ReportPhase("projected-rows", "FootprintRow", 2, rows.Length, MeasureWindow(rows.Length,
-            samples => RunRows<UntimedClock>(rows, samples),
-            samples => RunRows<TClock>(rows, samples)));
+        ReportPhase("projected-rows", "FootprintRow", PathWorkWeights.FootprintRow, rows.Length,
+            MeasureWindow(rows.Length,
+                samples => RunRows<UntimedClock>(rows, samples),
+                samples => RunRows<TClock>(rows, samples)));
 
         var crossings = RouteCalibrationPhases.Crossings();
         ReportCrossings("crossings-128", RouteCalibrationPhases.ShortCrossingBudget);

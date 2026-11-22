@@ -78,9 +78,10 @@ public sealed partial class MoveToRange
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _navigation = navigation;
         _straightener = CreateStraightener(planner, space, allowsSegment, follow, options, navigation);
-        if (options.Stall is { } stall) _stallRing = new RangeProgressRing(stall.WindowTicks);
+        // The follower validates the planning pairing. Nothing sized by the options is allocated before it accepts.
         _follower = new PathFollower(_straightener ?? planner,
             StrictConfig(follow ?? PathFollowConfig.Default, options.CarryThroughStraightRuns), space);
+        if (options.Stall is { } stall) _stallRing = new RangeProgressRing(stall.WindowTicks);
         _admits = AllowsStep;
     }
 

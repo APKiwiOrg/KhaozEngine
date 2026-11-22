@@ -26,6 +26,10 @@ internal sealed partial class RouteStraightener
         PathQueryBudget budget, PathPlanWorkspaces workspaces)
         => RequestNavigation().BeginPlanningPath(start, goal, agentRadius, budget, workspaces, this);
 
-    private GroundNavigation RequestNavigation()
+    /// <summary>Checks whether this straightener uses the exact profile that receives the request.</summary>
+    internal bool UsesNavigation(GroundNavigation navigation) => ReferenceEquals(_navigation, navigation);
+
+    /// <summary>Gets the bound profile for straightening. Its planner separately checks request support.</summary>
+    internal GroundNavigation RequestNavigation()
         => _navigation ?? throw new NotSupportedException("Route requests require a ground navigation profile with budgeted segment admission.");
 }

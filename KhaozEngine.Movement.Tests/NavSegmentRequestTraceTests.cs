@@ -100,21 +100,26 @@ public sealed class NavSegmentRequestTraceTests
             accepted: true, cells: 4, total: 32);
     }
 
-    [Fact]
-    public void NonTiedCrossingUsesTheEarlierBoundaryThenStopsOnTheRefusedEdge()
+    [Theory]
+    [InlineData(false, 74)]
+    [InlineData(true, 65)]
+    public void NonTiedCrossingUsesTheEarlierBoundaryThenStopsOnTheRefusedEdge(bool refuseSecond, int total)
     {
-        // With origins (0, 8), X=2 is at 1/6 and Z=10 is at 1/4. Only the first exit exists.
+        // With origins (0, 8), X=2 is at 1/6 and Z=10 is at 1/4. The alternate first exit never exists.
         var tuning = MoveTuning.Default with { CapsuleRadius = 0f };
         var columns = NavAreaFootprintRowsTests.Columns(NavAreaFootprintRowsTests.Options(0f, 8f));
         var footprint = new NavAreaFootprint(columns, columns.Options, tuning, default);
         var navigation = SegmentAdmissionFixture.Build(footprint, tuning,
-            allowsEdge: (x, z, nx, nz) => (x, z, nx, nz) == (1, 1, 2, 1));
+            allowsEdge: (x, z, nx, nz) => (x, z, nx, nz) is (1, 1, 2, 1) ||
+                !refuseSecond && (x, z, nx, nz) is (2, 1, 2, 2) or (2, 2, 3, 2) or (3, 2, 3, 3) or (3, 3, 4, 3));
         Vector3 from = new(1.5f, 0f, 9.5f), to = new(4.5f, 0f, 11.5f);
+        (NavSegmentOperation, int)[] remainingCrossings = refuseSecond ? [] :
+            [(CellCrossing, 3), (CellCrossing, 3), (CellCrossing, 3)];
         AssertEveryCut(navigation, from, to,
             [
                 .. PointEndpoint, .. PointEndpoint, (SegmentStart, 1), .. ScanRow(4), .. ScanRow(4), .. ScanRow(4),
-                (CellCrossing, 3), (CellCrossing, 3),
-            ], accepted: false, cells: 14, total: 65);
+                (CellCrossing, 3), (CellCrossing, 3), .. remainingCrossings,
+            ], accepted: !refuseSecond, cells: 14, total);
     }
 
     [Fact]

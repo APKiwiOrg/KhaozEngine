@@ -13,6 +13,7 @@ public sealed partial class GroundNavigation
 
     /// <summary>Prewarms all buffers for the profile's incremental planner. Area excluding views plan
     /// synchronously, as their grid search constraint can scan an entire footprint in one operation.</summary>
+    /// <exception cref="ArgumentException">The supplied straightener is bound to a different profile or has no profile.</exception>
     /// <exception cref="NotSupportedException">This is an area excluding view.</exception>
     internal PathPlanWorkspaces CreatePlanningWorkspaces(int count, PathQueryBudget largestBudget,
         RouteStraightener? straightener = null)
@@ -20,10 +21,15 @@ public sealed partial class GroundNavigation
 
     /// <summary>Freezes a region plan whose start admission, grid search and optional straightening share one lease.
     /// Area excluding views require synchronous planning to keep whole-footprint constraints outside the quota.</summary>
+    /// <exception cref="ArgumentException">The straightener belongs to another profile or has no profile,
+    /// or the pool does not belong to the straightener.</exception>
     /// <exception cref="NotSupportedException">This is an area excluding view.</exception>
     internal PathPlanRequest BeginPlanningPath(Vector3 start, NavGoalRegion goal, float radius, PathQueryBudget budget,
         PathPlanWorkspaces workspaces, RouteStraightener straightener)
-        => ((ProfilePlanner)Planner).BeginPath(start, goal, radius, budget, workspaces, straightener);
+    {
+        ArgumentNullException.ThrowIfNull(straightener);
+        return ((ProfilePlanner)Planner).BeginPath(start, goal, radius, budget, workspaces, straightener);
+    }
 
     private sealed partial class ProfilePlanner
     {
@@ -35,7 +41,18 @@ public sealed partial class GroundNavigation
             => CreateWorkspaces(count, largestBudget);
 
         internal PathPlanWorkspaces CreateWorkspaces(int count, PathQueryBudget largestBudget, RouteStraightener? straightener = null)
-            => planner.CreateRequestWorkspaces((object?)straightener ?? this, count, largestBudget);
+        {
+            RequireStraightenerProfile(straightener);
+            return planner.CreateRequestWorkspaces((object?)straightener ?? this, count, largestBudget);
+        }
+
+        void RequireStraightenerProfile(RouteStraightener? straightener)
+        {
+            if (straightener is not null && !straightener.UsesNavigation(navigation))
+                throw new ArgumentException("The straightener must be bound to this ground navigation profile.", nameof(straightener));
+        }
+
+        internal bool OwnsRequestPool(GridPlanningWorkspaces pool, object owner) => pool.IsOwnedBy(planner, owner);
 
         PathPlanRequest IIncrementalRegionPathPlanner.BeginPath(Vector3 start, NavGoalRegion goal, float agentRadius,
             PathQueryBudget budget, PathPlanWorkspaces workspaces)
@@ -44,29 +61,54 @@ public sealed partial class GroundNavigation
         internal PathPlanRequest BeginPath(Vector3 start, NavGoalRegion goal, float agentRadius, PathQueryBudget budget,
             PathPlanWorkspaces workspaces, RouteStraightener? straightener = null)
         {
+            RequireStraightenerProfile(straightener);
             planner.RequireRequestSupport();
             ArgumentNullException.ThrowIfNull(goal);
             ValidateRadius(agentRadius);
             return planner.BeginRequest((object?)straightener ?? this, start, goal, agentRadius, budget, workspaces,
                 pool => straightener is null
                     ? new ProfilePathRequest(navigation, pool, start, goal, agentRadius, budget)
-                    : new RouteStraighteningRequest(straightener, navigation, pool, start, goal, agentRadius, budget));
+                    : new RouteStraighteningRequest(straightener, pool, start, goal, agentRadius, budget));
         }
     }
 
     /// <summary>Runs the profile's point footprint and resting-layer admission before the raw grid search.</summary>
-    internal class ProfilePathRequest(GroundNavigation navigation, GridPlanningWorkspaces pool, Vector3 start,
-        NavGoalRegion goal, float radius, PathQueryBudget budget) : GridSearchRequest(pool, start, goal, radius, budget)
+    internal class ProfilePathRequest : GridSearchRequest
     {
-        NavEndpointRequest _endpoint = new(navigation, start);
+        NavEndpointRequest _endpoint;
 
-        private protected GroundNavigation Navigation => navigation;
+        internal ProfilePathRequest(GroundNavigation navigation, GridPlanningWorkspaces pool, Vector3 start,
+            NavGoalRegion goal, float radius, PathQueryBudget budget)
+            : this(navigation, pool, start, goal, radius, budget, navigation.Planner)
+        {
+        }
+
+        private protected ProfilePathRequest(RouteStraightener straightener, GridPlanningWorkspaces pool, Vector3 start,
+            NavGoalRegion goal, float radius, PathQueryBudget budget)
+            : this(straightener.RequestNavigation(), pool, start, goal, radius, budget, straightener)
+        {
+        }
+
+        private ProfilePathRequest(GroundNavigation navigation, GridPlanningWorkspaces pool, Vector3 start,
+            NavGoalRegion goal, float radius, PathQueryBudget budget, object owner) : base(pool, start, goal, radius, budget)
+        {
+            var profile = (ProfilePlanner)navigation.Planner;
+            if (!profile.SupportsRequests)
+                throw new NotSupportedException("This ground navigation profile requires synchronous planning.");
+            if (!profile.OwnsRequestPool(pool, owner))
+                throw new ArgumentException("The workspace pool belongs to another planner.", nameof(pool));
+
+            Navigation = navigation;
+            _endpoint = new NavEndpointRequest(navigation, start);
+        }
+
+        GroundNavigation Navigation { get; }
 
         internal NavSegmentOperation NextStartOperationForTests => State == PathPlanState.Pending && LeaseSlot >= 0
             ? _endpoint.NextOperation : NavSegmentOperation.Done;
 
         private protected override bool AdmitsStartChange(Vector3 feet)
-            => navigation.Resolve(Start, out _) && navigation.Resolve(feet, out _);
+            => Navigation.Resolve(Start, out _) && Navigation.Resolve(feet, out _);
 
         private protected override NavPath? RunSlice(int quota, ref int spent)
         {

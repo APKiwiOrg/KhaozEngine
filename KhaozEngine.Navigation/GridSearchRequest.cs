@@ -16,6 +16,10 @@ public sealed partial class GridPathPlanner
         internal int LeaseSlot { get; set; } = -1;
         internal LinkedListNode<GridSearchRequest>? WaitNode { get; set; }
 
+        /// <summary>Accepts only an unattached pending handle bound to the same pool.</summary>
+        internal bool CanJoin(GridPlanningWorkspaces workspaces)
+            => ReferenceEquals(pool, workspaces) && State == PathPlanState.Pending && LeaseSlot < 0 && WaitNode is null;
+
         /// <summary>Reports whether the stepper holds the staged result array before publication.</summary>
         internal bool HasStagedResultArrayForTests => _stepper.HasStagedResultArrayForTests;
 
@@ -116,7 +120,7 @@ public sealed partial class GridPathPlanner
 
         private protected override void Release()
         {
-            pool.Release(this, LeaseSlot);
+            pool.Release(this);
             LeaseSlot = -1;
             _stepper = default;
             ClearProfileStages();

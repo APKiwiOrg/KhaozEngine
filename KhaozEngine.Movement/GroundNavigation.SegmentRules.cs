@@ -34,6 +34,20 @@ public sealed partial class GroundNavigation
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static bool SameCell(int cell, int target) => cell == target;
 
+    /// <summary>Cross-layer segments use one directed Stair admission instead of the cell walk.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool ChangesLayer(int from, int to) => from != to;
+
+    /// <summary>Uses double precision before subtraction and preserves the axis direction.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static double CrossingDelta(float from, float to) => (double)to - from;
+
+    /// <summary>Starts at the first grid boundary, leaving an axis already at its target out of the walk.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static double FirstCrossing(int cell, int target, float start, double delta, NavGrid grid, int direction, bool alongZ)
+        => SameCell(cell, target) ? double.PositiveInfinity :
+            Crossing(start, delta, alongZ ? grid.OriginZ : grid.OriginX, grid.CellSize, cell, direction);
+
     internal static double Crossing(float start, double delta, float origin, float size, int cell, int direction)
         => direction == 0 ? double.PositiveInfinity :
             (origin + (cell + (direction > 0 ? 1d : 0d)) * size - start) / delta;

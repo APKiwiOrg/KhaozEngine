@@ -76,14 +76,14 @@ public sealed partial class GroundNavigation
     {
         if (!Resolve(fromFeet, out Node from) || !Resolve(toFeet, out Node to) ||
             !_footprint.AcceptsSegment(fromFeet, toFeet)) return false;
-        if (from.Layer != to.Layer)
+        if (ChangesLayer(from.Layer, to.Layer))
             return Graph.CanWalk(from.Layer, from.X, from.Z, to.Layer, to.X, to.Z);
         NavGrid grid = Space.Layers[from.Layer];
         int x = from.X, z = from.Z;
-        double dx = (double)toFeet.X - fromFeet.X, dz = (double)toFeet.Z - fromFeet.Z;
+        double dx = CrossingDelta(fromFeet.X, toFeet.X), dz = CrossingDelta(fromFeet.Z, toFeet.Z);
         int sx = Math.Sign(dx), sz = Math.Sign(dz);
-        double nextX = SameCell(x, to.X) ? double.PositiveInfinity : Crossing(fromFeet.X, dx, grid.OriginX, grid.CellSize, x, sx);
-        double nextZ = SameCell(z, to.Z) ? double.PositiveInfinity : Crossing(fromFeet.Z, dz, grid.OriginZ, grid.CellSize, z, sz);
+        double nextX = FirstCrossing(x, to.X, fromFeet.X, dx, grid, sx, alongZ: false);
+        double nextZ = FirstCrossing(z, to.Z, fromFeet.Z, dz, grid, sz, alongZ: true);
         double strideX = CrossingStride(grid, dx, sx);
         double strideZ = CrossingStride(grid, dz, sz);
         while (x != to.X || z != to.Z)

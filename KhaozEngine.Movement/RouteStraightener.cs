@@ -78,8 +78,11 @@ internal sealed partial class RouteStraightener : IIncrementalRegionPathPlanner
         return straightened;
     }
 
-    // The final waypoint carries region membership, a special transition needs its start and landing, and a layer change needs
-    // both ends, so a scan never passes any of them.
+    /// <summary>Keeps the region endpoint and both ends of a special transition or layer change.</summary>
+    /// <remarks>Both drivers test the best waypoint before trying the immediately following candidate.
+    /// On a validated route, this rule refuses the predecessor of a special waypoint or layer change.
+    /// Passing it keeps the best and candidate on the anchor's layer and the candidate a Walk waypoint,
+    /// so the subsequent candidate kind and layer checks cannot refuse a shortcut on their own.</remarks>
     internal static bool Mandatory(IReadOnlyList<NavWaypoint> wp, int i, int startLayer)
     {
         if (i == wp.Count - 1 || wp[i].Kind != NavWaypointKind.Walk) return true;

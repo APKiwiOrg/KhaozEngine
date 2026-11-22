@@ -31,7 +31,7 @@ public sealed class ConstrainedGridRequestTests
         PathQueryBudget budget = PathQueryBudget.Default;
         using var first = Assert.IsType<GridPathPlanner.GridPlanningWorkspaces>(planner.CreateRequestWorkspaces(planner, 1, budget));
         using var second = Assert.IsType<GridPathPlanner.GridPlanningWorkspaces>(planner.CreateRequestWorkspaces(planner, 1, budget));
-        using var foreign = Assert.IsType<GridPathPlanner.GridSearchRequest>(first.Begin(Start, End(1), 0f, budget, null));
+        using var foreign = new GridPathPlanner.GridSearchRequest(first, Start, End(1), 0f, budget);
 
         Assert.Throws<ArgumentException>("createRequest", () => second.Begin(Start, End(1), 0f, budget, _ => foreign));
 

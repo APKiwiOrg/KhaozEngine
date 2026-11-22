@@ -79,9 +79,16 @@ public sealed class RouteStraighteningSynchronousTimingTests(ITestOutputHelper o
         Route("straighten-side-refusal", start, end, [midSmall, last], [midSmall, last]);
         Route("straighten-unreachable", start, end, [], [], NavPathStatus.Unreachable);
         Route("straighten-single", start, end, [last], [last]);
-        Route("straighten-malformed", start, end, [middle, badLayer], [middle, badLayer]);
-        Route("straighten-special", start, end, [middle, hop], [middle, hop]);
-        Route("straighten-layer", stairFrom, stairTo, [lower, upper], [lower, upper]);
+        var malformed = Route("straighten-malformed", start, end, [middle, badLayer], [middle, badLayer]);
+        Assert.Single(malformed.Navigation.Space.Layers);
+        var special = Route("straighten-special", start, end, [middle, hop], [middle, hop]);
+        var specialGrid = Assert.Single(special.Navigation.Space.Layers);
+        Assert.Equal(0f, specialGrid.RestingHeightAt(3, 2));
+        Assert.Equal(0f, specialGrid.RestingHeightAt(6, 2));
+        var layered = Route("straighten-layer", stairFrom, stairTo, [lower, upper], [lower, upper]);
+        Assert.Equal(2, layered.Navigation.Space.Layers.Count);
+        Assert.Equal(0f, layered.Navigation.Space.Layers[0].RestingHeightAt(2, 2));
+        Assert.Equal(4f, layered.Navigation.Space.Layers[1].RestingHeightAt(3, 2));
 
         StraighteningTimingRow.SegmentInput Segment(string name, Vector3 from, Vector3 to, float radius, bool expected)
         {
@@ -93,7 +100,7 @@ public sealed class RouteStraighteningSynchronousTimingTests(ITestOutputHelper o
             return input;
         }
 
-        void Route(string name, Vector3 from, Vector3 to, NavWaypoint[] raw, NavWaypoint[] expected,
+        StraighteningTimingRow.RouteInput Route(string name, Vector3 from, Vector3 to, NavWaypoint[] raw, NavWaypoint[] expected,
             NavPathStatus status = NavPathStatus.Complete)
         {
             var input = Assert.IsType<StraighteningTimingRow.RouteInput>(rows[name].RouteQuery);
@@ -104,6 +111,7 @@ public sealed class RouteStraighteningSynchronousTimingTests(ITestOutputHelper o
             NavPath actual = input.FindPath();
             Assert.Equal(status, actual.Status);
             Assert.Equal<NavWaypoint>(expected, actual.Waypoints);
+            return input;
         }
     }
 

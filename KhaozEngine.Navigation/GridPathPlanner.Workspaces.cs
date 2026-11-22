@@ -23,10 +23,7 @@ public sealed partial class GridPathPlanner
 
     /// <summary>Prewarms the grid workspace for its raw planner or one of its profile adapters.</summary>
     internal PathPlanWorkspaces CreateRequestWorkspaces(object owner, int count, PathQueryBudget largestBudget)
-    {
-        RequireRequestSupport();
-        return new GridPlanningWorkspaces(this, owner, count, largestBudget);
-    }
+        => new GridPlanningWorkspaces(this, owner, count, largestBudget);
 
     /// <summary>Validates a query, then starts its grid request and any profile stages on the same lease.</summary>
     internal PathPlanRequest BeginRequest(object owner, Vector3 start, NavGoalRegion goal, float agentRadius,
@@ -35,8 +32,7 @@ public sealed partial class GridPathPlanner
     {
         RequireRequestSupport();
         ArgumentNullException.ThrowIfNull(workspaces);
-        if (workspaces is not GridPlanningWorkspaces pool || !ReferenceEquals(pool.Planner, this) ||
-            !ReferenceEquals(pool.PlannerOwner, owner))
+        if (workspaces is not GridPlanningWorkspaces pool || !pool.IsOwnedBy(this, owner))
             throw new ArgumentException("The workspace pool belongs to another planner.", nameof(workspaces));
         return pool.Begin(start, goal, agentRadius, budget, createRequest);
     }
@@ -50,10 +46,7 @@ public sealed partial class GridPathPlanner
 
     /// <summary>Seeds prewarmed stamps near wrap, using the same pool and requests as ordinary creation.</summary>
     internal PathPlanWorkspaces CreateWorkspacesForTests(int count, PathQueryBudget largestBudget, int generation)
-    {
-        RequireRequestSupport();
-        return new GridPlanningWorkspaces(this, this, count, largestBudget, generation);
-    }
+        => new GridPlanningWorkspaces(this, this, count, largestBudget, generation);
 
     int WorkspaceFrontierCapacity(int expansions, PathQueryBudget largestBudget)
     {
@@ -104,6 +97,7 @@ public sealed partial class GridPathPlanner
         internal GridPlanningWorkspaces(GridPathPlanner planner, object owner, int count, PathQueryBudget largestBudget,
             int generation = 0)
         {
+            planner.RequireRequestSupport();
             ArgumentOutOfRangeException.ThrowIfLessThan(count, 1);
             if (float.IsNaN(largestBudget.SnapRadius))
                 throw new ArgumentOutOfRangeException(nameof(largestBudget), "The snap radius limit must be ordered.");
@@ -129,7 +123,11 @@ public sealed partial class GridPathPlanner
 
         internal GridPathPlanner Planner { get; }
 
-        internal object PlannerOwner { get; }
+        object PlannerOwner { get; }
+
+        /// <summary>Matches both the grid planner and the adapter that owns the pool.</summary>
+        internal bool IsOwnedBy(GridPathPlanner planner, object owner)
+            => ReferenceEquals(Planner, planner) && ReferenceEquals(PlannerOwner, owner);
 
         public override int Count
         {
@@ -154,11 +152,14 @@ public sealed partial class GridPathPlanner
         {
             using var call = new PoolCall(this);
             ObjectDisposedException.ThrowIf(_disposed, this);
+            Planner.RequireRequestSupport();
             Planner.ValidateRegion(goal, radius);
             if (budget.MaxExpandedNodes > _largestBudget.MaxExpandedNodes ||
                 !(budget.SnapRadius <= _largestBudget.SnapRadius))
                 throw new ArgumentException("The query budget exceeds the workspace pool's declared limits.", nameof(budget));
             GridSearchRequest request = createRequest?.Invoke(this) ?? new GridSearchRequest(this, start, goal, radius, budget);
+            if (!request.CanJoin(this))
+                throw new ArgumentException("The factory must create a new pending request for this pool.", nameof(createRequest));
             if (_waiters.Count == 0 && _free.TryPop(out int slot))
             {
                 Grant(request, slot);
@@ -181,7 +182,7 @@ public sealed partial class GridPathPlanner
 
         internal void Exit() => Volatile.Write(ref _inCall, 0);
 
-        internal void Release(GridSearchRequest request, int slot)
+        internal void Release(GridSearchRequest request)
         {
             if (request.WaitNode is { } waiting)
             {
@@ -189,6 +190,11 @@ public sealed partial class GridPathPlanner
                 request.WaitNode = null;
                 return;
             }
+
+            int slot = request.LeaseSlot;
+            if (slot < 0) return;
+            if (!ReferenceEquals(_owners[slot], request))
+                throw new ArgumentException("This request does not hold the workspace lease.", nameof(request));
 
             _owners[slot] = null;
             if (_disposed) return;

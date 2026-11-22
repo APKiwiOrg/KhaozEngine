@@ -380,7 +380,8 @@ number of work units. A column's surface count affects execution time without ch
 Movement can keep the same lease through start admission and straightening, including a charged
 allocation and copy of the changed route. An internal planner with a traversal constraint supports
 synchronous queries only. Area excluding views use that constraint, which can scan a whole footprint
-inside one search operation, so they refuse workspace creation and request begin.
+inside one search operation, so even direct workspace construction and begin require an unconstrained
+planner. A request can only join its own pool, and the pool accepts a pending handle once.
 
 These are the legacy point-query rules. The original `GridPathPlanner(NavSpace space, float hopCostCells =
 4f)` constructor keeps radius-aware clearance, endpoint ring snapping, line-of-sight shortcuts,

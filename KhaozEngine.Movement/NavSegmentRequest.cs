@@ -34,6 +34,9 @@ internal struct NavSegmentRequest(GroundNavigation navigation, Vector3 from, Vec
 
     internal long WorkSpent { get; private set; }
 
+    /// <summary>The literal endpoints submitted by the guard that owns this test cursor.</summary>
+    internal (Vector3 From, Vector3 To) EndpointsForTests => (from, to);
+
     /// <summary>The next operation, exposed for a caller combining search and segment work in one slice.</summary>
     internal NavSegmentOperation NextOperation => _stage switch
     {
@@ -142,15 +145,15 @@ internal struct NavSegmentRequest(GroundNavigation navigation, Vector3 from, Vec
         }
 
         _stage = Stage.Crossing;
-        if (_from.Layer != _to.Layer) return;
+        if (ChangesLayer(_from.Layer, _to.Layer)) return;
         NavGrid grid = navigation.Space.Layers[_from.Layer];
         _x = _from.X;
         _z = _from.Z;
-        double dx = (double)to.X - from.X, dz = (double)to.Z - from.Z;
+        double dx = CrossingDelta(from.X, to.X), dz = CrossingDelta(from.Z, to.Z);
         _sx = Math.Sign(dx);
         _sz = Math.Sign(dz);
-        _nextX = SameCell(_x, _to.X) ? double.PositiveInfinity : Crossing(from.X, dx, grid.OriginX, grid.CellSize, _x, _sx);
-        _nextZ = SameCell(_z, _to.Z) ? double.PositiveInfinity : Crossing(from.Z, dz, grid.OriginZ, grid.CellSize, _z, _sz);
+        _nextX = FirstCrossing(_x, _to.X, from.X, dx, grid, _sx, alongZ: false);
+        _nextZ = FirstCrossing(_z, _to.Z, from.Z, dz, grid, _sz, alongZ: true);
         _strideX = CrossingStride(grid, dx, _sx);
         _strideZ = CrossingStride(grid, dz, _sz);
         if (_x == _to.X && _z == _to.Z) Complete(true);
@@ -158,7 +161,7 @@ internal struct NavSegmentRequest(GroundNavigation navigation, Vector3 from, Vec
 
     void StepCrossing()
     {
-        if (_from.Layer != _to.Layer)
+        if (ChangesLayer(_from.Layer, _to.Layer))
         {
             Complete(navigation.Graph.CanWalk(_from.Layer, _from.X, _from.Z, _to.Layer, _to.X, _to.Z));
             return;

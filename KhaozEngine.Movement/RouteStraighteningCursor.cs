@@ -40,11 +40,11 @@ internal struct RouteStraighteningCursor
     NavSegmentRequest _segment;
     NavWaypoint[]? _array;
 
-    internal RouteStraighteningCursor(RouteStraightener straightener, GroundNavigation navigation, Vector3 start,
-        int startLayer, NavPath raw, bool fallBack, List<NavWaypoint> scratch)
+    internal RouteStraighteningCursor(RouteStraightener straightener, Vector3 start, int startLayer,
+        NavPath raw, bool fallBack, List<NavWaypoint> scratch)
     {
         _straightener = straightener;
-        _navigation = navigation;
+        _navigation = straightener.RequestNavigation();
         _startLayer = startLayer;
         _raw = raw;
         _waypoints = raw.Waypoints;
@@ -68,6 +68,10 @@ internal struct RouteStraighteningCursor
     internal RouteStraighteningOperation NextOperation { get; private set; }
 
     internal NavSegmentOperation NextSegmentOperation => _segment.NextOperation;
+
+    /// <summary>Reports the guard whose paid operations are currently pending.</summary>
+    internal (Vector3 From, Vector3 To)? CurrentGuardForTests
+        => NextOperation == RouteStraighteningOperation.Segment ? _segment.EndpointsForTests : null;
 
     internal bool HasStagedArray => _array is not null;
 

@@ -250,13 +250,14 @@ public sealed partial class RouteStraighteningRequestTests
             Assert.Equal(cells, diagnostic.CandidateCells);
         }
 
+        var slicedStraightener = new RouteStraightener(navigation);
         List<NavWaypoint> scratch = new(raw.Waypoints.Count);
         int prefix = 0;
         var slicedGuards = new List<(Vector3 From, Vector3 To)>();
         foreach (var (operation, segment, units) in trace)
         {
             using var diagnostic = new NavFootprintDiagnostics();
-            var cursor = new RouteStraighteningCursor(straightener, navigation, Start, 0, raw, fallBack: false, scratch);
+            var cursor = new RouteStraighteningCursor(slicedStraightener, Start, 0, raw, fallBack: false, scratch);
             int spent = 0;
             if (prefix != 0) cursor.RunSlice(prefix, ref spent);
             Assert.Equal(prefix, spent);

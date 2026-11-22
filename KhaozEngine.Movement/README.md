@@ -34,9 +34,11 @@ and can continue without rebuilding the query or allocating a scan buffer.
 
 A ground profile can also plan an internal region request. One prewarmed workspace covers sliced start
 admission, grid search and optional straightening. The straightener validates raw waypoints, keeps
-required anchors and checks the centre, positive and negative side lines in order. It captures
-`FallBackOnce` at begin and updates `LastStraightened` only for a published shortcut. A spent quota
-keeps the route private until the final operation. Area excluding views plan synchronously because
+required anchors and checks the centre, positive and negative side lines in order. It must be bound
+to the exact profile that creates its workspace and begins the request. Begin clears `LastStraightened`
+and captures `FallBackOnce`. Completion records the published shortcut or clears `LastStraightened`
+if the route is unchanged. A spent quota keeps the route private until the final operation.
+Area excluding views plan synchronously because
 their grid traversal constraint can scan a footprint inside one search operation. They do not offer
 profile or straightened requests.
 

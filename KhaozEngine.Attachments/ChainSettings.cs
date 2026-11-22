@@ -1,6 +1,6 @@
 namespace KhaozEngine.Attachments;
 
-/// <summary>Per-chain rates, gravity and trail multipliers, bend limit in radians, and collision radius in metres.</summary>
+/// <summary>Per-chain stiffness in radians per second, damping per second, gravity and trail multipliers, bend limit in radians, and collision radius in metres.</summary>
 public readonly record struct ChainSettings(float Stiffness, float Damping, float Gravity, float Trail, float AngleLimit, float Radius)
 {
     internal string? FirstInvalidMember()

@@ -6,7 +6,7 @@ using System.Numerics;
 
 namespace KhaozEngine.Attachments;
 
-/// <summary>Two chains whose corresponding joints are coupled by a soft spacing constraint.</summary>
+/// <summary>Two chains whose corresponding movable joints and virtual tips are coupled by soft spacing springs.</summary>
 public readonly record struct ChainLink(int First, int Second);
 
 /// <summary>A joint's local transform relative to its parent at rest.</summary>

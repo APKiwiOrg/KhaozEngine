@@ -63,9 +63,11 @@ internal static class ChainMath
         return cos < 0 ? new Quaternion(Perpendicular(from), 0) : Quaternion.Identity;
     }
 
-    internal static float RateWeight(float rate, float seconds)
+    internal static float MidpointSpringWeight(float frequency, float seconds)
     {
-        float exponent = rate * seconds;
-        return exponent < 0.0001f ? exponent : 1 - MathF.Exp(-exponent);
+        // Implicit midpoint for x'' = frequency squared times (target - x).
+        double halfPhase = 0.5 * frequency * seconds;
+        double squared = halfPhase * halfPhase;
+        return (float)(2 * squared / (1 + squared));
     }
 }

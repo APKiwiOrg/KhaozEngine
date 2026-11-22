@@ -62,10 +62,12 @@ public class ChainRigTests
                 "reversed link" => [new(0, 1), new(1, 0)],
                 _ => [new(0, 1), new(1, 2)],
             };
-            return new(chosen == "anchor count" ? -1 : 1, [edited, chain, chain], links);
+            return invalid == "anchor count"
+                ? new(chosen == "anchor count" ? -1 : 0, [], [])
+                : new(1, [edited, chain, chain], links);
         }
 
-        Assert.Equal(3, Build(false).JointCount);
+        Assert.Equal(invalid == "anchor count" ? 0 : 3, Build(false).JointCount);
         Assert.ThrowsAny<ArgumentException>(() => Build(true));
     }
 

@@ -39,17 +39,27 @@ public class ChainSimulationTests
     }
 
     [Theory]
-    [InlineData(30)]
-    [InlineData(144)]
-    [InlineData(240)]
-    public void Settled_tip_and_first_swing_agree_across_frame_rates(int fps)
+    [InlineData(30, 0.2f)]
+    [InlineData(144, 0.2f)]
+    [InlineData(240, 0.2f)]
+    [InlineData(30, MathF.PI / 2)]
+    [InlineData(144, MathF.PI / 2)]
+    [InlineData(240, MathF.PI / 2)]
+    public void Stiff_linked_chains_follow_the_same_trajectory_across_frame_rates(int fps, float releaseAngle)
     {
-        var baseline = SwingAtRate(60);
-        var candidate = SwingAtRate(fps);
-        AssertNear(new(0, -1, 0), candidate.Settled, 0.01f);
-        AssertNear(baseline.Settled, candidate.Settled, 0.01f);
-        Assert.InRange(MathF.Abs(candidate.Lowest - baseline.Lowest), 0, 0.1f * MathF.Abs(baseline.Lowest));
-        Assert.InRange(candidate.Lowest, -1.001f, -0.9f);
+        float releaseGravity = releaseAngle == 0.2f ? 0 : 9.81f;
+        var baseline = LinkedTrajectory(60, releaseAngle, releaseGravity);
+        var candidate = LinkedTrajectory(fps, releaseAngle, releaseGravity);
+        Assert.Equal(8, candidate.Length);
+        float stepDifference = 1f / 120 - 1f / Math.Max(120, fps);
+        for (int index = 0; index < candidate.Length; index++)
+        {
+            float time = TrajectoryTimes[index / 2];
+            // The unchanged gravity predictor accumulates 0.5 * g * T * h of
+            // position lead under constant acceleration. Allow its step-size difference.
+            float gravityLead = 0.5f * releaseGravity * time * stepDifference;
+            AssertNear(baseline[index], candidate[index], 0.01f + gravityLead);
+        }
     }
 
     [Fact]
@@ -127,15 +137,19 @@ public class ChainSimulationTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Posed_capsule_clears_joints_and_virtual_tip_even_when_it_moves(bool sphere)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void Posed_capsule_clears_joints_and_virtual_tip_even_when_it_moves(bool sphere, bool longAxis)
     {
         var chain = Chain(-Vector3.UnitY, Settings with { Gravity = 0, Radius = 0.025f },
             Joint(Vector3.Zero), Joint(-Vector3.UnitY));
         var simulation = Create(chain, colliderCount: 1);
-        var end = new Vector3(0, sphere ? -1 : -2, 0);
-        ColliderCapsule CapsuleAt(float x) => new(new(x, -1, 0), end + new Vector3(x, 0, 0), 0.35f);
+        ColliderCapsule CapsuleAt(float x) =>
+            new(new(x, longAxis ? 2e20f : -1, 0), new(x, longAxis ? -2e20f : sphere ? -1 : -2, 0), 0.35f);
+        float Clearance(Vector3 point, ColliderCapsule capsule) => longAxis
+            ? new Vector2(point.X - capsule.Start.X, point.Z).Length()
+            : DistanceToCapsuleAxis(point, capsule);
 
         simulation.Step([Matrix4x4.Identity], [CapsuleAt(1)], Matrix4x4.Identity, 0);
         for (var frame = 1; frame <= 6; frame++)
@@ -144,10 +158,24 @@ public class ChainSimulationTests
             simulation.Step([Matrix4x4.Identity], [capsule], Matrix4x4.Identity, 1f / 60);
             Vector3 joint = simulation.JointsFromAnchor[1].Translation;
             Vector3 tip = Tip(simulation);
-            Assert.InRange(DistanceToCapsuleAxis(joint, capsule), 0.374f, 4);
-            Assert.InRange(DistanceToCapsuleAxis(tip, capsule), 0.374f, 4);
+            Assert.InRange(Clearance(joint, capsule), 0.374f, 4);
+            Assert.InRange(Clearance(tip, capsule), 0.374f, 4);
             Assert.InRange(Vector3.Distance(joint, tip), 0.999f, 1.001f);
         }
+    }
+
+    [Fact]
+    public void Capsule_clearance_can_exceed_the_bend_limit_at_fixed_length()
+    {
+        var settings = Settings with { Gravity = 0, AngleLimit = 0.1f };
+        var simulation = Create(Chain(-Vector3.UnitY, settings, Joint(Vector3.Zero)), 1);
+        var capsule = new ColliderCapsule(-Vector3.UnitY, -Vector3.UnitY, 0.35f);
+        simulation.Step([Matrix4x4.Identity], [capsule], Matrix4x4.Identity, 0);
+        simulation.Step([Matrix4x4.Identity], [capsule], Matrix4x4.Identity, 1f / 60);
+
+        AssertNear(Vector3.Zero, simulation.JointsFromAnchor[0].Translation);
+        Assert.InRange(Tip(simulation).Length(), 0.9999f, 1.0001f);
+        Assert.InRange(Vector3.Distance(Tip(simulation), capsule.Start), 0.349f, 2);
     }
 
     [Fact]
@@ -232,9 +260,39 @@ public class ChainSimulationTests
     }
 
     [Fact]
-    public void Links_keep_corresponding_joints_closer_to_rest_spacing()
+    public void Resuming_from_rest_inside_a_capsule_blends_the_presented_tip_to_clearance()
     {
-        var left = Chain(-Vector3.UnitY, Settings with { Gravity = 0 }, Joint(Vector3.Zero), Joint(-Vector3.UnitY));
+        // Strong damping makes the contact pose stationary after the first correction.
+        var settings = Settings with { Gravity = 0, Damping = 10_000 };
+        var simulation = Create(Chain(-Vector3.UnitY, settings, Joint(Vector3.Zero)), 1);
+        var capsule = new ColliderCapsule(-Vector3.UnitY, -Vector3.UnitY, 0.35f);
+        simulation.Step([Matrix4x4.Identity], [capsule], Matrix4x4.Identity, 0, MotionLevel.Held);
+
+        Vector3 previous = Tip(simulation);
+        AssertNear(capsule.Start, previous);
+        const int frames = 4;
+        float clearanceAngle = 2 * MathF.Asin(capsule.Radius / 2);
+        float maximumTravel = 2 * MathF.Sin(clearanceAngle / (2 * frames));
+        for (int frame = 0; frame < frames; frame++)
+        {
+            simulation.Step([Matrix4x4.Identity], [capsule], Matrix4x4.Identity, 0.25f / frames);
+            Vector3 shown = Tip(simulation);
+            AssertNear(Vector3.Zero, simulation.JointsFromAnchor[0].Translation);
+            Assert.InRange(shown.Length(), 0.9999f, 1.0001f);
+            Assert.InRange(Vector3.Distance(previous, shown), 0.001f, maximumTravel + 0.0001f);
+            previous = shown;
+        }
+
+        Assert.InRange(Vector3.Distance(previous, capsule.Start), 0.349f, 0.351f);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Links_keep_corresponding_movable_joints_and_tips_closer_to_rest_spacing(bool hasMovableJoint)
+    {
+        var joints = hasMovableJoint ? new[] { Joint(Vector3.Zero), Joint(-Vector3.UnitY) } : [Joint(Vector3.Zero)];
+        var left = Chain(-Vector3.UnitY, Settings with { Gravity = 0, Damping = 12 }, joints);
         var right = left with { Anchor = 1 };
         var linked = new ChainSimulation(new ChainRig(2, [left, right], [new(0, 1)]), 1);
         var loose = new ChainSimulation(new ChainRig(2, [left, right], []), 1);
@@ -243,18 +301,31 @@ public class ChainSimulationTests
         foreach (var simulation in new[] { linked, loose })
         {
             simulation.Step(anchors, capsules, Matrix4x4.Identity, 0);
-            simulation.Step(anchors, capsules, Matrix4x4.Identity, 1f / 60);
+            for (int frame = 0; frame < 12; frame++)
+                simulation.Step(anchors, capsules, Matrix4x4.Identity, 1f / 60);
         }
 
-        float Error(ChainSimulation simulation)
+        float Error(ChainSimulation simulation, bool tip)
         {
-            var worlds = new Matrix4x4[4];
+            int count = joints.Length;
+            var worlds = new Matrix4x4[2 * count];
             simulation.ComposeJointWorlds(anchors, worlds);
-            return MathF.Abs(Vector3.Distance(worlds[1].Translation, worlds[3].Translation) - 0.65f);
+            var first = tip ? Vector3.Transform(left.Tip, worlds[count - 1]) : worlds[count - 1].Translation;
+            var second = tip ? Vector3.Transform(right.Tip, worlds[^1]) : worlds[^1].Translation;
+            return MathF.Abs(Vector3.Distance(first, second) - 0.65f);
         }
 
-        Assert.True(Error(loose) > 0.05f);
-        Assert.True(Error(linked) < Error(loose));
+        AssertImprovement(tip: true);
+        if (hasMovableJoint)
+            AssertImprovement(tip: false);
+
+        void AssertImprovement(bool tip)
+        {
+            float looseError = Error(loose, tip);
+            float linkedError = Error(linked, tip);
+            Assert.InRange(looseError, 0.05f, 2);
+            Assert.True(linkedError < looseError, $"Expected error below {looseError}, got {linkedError}.");
+        }
     }
 
     [Fact]
@@ -328,19 +399,45 @@ public class ChainSimulationTests
             Step(simulation, 1f / fps);
     }
 
-    private static (Vector3 Settled, float Lowest) SwingAtRate(int fps)
+    private static readonly float[] TrajectoryTimes = [0.1f, 0.25f, 0.5f, 1];
+
+    private static Vector3[] LinkedTrajectory(int fps, float releaseAngle, float gravity)
     {
-        var simulation = Create(Chain(Vector3.UnitX, Settings, Joint(Vector3.Zero)));
-        Step(simulation, 0);
-        float lowest = 0;
-        for (var frame = 0; frame < fps; frame++)
+        var settings = Settings with { Stiffness = 5 };
+        var left = Chain(-Vector3.UnitY, settings, Joint(Vector3.Zero));
+        var right = left with { Anchor = 1 };
+        var options = new ChainSimulationOptions { Gravity = new(0, -gravity, 0) };
+        var simulation = new ChainSimulation(new ChainRig(2, [left, right], [new(0, 1)]), 0, options);
+        Matrix4x4[] poses = [Matrix4x4.Identity, Matrix4x4.CreateTranslation(0, 0, 0.5f)];
+        simulation.Step([Matrix4x4.CreateRotationZ(releaseAngle), poses[1]], [], Matrix4x4.Identity, 0);
+        simulation.Step(poses, [], Matrix4x4.Identity, 0);
+
+        var samples = new Vector3[2 * TrajectoryTimes.Length];
+        var worlds = new Matrix4x4[2];
+        simulation.ComposeJointWorlds(poses, worlds);
+        var previousLeft = Vector3.Transform(left.Tip, worlds[0]);
+        var previousRight = Vector3.Transform(right.Tip, worlds[1]);
+        int sample = 0;
+        for (int frame = 1; frame <= fps; frame++)
         {
-            Step(simulation, 1f / fps);
-            lowest = MathF.Min(lowest, Tip(simulation).Y);
+            simulation.Step(poses, [], Matrix4x4.Identity, 1f / fps);
+            simulation.ComposeJointWorlds(poses, worlds);
+            var currentLeft = Vector3.Transform(left.Tip, worlds[0]);
+            var currentRight = Vector3.Transform(right.Tip, worlds[1]);
+            if (sample < TrajectoryTimes.Length && TrajectoryTimes[sample] * fps <= frame)
+            {
+                float fraction = TrajectoryTimes[sample] * fps - (frame - 1);
+                samples[2 * sample] = Vector3.Lerp(previousLeft, currentLeft, fraction);
+                samples[2 * sample + 1] = Vector3.Lerp(previousRight, currentRight, fraction);
+                sample++;
+            }
+
+            previousLeft = currentLeft;
+            previousRight = currentRight;
         }
 
-        Advance(simulation, fps, 7);
-        return (Tip(simulation), lowest);
+        Assert.Equal(TrajectoryTimes.Length, sample);
+        return samples;
     }
 
     private static Vector3 Tip(ChainSimulation simulation) =>

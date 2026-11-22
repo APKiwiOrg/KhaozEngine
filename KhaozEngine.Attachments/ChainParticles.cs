@@ -11,6 +11,7 @@ internal sealed class ChainParticles
         int count = checked(rig.JointCount + rig.Chains.Count);
         Positions = new Vector3[count];
         Previous = new Vector3[count];
+        SubstepStarts = new Vector3[count];
         RestPositions = new Vector3[count];
         Lengths = new float[rig.JointCount];
         JointWorlds = new Matrix4x4[rig.JointCount];
@@ -21,6 +22,7 @@ internal sealed class ChainParticles
     internal Vector3[] Positions { get; }
     private Vector3[] Previous { get; }
     internal Vector3[] RestPositions { get; }
+    internal Vector3[] SubstepStarts { get; }
     internal float[] Lengths { get; }
     internal Matrix4x4[] JointWorlds { get; }
     internal Quaternion[] WorldSwings { get; }
@@ -64,7 +66,7 @@ internal sealed class ChainParticles
     internal void Predict(int root, int jointCount, in ChainSettings settings, Vector3 gravity, float seconds,
         float previousSeconds, Vector3 oldWearer, Vector3 newWearer, Quaternion wearerTurn)
     {
-        Positions[root] = Previous[root] = RestPositions[root];
+        Positions[root] = Previous[root] = SubstepStarts[root] = RestPositions[root];
         float carry = 1 - settings.Trail;
         var carriedTurn = carry == 0 ? Quaternion.Identity : Quaternion.Slerp(Quaternion.Identity, wearerTurn, carry);
         var carriedOffset = carry * (newWearer - oldWearer);
@@ -82,6 +84,7 @@ internal sealed class ChainParticles
                 previous = Carry(previous);
             }
 
+            SubstepStarts[particle] = current;
             var displacement = current - previous;
             Positions[particle] = current + new Vector3(
                 (float)(displacement.X * velocityFactor),
@@ -95,10 +98,32 @@ internal sealed class ChainParticles
             : oldWearer + carriedOffset + Vector3.Transform(position - oldWearer, carriedTurn);
     }
 
-    internal void Constrain(int particle, Vector3 position, bool preserveVelocity)
+    internal void ApplySpring(int particle, Vector3 correction)
     {
+        // Midpoint moves the position by half the velocity impulse times the timestep.
+        // Shifting both Verlet samples encodes the full impulse for the next substep.
+        Positions[particle] += correction;
+        Previous[particle] -= correction;
+    }
+
+    internal void Constrain(int parent, Vector3 position, Vector3 normal, bool preserveVelocity)
+    {
+        int particle = parent + 1;
         if (preserveVelocity)
+        {
             Previous[particle] += position - Positions[particle];
+        }
+        else
+        {
+            // The link to the parent permits tangential motion only. Carry end-of-step
+            // velocity forward without the radial component introduced by the projection.
+            var parentDisplacement = Positions[parent] - Previous[parent];
+            var relativeDisplacement = position - Previous[particle] - parentDisplacement;
+            Previous[particle] += normal == Vector3.Zero
+                ? relativeDisplacement
+                : Vector3.Dot(relativeDisplacement, normal) * normal;
+        }
+
         Positions[particle] = position;
     }
 }

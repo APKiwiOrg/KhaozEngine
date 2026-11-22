@@ -7,7 +7,7 @@ namespace KhaozEngine.Attachments;
 public sealed class ChainSimulation
 {
     private readonly ChainParticles _particles;
-    private readonly ChainHold _hold;
+    private readonly ChainPresentationBlend _blend;
     private readonly ChainSettings[] _settings;
     private readonly Matrix4x4[] _jointsFromAnchor;
     private readonly Matrix4x4[] _anchorInverses;
@@ -20,6 +20,7 @@ public sealed class ChainSimulation
     private float _previousStepSeconds;
     private bool _needsReset = true;
     private bool _held;
+    private bool _resuming;
 
     /// <summary>Allocates the state and all step buffers for a rig and a fixed collider count.</summary>
     public ChainSimulation(ChainRig rig, int colliderCount, ChainSimulationOptions? options = null)
@@ -33,7 +34,7 @@ public sealed class ChainSimulation
         ColliderCount = colliderCount;
         Options = options;
         _particles = new ChainParticles(rig);
-        _hold = new ChainHold(rig.JointCount);
+        _blend = new ChainPresentationBlend(rig.JointCount);
         _settings = new ChainSettings[rig.Chains.Count];
         for (int chain = 0; chain < _settings.Length; chain++)
             _settings[chain] = rig.Chains[chain].Settings;
@@ -69,16 +70,18 @@ public sealed class ChainSimulation
         {
             _particles.SetRest(anchorWorlds, reset: true);
             _previousStepSeconds = 0;
+            _resuming = false;
             if (level == MotionLevel.Held)
-                _hold.Begin(_particles, _frameAnchors);
+                _blend.Begin(_particles, _frameAnchors);
             Rig.RestFromAnchor.CopyTo(_jointsFromAnchor);
         }
         else if (level == MotionLevel.Held)
         {
+            _resuming = false;
             if (!_held)
-                _hold.Begin(_particles, _previousAnchors);
+                _blend.Begin(_particles, _previousAnchors);
 
-            if (_hold.Advance(_particles, _frameAnchors, deltaSeconds, Options.HoldBlendSeconds))
+            if (_blend.Advance(_particles, _frameAnchors, deltaSeconds, Options.HoldBlendSeconds, toRest: true))
                 PublishJoints();
             else
             {
@@ -90,7 +93,15 @@ public sealed class ChainSimulation
         }
         else
         {
+            if (_held)
+            {
+                _blend.Begin(_particles, _previousAnchors);
+                _resuming = true;
+            }
+
             Advance(colliders, frameWearer, deltaSeconds);
+            if (_resuming)
+                _resuming = _blend.Advance(_particles, _frameAnchors, deltaSeconds, Options.HoldBlendSeconds, toRest: false);
             PublishJoints();
         }
 
@@ -227,7 +238,12 @@ public sealed class ChainSimulation
 
     private static ColliderCapsule Interpolate(in ColliderCapsule previous, in ColliderCapsule current, float amount) =>
         amount == 1 ? current : new ColliderCapsule(
-            Vector3.Lerp(previous.Start, current.Start, amount),
-            Vector3.Lerp(previous.End, current.End, amount),
+            InterpolateColliderPoint(previous.Start, current.Start, amount),
+            InterpolateColliderPoint(previous.End, current.End, amount),
             float.Lerp(previous.Radius, current.Radius, amount));
+
+    private static Vector3 InterpolateColliderPoint(Vector3 previous, Vector3 current, float amount) =>
+        new((float)double.Lerp(previous.X, current.X, amount),
+            (float)double.Lerp(previous.Y, current.Y, amount),
+            (float)double.Lerp(previous.Z, current.Z, amount));
 }

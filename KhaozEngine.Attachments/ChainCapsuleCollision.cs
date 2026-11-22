@@ -7,7 +7,7 @@ internal static class ChainCapsuleCollision
 {
     private const int ContactPasses = 8;
 
-    internal static Vector3 Clear(Vector3 direction, Vector3 rest, float bendCosine, Vector3 start, float length,
+    internal static Vector3 Clear(Vector3 direction, Vector3 start, float length,
         float chainRadius, ReadOnlySpan<ColliderCapsule> colliders)
     {
         // Revisit earlier contacts after a correction moves the particle along its length sphere.
@@ -16,13 +16,19 @@ internal static class ChainCapsuleCollision
             bool changed = false;
             foreach (ref readonly var capsule in colliders)
             {
-                var position = start + length * direction;
-                var axis = ClosestOnAxis(position, capsule);
-                float radius = capsule.Radius + chainRadius;
-                if (ChainMath.DistanceSquared(position, axis) >= (double)radius * radius)
+                var offset = (
+                    X: (double)length * direction.X,
+                    Y: (double)length * direction.Y,
+                    Z: (double)length * direction.Z);
+                var center = ClosestOnAxis(offset, start, capsule);
+                double radius = (double)capsule.Radius + chainRadius;
+                double x = offset.X - center.X;
+                double y = offset.Y - center.Y;
+                double z = offset.Z - center.Z;
+                if (x * x + y * y + z * z >= radius * radius)
                     continue;
 
-                var corrected = ClearSphere(direction, rest, bendCosine, start, length, axis, radius);
+                var corrected = ClearSphere(direction, length, center, radius);
                 changed |= corrected != direction;
                 direction = corrected;
             }
@@ -34,58 +40,41 @@ internal static class ChainCapsuleCollision
         return direction;
     }
 
-    private static Vector3 ClosestOnAxis(Vector3 position, in ColliderCapsule capsule)
+    private static (double X, double Y, double Z) ClosestOnAxis(
+        (double X, double Y, double Z) particle, Vector3 root, in ColliderCapsule capsule)
     {
-        var axis = capsule.End - capsule.Start;
-        float squared = axis.LengthSquared();
+        double axisX = (double)capsule.End.X - capsule.Start.X;
+        double axisY = (double)capsule.End.Y - capsule.Start.Y;
+        double axisZ = (double)capsule.End.Z - capsule.Start.Z;
+        // Use the capsule midpoint and root-relative coordinates to retain small offsets
+        // when a long capsule crosses the chain.
+        double midX = 0.5 * ((double)capsule.Start.X + capsule.End.X) - root.X;
+        double midY = 0.5 * ((double)capsule.Start.Y + capsule.End.Y) - root.Y;
+        double midZ = 0.5 * ((double)capsule.Start.Z + capsule.End.Z) - root.Z;
+        double squared = axisX * axisX + axisY * axisY + axisZ * axisZ;
         if (squared == 0)
-            return capsule.Start;
+            return (midX, midY, midZ);
 
-        float fraction = Math.Clamp(Vector3.Dot(position - capsule.Start, axis) / squared, 0, 1);
-        return capsule.Start + fraction * axis;
+        double projection = (particle.X - midX) * axisX + (particle.Y - midY) * axisY + (particle.Z - midZ) * axisZ;
+        double fraction = Math.Clamp(projection / squared, -0.5, 0.5);
+        return (midX + fraction * axisX, midY + fraction * axisY, midZ + fraction * axisZ);
     }
 
-    private static Vector3 ClearSphere(Vector3 direction, Vector3 rest, float bendCosine,
-        Vector3 start, float length, Vector3 center, float radius)
+    private static Vector3 ClearSphere(Vector3 direction, float length, (double X, double Y, double Z) center, double radius)
     {
-        double distance = Math.Sqrt(ChainMath.DistanceSquared(center, start));
+        double distance = Math.Sqrt(center.X * center.X + center.Y * center.Y + center.Z * center.Z);
         if (distance == 0)
             return direction;
 
-        // The length sphere intersects this contact sphere at a circle. Slide to that
-        // circle so enforcing length cannot move the particle back inside the collider.
-        var axis = ChainMath.Direction(center - start, direction);
-        double boundary = ((double)length * length + distance * distance - (double)radius * radius) /
-            (2 * length * distance);
-        float contactCosine = (float)Math.Clamp(boundary, -1, 1);
-        float contactSine = MathF.Sqrt(1 - contactCosine * contactCosine);
+        // Move along the length sphere to the contact circle. Contact may exceed the
+        // bend limit since clamping the bend again would put the endpoint inside.
+        var axis = new Vector3((float)(center.X / distance), (float)(center.Y / distance), (float)(center.Z / distance));
+        double boundary = ((double)length * length + (distance - radius) * (distance + radius)) / (2 * length * distance);
+        double cosine = Math.Clamp(boundary, -1, 1);
+        double sine = Math.Sqrt(1 - cosine * cosine);
         var tangent = ChainMath.Tangent(direction, axis);
-        var restTangent = ChainMath.Tangent(rest, axis);
         if (tangent == Vector3.Zero)
-            tangent = restTangent == Vector3.Zero ? ChainMath.Perpendicular(axis) : restTangent;
-        var candidate = contactCosine * axis + contactSine * tangent;
-        if (bendCosine == -1 || Vector3.Dot(rest, candidate) >= bendCosine)
-            return candidate;
-
-        // Find the closest direction on the contact circle that also lies in the bend cone.
-        float axialRest = Math.Clamp(Vector3.Dot(rest, axis), -1f, 1f);
-        float tangentRest = Vector3.Cross(rest, axis).Length();
-        float denominator = contactSine * tangentRest;
-        float required = denominator > 0 ? (bendCosine - contactCosine * axialRest) / denominator : float.PositiveInfinity;
-        if (required < 1)
-        {
-            required = MathF.Max(required, -1);
-            var side = Vector3.Normalize(Vector3.Cross(axis, restTangent));
-            if (Vector3.Dot(side, tangent) < 0)
-                side = -side;
-            var allowed = required * restTangent + MathF.Sqrt(1 - required * required) * side;
-            return contactCosine * axis + contactSine * allowed;
-        }
-
-        // An overconstrained particle keeps its length and bend and moves as far from the contact as possible.
-        var away = ChainMath.Tangent(-axis, rest);
-        if (away == Vector3.Zero)
-            away = ChainMath.Perpendicular(rest);
-        return bendCosine * rest + MathF.Sqrt(1 - bendCosine * bendCosine) * away;
+            tangent = ChainMath.Perpendicular(axis);
+        return (float)cosine * axis + (float)sine * tangent;
     }
 }

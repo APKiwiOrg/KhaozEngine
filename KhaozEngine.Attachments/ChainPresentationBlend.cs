@@ -3,7 +3,7 @@ using System.Numerics;
 
 namespace KhaozEngine.Attachments;
 
-internal sealed class ChainHold(int jointCount)
+internal sealed class ChainPresentationBlend(int jointCount)
 {
     private readonly Quaternion[] _startingSwings = new Quaternion[jointCount];
     private float _elapsed;
@@ -22,7 +22,7 @@ internal sealed class ChainHold(int jointCount)
         }
     }
 
-    internal bool Advance(ChainParticles particles, ReadOnlySpan<ChainPose> anchors, float seconds, float duration)
+    internal bool Advance(ChainParticles particles, ReadOnlySpan<ChainPose> anchors, float seconds, float duration, bool toRest)
     {
         _elapsed = MathF.Min(_elapsed + seconds, duration);
         if (_elapsed >= duration)
@@ -39,20 +39,25 @@ internal sealed class ChainHold(int jointCount)
             int first = rig.FirstJoint(chain);
             for (int joint = first; joint < first + definition.Joints.Count; joint++)
             {
-                var localSwing = Quaternion.Slerp(_startingSwings[joint], Quaternion.Identity, blend);
-                var worldSwing = ChangeBasis(localSwing, intoWorld);
+                var startingSwing = ChangeBasis(_startingSwings[joint], intoWorld);
+                var targetSwing = toRest ? Quaternion.Identity : particles.WorldSwings[joint];
+                var worldSwing = Quaternion.Slerp(startingSwing, targetSwing, blend);
                 var unswung = rig.RestLocal(joint) * parent;
                 parent = unswung * Matrix4x4.CreateFromQuaternion(worldSwing);
                 parent.Translation = unswung.Translation;
-                particles.Positions[joint + chain] = parent.Translation;
+                // On resume these are presentation frames only. Physics has already advanced.
+                if (toRest)
+                    particles.Positions[joint + chain] = parent.Translation;
                 particles.JointWorlds[joint] = parent;
                 particles.WorldSwings[joint] = worldSwing;
             }
 
-            particles.Positions[first + definition.Joints.Count + chain] = Vector3.Transform(definition.Tip, parent);
+            if (toRest)
+                particles.Positions[first + definition.Joints.Count + chain] = Vector3.Transform(definition.Tip, parent);
         }
 
-        particles.ZeroVelocity();
+        if (toRest)
+            particles.ZeroVelocity();
         return true;
     }
 

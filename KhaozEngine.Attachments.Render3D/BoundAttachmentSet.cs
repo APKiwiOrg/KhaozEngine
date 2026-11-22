@@ -71,6 +71,7 @@ public sealed partial class BoundAttachmentSet
     }
 
     /// <summary>Create independent motion state for one wearer of this binding.</summary>
+    /// <remarks>Body colliders must be loaded for this binding's skeleton instance.</remarks>
     public WornMotion CreateMotion(LoadedBodyColliders? bodyColliders, ChainSimulationOptions? options = null)
     {
         _owner.ThrowIfDisposed();

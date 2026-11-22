@@ -8,7 +8,8 @@ public readonly record struct CoverageClaimMesh(ReadOnlyMemory<Vector3> Position
 {
     readonly ReadOnlyMemory<bool> _swinging;
 
-    /// <summary>One flag per position. Empty means all vertices are fixed. Only piece flags affect coverage.</summary>
+    /// <summary>One flag per position. Required for a piece part with motion. Otherwise, empty means all vertices
+    /// are fixed. Only piece flags affect coverage.</summary>
     /// <remarks>An empty mask is stored as the default, so a mesh given an empty mask equals the same mesh given none,
     /// as meshes compared before masks existed.</remarks>
     public ReadOnlyMemory<bool> Swinging

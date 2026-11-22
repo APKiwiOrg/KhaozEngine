@@ -24,15 +24,15 @@ public sealed class WornMotionTests
         var definition = new BodyColliderSet(OutfitRig.Rig, [DistantCapsule]);
         string key = "colliders.json";
         string rev = rig.Source.Add(key, BodyCollidersJson.Write(definition));
-        LoadedBodyColliders loaded = rig.Cache.GetBodyColliders(key, rev, OutfitRig.Rig);
+        LoadedBodyColliders loaded = rig.Cache.GetBodyColliders(key, rev, OutfitRig.Rig, rig.Body);
         Assert.Equal(DistantCapsule, Assert.Single(loaded.Set.Colliders));
         string wrongHash = (rev[0] == '0' ? '1' : '0') + rev[1..];
-        Assert.Throws<InvalidDataException>(() => rig.Cache.GetBodyColliders(key, wrongHash, OutfitRig.Rig));
+        Assert.Throws<InvalidDataException>(() => rig.Cache.GetBodyColliders(key, wrongHash, OutfitRig.Rig, rig.Body));
         rig.Source.Bytes.Remove(key);
-        Assert.Same(loaded, rig.Cache.GetBodyColliders(key, rev, OutfitRig.Rig));
+        Assert.Same(loaded, rig.Cache.GetBodyColliders(key, rev, OutfitRig.Rig, rig.Body));
 
         string otherRig = "rig-v1:" + new string('b', 64);
-        var error = Assert.Throws<AttachmentBindingDataException>(() => rig.Cache.GetBodyColliders(key, rev, otherRig));
+        var error = Assert.Throws<AttachmentBindingDataException>(() => rig.Cache.GetBodyColliders(key, rev, otherRig, rig.Body));
         Assert.Equal(AttachmentBindingRefusal.BodyCollidersMismatch, error.Reason);
         Assert.Equal(key, error.SourceName);
         Assert.Equal(otherRig, error.ExpectedRigIdentity);
@@ -103,7 +103,7 @@ public sealed class WornMotionTests
         string otherRig = "rig-v1:" + new string('b', 64);
         string key = "other-colliders.json";
         string hash = rig.Source.Add(key, BodyCollidersJson.Write(new BodyColliderSet(otherRig, [DistantCapsule])));
-        LoadedBodyColliders colliders = rig.Cache.GetBodyColliders(key, hash, otherRig);
+        LoadedBodyColliders colliders = rig.Cache.GetBodyColliders(key, hash, otherRig, rig.Body);
 
         var error = Assert.Throws<AttachmentBindingDataException>(() => outfit.CreateMotion(colliders));
 
@@ -111,6 +111,33 @@ public sealed class WornMotionTests
         Assert.Equal(key, error.SourceName);
         Assert.Equal(OutfitRig.Rig, error.ExpectedRigIdentity);
         Assert.Equal(otherRig, error.ActualRigIdentity);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Motion_refuses_body_colliders_for_another_skeleton_with_the_same_joint_names(bool asOutfit)
+    {
+        // #1879: even matching rig content cannot substitute for the binding's skeleton instance.
+        using var rig = new OutfitRig();
+        LoadedBodyColliders matching = BodyColliders(rig, DistantCapsule);
+        var otherBody = new SkinnedGltfMesh(rig.Body.Vertices, rig.Body.Indices32, rig.Body.InverseBind, rig.Body.RestPose,
+            RigidAttachmentTestRig.Create());
+        const string key = "body-colliders.json";
+        rig.Source.Bytes.Remove(key);
+        LoadedBodyColliders foreign = rig.Cache.GetBodyColliders(key, matching.Set.Sha256, OutfitRig.Rig, otherBody);
+        BoundAttachmentSet set = WearChain(rig);
+        using BoundOutfit outfit = rig.Cache.BindOutfit(rig.BodyRegions(new RegionRun(0, 4)), [set]);
+        WornMotion Create(LoadedBodyColliders colliders) =>
+            asOutfit ? outfit.CreateMotion(colliders) : set.CreateMotion(colliders);
+        Step(rig, Create(matching));
+
+        var error = Assert.Throws<AttachmentBindingDataException>(() => Create(foreign));
+
+        Assert.Equal(AttachmentBindingRefusal.BodyCollidersMismatch, error.Reason);
+        Assert.Equal(key, error.SourceName);
+        Assert.Equal(asOutfit ? OutfitRig.Rig : null, error.ExpectedRigIdentity);
+        Assert.Equal(OutfitRig.Rig, error.ActualRigIdentity);
     }
 
     [Fact]
@@ -166,6 +193,24 @@ public sealed class WornMotionTests
         first.Step(rig.Skeleton, rig.Palette, model, Frame);
         first.CopyChainPalette(0, ChainPartId, rig.Palette, swing);
         Assert.Equal(rest, swing);
+    }
+
+    [Theory]
+    [InlineData(1f, 1f)]
+    [InlineData(4f, 1f)]
+    [InlineData(4f, 2f)]
+    public void Capsule_keeps_its_authored_radius_at_joint_rest_and_scales_with_the_wearer(float restScale, float modelScale)
+    {
+        // #1879: an inverse bind must cancel non-uniform rest scale before the capsule radius is scaled.
+        var skeleton = new Skeleton([-1], [JointPose.Identity with { Scale = new(restScale, 1, 1) }], [0], [0], ["hip"]);
+        Matrix4x4 rest = Assert.Single(skeleton.ComposeRestPose());
+        Assert.True(Matrix4x4.Invert(rest, out Matrix4x4 inverseBind));
+        var authored = new ColliderDefinition("hip", new(.5f, 0, 4), new(.5f, 0, 5), .125f);
+        WornCollider bound = WornCollider.Bind(0, authored, inverseBind);
+
+        ColliderCapsule posed = bound.Pose(rest * Matrix4x4.CreateScale(modelScale));
+
+        Assert.Equal(new ColliderCapsule(authored.Start * modelScale, authored.End * modelScale, authored.Radius * modelScale), posed);
     }
 
     [Theory]
@@ -255,7 +300,7 @@ public sealed class WornMotionTests
     {
         const string key = "body-colliders.json";
         var definition = new BodyColliderSet(OutfitRig.Rig, colliders);
-        return rig.Cache.GetBodyColliders(key, rig.Source.Add(key, BodyCollidersJson.Write(definition)), OutfitRig.Rig);
+        return rig.Cache.GetBodyColliders(key, rig.Source.Add(key, BodyCollidersJson.Write(definition)), OutfitRig.Rig, rig.Body);
     }
 
     static void Step(OutfitRig rig, WornMotion motion) => motion.Step(rig.Skeleton, rig.Palette, rig.Model, Frame);

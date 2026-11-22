@@ -194,7 +194,7 @@ public sealed partial class AttachmentSetCache : IDisposable
         _meshes.Clear();
         _definitions.Clear();
         _bodyMaps.Clear();
-        _bodyColliders.Clear();
+        _bodyColliders = null;
         _chainJoints = null;
     }
 

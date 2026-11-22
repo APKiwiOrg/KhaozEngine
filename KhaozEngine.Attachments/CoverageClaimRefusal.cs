@@ -20,6 +20,9 @@ public enum CoverageClaimRefusal
 
     /// <summary>Refuses a mesh position with a NaN or infinite component.</summary>
     PositionNotFinite,
+
+    /// <summary>Refuses a piece mesh without a swinging vertex mask for a part that declares motion.</summary>
+    SwingMaskMissing,
 }
 
 /// <summary>Which input list a refused coverage claim mesh belongs to. Members are only ever appended.</summary>

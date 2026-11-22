@@ -100,12 +100,13 @@ sets the last joint's turn, so an unlinked tip would let a hem splay.
 ## Colliders
 
 A collider is a capsule bound to a host joint: two points and a radius, in the body's rest model space, the space a
-fitting step works in. A sphere is a capsule whose points are equal. At bind time each collider moves into its
-joint's frame through the host's inverse bind. Each frame that joint's palette matrix and the model pose it.
-The radius follows the largest axis scale at each of those two transforms.
+fitting step works in. A sphere is a capsule whose points are equal. Each frame, the host inverse bind, the
+joint's current palette matrix and the model compose the rest-to-world transform. This transform places the
+endpoints and scales the radius by its largest axis scale. The inverse bind cancels the joint's rest scale
+at bind, so the radius there is the authored radius before wearer scaling.
 
 - A body declares its colliders once in a body collider file, bound to the body's `rig-v1` identity like a region
-  map.
+  map. A loaded collider file also belongs to the supplied host mesh's skeleton instance.
 - A worn set may add colliders while it is worn, so outerwear clears the armour under it. They use the same space
   and bind the same way.
 - Every chain of a wearer collides with every collider of that wearer, the body's and those of all its worn sets.
@@ -245,9 +246,10 @@ Its canonical bytes and SHA-256 follow the region map's rules.
 
 `KhaozEngine.Attachments.Render3D`:
 
-- `AttachmentSetCache.GetBodyColliders(key, expectedSha256, bodyRigIdentity)` returns `LoadedBodyColliders`.
+- `AttachmentSetCache.GetBodyColliders(key, expectedSha256, bodyRigIdentity, hostMesh)` returns `LoadedBodyColliders`.
 - `BoundOutfit.CreateMotion` and `BoundAttachmentSet.CreateMotion` take the body colliders, or none, and options, and
-  return a `WornMotion`. With no body colliders the chains collide with worn set colliders only.
+  return a `WornMotion`. They require collider data loaded for the binding's skeleton instance. With no body
+  colliders the chains collide with worn set colliders only.
 - `WornMotion.Step(skeleton, palette, model, deltaSeconds, level)`, `Reset()`, and `Tune(wornIndex, partId, chain, settings)`
   for a live tuner.
 - Overloads of `BoundOutfit.WriteDraws` and `QueueOutline`, and of `BoundAttachmentSet.WriteDraws`, `Queue` and
@@ -276,8 +278,8 @@ Its canonical bytes and SHA-256 follow the region map's rules.
   sphere. Loading a set grows each chained mesh's bounds to contain a sphere at each chain's first joint in mesh rest
   space. The radius sums the rest segments, the tip segment and the farthest weighted vertex from its chain joint.
   This growth covers the chain's swing around the anchor.
-  An animated anchor carried far from rest can still take the whole chain outside the culling bounds,
-  which is the same limit as ordinary skinned meshes
+  An anchor animated far from rest by translation or scale can take the whole chain outside the culling bounds.
+  Ordinary skinned meshes share this limit
   ([#1492](https://github.com/APKiwiOrg/KhaozEngine/issues/1492) and
   [#1538](https://github.com/APKiwiOrg/KhaozEngine/issues/1538)).
   The shipped upload leases use an internal `Scene3D` seam that grows the source and its views together. A custom
@@ -294,7 +296,9 @@ then swing away and show a hole. A claim may therefore rest only on triangles th
 only what the fixed part of a piece covers, such as a cloak's collar.
 
 The fitting tool derives a per-vertex mask from the same skinned GLB it imports and the part's chain joint names.
-Both use flattened mesh, primitive and vertex order so each flag describes the position at the same index.
+Both use flattened mesh, primitive and vertex order so each flag describes the position at the same index. A piece
+with motion passes one mesh per definition part in ascending part ID order. A missing or empty mask for a part with
+motion refuses with `SwingMaskMissing`, including its part ID and mesh key.
 The [coverage claim check reference](../../KhaozEngine.Attachments/README.md#coverage-claim-check) describes the API.
 
 ## Room for cloth
@@ -356,8 +360,9 @@ or collider.
   identity, an empty joint name, a bad radius or point and too many colliders.
 - `AttachmentBindingRefusal`: a chain joint missing from the garment skin, a chain joint named like a host joint, a
   chain that is not a parent line, an anchor that is not a host skin joint, a chain bind mismatch, an unresolved
-  collider joint, body colliders for another rig and too many colliders on one wearer.
+  collider joint, body colliders for another rig identity or skeleton instance, and too many colliders on one wearer.
 - `AttachmentSubmissionRefusal`: a motion made for another outfit or set.
+- `CoverageClaimRefusal`: a missing or empty swing mask for a piece part that declares motion.
 - `GltfImportRefusal`: an image named by a relative path in a byte import.
 
 ## Tests
@@ -376,7 +381,8 @@ All headless, on synthetic skeletons built in code.
   joints sit at their rest hang. After steps the palette's chain joints move and its host joints do not. Draws and
   outlines read the same palette. A motion from another outfit refuses. Grown bounds contain the reach. Steps and
   draws allocate nothing once warm.
-- **Coverage claim.** A claim that rests only on swinging triangles is reported uncovered.
+- **Coverage claim.** A claim that rests only on swinging triangles is reported uncovered. A part with motion
+  and no vertex mask is refused.
 - **Byte loading.** The byte entries match the path entries for a GLB with embedded images and refuse a relative path
   image.
 
@@ -410,11 +416,16 @@ Each task records here any shape the code required that differs from this note, 
   `Tune(wornIndex, partId, chain, settings)` includes the worn position because different sets can reuse a part ID.
   The bare set uses index zero. `Reset` exposes the rest hang immediately and lets the solver discard velocity on
   its next valid step.
-- Body collider binding. An outfit compares the loaded collider rig with the region map's rig and borrows the
-  inverse binds already stored by its first set bound with the host mesh. Region loading only retains the
-  skeleton reference for motion. A bare set has only its explicit host skin matrices, so the caller supplies its
-  rig identity to `GetBodyColliders`. A map-only binding still draws rigid parts. Motion with colliders needs
-  at least one set bound with a host mesh, since a joint map has no inverse binds.
+- Body collider binding. `GetBodyColliders` takes the host mesh alongside the caller's body rig identity. The cache
+  shares verified file data across bodies and keeps a loaded view per skeleton instance. A bare set and an outfit
+  both check that instance, and the outfit also checks its region map's rig identity. An outfit borrows inverse binds
+  from its first set bound with the host mesh. A map-only binding still draws rigid parts. Motion with colliders needs
+  at least one set bound with a host mesh, since a joint map has no inverse binds. The bound capsule keeps its
+  rest-model data and the inverse bind so the radius can use a single scale from their composed rest-to-world
+  transform.
+- Coverage claim evidence. The check receives untagged geometry, so sets declaring motion use one mesh per
+  definition part, ordered by part ID. This locates each required mask without changing the geometry type.
+  The refusal identifies the mesh index, part ID and asset key.
 
 - Motion submission. The public overloads keep the set and outfit draw signatures, with a motion argument before
   the skeleton. `MotionMismatch` uses the existing submission argument exception and identifies the motion

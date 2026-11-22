@@ -44,6 +44,7 @@ public sealed partial class BoundOutfit : IDisposable
     internal object MotionIdentity => _motionIdentity ??= new object();
 
     /// <summary>Create independent motion state for one wearer of this binding.</summary>
+    /// <remarks>Body colliders must be loaded for this outfit's rig identity and skeleton instance.</remarks>
     public WornMotion CreateMotion(LoadedBodyColliders? bodyColliders, ChainSimulationOptions? options = null)
     {
         ThrowIfDisposed();

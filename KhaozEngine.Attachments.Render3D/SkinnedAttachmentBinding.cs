@@ -109,10 +109,19 @@ internal sealed class SkinnedAttachmentBinding
 
     internal void ValidatePalette(ReadOnlySpan<Matrix4x4> hostPalette)
     {
+        if (Motion is not { } motion)
+        {
+            foreach (int bone in _hostBones)
+                if (!AttachmentSetBinding.ValidMatrix(hostPalette[bone]))
+                    throw new AttachmentBindingArgumentException(AttachmentBindingRefusal.HostJointPoseInvalid,
+                        $"Attachment part {_partId}: host skin bone {bone} has an invalid joint model matrix.", nameof(hostPalette))
+                    { PartId = _partId, BoneIndex = bone };
+            return;
+        }
+
         foreach (int bone in _hostBones)
             if (bone >= 0 && !AttachmentSetBinding.ValidMatrix(hostPalette[bone])) throw InvalidPose(_partId, bone);
-        if (Motion is null) return;
-        foreach (BoundAttachmentChain chain in Motion.Chains)
+        foreach (BoundAttachmentChain chain in motion.Chains)
         {
             Matrix4x4 anchor = hostPalette[chain.AnchorBone];
             if (!AttachmentSetBinding.ValidMatrix(anchor)) throw InvalidPose(_partId, chain.AnchorBone);
@@ -128,11 +137,16 @@ internal sealed class SkinnedAttachmentBinding
                 $"Output capacity {destination.Length} must hold {JointCount} garment joints for attachment part {_partId}.", nameof(destination))
             { PartId = _partId, ActualCapacity = destination.Length, RequiredCapacity = JointCount };
         ValidatePalette(hostPalette);
+        if (Motion is not { } motion)
+        {
+            for (int bone = 0; bone < _hostBones.Length; bone++) destination[bone] = hostPalette[_hostBones[bone]];
+            return;
+        }
+
         for (int bone = 0; bone < _hostBones.Length; bone++)
             if (_hostBones[bone] >= 0) destination[bone] = hostPalette[_hostBones[bone]];
-        if (Motion is not null)
-            foreach (BoundAttachmentChain chain in Motion.Chains)
-                chain.CopyPalette(chain.RestFromAnchor, hostPalette[chain.AnchorBone], destination);
+        foreach (BoundAttachmentChain chain in motion.Chains)
+            chain.CopyPalette(chain.RestFromAnchor, hostPalette[chain.AnchorBone], destination);
     }
 
     internal static AttachmentBindingArgumentException InvalidPose(uint partId, int bone) =>

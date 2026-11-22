@@ -7719,8 +7719,10 @@ draws its own handle, and one that is wholly covered draws nothing, so both stil
 
 **Check a claim offline.** A false `Covers` claim hides skin that nothing replaces and opens a hole in the body.
 `CoverageClaimCheck.Verify(bodyMeshes, body, piece, pieceMeshes, maxDistanceMetres)` checks at the rest pose that
-fixed triangles of the piece lie over every triangle of every region it claims. For a part with chains, use
-`AttachmentGlb.SwingingVertices(glb, sourceName, chainJoints)` to populate `CoverageClaimMesh.Swinging`.
+fixed triangles of the piece lie over every triangle of every region it claims. For a piece with motion, pass
+one mesh per definition part in ascending part ID order. Use `AttachmentGlb.SwingingVertices(glb, sourceName,
+chainJoints)` to populate `CoverageClaimMesh.Swinging` for each chained part. An omitted or empty mask for a
+part with motion raises `CoverageClaimDataException` with `SwingMaskMissing` and the part's ID and mesh key.
 The report lists the uncovered triangles by part and counts the skipped piece triangles in
 `IgnoredSwingingTriangleCount`.
 A tool runs it when a piece is made, never per frame. The consumer chooses the distance, because how far a piece
@@ -7740,7 +7742,9 @@ Format 4 keeps the layer and region tags of format 3. Add `motion` with kind `ch
 optional root `colliders` for capsules contributed by the worn set. Either addition requires a layer.
 A separate body collider file declares capsules against the body's `rig-v1` identity. Capsules name a host skin
 joint and use endpoints and a radius in the body's rest model space. Chains collide with the body and all worn
-set capsules on that wearer. The [format 4 reference](../KhaozEngine.Attachments/README.md#format-4)
+set capsules on that wearer. In the bind pose the radius keeps its authored size before wearer scaling.
+During motion it follows the largest axis scale of the composed rest-to-world transform.
+The [format 4 reference](../KhaozEngine.Attachments/README.md#format-4)
 gives the schema and limits.
 
 Publish format 4 after every reader moves to 24.5.0 or later. A 24.4.0 reader raises
@@ -7753,7 +7757,7 @@ regions, map and host mesh from the preceding section, a loaded `cape` set and a
 same skeleton. Keep one motion and one set of frame buffers per wearer.
 
 ```csharp
-LoadedBodyColliders colliders = cache.GetBodyColliders(colliderKey, colliderSha256, bodyRigIdentity);
+LoadedBodyColliders colliders = cache.GetBodyColliders(colliderKey, colliderSha256, bodyRigIdentity, bodyMesh);
 using BoundOutfit outfit = cache.BindOutfit(body, [cape.Bind(map, bodyMesh)]);
 WornMotion motion = outfit.CreateMotion(colliders);
 Skeleton skeleton = map.Skeleton;
@@ -7787,7 +7791,9 @@ void DrawSwingingFrame(float deltaSeconds, Matrix4x4 characterWorld, MeshOutline
 }
 ```
 
-Pass null to `CreateMotion` to use only the worn sets' capsules. A single bound set also supports
+Load colliders for the binding's skeleton instance. `CreateMotion` raises `BodyCollidersMismatch` for a
+different skeleton instance, even when the joint names match. Pass null to use only the worn sets'
+capsules. A single bound set also supports
 `CreateMotion` and takes that motion in its `Queue`, `WriteDraws` and `QueueOutline` overloads. Keep each
 motion with its originating binding and animate before stepping. A skipped step keeps the last chain shape
 on the current anchor. Use `Reset()` to restore the rest hang immediately.
@@ -7798,7 +7804,7 @@ up to the count limit. The rest receive `Held` and blend toward the rest hang. R
 space for the smaller of the wearer count and the count limit, and one output level per wearer.
 
 The shipped Scene3D upload leases expand the source mesh and its views' culling bounds for chain reach
-around the rest anchor. Animation that moves the anchor far from rest can still carry the chain beyond the
+around the rest anchor. Animation that translates or scales the anchor far from rest can carry the chain beyond the
 bounds. Custom `IAttachmentScene` leases use their own culling policy and must account for the swing.
 See the [renderer reference](../KhaozEngine.Attachments.Render3D/README.md#hanging-chains-and-wearer-motion)
 for binding, resets and culling details.

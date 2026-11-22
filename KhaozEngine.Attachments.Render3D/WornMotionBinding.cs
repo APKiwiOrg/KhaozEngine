@@ -23,7 +23,7 @@ internal static class WornMotionBinding
                 { WornIndex = index, SourceName = set.SourceName };
         }
 
-        BodyColliderSet? bodySet = bodyRigIdentity is null ? body?.Set : body?.ForRig(bodyRigIdentity);
+        BodyColliderSet? bodySet = body?.ForBody(skeleton, bodyRigIdentity);
         WornCollider[] colliders = BindColliders(skeleton, inverseBind, worn, body, bodySet);
 
         var anchors = new Dictionary<int, int>();
@@ -103,23 +103,5 @@ internal static class WornMotionBinding
                 { SourceName = sourceName, ColliderIndex = index, JointName = collider.Joint };
             result[written++] = WornCollider.Bind(bone, collider, inverseBind[bone]);
         }
-    }
-}
-
-/// <summary>A collider with its endpoints and radius in the host bone's local frame.</summary>
-internal readonly record struct WornCollider(int Bone, ColliderCapsule Local)
-{
-    internal static WornCollider Bind(int bone, in ColliderDefinition collider, in Matrix4x4 inverseBind) =>
-        new(bone, Transform(new ColliderCapsule(collider.Start, collider.End, collider.Radius), inverseBind));
-
-    internal ColliderCapsule Pose(in Matrix4x4 jointWorld) => Transform(Local, jointWorld);
-
-    static ColliderCapsule Transform(in ColliderCapsule capsule, in Matrix4x4 matrix)
-    {
-        float scale = MathF.Sqrt(MathF.Max(Vector3.TransformNormal(Vector3.UnitX, matrix).LengthSquared(),
-            MathF.Max(Vector3.TransformNormal(Vector3.UnitY, matrix).LengthSquared(),
-                Vector3.TransformNormal(Vector3.UnitZ, matrix).LengthSquared())));
-        return new ColliderCapsule(Vector3.Transform(capsule.Start, matrix), Vector3.Transform(capsule.End, matrix),
-            capsule.Radius * scale);
     }
 }

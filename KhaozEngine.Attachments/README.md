@@ -302,6 +302,9 @@ triangle count. `Parse` builds the map through that constructor, so a constructo
 describes a capsule in the body's rest model space, in metres. Equal endpoints describe a sphere. Each point
 has three finite coordinates, the radius is finite and positive, and the joint name uses well-formed UTF-16.
 `new BodyColliderSet(rigIdentity, colliders)` applies the same content rules and copies zero to 32 colliders.
+The [renderer binding](../KhaozEngine.Attachments.Render3D/README.md#hanging-chains-and-wearer-motion)
+keeps the authored radius in the bind pose and applies the largest axis scale of the composed rest-to-world
+transform in a posed frame.
 
 `Colliders` is read-only and orders the capsules by ordinal joint name, then the start X, Y and Z, the end X, Y
 and Z, and the radius. `BodyCollidersJson.Write(set)` emits UTF-8 with the member order shown above, without
@@ -374,10 +377,11 @@ Geometry arrives as `CoverageClaimMesh(Positions, Indices)`, plain `ReadOnlyMemo
 - `bodyMeshes` follow the region map's part order, one mesh per part with the part's triangle count, because the map
   tags triangles by part and position and a mesh that disagrees would be checked against the wrong regions.
 - `pieceMeshes` are already in the body's rest frame. A rigid part is placed by its joint's rest transform and its
-  local transform before the call, since the check has no rig to place it with.
-- Set a piece mesh's init-only `Swinging` mask with one `bool` per position. An empty mask means all vertices are
-  fixed. The check skips a piece triangle if any of its vertices swings. The hidden body regions are fixed when the
-  outfit binds, so a moving piece triangle could swing away and leave a hole.
+  local transform before the call, since the check has no rig to place it with. For a piece with motion, give one
+  mesh per definition part in ascending part ID order, combining any material groups within that part.
+- Each part with motion needs a nonempty `Swinging` mask with one `bool` per position. An empty mask on a part
+  without motion means all its vertices are fixed. The check skips a piece triangle if any of its vertices swings.
+  The hidden body regions are fixed when the outfit binds, so a moving piece triangle could swing away and leave a hole.
 - The ray starts at each claimed body triangle's centroid and runs along its outward normal, taken from counter
   clockwise winding as glTF front faces. The centroid is the one point that always lies inside the triangle, and the
   outward normal is the direction a piece worn over the skin lies in.
@@ -420,6 +424,7 @@ overflows nor underflows and only a triangle of truly zero area counts as degene
 
 A null argument throws `ArgumentNullException`. An invalid maximum distance throws `ArgumentOutOfRangeException`.
 A nonempty `Swinging` mask with a length different from its mesh's position count throws `ArgumentException`.
+A piece with motion also throws `ArgumentException` on `pieceMeshes` if the mesh count differs from its part count.
 The geometry and region refusals below throw `CoverageClaimDataException`, derived from `MalformedDataException`, with
 a `CoverageClaimRefusal Reason`. `MeshKind` says whether a refused mesh is a `Body` or `Piece` mesh and `MeshIndex`
 is its zero-based position in that list, which for a body mesh is its map part.
@@ -432,6 +437,7 @@ is its zero-based position in that list, which for a body mesh is its map part.
 | `IndexCountNotTriangles` | a mesh whose index count is not a multiple of three. | `MeshKind`, `MeshIndex`, `IndexCount` |
 | `IndexOutOfRange` | an index past the mesh's positions. | `MeshKind`, `MeshIndex`, `IndexPosition`, `VertexIndex`, `VertexCount` |
 | `PositionNotFinite` | a position with a NaN or infinite component. | `MeshKind`, `MeshIndex`, `VertexIndex` |
+| `SwingMaskMissing` | a piece mesh without the mask required by its part's motion. | `MeshKind`, `MeshIndex`, `PartId`, `MeshKey` |
 
 The check has its own refusal family rather than `OutfitDataException`, because it resolves no worn list, so the
 outfit refusal's `WornIndex` would have nothing to name.

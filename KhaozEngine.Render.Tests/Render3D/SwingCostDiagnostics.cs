@@ -202,7 +202,7 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
             capsules[index] = new ColliderDefinition(joint, center - halfAxis, center + halfAxis, .10f);
         }
         var body = new BodyColliderSet(OutfitRig.Rig, capsules);
-        return rig.Cache.GetBodyColliders(key, rig.Source.Add(key, BodyCollidersJson.Write(body)), OutfitRig.Rig);
+        return rig.Cache.GetBodyColliders(key, rig.Source.Add(key, BodyCollidersJson.Write(body)), OutfitRig.Rig, rig.Body);
     }
 
     sealed class Wearer : IDisposable

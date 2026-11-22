@@ -196,7 +196,7 @@ Coverage claim check:
 
 - `CoverageClaimCheck.Verify` takes `IReadOnlyList<CoverageClaimMesh>` for the body and the piece, where
   `CoverageClaimMesh` takes `(ReadOnlyMemory<Vector3> Positions, ReadOnlyMemory<uint> Indices)` in its constructor.
-  Its optional `Swinging` mask is described in
+  Its `Swinging` mask is required for a part with motion, as described in
   [Attachment motion](ATTACHMENT-MOTION-DESIGN.md#coverage-claims-and-swinging-triangles). Body parts follow the
   region map's part order. Piece meshes are already in the body's rest frame, so a rigid part is placed
   by its joint's rest transform and its local transform before the call. The outward normal comes from each

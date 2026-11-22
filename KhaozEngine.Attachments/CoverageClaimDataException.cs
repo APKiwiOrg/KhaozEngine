@@ -44,4 +44,10 @@ public sealed class CoverageClaimDataException : MalformedDataException
 
     /// <summary>The covered region name the body does not declare.</summary>
     public string? RegionName { get; init; }
+
+    /// <summary>The definition ID of the piece part whose mesh lacks swing evidence.</summary>
+    public uint? PartId { get; init; }
+
+    /// <summary>The asset key of the piece part whose mesh lacks swing evidence.</summary>
+    public string? MeshKey { get; init; }
 }

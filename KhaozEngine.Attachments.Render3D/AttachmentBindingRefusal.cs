@@ -99,7 +99,7 @@ public enum AttachmentBindingRefusal
     /// <summary>Refuses a chain joint whose inverse bind does not match its rest frame on the host anchor.</summary>
     ChainBindMismatch,
 
-    /// <summary>Refuses a body collider file for another rig.</summary>
+    /// <summary>Refuses body colliders for another rig identity or skeleton instance.</summary>
     BodyCollidersMismatch,
 
     /// <summary>Refuses a collider whose joint name does not resolve to a host skin joint.</summary>

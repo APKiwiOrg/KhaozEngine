@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Text;
 using KhaozEngine.Attachments;
 using Xunit;
 
@@ -61,6 +62,38 @@ public class CoverageClaimCheckTests
         Assert.Empty(report.Regions[0].Uncovered);
         if (claimLower)
             Assert.Equal(new[] { new CoverageClaimTriangle(0, 2), new CoverageClaimTriangle(0, 3) }, report.Regions[1].Uncovered);
+    }
+
+    [Fact]
+    public void Verify_requires_swing_evidence_for_the_chained_part_of_a_format_four_piece()
+    {
+        // #1879: omitting the chain mask must not let a swinging plate count as fixed coverage.
+        AttachmentSetDefinition piece = ChainedPiece();
+        CoverageClaimMesh fixedPlate = PlateOverUpper(Limit * 2);
+        CoverageClaimMesh chainedPlate = PlateOverUpper(0.01f);
+        CoverageClaimMesh masked = chainedPlate with { Swinging = new[] { true, true, true, true } };
+        Assert.False(CoverageClaimCheck.Verify(FlatBody, FlatMap, piece, [fixedPlate, masked], Limit).Honest);
+
+        var error = Assert.Throws<CoverageClaimDataException>(() =>
+            CoverageClaimCheck.Verify(FlatBody, FlatMap, piece, [fixedPlate, chainedPlate], Limit));
+
+        Assert.Equal(CoverageClaimRefusal.SwingMaskMissing, error.Reason);
+        Assert.Equal(CoverageClaimMeshKind.Piece, error.MeshKind);
+        Assert.Equal(1, error.MeshIndex);
+        Assert.Equal(12u, error.PartId);
+        Assert.Equal("parts/chain.glb", error.MeshKey);
+    }
+
+    [Fact]
+    public void Verify_requires_one_mesh_per_definition_part_to_locate_swing_evidence()
+    {
+        // #1879: dropping an earlier part would shift the mesh that supplies the chained part's evidence.
+        AttachmentSetDefinition piece = ChainedPiece();
+        CoverageClaimMesh fixedPlate = PlateOverUpper(Limit * 2);
+        CoverageClaimMesh masked = PlateOverUpper(0.01f) with { Swinging = new[] { true, true, true, true } };
+        Assert.False(CoverageClaimCheck.Verify(FlatBody, FlatMap, piece, [fixedPlate, masked], Limit).Honest);
+
+        Assert.Throws<ArgumentException>("pieceMeshes", () => CoverageClaimCheck.Verify(FlatBody, FlatMap, piece, [masked], Limit));
     }
 
     [Theory]
@@ -343,4 +376,16 @@ public class CoverageClaimCheckTests
     static AttachmentSetDefinition Piece(params string[] covers) =>
         new([new RigidAttachmentPartDefinition(1, new("parts/rigid.glb", Hash), "root", Matrix4x4.Identity) { Region = covers[0] }],
             AttachmentLayer.Armour, covers);
+
+    static AttachmentSetDefinition ChainedPiece()
+    {
+        string json = $$"""
+            {"formatVersion":4,"layer":"garment","covers":["upper"],"parts":[
+              {"id":12,"kind":"skinned","mesh":{"key":"parts/chain.glb","sha256":"{{Hash}}"},"regions":[["upper",2]],
+               "motion":{"kind":"chains","chains":[{{AttachmentFixtures.Chain0Json}}],"links":[]} },
+              {"id":3,"kind":"rigid","mesh":{"key":"parts/fixed.glb","sha256":"{{Hash}}"},
+               "joint":"root","local":{{AttachmentFixtures.Identity}},"region":"lower"}]}
+            """;
+        return AttachmentSetJson.Parse(Encoding.UTF8.GetBytes(json), "piece.json");
+    }
 }

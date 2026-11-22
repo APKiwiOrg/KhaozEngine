@@ -282,19 +282,21 @@ transform composed on the host anchor's bind frame, within the same per-element 
 validates the chain before allocating draw scratch. Ordinary draws pose each chain at its authored
 rest hang on the current anchor, so they work as soon as a chained set binds.
 
-Load a body's collider file with `cache.GetBodyColliders(key, expectedSha256, bodyRigIdentity)`,
-using the full rig identity from the same body GLB used to bind. The cache verifies the exact bytes
-and returns the same `LoadedBodyColliders` for the same key and SHA-256. `Set` gives the verified
-`BodyColliderSet` while its cache is alive. An outfit also compares the file's rig with its body
-region map. For a bare set, supply the bound body's rig identity when loading the collider file.
+Load a body's collider file with `cache.GetBodyColliders(key, expectedSha256, bodyRigIdentity, hostMesh)`,
+using the same host mesh as the binding and the full rig identity from its body GLB. The mesh must
+carry a skeleton. The cache verifies the exact bytes and returns the same `LoadedBodyColliders` for
+the same key, SHA-256 and skeleton instance. `Set` gives the verified `BodyColliderSet` while its cache
+is alive. A bound set or outfit refuses colliders loaded for another skeleton instance with
+`BodyCollidersMismatch`. An outfit also compares the file's rig with its body region map.
 
 Call `outfit.CreateMotion(bodyColliders, options)` or `bound.CreateMotion(bodyColliders, options)`
 once per wearer. The motion combines the visible chains on their distinct host anchors. It uses
 capsules from the body file and all worn sets, with a limit of 64 per wearer. Passing null for body
-colliders still includes worn set capsules. The host inverse binds place capsules in joint-local
-space. The current joint palette and model place them into world space for each step. Each
-transform scales the radius by its largest axis scale. Collider motion needs a set bound with the
-explicit host mesh, even if its parts are rigid. An outfit uses the inverse binds already held by
+colliders still includes worn set capsules. For each step, the host inverse bind, current joint
+matrix and model compose the rest-to-world transform. It places the endpoints and scales the radius
+by its largest axis scale. The bind pose preserves the authored radius before wearer scaling.
+Collider motion needs a set bound with the explicit host mesh, even if its parts are rigid.
+An outfit uses the inverse binds already held by
 its first such worn set. A collider index names its position in the normalized source list.
 
 Animate the host, call `motion.Step(skeleton, palette, model, deltaSeconds)` once with its current
@@ -316,9 +318,9 @@ scene state. Passing it to another binding raises `MotionMismatch` before submit
 When the cache loads a chained set through a shipped `Scene3D` upload lease, it expands the
 chained meshes' rest bounds for culling. Each chain contributes a sphere at its first joint's
 rest position. The radius covers the rest segments and tip, plus the farthest weighted vertex
-from its chain joint. This growth covers the chain's swing around the anchor. An animated anchor
-carried far from rest can still take the whole chain outside the culling bounds, which is the
-same limit as ordinary skinned meshes
+from its chain joint. This growth covers the chain's swing around the anchor. An anchor animated
+far from rest by translation or scale can take the whole chain outside the culling bounds.
+Ordinary skinned meshes share this limit
 ([#1492](https://github.com/APKiwiOrg/KhaozEngine/issues/1492) and
 [#1538](https://github.com/APKiwiOrg/KhaozEngine/issues/1538)).
 A shared mesh keeps the union of every loaded definition's reach. Existing and future views use
@@ -420,7 +422,7 @@ developer prose. Rigid frame errors carry `PoseCompositionFailed` with the origi
 | `ChainNotParentLine` | a chain joint that is not a direct child of its predecessor | `PartId`, `MeshKey`, `ChainIndex`, `JointName` |
 | `ChainAnchorNotHostJoint` | a first chain joint whose parent does not name a host skin joint | `PartId`, `MeshKey`, `ChainIndex`, `JointName` (the parent name when present, otherwise the first chain joint) |
 | `ChainBindMismatch` | a chain joint whose inverse bind does not match its rest frame on the host anchor | `PartId`, `MeshKey`, `ChainIndex`, `JointName`, `BindTolerance` |
-| `BodyCollidersMismatch` | a body collider file for another rig | `SourceName`, `ExpectedRigIdentity`, `ActualRigIdentity` |
+| `BodyCollidersMismatch` | body colliders for another rig identity or skeleton instance | `SourceName`, `ActualRigIdentity`, `ExpectedRigIdentity` when loading or creating outfit motion |
 | `ColliderJointUnresolved` | a collider whose name is absent from the host skin | `SourceName`, `ColliderIndex`, `JointName` |
 | `WearerCollidersTooMany` | more than 64 colliders across the body and worn sets | `ColliderCount`, `MaximumColliderCount` |
 | `ColliderHostMeshRequired` | colliders whose motion binding has no host inverse binds | `SourceName` |

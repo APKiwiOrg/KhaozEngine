@@ -48,9 +48,12 @@ Existing sets and draws are unchanged.
   `MaxStepsPerFrame`, `TeleportDistance`, `LongestGapSeconds`, `HoldBlendSeconds` and `Gravity`.
   `MotionLevels.Assign` chooses the closest wearers within a distance and count budget and assigns
   `MotionLevel.Simulated` or `MotionLevel.Held`.
-- `AttachmentSetCache.GetBodyColliders(key, expectedSha256, bodyRigIdentity)` returns `LoadedBodyColliders`,
+- `AttachmentSetCache.GetBodyColliders(key, expectedSha256, bodyRigIdentity, hostMesh)` returns `LoadedBodyColliders`,
   whose `Set` is the verified collider data. `BoundAttachmentSet.CreateMotion` and `BoundOutfit.CreateMotion`
-  accept that data or null, plus optional simulation options. Each `WornMotion` exposes `Step`, `Reset` and
+  accept colliders loaded for their skeleton instance or null, plus optional simulation options. Colliders for
+  another skeleton instance raise `BodyCollidersMismatch`. Capsule radii
+  keep their authored size at bind and scale by the largest axis of the composed rest-to-world transform.
+  Each `WornMotion` exposes `Step`, `Reset` and
   `Tune` for one wearer. Animate, step once and pass the motion to the set's `WriteDraws`, either `Queue`
   overload or `QueueOutline`, or to the outfit's `WriteDraws` or `QueueOutline`. Every pass uses the same
   swing. Existing overloads draw chains at their rest hang. The shipped Scene3D uploads grow the source mesh and
@@ -62,8 +65,9 @@ Existing sets and draws are unchanged.
   appends `MotionMismatch` for a motion used with a binding that did not create it.
 - Coverage claims use fixed geometry. `AttachmentGlb.SwingingVertices(glb, sourceName, chainJoints)` reads
   the vertex mask for a garment GLB. Supply it as the init-only `CoverageClaimMesh.Swinging` property so
-  `CoverageClaimCheck.Verify` skips every piece triangle with a swinging vertex. The
-  `CoverageClaimReport.IgnoredSwingingTriangleCount` records how many it skipped.
+  `CoverageClaimCheck.Verify` skips every piece triangle with a swinging vertex. Sets with motion pass one
+  mesh per part in part ID order. A moving part without a mask refuses with `CoverageClaimRefusal.SwingMaskMissing`
+  and the part ID and mesh key. `CoverageClaimReport.IgnoredSwingingTriangleCount` records how many triangles it skipped.
 - Publish format 4 only after every reader is on 24.5.0 or later. A 24.4.0 reader raises
   `AttachmentSetDataException` with `JsonPropertyUnknown`, `JsonPath` of `$` and `PropertyName` of
   `colliders` if the root contains that member, including an empty array. For format 4 without that member

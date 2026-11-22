@@ -152,6 +152,9 @@ public sealed class PathFollowConfig
     /// <summary>Search budget handed to <see cref="IPathPlanner.FindPath"/> on every replan.</summary>
     public PathQueryBudget Budget { get; init; } = PathQueryBudget.Default;
 
+    /// <summary>Optional fixed-quota region planning. Requires a compatible, live pool with room for <see cref="Budget"/>.</summary>
+    internal PathPlanningConfig? Planning { get; init; }
+
     /// <summary>Default tuning: a 0.6 unit accept radius paired with a 0.8 unit vertical tolerance, 1.5
     /// unit horizontal and 0.8 unit vertical goal-drift tolerances, a 2.5 unit corridor tolerance, a 0.5
     /// second replan cooldown, and <see cref="PathQueryBudget.Default"/>.</summary>
@@ -199,11 +202,15 @@ public sealed partial class PathFollower
     /// <see cref="NavSpace.LayerAt"/> answers 0 everywhere and the follower never advances past a layer-1
     /// waypoint. And <paramref name="space"/> resolves from the position handed to the tick, so
     /// pass the agent's GROUND position, not a capsule centre, or low overhead geometry flips the layer.</para></summary>
+    /// <exception cref="ArgumentNullException">The planner is null.</exception>
+    /// <exception cref="ArgumentException">Internal region planning requires a compatible planner and pool budget.</exception>
+    /// <exception cref="ObjectDisposedException">The internal region planning pool is disposed.</exception>
     public PathFollower(IPathPlanner planner, PathFollowConfig? config = null, NavSpace? space = null)
     {
         _planner = planner ?? throw new ArgumentNullException(nameof(planner));
         _config = config ?? PathFollowConfig.Default;
         _space = space;
+        ValidatePlanning();
     }
 
     /// <summary>
@@ -296,9 +303,15 @@ public sealed partial class PathFollower
         => TickCore(position, goal, agentRadius, dt, region: null);
 
     /// <summary>Clears all stored path state, including an active Drop (path, index, cooldown, plan origin and goal, height
-    /// included), as if this follower had just been constructed. The next tick plans fresh
+    /// included), as if this follower had just been constructed. Any internal region request is released first. The next tick plans fresh
     /// with no cooldown wait.</summary>
     public void Reset()
+    {
+        CancelPlanning();
+        ResetState();
+    }
+
+    void ResetState()
     {
         _path = null;
         _index = 0;

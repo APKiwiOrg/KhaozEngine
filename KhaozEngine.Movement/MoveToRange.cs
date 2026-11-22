@@ -28,11 +28,10 @@ public sealed partial class MoveToRange
     /// profile is not <see cref="GroundNavigation.Aquatic"/>.</exception>
     public MoveToRange(GroundNavigation navigation, PathFollowConfig? follow, RouteApproachOptions options)
         : this((navigation ?? throw new ArgumentNullException(nameof(navigation))).Planner,
-            navigation.Space, navigation.AllowsSegment, follow, options)
+            navigation.Space, navigation.AllowsSegment, follow, options, navigation)
     {
         if (options.SteerWhileSwimming && !navigation.Aquatic)
             throw new ArgumentException("Steering swimmers needs an aquatic profile.", nameof(options));
-        _navigation = navigation;
     }
 
     /// <summary>The caller supplies equivalent guarded region planning and segment admission.</summary>
@@ -46,12 +45,20 @@ public sealed partial class MoveToRange
     /// <paramref name="options"/>.</summary>
     public MoveToRange(IRegionPathPlanner planner, NavSpace space,
         Func<Vector3, Vector3, bool> allowsSegment, PathFollowConfig? follow, RouteApproachOptions options)
+        : this(planner, space, allowsSegment, follow, options, navigation: null)
+    {
+    }
+
+    private MoveToRange(IRegionPathPlanner planner, NavSpace space,
+        Func<Vector3, Vector3, bool> allowsSegment, PathFollowConfig? follow, RouteApproachOptions options,
+        GroundNavigation? navigation)
     {
         ArgumentNullException.ThrowIfNull(planner);
         ArgumentNullException.ThrowIfNull(space);
         _allowsSegment = allowsSegment ?? throw new ArgumentNullException(nameof(allowsSegment));
         _options = options ?? throw new ArgumentNullException(nameof(options));
-        if (options.StraightenRoutes) _straightener = new RouteStraightener(planner, space, allowsSegment);
+        _navigation = navigation;
+        _straightener = CreateStraightener(planner, space, allowsSegment, follow, options, navigation);
         if (options.Stall is { } stall) _stallRing = new RangeProgressRing(stall.WindowTicks);
         _follower = new PathFollower(_straightener ?? planner,
             StrictConfig(follow ?? PathFollowConfig.Default, options.CarryThroughStraightRuns), space);
@@ -77,8 +84,8 @@ public sealed partial class MoveToRange
         float range, bool run, float dt, GroundMoveContext context, PlayerPathInput input)
         => TickCore(body, tuning, target, range, run, dt, context, input);
 
-    RangeSteering TickCore(in MoveState body, in MoveTuning tuning, in ReachTarget target,
-        float range, bool run, float dt, GroundMoveContext context, PlayerPathInput? playerInput)
+    RangeSteering TickCore<TPlanning>(in MoveState body, in MoveTuning tuning, in ReachTarget target,
+        float range, bool run, float dt, GroundMoveContext context, PlayerPathInput? playerInput) where TPlanning : struct
     {
         ArgumentNullException.ThrowIfNull(context);
         context.ValidateTuning(tuning);
@@ -98,14 +105,15 @@ public sealed partial class MoveToRange
         if ((!body.Grounded && !swims && _drop is null) || body.Commitment.IsActive || body.JumpBufferRemaining > 0)
             return Hold(RangeMoveStatus.Suspended);
         if (swims && Settling(body, tuning, context)) return Hold(RangeMoveStatus.Suspended);
-        NavGoalRegion goal = Goal(tuning, target, range);
+        NavGoalRegion goal = Goal<TPlanning>(tuning, target, range);
         if (!body.Grounded && !swims && _drop is null) return Hold(RangeMoveStatus.Suspended);
         if (_drop is not null && _stalled) return Hold(RangeMoveStatus.Blocked) with { DropRefusal = _drop.Refusal };
         bool preparingDrop = _drop is { Preparing: true } && body.Grounded && !body.Swimming;
         if (_drop is not null && !preparingDrop &&
-            TickDrop(body, tuning, run, dt, context, playerInput, out RangeSteering dropping)) return dropping;
+            TickDrop<TPlanning>(body, tuning, run, dt, context, playerInput, out RangeSteering dropping)) return dropping;
         if (within && !preparingDrop)
         {
+            if (typeof(TPlanning) == typeof(PathFollower.IncrementalPlanning)) _follower.CancelPlanning();
             ClearStall();
             return Hold(RangeMoveStatus.InRange);
         }
@@ -113,24 +121,26 @@ public sealed partial class MoveToRange
         if (_stalled) return Hold(RangeMoveStatus.Blocked);
         Vector3 feet = Feet(body, tuning);
         PathFollowOutput route = preparingDrop
-            ? _follower.TickDropPreparation(feet, goal, tuning.CapsuleRadius)
-            : _follower.Tick(feet, goal, tuning.CapsuleRadius, followerDt);
+            ? _follower.TickDropPreparation<TPlanning>(feet, goal, tuning.CapsuleRadius)
+            : _follower.TickRegion<TPlanning>(feet, goal, tuning.CapsuleRadius, followerDt);
         if (route.State == PathFollowState.Dropping)
         {
             if (_navigation is null || _navigation.MaxDropMetres == 0 || route.DropTraversal is not { } traversal)
                 return Hold(RangeMoveStatus.UnsupportedTransition);
             if (_drop is null || _drop.Traversal != traversal) _drop = new ContactDropFollower(_navigation, traversal);
-            if (TickDrop(body, tuning, run, dt, context, playerInput, out dropping)) return dropping;
+            if (TickDrop<TPlanning>(body, tuning, run, dt, context, playerInput, out dropping)) return dropping;
             return Counted(body, Hold(RangeMoveStatus.Following));
         }
         if (preparingDrop)
         {
             _drop = null;
-            ClearStall();
+            if (typeof(TPlanning) != typeof(PathFollower.IncrementalPlanning) || !PlanningPending) ClearStall();
             if (within) return Hold(RangeMoveStatus.InRange);
         }
         if (route.State == PathFollowState.Hopping) return Hold(RangeMoveStatus.UnsupportedTransition);
-        if (route.State == PathFollowState.WaitingForPath) return Counted(body, Hold(RangeMoveStatus.WaitingForPath));
+        if (route.State == PathFollowState.WaitingForPath)
+            return typeof(TPlanning) == typeof(PathFollower.IncrementalPlanning) && PlanningPending
+                ? Hold(RangeMoveStatus.WaitingForPath) : Counted(body, Hold(RangeMoveStatus.WaitingForPath));
         if (route.State == PathFollowState.Unreachable) return Hold(RangeMoveStatus.Unreachable);
         if (route.State != PathFollowState.Following) return Counted(body, Hold(RangeMoveStatus.Following));
 
@@ -151,7 +161,7 @@ public sealed partial class MoveToRange
         MoveState predicted = context.Step(body, command, run, dt, tuning);
         if (!AllowsStep(body, predicted, tuning))
         {
-            FallBackToRawRoute();
+            FallBackToRawRoute<TPlanning>();
             return Counted(body, Hold(RangeMoveStatus.Following));
         }
         command = StopAtRange(body, tuning, target, range, run, dt, context, command, predicted, _admits);
@@ -162,6 +172,11 @@ public sealed partial class MoveToRange
     public void Reset()
     {
         _follower.Reset();
+        ClearRouteGoal();
+    }
+
+    private void ClearRouteGoal()
+    {
         _drop = null;
         _goal = null;
         ClearStall();
@@ -204,6 +219,7 @@ public sealed partial class MoveToRange
             CorridorTolerance = follow.CorridorTolerance,
             ReplanCooldownSeconds = follow.ReplanCooldownSeconds,
             Budget = follow.Budget,
+            Planning = follow.Planning,
         };
     }
 }

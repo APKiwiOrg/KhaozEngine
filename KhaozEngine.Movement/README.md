@@ -34,15 +34,27 @@ and can continue without rebuilding the query or allocating a scan buffer.
 
 A ground profile can also plan an internal region request. One prewarmed workspace covers sliced start
 admission, grid search and optional straightening. The straightener validates raw waypoints, keeps
-required anchors and checks the centre, positive and negative side lines in order. It must be bound
-to the exact profile that creates its workspace and begins the request. Each pool belongs to the exact
-profile planner or straightener that created it. A successful begin clears `LastStraightened` and captures
-`FallBackOnce` after the pool validates the query and request owner. Completion records the published
-shortcut or clears `LastStraightened` if the route is unchanged. A spent quota keeps the route private
-until the final operation.
+required anchors and checks the centre, positive and negative side lines in order. A profile's pool serves
+the profile planner and any straightener bound to that exact profile. A straightener's own pool serves
+only that instance. A begin validates the pairing and budget before acquiring or queueing a lease,
+clearing `LastStraightened` or consuming that instance's `FallBackOnce`. Completion records a shortcut
+in `LastStraightened` only if it dropped waypoints.
 
-The internal `GroundNavigation.CreatePlanningWorkspaces(count)` factory prewarms a pool for that profile
-planner with the expansion and snap limits of `PathQueryBudget.Default`. It requires a positive count.
+The internal `GroundNavigation.CreatePlanningWorkspaces(count, largestBudget)` factory requires a positive
+count and prewarms the expansion and snap limits in the supplied budget, or `PathQueryBudget.Default` when
+omitted. Use one workspace per sharing mover to avoid waiting. Smaller pools hand leases to the oldest
+waiter first, making the publication call depend on the owners that share the pool and their call order.
+An immediate or queued begin allocates the request and its admission. Pending advances have prewarmed
+working memory. Publishing a nonempty route allocates the result.
+
+`MoveToRange` uses requests when its internal `PathFollowConfig.Planning` is set. The pool must be live,
+serve the selected planner and accommodate the follower budget at construction. Straightened requests need
+the profile constructor. `GroundPursuit` requires synchronous planning and refuses the option.
+A planning wait holds at zero motion, drops the old route and neither counts toward stall nor clears the
+stall window, including when it releases supported Drop preparation. Exhausted Partial cooldown waits
+still count. Suspension leaves a request unadvanced. InRange and Reset release a lease or remove its waiter
+before returning, and changes to target shape, range or capsule use Reset. Call Reset before discarding a
+mover or changing its target identity, placement or profile.
 
 A footprint with query-time area exclusions requires synchronous planning, including when combined with
 an unconstrained grid. An area excluding view adds a traversal constraint that can scan a footprint

@@ -9,14 +9,15 @@ public sealed partial class GridPathPlanner
 {
     internal partial class GridSearchRequest
     {
-        /// <summary>Fixed leases for one raw grid planner or one adapter. Requests wait when all leases are occupied.
+        /// <summary>Fixed leases for one raw grid planner or the adapters approved by the pool owner. Requests wait when all leases are occupied.
         /// Nesting keeps slot and queue assignment private to the request and its pool.</summary>
         internal sealed class GridPlanningWorkspaces : PathPlanWorkspaces, IRequestPool
         {
             readonly IGridRequestAdapter? _adapter;
             readonly int _count;
             readonly PathQueryBudget _largestBudget;
-            readonly LinkedList<GridSearchRequest> _waiters = new();
+            GridSearchRequest? _firstWaiter;
+            GridSearchRequest? _lastWaiter;
             readonly Stack<int> _free;
             RequestScratch[] _scratch;
             GridSearchRequest?[] _owners;
@@ -83,6 +84,38 @@ public sealed partial class GridPathPlanner
                 }
             }
 
+            /// <summary>Checks that a raw planner can use the pool for the declared query.</summary>
+            internal void ValidateRaw(GridPathPlanner planner, PathQueryBudget budget)
+            {
+                using var call = new PoolCall(this);
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                if (_adapter is not null || !ReferenceEquals(Planner, planner))
+                    throw new ArgumentException("The workspace pool belongs to another planner.", "workspaces");
+                ValidateBudget(budget);
+            }
+
+            /// <summary>Checks that this pool owner authorizes an adapter and that its query fits the pool.</summary>
+            internal void ValidateAdapted(IGridRequestAdapter adapter, PathQueryBudget budget)
+            {
+                using var call = new PoolCall(this);
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                RequireAdapter(adapter);
+                ValidateBudget(budget);
+            }
+
+            void RequireAdapter(IGridRequestAdapter adapter)
+            {
+                ArgumentNullException.ThrowIfNull(adapter);
+                if (_adapter?.OwnsWorkspaceRequestsFrom(adapter) != true)
+                    throw new ArgumentException("The workspace pool belongs to another planner.", "workspaces");
+            }
+
+            void ValidateBudget(PathQueryBudget budget)
+            {
+                if (budget.MaxExpandedNodes > _largestBudget.MaxExpandedNodes || !(budget.SnapRadius <= _largestBudget.SnapRadius))
+                    throw new ArgumentException("The query budget exceeds the workspace pool's declared limits.", nameof(budget));
+            }
+
             /// <summary>Starts raw search only in a pool created for a raw grid planner.</summary>
             internal PathPlanRequest BeginRaw(Vector3 start, NavGoalRegion goal, float radius, PathQueryBudget budget)
             {
@@ -93,15 +126,13 @@ public sealed partial class GridPathPlanner
                 return Attach(new GridSearchRequest(RequestAdmission.Admit(this, start, goal, radius, budget)));
             }
 
-            /// <summary>Starts the pool's own adapter with the exact query admitted by this begin call.</summary>
+            /// <summary>Starts an authorized adapter with the exact query admitted by this begin call.</summary>
             internal PathPlanRequest BeginAdapted(IGridRequestAdapter adapter, Vector3 start, NavGoalRegion goal, float radius,
                 PathQueryBudget budget)
             {
                 using var call = new PoolCall(this);
                 ObjectDisposedException.ThrowIf(_disposed, this);
-                ArgumentNullException.ThrowIfNull(adapter);
-                if (!ReferenceEquals(_adapter, adapter))
-                    throw new ArgumentException("The workspace pool belongs to another planner.", "workspaces");
+                RequireAdapter(adapter);
 
                 RequestAdmission admission = RequestAdmission.Admit(this, start, goal, radius, budget);
                 GridSearchRequest request = adapter.CreateRequest(admission);
@@ -110,7 +141,7 @@ public sealed partial class GridPathPlanner
                     throw new ArgumentException("The adapter must create its own pending request for this admission.", nameof(adapter));
 
                 request.OnBegin();
-                if (request.State != PathPlanState.Pending || request._leaseSlot >= 0 || request._waitNode is not null)
+                if (request.State != PathPlanState.Pending || request._leaseSlot >= 0 || IsWaiting(request))
                     throw new InvalidOperationException("A begin hook must leave its request pending and detached.");
 
                 return Attach(request);
@@ -118,13 +149,16 @@ public sealed partial class GridPathPlanner
 
             PathPlanRequest Attach(GridSearchRequest request)
             {
-                if (_waiters.Count == 0 && _free.TryPop(out int slot))
+                if (_firstWaiter is null && _free.TryPop(out int slot))
                 {
                     Grant(request, slot);
                 }
                 else
                 {
-                    request._waitNode = _waiters.AddLast(request);
+                    request._previousWaiter = _lastWaiter;
+                    if (_lastWaiter is { } tail) tail._nextWaiter = request;
+                    else _firstWaiter = request;
+                    _lastWaiter = request;
                     _waits++;
                 }
                 return request;
@@ -150,10 +184,9 @@ public sealed partial class GridPathPlanner
                 if (request.State == PathPlanState.Pending || !ReferenceEquals(request._admission.Pool, this))
                     throw new ArgumentException("Only a finished request from this pool can release a lease.", nameof(request));
 
-                if (request._waitNode is { } waiting)
+                if (IsWaiting(request))
                 {
-                    _waiters.Remove(waiting);
-                    request._waitNode = null;
+                    RemoveWaiter(request);
                     return;
                 }
 
@@ -164,14 +197,27 @@ public sealed partial class GridPathPlanner
 
                 _owners[slot] = null;
                 if (_disposed) return;
-                if (_waiters.First is { } next)
+                if (_firstWaiter is { } next)
                 {
-                    _waiters.RemoveFirst();
-                    next.Value._waitNode = null;
-                    Grant(next.Value, slot);
+                    RemoveWaiter(next);
+                    Grant(next, slot);
                 }
                 else
                     _free.Push(slot);
+            }
+
+            // Keep both links on the request so a queued begin allocates the same as a leased begin.
+            bool IsWaiting(GridSearchRequest request) => request._previousWaiter is not null || ReferenceEquals(_firstWaiter, request);
+
+            void RemoveWaiter(GridSearchRequest request)
+            {
+                GridSearchRequest? previous = request._previousWaiter, next = request._nextWaiter;
+                if (previous is not null) previous._nextWaiter = next;
+                else _firstWaiter = next;
+                if (next is not null) next._previousWaiter = previous;
+                else _lastWaiter = previous;
+                request._previousWaiter = null;
+                request._nextWaiter = null;
             }
 
             void Grant(GridSearchRequest request, int slot)
@@ -186,7 +232,7 @@ public sealed partial class GridPathPlanner
                 using var call = new PoolCall(this);
                 if (_disposed) return;
                 _disposed = true;
-                while (_waiters.First is { } next) next.Value.CancelPending();
+                while (_firstWaiter is { } next) next.CancelPending();
                 foreach (GridSearchRequest? owner in _owners) owner?.CancelPending();
                 _free.Clear();
                 _owners = Array.Empty<GridSearchRequest>();
@@ -216,9 +262,7 @@ public sealed partial class GridPathPlanner
                     float radius, PathQueryBudget budget)
                 {
                     pool.Planner.ValidateRegion(goal, radius);
-                    if (budget.MaxExpandedNodes > pool._largestBudget.MaxExpandedNodes ||
-                        !(budget.SnapRadius <= pool._largestBudget.SnapRadius))
-                        throw new ArgumentException("The query budget exceeds the workspace pool's declared limits.", nameof(budget));
+                    pool.ValidateBudget(budget);
                     return new RequestAdmission(pool, start, goal, radius, budget);
                 }
             }

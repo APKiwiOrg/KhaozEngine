@@ -36,6 +36,7 @@ public sealed class GroundPursuit
     /// <summary>The caller supplies equivalent guarded region planning, surface heights and segment admission,
     /// including runtime profile compatibility. Hop, Drop and unknown waypoint kinds are still refused even
     /// if this planner ignores PathQueryBudget.WalkOnly. The supplied follower configuration is immutable.</summary>
+    /// <exception cref="ArgumentException">The supplied configuration uses internal sliced planning.</exception>
     public GroundPursuit(IRegionPathPlanner planner, NavSpace space,
         Func<Vector3, Vector3, bool> allowsSegment, PathFollowConfig? follow = null)
     {
@@ -43,6 +44,8 @@ public sealed class GroundPursuit
         _space = space ?? throw new ArgumentNullException(nameof(space));
         _allowsSegment = allowsSegment ?? throw new ArgumentNullException(nameof(allowsSegment));
         _follow = follow ?? PathFollowConfig.Default;
+        if (_follow.Planning is not null)
+            throw new ArgumentException("Ground pursuit requires synchronous route planning.", nameof(follow));
         ValidateFollow(_follow);
         _budget = _follow.Budget with { WalkOnly = true };
         _planner = new RouteStraightener(planner, space, allowsSegment);

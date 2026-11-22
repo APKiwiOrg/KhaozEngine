@@ -65,6 +65,23 @@ single layer, always 0. `GridPathPlanner.FindPath` resolves both endpoints with 
 `KhaozEngine.Dungeon`'s `DungeonNav.Bake` is a worked multi-layer example: one `NavGrid` layer per
 dungeon floor, joined by directed `NavLink` pairs at every stair run.
 
+## Internal fixed-quota region following
+
+`PathFollowConfig.Planning` opts a follower into region requests. Construction requires a planner that
+supports requests, a live pool that belongs to it and a query budget within the pool's declared limits.
+The quota must cover the largest indivisible operation. Each region tick begins or advances at most one
+request. Point queries use the synchronous planner.
+
+A planning wait returns `WaitingForPath` at zero motion with no `ActivePath`. `PlanningPending` also covers
+a queued request and a completed route awaiting adoption. A route that completes in its begin call can
+steer in that call. A later final slice releases the lease and holds until the next owner call. Adoption
+checks membership first, then requires the same starting feet bits or the same resolved start node. If
+the start changed, the follower begins again from current feet. Goal translation during a request does
+not restart it. Adoption stores the frozen anchor and start feet and restarts the cooldown, so ordinary
+drift, corridor and terminal rules can refresh the resulting route. A due refresh during supported Drop
+preparation holds before departure. Membership and Reset cancel immediately, including when switching
+from region to point. Reset a pending follower before discarding it.
+
 ## Walk-only query policy
 
 `PathQueryBudget.WalkOnly` is an additive, default-false query option. When true, `GridPathPlanner` skips Hop

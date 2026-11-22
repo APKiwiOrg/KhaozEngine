@@ -25,6 +25,13 @@ internal interface IIncrementalRegionPathPlanner : IRegionPathPlanner
     /// <exception cref="ArgumentException">The budget requires a frontier larger than an array.</exception>
     PathPlanWorkspaces CreateWorkspaces(int count, PathQueryBudget largestBudget);
 
+    /// <summary>Checks eligibility, ownership and declared budget before a follower keeps this pool.</summary>
+    /// <exception cref="ArgumentException">The planner requires synchronous queries, the pool belongs to a
+    /// different planner, or the budget exceeds a declared limit.</exception>
+    /// <exception cref="ObjectDisposedException">The pool is disposed.</exception>
+    /// <exception cref="InvalidOperationException">The call overlaps another call into the pool.</exception>
+    void ValidateWorkspaces(PathPlanWorkspaces workspaces, PathQueryBudget budget);
+
     /// <summary>
     /// Freezes <paramref name="start"/>, <paramref name="goal"/>, <paramref name="agentRadius"/> and
     /// <paramref name="budget"/> into a pending request and spends no work. The request takes a free workspace from

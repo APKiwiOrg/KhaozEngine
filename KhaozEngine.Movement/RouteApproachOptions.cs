@@ -39,8 +39,9 @@ public sealed record RouteApproachOptions
     /// <summary>Latches <see cref="RangeMoveStatus.Blocked"/> when a routed body stops making ground. Every tick that
     /// returns <see cref="RangeMoveStatus.Following"/> or <see cref="RangeMoveStatus.WaitingForPath"/> is counted,
     /// except the hold for a zero travel bound, so a refused step, a refused straightened step, a zero offset waypoint
-    /// and an exhausted partial route waiting on its cooldown all count. Suspended, InRange, Unreachable and
-    /// UnsupportedTransition ticks count toward nothing. When accumulated horizontal feet travel across the last
+    /// and an exhausted partial route waiting on its cooldown all count. Waiting for a planning request neither
+    /// counts nor clears earlier samples, including when it ends supported Drop preparation. Suspended, InRange,
+    /// Unreachable and UnsupportedTransition ticks count toward nothing. When accumulated horizontal feet travel across the last
     /// <see cref="RouteStallOptions.WindowTicks"/> counted intervals is under <see cref="RouteStallOptions.TravelMetres"/>,
     /// that tick returns Blocked with zero input, and so does every tick after it until InRange,
     /// <see cref="MoveToRange.Reset"/> or a change of target shape, range or capsule. InRange clears the window. A

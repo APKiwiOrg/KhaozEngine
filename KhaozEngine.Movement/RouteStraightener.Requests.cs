@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using KhaozEngine.Navigation;
+using GridPlanningWorkspaces = KhaozEngine.Navigation.GridPathPlanner.GridSearchRequest.GridPlanningWorkspaces;
 using GridSearchRequest = KhaozEngine.Navigation.GridPathPlanner.GridSearchRequest;
 using RequestAdmission = KhaozEngine.Navigation.GridPathPlanner.GridSearchRequest.GridPlanningWorkspaces.RequestAdmission;
 
@@ -28,6 +29,12 @@ internal sealed partial class RouteStraightener : IGridRequestAdapter
 
     PathPlanWorkspaces IIncrementalRegionPathPlanner.CreateWorkspaces(int count, PathQueryBudget largestBudget)
         => RequestNavigation().CreatePlanningWorkspaces(count, largestBudget, this);
+
+    void IIncrementalRegionPathPlanner.ValidateWorkspaces(PathPlanWorkspaces workspaces, PathQueryBudget budget)
+    {
+        if (!SupportsRequests) throw new ArgumentException("This straightener requires synchronous queries.", nameof(workspaces));
+        GridPlanningWorkspaces.Require(workspaces).ValidateAdapted(this, budget);
+    }
 
     PathPlanRequest IIncrementalRegionPathPlanner.BeginPath(Vector3 start, NavGoalRegion goal, float agentRadius,
         PathQueryBudget budget, PathPlanWorkspaces workspaces)

@@ -11,10 +11,20 @@ public sealed partial class GridPathPlanner
     /// synchronously. Unconstrained legacy and baked-graph planners support requests.</summary>
     internal bool SupportsRequests => _allowsTraversal is null;
 
-    bool IIncrementalRegionPathPlanner.SupportsRequests => SupportsRequests;
+    /// <summary>Region requests also require surface heights on every layer.</summary>
+    internal bool SupportsRegionRequests => SupportsRequests && _hasRegionSurfaces;
+
+    bool IIncrementalRegionPathPlanner.SupportsRequests => SupportsRegionRequests;
 
     PathPlanWorkspaces IIncrementalRegionPathPlanner.CreateWorkspaces(int count, PathQueryBudget largestBudget)
         => new GridPlanningWorkspaces(this, count, largestBudget);
+
+    void IIncrementalRegionPathPlanner.ValidateWorkspaces(PathPlanWorkspaces workspaces, PathQueryBudget budget)
+    {
+        if (!SupportsRegionRequests)
+            throw new ArgumentException("This planner does not support region requests.", nameof(workspaces));
+        GridPlanningWorkspaces.Require(workspaces).ValidateRaw(this, budget);
+    }
 
     PathPlanRequest IIncrementalRegionPathPlanner.BeginPath(Vector3 start, NavGoalRegion goal, float agentRadius,
         PathQueryBudget budget, PathPlanWorkspaces workspaces)

@@ -8,8 +8,9 @@ namespace KhaozEngine.Navigation;
 /// Synchronous queries keep the planner's own working memory and never touch a pool.
 /// </summary>
 /// <remarks>
-/// <para>Ownership. A pool belongs to the planner that created it. A begin from another planner throws
-/// <see cref="ArgumentException"/>, and a planner over an area-excluding view is another planner.</para>
+/// <para>Ownership. A pool serves its creating planner and any adapter the owner explicitly authorizes.
+/// A begin from an unrelated planner throws <see cref="ArgumentException"/>. An area-excluding view has
+/// its own planner and does not support requests.</para>
 /// <para>One owner sequence. Calls into a pool, its begins and its requests' advances and cancels, must not
 /// overlap. An overlapping call, from a second thread or from a region predicate that re-enters the planner,
 /// throws <see cref="InvalidOperationException"/>. No thread is pinned, so a pool created on a loading thread may

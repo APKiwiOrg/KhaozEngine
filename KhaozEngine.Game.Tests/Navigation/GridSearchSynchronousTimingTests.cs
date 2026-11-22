@@ -175,7 +175,8 @@ public sealed class GridSearchSynchronousTimingTests(ITestOutputHelper output)
             {
                 long start = TClock.GetTimestamp();
                 for (int call = 0; call < batch; call++) GC.KeepAlive(run());
-                samples[i] = TClock.GetTimestamp() - start;
+                long end = TClock.GetTimestamp();
+                samples[i] = end - start;
             }
             held = started && GCSettings.LatencyMode == GCLatencyMode.NoGCRegion;
             gen0 = GC.CollectionCount(0) - gen0;

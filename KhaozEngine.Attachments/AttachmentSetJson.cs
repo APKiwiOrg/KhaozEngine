@@ -23,6 +23,9 @@ public static class AttachmentSetJson
     /// <summary>The format of a worn set with region standoff or skinned part lift.</summary>
     public const int LiftFormatVersion = 5;
 
+    /// <summary>The format of a worn set with a width bound for a part's chain links.</summary>
+    public const int LinkStretchFormatVersion = 6;
+
     public static AttachmentSetDefinition Parse(ReadOnlyMemory<byte> utf8, string sourceName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourceName);
@@ -33,19 +36,21 @@ public static class AttachmentSetJson
             Members(root, "root", "$", "formatVersion", "layer", "covers", "colliders", "standoff", "parts");
             JsonElement version = Required(root, "formatVersion", "root", "$");
             if (version.ValueKind != JsonValueKind.Number || !version.TryGetInt32(out int number)
-                || number is not (RigidOnlyFormatVersion or CurrentFormatVersion or RegionsFormatVersion or MotionFormatVersion or LiftFormatVersion))
+                || number is not (RigidOnlyFormatVersion or CurrentFormatVersion or RegionsFormatVersion
+                    or MotionFormatVersion or LiftFormatVersion or LinkStretchFormatVersion))
                 throw new AttachmentSetDataException(AttachmentSetRefusal.FormatVersionUnsupported, "root: unsupported formatVersion.")
                 {
                     JsonPath = "$.formatVersion",
                     FormatVersion = version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out int declaredVersion) ? declaredVersion : null,
                 };
-            bool liftFormat = number == LiftFormatVersion;
+            bool linkStretchFormat = number >= LinkStretchFormatVersion;
+            bool liftFormat = number >= LiftFormatVersion;
             bool motionFormat = number >= MotionFormatVersion;
             bool tagged = number >= RegionsFormatVersion;
             if (!tagged) Members(root, "root", "$", "formatVersion", "parts");
             else if (!motionFormat) Members(root, "root", "$", "formatVersion", "layer", "covers", "parts");
             else if (!liftFormat) Members(root, "root", "$", "formatVersion", "layer", "covers", "colliders", "parts");
-            // A missing layer in format 4 or 5 has a specific refusal when an addition requires it.
+            // A missing layer in a motion format has a specific refusal when an addition requires it.
             AttachmentLayer? layer = tagged && (!motionFormat || root.TryGetProperty("layer", out _)) ? ReadLayer(root) : null;
             string[]? covers = tagged ? ReadCovers(root) : null;
             ColliderDefinition[] colliders = motionFormat ? AttachmentSetMotionJson.ReadColliders(root) : [];
@@ -98,7 +103,7 @@ public static class AttachmentSetJson
                     parts.Add(new SkinnedAttachmentPartDefinition(id, new(key, hash))
                     {
                         Regions = tagged ? ReadRuns(item, id, jsonPath) : [],
-                        Motion = motionFormat ? AttachmentSetMotionJson.ReadMotion(item, id, partIndex) : null,
+                        Motion = motionFormat ? AttachmentSetMotionJson.ReadMotion(item, id, partIndex, linkStretchFormat) : null,
                         Lift = liftFormat ? AttachmentSetLiftJson.ReadLift(item, id, partIndex) : null,
                     });
                     continue;
@@ -162,15 +167,17 @@ public static class AttachmentSetJson
         ArgumentNullException.ThrowIfNull(definition);
         // The lowest format that expresses the definition, so a set without a layer keeps its format 1 or 2 bytes and hash.
         bool tagged = definition.Layer is not null;
-        bool hasLiftAdditions = tagged && AttachmentSetLiftJson.HasAdditions(definition);
-        bool hasMotionAdditions = tagged && !hasLiftAdditions && AttachmentSetMotionJson.HasAdditions(definition);
         bool rigidOnly = !tagged && definition.Parts.All(part => part is RigidAttachmentPartDefinition);
+        int format = rigidOnly ? RigidOnlyFormatVersion
+            : !tagged ? CurrentFormatVersion
+            : AttachmentSetMotionJson.HasLinkStretch(definition) ? LinkStretchFormatVersion
+            : AttachmentSetLiftJson.HasAdditions(definition) ? LiftFormatVersion
+            : AttachmentSetMotionJson.HasAdditions(definition) ? MotionFormatVersion
+            : RegionsFormatVersion;
         using var stream = new MemoryStream();
         using (var writer = new Utf8JsonWriter(stream))
         {
             writer.WriteStartObject();
-            int format = hasLiftAdditions ? LiftFormatVersion : hasMotionAdditions ? MotionFormatVersion : tagged ? RegionsFormatVersion
-                : rigidOnly ? RigidOnlyFormatVersion : CurrentFormatVersion;
             writer.WriteNumber("formatVersion", format);
             if (definition.Layer is { } layer)
             {

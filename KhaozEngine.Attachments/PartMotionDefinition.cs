@@ -10,12 +10,16 @@ public abstract record PartMotionDefinition;
 
 /// <summary>The ordered chains of a skinned part and the links between them.</summary>
 /// <param name="Chains">The chains in the order their link indices refer to.</param>
-/// <param name="Links">Pairs of zero-based chain indices.</param>
+/// <param name="Links">Pairs of zero-based chain indices. The part declares any bound through <see cref="LinkStretch"/>.</param>
 public sealed record ChainMotionDefinition(IReadOnlyList<ChainDefinition> Chains, IReadOnlyList<ChainLink> Links)
     : PartMotionDefinition
 {
-    /// <summary>Compare the chains and links element by element.</summary>
+    /// <summary>The optional maximum fractional departure from rest spacing for every link in the part.</summary>
+    public float? LinkStretch { get; init; }
+
+    /// <summary>Compare the part's link bound and the chains and links element by element.</summary>
     public bool Equals(ChainMotionDefinition? other) => other is not null && base.Equals(other)
+        && EqualityComparer<float?>.Default.Equals(LinkStretch, other.LinkStretch)
         && (Chains ?? []).SequenceEqual(other.Chains ?? []) && (Links ?? []).SequenceEqual(other.Links ?? []);
 
     /// <inheritdoc />
@@ -24,6 +28,7 @@ public sealed record ChainMotionDefinition(IReadOnlyList<ChainDefinition> Chains
         var hash = new HashCode();
         foreach (ChainDefinition chain in Chains ?? []) hash.Add(chain);
         foreach (ChainLink link in Links ?? []) hash.Add(link);
+        hash.Add(LinkStretch);
         return hash.ToHashCode();
     }
 }

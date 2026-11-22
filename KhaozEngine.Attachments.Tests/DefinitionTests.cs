@@ -286,6 +286,15 @@ public class DefinitionTests
             Motion = motion with { Chains = [motion.Chains[0] with { Joints = ["left1", "left0"] }, motion.Chains[1], motion.Chains[2]] },
         };
         Assert.NotEqual(swings, reordered);
+
+        var bounded = motion with { LinkStretch = .25f };
+        var sameBound = AttachmentFixtures.Motion() with { LinkStretch = .25f };
+        Assert.Equal(bounded, sameBound);
+        Assert.Equal(bounded.GetHashCode(), sameBound.GetHashCode());
+        Assert.NotEqual(bounded, motion);
+        Assert.NotEqual(bounded.GetHashCode(), motion.GetHashCode());
+        Assert.NotEqual(bounded, sameBound with { LinkStretch = .5f });
+        Assert.NotEqual(bounded.GetHashCode(), (sameBound with { LinkStretch = .5f }).GetHashCode());
     }
 
     [Fact]
@@ -413,6 +422,10 @@ public class DefinitionTests
     [InlineData(AttachmentSetRefusal.ChainSettingOutOfRange)]
     [InlineData(AttachmentSetRefusal.ChainLinkInvalid)]
     [InlineData(AttachmentSetRefusal.ChainLinkDuplicate)]
+    [InlineData(AttachmentSetRefusal.LinkStretchOutOfRange, float.NaN)]
+    [InlineData(AttachmentSetRefusal.LinkStretchOutOfRange, float.PositiveInfinity)]
+    [InlineData(AttachmentSetRefusal.LinkStretchWithoutLinks)]
+    [InlineData(AttachmentSetRefusal.ChainLinkStretchInDefinition)]
     [InlineData(AttachmentSetRefusal.TooManyLinks)]
     [InlineData(AttachmentSetRefusal.ColliderJointNameEmpty)]
     [InlineData(AttachmentSetRefusal.ColliderJointNameMalformedUtf16)]
@@ -420,7 +433,7 @@ public class DefinitionTests
     [InlineData(AttachmentSetRefusal.ColliderRadiusInvalid)]
     [InlineData(AttachmentSetRefusal.TooManyColliders)]
     [InlineData(AttachmentSetRefusal.MotionWithoutLayer)]
-    public void Motion_and_colliders_are_admitted_with_typed_constructor_refusals(AttachmentSetRefusal reason)
+    public void Motion_and_colliders_are_admitted_with_typed_constructor_refusals(AttachmentSetRefusal reason, float? stretch = null)
     {
         var part = AttachmentFixtures.TaggedSkinned();
         ChainMotionDefinition motion = AttachmentFixtures.Motion();
@@ -442,6 +455,13 @@ public class DefinitionTests
             case AttachmentSetRefusal.TooManyLinks:
                 motion = new(AttachmentFixtures.NumberedChains(12), AttachmentFixtures.NumberedLinks(64));
                 break;
+            case AttachmentSetRefusal.LinkStretchOutOfRange:
+            case AttachmentSetRefusal.LinkStretchWithoutLinks:
+                motion = motion with { LinkStretch = 1 };
+                break;
+            case AttachmentSetRefusal.ChainLinkStretchInDefinition:
+                motion = motion with { Links = [new(1, 0), motion.Links[1]] };
+                break;
             case AttachmentSetRefusal.TooManyColliders:
                 colliders = Enumerable.Repeat(firstCollider, 8).ToArray();
                 break;
@@ -462,6 +482,9 @@ public class DefinitionTests
             AttachmentSetRefusal.ChainSettingOutOfRange => ChangeFirstChain(first with { Settings = first.Settings with { Trail = 1.25f } }),
             AttachmentSetRefusal.ChainLinkInvalid => motion with { Links = [new(0, 3), motion.Links[1]] },
             AttachmentSetRefusal.ChainLinkDuplicate => motion with { Links = [..motion.Links, new(1, 0)] },
+            AttachmentSetRefusal.LinkStretchOutOfRange => motion with { LinkStretch = stretch },
+            AttachmentSetRefusal.LinkStretchWithoutLinks => motion with { Links = [] },
+            AttachmentSetRefusal.ChainLinkStretchInDefinition => motion with { Links = [motion.Links[0] with { Stretch = 1 }, motion.Links[1]] },
             AttachmentSetRefusal.TooManyLinks => motion with { Links = AttachmentFixtures.NumberedLinks(65) },
             _ => motion,
         };
@@ -488,6 +511,7 @@ public class DefinitionTests
             or AttachmentSetRefusal.ColliderPointInvalid or AttachmentSetRefusal.ColliderRadiusInvalid or AttachmentSetRefusal.TooManyColliders;
         Assert.Equal(colliderFault ? "colliders" : "parts", error.ParamName);
         Assert.Equal(colliderFault ? null : (uint?)2, error.PartId);
+        Assert.Equal(colliderFault ? null : (int?)0, error.PartIndex);
         Assert.Equal(reason == AttachmentSetRefusal.MotionKindUnsupported ? typeof(UnknownMotion) : null, error.ActualType);
         Assert.Equal(reason switch
         {
@@ -501,9 +525,19 @@ public class DefinitionTests
             AttachmentSetRefusal.ChainJointNameEmpty or AttachmentSetRefusal.ChainJointNameMalformedUtf16 or AttachmentSetRefusal.ChainJointDuplicate => 0,
             _ => (int?)null,
         }, error.JointIndex);
-        Assert.Equal(reason switch { AttachmentSetRefusal.ChainLinkInvalid => 0, AttachmentSetRefusal.ChainLinkDuplicate => 2, _ => (int?)null }, error.LinkIndex);
+        Assert.Equal(reason switch
+        {
+            AttachmentSetRefusal.ChainLinkInvalid or AttachmentSetRefusal.ChainLinkStretchInDefinition => 0,
+            AttachmentSetRefusal.ChainLinkDuplicate => 2,
+            _ => (int?)null,
+        }, error.LinkIndex);
         Assert.Equal(colliderFault && reason != AttachmentSetRefusal.TooManyColliders ? 0 : (int?)null, error.ColliderIndex);
-        Assert.Equal(reason == AttachmentSetRefusal.ChainSettingOutOfRange ? "trail" : null, error.SettingName);
+        Assert.Equal(reason switch
+        {
+            AttachmentSetRefusal.ChainSettingOutOfRange => "trail",
+            AttachmentSetRefusal.LinkStretchOutOfRange or AttachmentSetRefusal.LinkStretchWithoutLinks => "linkStretch",
+            _ => null,
+        }, error.SettingName);
         Assert.Equal(reason switch
         {
             AttachmentSetRefusal.ChainJointNameEmpty or AttachmentSetRefusal.ColliderJointNameEmpty => " ",
@@ -592,4 +626,7 @@ internal static class AttachmentFixtures
     internal static string MotionSetJson() =>
         $$$"""{"formatVersion":4,"layer":"garment","covers":[],"colliders":[{{{Collider0Json}}},{{{Collider1Json}}}],"parts":[{"id":2,"kind":"skinned","mesh":{"key":"parts/garment.glb","sha256":"{{{Hash}}}"},"regions":[["a",4]],"motion":{"kind":"chains","chains":[{{{Chain0Json}}},{{{Chain1Json}}},{{{Chain2Json}}}],"links":[[0,1],[1,2]]}}]}""";
 
+    internal static string WithLinkStretch(string json, int oldVersion, int newVersion, string value) => json
+        .Replace($"\"formatVersion\":{oldVersion},", $"\"formatVersion\":{newVersion},", StringComparison.Ordinal)
+        .Replace("\"links\":[[0,1],[1,2]]", $"\"links\":[[0,1],[1,2]],\"linkStretch\":{value}", StringComparison.Ordinal);
 }

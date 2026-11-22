@@ -178,6 +178,18 @@ is 128. `AttachmentSetJson.LiftFormatVersion` is 5. Publish format 5 after every
 or later. A 24.5.x or 24.6.x reader raises `JsonPropertyUnknown` for root `standoff` when present, even as an
 empty array, and `FormatVersionUnsupported` for version 5 otherwise.
 
+### Format 6
+
+Format 6 adds optional `linkStretch` beside `links` in a skinned part's chain motion. It declares how far
+the spacing of each linked chain pair can depart from rest as a fraction of rest spacing, in either direction.
+The value must be finite, greater than zero and at most one, and the part must declare at least one link.
+Omit it for an unbounded link. Formats 4 and 5 refuse the member as unknown.
+
+Set `ChainMotionDefinition.LinkStretch` to declare the bound in code. Set definitions take only chain
+indices in each `ChainLink`. The wearer binding copies the part's bound to `ChainLink.Stretch` on the rig
+links. When constructing a `ChainRig` directly, set `Stretch` on each link that needs a bound.
+`AttachmentSetJson.LinkStretchFormatVersion` is 6.
+
 ### Canonical set bytes
 
 The example hash is a placeholder. Hash the exact self-contained GLB bytes. `local` contains 16
@@ -189,11 +201,11 @@ every format's root members before the version is read, and against the declared
 document with a `layer` and no `formatVersion` is therefore refused as `JsonPropertyMissing` for the version,
 not as `JsonPropertyUnknown` for the layer, because the version decides what every other member means.
 
-`Write(definition)` emits the lowest format that expresses the definition. A set with standoff or lift writes
-format 5. A set whose only additions are motion or colliders writes format 4. A layered set without those
-additions writes format 3, even when all its parts are rigid. A set without a layer writes format 1 if all its parts
-are rigid, even after parsing format 2, and format 2 if it contains skinned parts. Existing canonical format 1 to 4
-bytes and semantic hashes stay unchanged.
+`Write(definition)` emits the lowest format that expresses the definition. `linkStretch` requires format 6,
+standoff or lift requires at least format 5, and motion or colliders require at least format 4. A layered set
+without those additions writes format 3, even when all its parts are rigid. A set without a layer writes format 1
+if all its parts are rigid, even after parsing format 2, and format 2 if it contains skinned parts. Existing
+canonical format 1 to 5 bytes and semantic hashes stay unchanged.
 
 Property order is `id, mesh, joint, local` in format 1 and `id, kind, mesh` followed by rigid `joint, local` in
 format 2. Format 3 writes `formatVersion, layer, covers, parts` at the root and appends `region` to a rigid part
@@ -202,7 +214,7 @@ joint, start, end and radius order. A skinned part writes `motion` after `region
 and then `links` when nonempty. Each chain writes `joints, tip, stiffness, damping, gravity, trail, angleLimit,
 radius`. Chain and joint order are preserved. Links put the lower index first and sort by the two indices.
 Format 5 writes nonempty `standoff` after `covers` and any `colliders`, with entries in ordinal region name order.
-A skinned part writes `lift` after `regions` and any `motion`.
+A skinned part writes `lift` after `regions` and any `motion`. Format 6 writes `linkStretch` after `links`.
 
 Signed zero is normalized without changing other float values. The writer emits canonical UTF-8 with no trailing
 newline. Its SHA-256 is `SemanticSha256`. Source whitespace, part, collider and standoff listing order, and link
@@ -612,7 +624,7 @@ Every JSON refusal also carries `SourceName`. Direct constructor and reference c
 | `JsonPropertyMissing` | a required property absent from attachment JSON. | `JsonPath`, `PropertyName` |
 | `JsonStringRequired` | a non-string attachment schema member. | `JsonPath`, `PropertyName` |
 | `JsonMalformed` | malformed JSON syntax while retaining the caller source name. | `InnerException` |
-| `JsonValueShapeInvalid` | a JSON value shape rejected by a framework accessor, or a `covers` entry, region run or format 4 or 5 member of the wrong shape. | `InnerException` or `JsonPath` with the applicable indices |
+| `JsonValueShapeInvalid` | a JSON value shape rejected by a framework accessor, or a `covers` entry, region run or format 4 to 6 member of the wrong shape. | `InnerException` or `JsonPath` with the applicable indices |
 | `LayerMissing` | a region-tagged format without a layer, or a constructed set with region tags or covered regions and no layer. | `JsonPath` and `PropertyName` from JSON, `PartId` for region tags, or `ParamName` for covered regions |
 | `LayerUnknown` | a layer that names no defined layer. | `JsonPath` and `LayerName`, or `Layer` |
 | `CoveredRegionDuplicate` | a covered region listed more than once. | `CoverIndex`, `RegionName` |
@@ -627,6 +639,8 @@ Every JSON refusal also carries `SourceName`. Direct constructor and reference c
 | `ChainTipInvalid` | a tip without three finite components or with all three zero. | `PartId`, `PartIndex`, `ChainIndex` |
 | `ChainSettingOutOfRange` | a chain setting outside its range. | `PartId`, `PartIndex`, `ChainIndex`, `SettingName` |
 | `ChainLinkInvalid`, `ChainLinkDuplicate` | a link that fails to pair distinct existing chains or repeats an existing pair. | `PartId`, `PartIndex`, `LinkIndex` |
+| `LinkStretchOutOfRange`, `LinkStretchWithoutLinks` | a part's bound is outside its finite range or the part has no links. | `PartId`, `PartIndex`, `SettingName` |
+| `ChainLinkStretchInDefinition` | a constructor link carries its own rig bound. | `PartId`, `PartIndex`, `LinkIndex` |
 | `TooManyLinks` | a part with more than 64 links. | `PartId`, `PartIndex`, `ActualCount`, `ExpectedCount` |
 | `ColliderJointNameEmpty`, `ColliderJointNameMalformedUtf16` | a collider with a blank or malformed joint name. | `ColliderIndex`, `JointName` when available |
 | `ColliderPointInvalid`, `ColliderRadiusInvalid` | a collider with non-finite endpoint components or a radius that is non-finite or nonpositive. | `ColliderIndex`, `JointName` |

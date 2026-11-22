@@ -20,6 +20,8 @@ public sealed class WornMotion
     readonly ColliderCapsule[] _colliderWorlds;
     bool _rest = true;
 
+    internal IReadOnlyList<ChainLink> RigLinksForTests => _simulation.Rig.Links;
+
     internal WornMotion(object bindingIdentity, Skeleton skeleton, Dictionary<uint, WornMotionPart>?[] parts,
         ChainRig rig, int[] anchorBones, WornCollider[] colliders, ChainSimulationOptions? options)
     {

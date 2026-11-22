@@ -374,6 +374,29 @@ public sealed class AttachmentSchemaRefusalTests
     static string JsonStandoff(int count) => "[" + string.Join(",", Enumerable.Range(0, count).Select(i => $$"""["region{{i}}",0]""")) + "]";
 
     [Theory]
+    [InlineData("0", AttachmentSetRefusal.LinkStretchOutOfRange)]
+    [InlineData("-0.25", AttachmentSetRefusal.LinkStretchOutOfRange)]
+    [InlineData("1.25", AttachmentSetRefusal.LinkStretchOutOfRange)]
+    [InlineData("1e100", AttachmentSetRefusal.LinkStretchOutOfRange)]
+    [InlineData("1", AttachmentSetRefusal.LinkStretchWithoutLinks)]
+    public void AttachmentSet_motion_refuses_invalid_link_stretch(string value, AttachmentSetRefusal reason)
+    {
+        string canonical = AttachmentFixtures.MotionSetJson();
+        string control = AttachmentFixtures.WithLinkStretch(canonical, 4, 6, "1");
+        string json = reason == AttachmentSetRefusal.LinkStretchWithoutLinks
+            ? Replace(control, "\"links\":[[0,1],[1,2]],", "")
+            : AttachmentFixtures.WithLinkStretch(canonical, 4, 6, value);
+
+        const string source = "linked.json";
+        Assert.Single(AttachmentSetJson.Parse(Encoding.UTF8.GetBytes(control), source).Parts);
+        Assert.NotEqual(control, json);
+        var error = Assert.Throws<AttachmentSetDataException>(() => AttachmentSetJson.Parse(Encoding.UTF8.GetBytes(json), source));
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal((source, "$.parts[0].motion.linkStretch", "linkStretch"), (error.SourceName, error.JsonPath, error.SettingName));
+        Assert.Equal(((uint?)2, (int?)0), (error.PartId, error.PartIndex));
+    }
+
+    [Theory]
     [InlineData(1, "colliders", "$")]
     [InlineData(2, "colliders", "$")]
     [InlineData(3, "colliders", "$")]
@@ -390,7 +413,9 @@ public sealed class AttachmentSchemaRefusalTests
     [InlineData(3, "lift", "$.parts[0]")]
     [InlineData(4, "lift", "$.parts[0]")]
     [InlineData(5, "lift", "$.parts[0]")]
-    public void The_new_members_are_unknown_to_older_formats_and_unsupported_part_kinds(int version, string member, string path)
+    [InlineData(4, "linkStretch", "$.parts[0].motion")]
+    [InlineData(5, "linkStretch", "$.parts[0].motion")]
+    public void AttachmentSet_members_are_unknown_to_older_formats_and_unsupported_part_kinds(int version, string member, string path)
     {
         string rigid = AttachmentFixtures.PartJson().TrimEnd();
         string taggedRigid = Replace(Replace(rigid, "\"id\":1", "\"id\":1,\"kind\":\"rigid\""), "}", ",\"region\":\"a\"}", lastOnly: true);
@@ -399,11 +424,13 @@ public sealed class AttachmentSchemaRefusalTests
             1 => AttachmentFixtures.SetJson(rigid),
             2 => $$$"""{"formatVersion":2,"parts":[{"id":1,"kind":"skinned","mesh":{"key":"parts/garment.glb","sha256":"{{{AttachmentFixtures.Hash}}}"}}]}""",
             3 => $$"""{"formatVersion":3,"layer":"garment","covers":[],"parts":[{"id":1,"kind":"skinned","mesh":{"key":"parts/garment.glb","sha256":"{{AttachmentFixtures.Hash}}"},"regions":[["a",1]]}]}""",
-            4 when member == "lift" => AttachmentFixtures.MotionSetJson(),
+            4 when member is "lift" or "linkStretch" => AttachmentFixtures.MotionSetJson(),
+            5 when member == "linkStretch" => AttachmentFixtures.LiftSetJson(lift: AttachmentFixtures.LiftJson, chains: true),
             4 or 5 => $$"""{"formatVersion":{{version}},"layer":"garment","covers":[],"parts":[{{taggedRigid}}]}""",
             _ => throw new ArgumentOutOfRangeException(nameof(version)),
         };
-        string json = path == "$"
+        string json = member == "linkStretch" ? AttachmentFixtures.WithLinkStretch(control, version, version, "1")
+            : path == "$"
             ? Replace(control, "\"parts\":", $"\"{member}\":" + (member == "colliders"
                 ? "[" + AttachmentFixtures.Collider0Json + "]" : AttachmentFixtures.StandoffJson) + ",\"parts\":")
             : Replace(control, "}]", member == "motion"
@@ -414,6 +441,7 @@ public sealed class AttachmentSchemaRefusalTests
         Assert.Equal(AttachmentSetRefusal.JsonPropertyUnknown, error.Reason);
         Assert.Equal(path, error.JsonPath);
         Assert.Equal(member, error.PropertyName);
+        if (member == "linkStretch") Assert.Equal(((uint?)2, (int?)0), (error.PartId, error.PartIndex));
         Assert.Single(ParseSet(control).Parts);
     }
 

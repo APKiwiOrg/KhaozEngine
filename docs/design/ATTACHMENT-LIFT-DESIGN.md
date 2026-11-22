@@ -317,3 +317,6 @@ Each task records here any shape the code required that differs from this note, 
   `SkinnedAttachmentPartDefinition.Lift` is an init-only property, preserving the positional constructor and
   deconstruction. Standoff entry refusals carry `StandoffIndex` in input order and `RegionName` when available.
   An unpaired escaped surrogate has no decoded region name, so its JSON refusal carries the index and path.
+- Displaced mesh views. The supplied position count on a `PositionCountMismatch` refusal is `PositionCount`, beside
+  the source's `VertexCount`. A `PositionNonFinite` refusal names `VertexIndex`. Both carry the source index and
+  generation, as every view refusal does. A displaced view owns its vertex buffer even when no vertex moves.

@@ -110,14 +110,14 @@ internal sealed class SkinnedAttachmentBinding
     internal void ValidatePalette(ReadOnlySpan<Matrix4x4> hostPalette)
     {
         foreach (int bone in _hostBones)
-            if (bone >= 0 && !AttachmentSetBinding.ValidMatrix(hostPalette[bone])) throw InvalidPose(bone);
+            if (bone >= 0 && !AttachmentSetBinding.ValidMatrix(hostPalette[bone])) throw InvalidPose(_partId, bone);
         if (Motion is null) return;
         foreach (BoundAttachmentChain chain in Motion.Chains)
         {
             Matrix4x4 anchor = hostPalette[chain.AnchorBone];
-            if (!AttachmentSetBinding.ValidMatrix(anchor)) throw InvalidPose(chain.AnchorBone);
+            if (!AttachmentSetBinding.ValidMatrix(anchor)) throw InvalidPose(_partId, chain.AnchorBone);
             foreach (Matrix4x4 rest in chain.RestFromAnchor)
-                if (!AttachmentSetBinding.ValidMatrix(rest * anchor)) throw InvalidPose(chain.AnchorBone);
+                if (!AttachmentSetBinding.ValidMatrix(rest * anchor)) throw InvalidPose(_partId, chain.AnchorBone);
         }
     }
 
@@ -135,10 +135,10 @@ internal sealed class SkinnedAttachmentBinding
                 chain.CopyPalette(chain.RestFromAnchor, hostPalette[chain.AnchorBone], destination);
     }
 
-    AttachmentBindingArgumentException InvalidPose(int bone) =>
+    internal static AttachmentBindingArgumentException InvalidPose(uint partId, int bone) =>
         new(AttachmentBindingRefusal.HostJointPoseInvalid,
-            $"Attachment part {_partId}: host skin bone {bone} has an invalid garment pose.", "hostPalette")
-        { PartId = _partId, BoneIndex = bone };
+            $"Attachment part {partId}: host skin bone {bone} has an invalid garment pose.", "hostPalette")
+        { PartId = partId, BoneIndex = bone };
 
     static void CheckCount(int count, SkinnedAttachmentPartDefinition part)
     {

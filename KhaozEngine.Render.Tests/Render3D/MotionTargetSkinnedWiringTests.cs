@@ -2,10 +2,13 @@ using System;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using KhaozEngine.Attachments;
+using KhaozEngine.Attachments.Render3D;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
 using KhaozEngine.Render3D.Rendering;
+using KhaozEngine.Tests.Attachments;
 using KhaozEngine.Tests.Gpu;
 using Xunit;
 
@@ -100,6 +103,49 @@ public sealed class MotionTargetSkinnedWiringTests
 
     static Matrix4x4[] Composed(Matrix4x4[] pose, SkinnedGltfMesh mesh) =>
         pose.Select((joint, b) => SkinningMath.Compose(joint, mesh.InverseBind[b])).ToArray();
+
+    [Fact]
+    public void A_keyed_attachment_motion_draw_keeps_the_previous_swing_palette()
+    {
+        using var rig = new OutfitRig();
+        using var harness = new MotionTestScene();
+        Scene3D scene = harness.Scene;
+        scene.ForceTemporalForTests = true;
+        using var cache = new AttachmentSetCache(scene, rig.Source);
+        AttachmentMeshRef reference = rig.Source.Mesh("chain.glb", SkinnedAttachmentGlbFixture.Chained().Build());
+        const string key = "chain.json";
+        string hash = rig.Source.Add(key, AttachmentSetJson.Write(SkinnedAttachmentBindingTests.ChainSet(reference)));
+        BoundAttachmentSet set = cache.Get(key, hash).Bind(rig.Map, rig.Body);
+        WornMotion motion = set.CreateMotion(null);
+        var template = new RigidInstanceDraw(default, Matrix4x4.Identity);
+        var draws = new AttachmentDraw[1];
+        var model = Matrix4x4.Identity;
+
+        void StepAndWrite()
+        {
+            for (int i = 0; i < 8; i++) motion.Step(rig.Skeleton, rig.Palette, model, 1f / 60f);
+            Assert.Equal(1, set.WriteDraws(motion, rig.Skeleton, rig.Palette, model, rig.Key, template, draws));
+        }
+
+        StepAndWrite();
+        AttachmentDraw first = Assert.Single(draws);
+        Matrix4x4[] firstPose = first.BoneMatrices.ToArray();
+        Frame(harness, s => set.Queue(motion, rig.Skeleton, rig.Palette, model, rig.Key)).Dispose();
+        StepAndWrite();
+        AttachmentDraw current = Assert.Single(draws);
+        Assert.Equal(first.Skinned.Motion, current.Skinned.Motion);
+        Assert.NotEqual(MotionKey.None, current.Skinned.Motion);
+        Assert.NotEqual(firstPose[0], current.BoneMatrices.Span[0]);
+        using RecordingGpuCommandList second = Frame(harness, s => set.Queue(motion, rig.Skeleton, rig.Palette, model, rig.Key));
+        Assert.Equal(current.Skinned.Motion, scene.GpuSkinnedMotionForTests(0));
+
+        SkinnedGltfMesh mesh = scene.SkinnedSourceSnapshotForTests(current.Skinned.Mesh);
+        var range = (GpuBufferRange)((FakeResourceSet)scene.MotionResourcesForTests!.SkinnedPalette.Set).Resources[1];
+        RecordingGpuCommandList.Upload upload = Assert.Single(second.Uploads, u => ReferenceEquals(u.Buffer, range.Buffer));
+        (_, Matrix4x4[] previousBones) = Slot(upload.Data!, 0, mesh.BoneCount);
+        Assert.Equal(Composed(firstPose, mesh), previousBones);
+        Assert.NotEqual(mesh.InverseBind[0] * current.BoneMatrices.Span[0], previousBones[0]);
+    }
 
     [Fact]
     public void EachGpuSkinnedCasterPacksLastFrameAtItsOwnSlotReducedAgainstThisFramesOrigin()

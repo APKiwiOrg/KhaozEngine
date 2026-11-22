@@ -298,14 +298,26 @@ explicit host mesh, even if its parts are rigid. An outfit uses the inverse bind
 its first such worn set. A collider index names its position in the normalized source list.
 
 Animate the host, call `motion.Step(skeleton, palette, model, deltaSeconds)` once with its current
-pose, then submit draws and outlines. `Step` uses the binding's exact skeleton and full host skin
-palette. It validates the model and the joint matrices it reads for anchors and capsules. Each draw
-validates the matrices it reads and refuses an invalid one. Valid steps allocate nothing once warm. `MotionLevel.Held` blends toward rest. `Reset()` restores the rest hang
+pose, then draw and outline as often as needed. Pass the motion first to the set's mixed
+`WriteDraws`, `Queue` or `QueueOutline`, or after `wornIndex` to the outfit's `WriteDraws` or
+`QueueOutline`. These calls only read the motion. If a frame skips the step, each chain keeps its
+latest shape and follows its current anchor. Overloads without motion draw the rest hang.
+
+`Step` uses the binding's exact skeleton and full host skin palette. It validates the model and
+the joint matrices it reads for anchors and capsules. Each draw validates the matrices it reads.
+Valid steps and draws allocate nothing once warm. `MotionLevel.Held` blends toward rest. `Reset()` restores the rest hang
 immediately and clears velocity on the next valid step. `Tune(wornIndex, partId, chain, settings)`
 changes settings on the next substep. Worn and chain indices are zero-based and a bare set uses
 worn index zero. A fully hidden part has no tunable chains. Wearers can share a binding and have
 independent motions. Each motion belongs to its originating set or outfit and owns no disposable
-scene state. The draw overloads documented above use the rest hang.
+scene state. Passing it to another binding raises `MotionMismatch` before submitting any draw.
+
+When the cache loads a chained set through a shipped `Scene3D` upload lease, it expands the
+chained meshes' rest bounds for culling. Each chain contributes a sphere at its first joint's
+rest position. The radius covers the rest segments and tip, plus the farthest weighted vertex
+from its chain joint. A shared mesh keeps the union of every loaded definition's reach.
+Existing and future views use the grown source bounds. A custom `IAttachmentScene` lease keeps
+its own culling policy.
 
 ## Table coverage preparation
 
@@ -419,3 +431,4 @@ eligibility uses the shared [DrawAdmission family](../KhaozEngine.Render3D/READM
 |---|---|---|
 | `OutputTooSmall` | Output shorter than the attachment draw count | `ActualCapacity`, `RequiredCapacity`, `ParamName` |
 | `MixedDrawRequired` | Rigid descriptors for a set containing skinned parts | `SkinnedPartCount` |
+| `MotionMismatch` | Motion created by another bound set or outfit | `ParamName` |

@@ -8,7 +8,7 @@ namespace KhaozEngine.Attachments.Render3D;
 
 /// <summary>A skeleton binding that borrows its mesh resources from the cache.</summary>
 /// <remarks>Use on the cache's owning render thread. Submission calls on this view must not overlap.</remarks>
-public sealed class BoundAttachmentSet
+public sealed partial class BoundAttachmentSet
 {
     readonly AttachmentSetCache _owner;
     readonly AttachmentSetBinding _binding;
@@ -102,11 +102,16 @@ public sealed class BoundAttachmentSet
     /// synchronously. The unused destination suffix stays untouched. Valid calls allocate no managed memory.</remarks>
     public int WriteDraws(Skeleton skeleton, ReadOnlySpan<Matrix4x4> palette,
         in Matrix4x4 model, MotionKey instanceKey, in RigidInstanceDraw template,
-        Span<AttachmentDraw> destination)
+        Span<AttachmentDraw> destination) =>
+        WriteMixedDraws(skeleton, palette, model, instanceKey, template, destination, null);
+
+    int WriteMixedDraws(Skeleton skeleton, ReadOnlySpan<Matrix4x4> palette, in Matrix4x4 model,
+        MotionKey instanceKey, in RigidInstanceDraw template, Span<AttachmentDraw> destination, WornMotion? motion)
     {
         _owner.ThrowIfDisposed();
+        motion?.RequireBinding(_motionIdentity);
         ValidateCapacity(destination.Length);
-        Prepare(skeleton, palette, model, instanceKey, template);
+        Prepare(skeleton, palette, model, instanceKey, template, motion);
         _draws.AsSpan().CopyTo(destination);
         return _drawCount;
     }
@@ -120,13 +125,13 @@ public sealed class BoundAttachmentSet
     }
 
     void Prepare(Skeleton skeleton, ReadOnlySpan<Matrix4x4> palette,
-        in Matrix4x4 model, MotionKey instanceKey, in RigidInstanceDraw template)
+        in Matrix4x4 model, MotionKey instanceKey, in RigidInstanceDraw template, WornMotion? motion = null, int wornIndex = 0)
     {
         if (template.ShadowOnly && !template.CastsShadows)
             throw new DrawAdmissionArgumentException(DrawAdmissionRefusal.ShadowOnlyWithoutCasting,
                 "A shadow-only attachment must cast shadows.", nameof(template))
             { ShadowOnly = template.ShadowOnly, CastsShadows = template.CastsShadows };
-        PreparePose(skeleton, palette, model);
+        PreparePose(skeleton, palette, model, motion, wornIndex);
         MotionKey revision = MotionKey.Combine(MotionKey.Combine(instanceKey, _revisionLow), _revisionHigh);
         int draw = 0;
         for (int part = 0; part < _resources.Count; part++)
@@ -173,25 +178,30 @@ public sealed class BoundAttachmentSet
     // An outfit reads the whole prepared set and keeps only the draws its coverage leaves, so a set draws alike
     // inside and outside an outfit. The span borrows this view's scratch until its next preparation.
     internal ReadOnlySpan<AttachmentDraw> PrepareDraws(Skeleton skeleton, ReadOnlySpan<Matrix4x4> palette,
-        in Matrix4x4 model, MotionKey instanceKey, in RigidInstanceDraw template)
+        in Matrix4x4 model, MotionKey instanceKey, in RigidInstanceDraw template, WornMotion? motion, int wornIndex)
     {
-        Prepare(skeleton, palette, model, instanceKey, template);
+        Prepare(skeleton, palette, model, instanceKey, template, motion, wornIndex);
         return _draws;
     }
 
-    internal void PrepareOutlinePose(Skeleton skeleton, ReadOnlySpan<Matrix4x4> palette, in Matrix4x4 model) =>
-        PreparePose(skeleton, palette, model);
+    internal void PrepareOutlinePose(Skeleton skeleton, ReadOnlySpan<Matrix4x4> palette, in Matrix4x4 model,
+        WornMotion? motion, int wornIndex) => PreparePose(skeleton, palette, model, motion, wornIndex);
 
     internal Matrix4x4 PartWorld(int part) => _worlds[part];
 
     internal ReadOnlySpan<Matrix4x4> PartPalette(int part) => _palettes[part];
 
-    void PreparePose(Skeleton skeleton, ReadOnlySpan<Matrix4x4> palette, in Matrix4x4 model)
+    void PreparePose(Skeleton skeleton, ReadOnlySpan<Matrix4x4> palette, in Matrix4x4 model,
+        WornMotion? motion, int wornIndex)
     {
         _binding.ComposeWorlds(skeleton, palette, model, _worlds);
         for (int part = 0; part < _palettes.Length; part++)
-            if (_resources[part].IsSkinned)
-                _binding.CopySkinnedPalette(skeleton, palette, _definition.Parts[part].Id, _palettes[part]);
+        {
+            if (!_resources[part].IsSkinned) continue;
+            uint partId = _definition.Parts[part].Id;
+            _binding.CopySkinnedPalette(skeleton, palette, partId, _palettes[part]);
+            motion?.CopyChainPalette(wornIndex, partId, palette, _palettes[part]);
+        }
     }
 
     /// <summary>Queue the whole posed set with opaque white tint, no dissolve and shadow casting enabled.</summary>
@@ -204,10 +214,15 @@ public sealed class BoundAttachmentSet
 
     /// <summary>Validate and compose the complete pose before submitting any material group.</summary>
     public void Queue(Skeleton skeleton, ReadOnlySpan<Matrix4x4> palette,
-        in Matrix4x4 model, MotionKey instanceKey, in RigidInstanceDraw template)
+        in Matrix4x4 model, MotionKey instanceKey, in RigidInstanceDraw template) =>
+        QueueSetDraws(skeleton, palette, model, instanceKey, template, null);
+
+    void QueueSetDraws(Skeleton skeleton, ReadOnlySpan<Matrix4x4> palette, in Matrix4x4 model,
+        MotionKey instanceKey, in RigidInstanceDraw template, WornMotion? motion)
     {
         _owner.ThrowIfDisposed();
-        Prepare(skeleton, palette, model, instanceKey, template);
+        motion?.RequireBinding(_motionIdentity);
+        Prepare(skeleton, palette, model, instanceKey, template, motion);
         for (int i = 0; i < _draws.Length; i++)
         {
             AttachmentDraw draw = _draws[i];
@@ -220,10 +235,15 @@ public sealed class BoundAttachmentSet
     /// <remarks>Validates the complete pose before any scene call. The scene alone applies garment inverse binds.
     /// Occlusion and target settings belong to the caller's group.</remarks>
     public void QueueOutline(Skeleton skeleton, ReadOnlySpan<Matrix4x4> palette,
-        in Matrix4x4 model, MeshOutlineGroup group, float dissolve = 0f, bool dissolveComplement = false)
+        in Matrix4x4 model, MeshOutlineGroup group, float dissolve = 0f, bool dissolveComplement = false) =>
+        QueueSetOutline(skeleton, palette, model, group, dissolve, dissolveComplement, null);
+
+    void QueueSetOutline(Skeleton skeleton, ReadOnlySpan<Matrix4x4> palette, in Matrix4x4 model,
+        MeshOutlineGroup group, float dissolve, bool dissolveComplement, WornMotion? motion)
     {
         _owner.ThrowIfDisposed();
-        PreparePose(skeleton, palette, model);
+        motion?.RequireBinding(_motionIdentity);
+        PreparePose(skeleton, palette, model, motion, 0);
         for (int part = 0; part < _resources.Count; part++)
         {
             AttachmentPartResources resources = _resources[part];

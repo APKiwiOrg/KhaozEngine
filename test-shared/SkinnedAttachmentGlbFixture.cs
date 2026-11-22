@@ -78,6 +78,32 @@ internal sealed class SkinnedAttachmentGlbFixture
         return fixture;
     }
 
+    internal void SetIndexedMaterialParts(ReadOnlySpan<ushort> triangles, int materials)
+    {
+        byte[] indices = new byte[triangles.Length * sizeof(ushort)];
+        for (int i = 0; i < triangles.Length; i++)
+            BinaryPrimitives.WriteUInt16LittleEndian(indices.AsSpan(i * sizeof(ushort)), triangles[i]);
+        Accessors.Add(new JsonObject
+        {
+            ["bufferView"] = AddView(indices),
+            ["componentType"] = 5123,
+            ["count"] = triangles.Length,
+            ["type"] = "SCALAR",
+        });
+        var materialList = new JsonArray();
+        for (int i = 0; i < materials; i++) materialList.Add(new JsonObject());
+        Root["materials"] = materialList;
+        JsonObject first = Primitives[0]!.AsObject();
+        first["indices"] = Accessors.Count - 1;
+        first["material"] = 0;
+        for (int i = 1; i < materials; i++)
+        {
+            JsonObject next = first.DeepClone().AsObject();
+            next["material"] = i;
+            Primitives.Add(next);
+        }
+    }
+
     void AddAccessor(int count, string type, int componentType, bool normalized, bool strided)
     {
         int components = type == "MAT4" ? 16 : type == "VEC3" ? 3 : 4;

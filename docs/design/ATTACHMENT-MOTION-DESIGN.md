@@ -273,10 +273,10 @@ Its canonical bytes and SHA-256 follow the region map's rules.
 - **Every pass.** Draw records copy the palette, so colour, cascade and point shadows, outlines and dissolve need no
   change. The scene keeps the previous palette per motion key, so motion vectors carry the swing unchanged.
 - **Culling.** A skinned draw is culled by its mesh's rest bounds sphere times 1.5, and a swung tip can leave that
-  sphere. When a set with chains loads, its chained meshes' bounds grow to contain each chain's reach: a sphere on the
-  anchor's rest position whose radius is the chain's length plus its tip plus the farthest chain weighted vertex from
-  its joint. The growth goes through an internal `Scene3D` seam that the shipped scene adapters call, and a view takes
-  its source's grown bounds.
+  sphere. Loading a set grows each chained mesh's bounds to contain a sphere at each chain's first joint in mesh rest
+  space. The radius sums the rest segments, the tip segment and the farthest weighted vertex from its chain joint.
+  The shipped upload leases use an internal `Scene3D` seam that grows the source and its views together. A custom
+  lease keeps its own culling policy.
 - **Hidden parts.** A part the outfit hides entirely is not stepped.
 - **Allocation.** `CreateMotion` allocates everything. `Step`, `WriteDraws`, `Queue` and `QueueOutline` allocate
   nothing once warm.
@@ -397,3 +397,9 @@ Each task records here any shape the code required that differs from this note, 
   skeleton reference for motion. A bare set has only its explicit host skin matrices, so the caller supplies its
   rig identity to `GetBodyColliders`. A map-only binding still draws rigid parts. Motion with colliders needs
   at least one set bound with a host mesh, since a joint map has no inverse binds.
+
+- Motion submission. The public overloads keep the set and outfit draw signatures, with a motion argument before
+  the skeleton. `MotionMismatch` uses the existing submission argument exception and identifies the motion
+  parameter. The cull sphere starts at the first simulated joint. The host anchor carries that joint's offset,
+  which is outside the simulated chain length. The cache measures reach from the uploaded garment's inverse binds
+  and vertex weights. Binding still owns typed chain validation.

@@ -169,7 +169,7 @@ public sealed partial class Scene3D
         public readonly float AlphaCutoff;
         public readonly Matrix4x4[] InverseBind;
         public readonly SkinnedGltfMesh Source;
-        public readonly MeshBounds Bounds;
+        public MeshBounds Bounds;
         // The source slot a view draws over, or -1 for a loaded mesh. A view shares the source's vertex buffer and
         // material sets and owns only its index buffer (Scene3D.SkinnedMeshViews.cs).
         public readonly int ViewOf;

@@ -10,6 +10,7 @@ namespace KhaozEngine.Attachments.Render3D;
 /// created it. The motion owns its CPU state and holds no scene resources. Calls on one motion must not overlap.</remarks>
 public sealed class WornMotion
 {
+    readonly object _bindingIdentity;
     readonly Skeleton _skeleton;
     readonly Dictionary<uint, WornMotionPart>?[] _parts;
     readonly ChainSimulation _simulation;
@@ -22,7 +23,7 @@ public sealed class WornMotion
     internal WornMotion(object bindingIdentity, Skeleton skeleton, Dictionary<uint, WornMotionPart>?[] parts,
         ChainRig rig, int[] anchorBones, WornCollider[] colliders, ChainSimulationOptions? options)
     {
-        BindingIdentity = bindingIdentity;
+        _bindingIdentity = bindingIdentity;
         _skeleton = skeleton;
         _parts = parts;
         _simulation = new ChainSimulation(rig, colliders.Length, options);
@@ -32,7 +33,12 @@ public sealed class WornMotion
         _colliderWorlds = new ColliderCapsule[colliders.Length];
     }
 
-    internal object BindingIdentity { get; }
+    internal void RequireBinding(object? bindingIdentity)
+    {
+        if (!ReferenceEquals(_bindingIdentity, bindingIdentity))
+            throw new AttachmentSubmissionArgumentException(AttachmentSubmissionRefusal.MotionMismatch,
+                "Use the motion with the bound set or outfit that created it.", "motion");
+    }
 
     /// <summary>Advance the chains from the host's exact skeleton and current model-space joint palette.</summary>
     /// <remarks>Call once after posing the host. Anchors and capsules are posed into world space, where gravity
@@ -86,6 +92,9 @@ public sealed class WornMotion
             ReadOnlySpan<Matrix4x4> frames = _rest ? chain.RestFromAnchor :
                 _simulation.JointsFromAnchor.Slice(_simulation.Rig.FirstJoint(part.FirstChain + index), chain.PaletteBones.Length);
             chain.CopyPalette(frames, palette[chain.AnchorBone], destination);
+            foreach (int bone in chain.PaletteBones)
+                if (!AttachmentSetBinding.ValidMatrix(destination[bone]))
+                    throw SkinnedAttachmentBinding.InvalidPose(partId, chain.AnchorBone);
         }
     }
 

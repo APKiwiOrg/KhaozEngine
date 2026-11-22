@@ -68,9 +68,13 @@ public sealed partial class AttachmentSetCache : IDisposable
             var resources = new AttachmentPartResources[definition.Parts.Count];
             for (int i = 0; i < resources.Length; i++)
             {
-                MeshIdentity mesh = requested[definition.Parts[i].Mesh];
+                AttachmentPartDefinition part = definition.Parts[i];
+                MeshIdentity mesh = requested[part.Mesh];
                 CachedMesh upload = _meshes.TryGetValue(mesh, out CachedMesh? existing) ? existing : staged[mesh];
                 resources[i] = upload.Resources;
+                if (part is SkinnedAttachmentPartDefinition { Motion: ChainMotionDefinition motion }
+                    && upload.Lease is SkinnedAttachmentUpload skinned)
+                    skinned.GrowChainBounds(motion, upload.Resources);
             }
             var loaded = new LoadedAttachmentSet(this, key, definition, expectedSha256, resources);
             foreach (KeyValuePair<MeshIdentity, CachedMesh> mesh in staged) _meshes.Add(mesh.Key, mesh.Value);

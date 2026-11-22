@@ -13,7 +13,7 @@ namespace KhaozEngine.Attachments.Render3D;
 /// <remarks>Binding computes the draw layout and allocates scratch. Valid draw calls allocate no managed memory.
 /// Use on the cache's owning render thread with no overlapping calls. Dispose the outfit
 /// before its cache and before the body's meshes unload, because its views draw from both.</remarks>
-public sealed class BoundOutfit : IDisposable
+public sealed partial class BoundOutfit : IDisposable
 {
     readonly AttachmentSetCache _owner;
     readonly OutfitViewCache _views;
@@ -91,15 +91,21 @@ public sealed class BoundOutfit : IDisposable
     /// <c>WriteDraws</c>, so a set with no layer draws exactly as it does alone. The same pose and capacity rules
     /// apply, and the unused destination suffix stays untouched.</remarks>
     public int WriteDraws(int wornIndex, Skeleton skeleton, ReadOnlySpan<Matrix4x4> palette, in Matrix4x4 model,
-        MotionKey instanceKey, in RigidInstanceDraw template, Span<AttachmentDraw> draws)
+        MotionKey instanceKey, in RigidInstanceDraw template, Span<AttachmentDraw> draws) =>
+        WriteVisibleDraws(wornIndex, skeleton, palette, model, instanceKey, template, draws, null);
+
+    int WriteVisibleDraws(int wornIndex, Skeleton skeleton, ReadOnlySpan<Matrix4x4> palette, in Matrix4x4 model,
+        MotionKey instanceKey, in RigidInstanceDraw template, Span<AttachmentDraw> draws, WornMotion? motion)
     {
         ThrowIfDisposed();
+        motion?.RequireBinding(_motionIdentity);
         OutfitDraw[] kept = Draws(wornIndex);
         if (draws.Length < kept.Length)
             throw new AttachmentSubmissionArgumentException(AttachmentSubmissionRefusal.OutputTooSmall,
                 $"Output capacity {draws.Length} must hold {kept.Length} outfit draws.", nameof(draws))
             { ActualCapacity = draws.Length, RequiredCapacity = kept.Length };
-        ReadOnlySpan<AttachmentDraw> all = _worn[wornIndex].PrepareDraws(skeleton, palette, model, instanceKey, template);
+        ReadOnlySpan<AttachmentDraw> all =
+            _worn[wornIndex].PrepareDraws(skeleton, palette, model, instanceKey, template, motion, wornIndex);
         for (int i = 0; i < kept.Length; i++)
         {
             ref readonly OutfitDraw draw = ref kept[i];
@@ -110,14 +116,19 @@ public sealed class BoundOutfit : IDisposable
     }
 
     /// <summary>Add worn set <paramref name="wornIndex"/>'s visible draws to the caller's outline group, as
-    /// <see cref="BoundAttachmentSet.QueueOutline"/> does for a whole set.</summary>
+    /// <see cref="BoundAttachmentSet.QueueOutline(Skeleton, ReadOnlySpan{Matrix4x4}, in Matrix4x4, MeshOutlineGroup, float, bool)"/> does for a whole set.</summary>
     public void QueueOutline(int wornIndex, Skeleton skeleton, ReadOnlySpan<Matrix4x4> palette, in Matrix4x4 model,
-        MeshOutlineGroup group, float dissolve = 0f, bool dissolveComplement = false)
+        MeshOutlineGroup group, float dissolve = 0f, bool dissolveComplement = false) =>
+        QueueVisibleOutline(wornIndex, skeleton, palette, model, group, dissolve, dissolveComplement, null);
+
+    void QueueVisibleOutline(int wornIndex, Skeleton skeleton, ReadOnlySpan<Matrix4x4> palette, in Matrix4x4 model,
+        MeshOutlineGroup group, float dissolve, bool dissolveComplement, WornMotion? motion)
     {
         ThrowIfDisposed();
+        motion?.RequireBinding(_motionIdentity);
         OutfitDraw[] kept = Draws(wornIndex);
         BoundAttachmentSet set = _worn[wornIndex];
-        set.PrepareOutlinePose(skeleton, palette, model);
+        set.PrepareOutlinePose(skeleton, palette, model, motion, wornIndex);
         IAttachmentScene scene = _owner.Scene;
         for (int i = 0; i < kept.Length; i++)
         {

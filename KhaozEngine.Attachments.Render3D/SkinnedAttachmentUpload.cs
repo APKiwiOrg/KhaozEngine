@@ -57,6 +57,14 @@ internal sealed class SkinnedAttachmentUpload : ISkinnedAttachmentMeshLease, IAt
         return indices;
     }
 
+    internal ReadOnlySpan<SkinnedVertex> SourceVertices(int material) => _scene.SkinnedSourceVertices(_handles[material]);
+
+    internal void GrowChainBounds(ChainMotionDefinition motion, AttachmentPartResources resources)
+    {
+        if (AttachmentChainBounds.Measure(motion, resources, this) is not { } reach) return;
+        foreach (SkinnedMeshHandle handle in _handles) _scene.GrowSkinnedBounds(handle, reach);
+    }
+
     public void RefuseLiveViews() => _scene.RefuseSourcesWithLiveViews(_handles, null);
 
     // A live view over any handle refuses before the first unload, so a refusal leaves every handle live.

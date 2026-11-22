@@ -83,6 +83,18 @@ public class CoverageClaimCheckTests
     }
 
     [Fact]
+    public void An_empty_swing_mask_keeps_a_mesh_equal_to_one_without_a_mask()
+    {
+        CoverageClaimMesh plate = PlateOverUpper(0.01f);
+        CoverageClaimMesh emptyMask = plate with { Swinging = Array.Empty<bool>() };
+        CoverageClaimMesh flagged = plate with { Swinging = new bool[plate.Positions.Length] };
+
+        Assert.Equal(plate, emptyMask);
+        Assert.Equal(plate.GetHashCode(), emptyMask.GetHashCode());
+        Assert.NotEqual(plate, flagged);
+    }
+
+    [Fact]
     public void Claiming_a_bare_region_reports_every_triangle_of_it_uncovered()
     {
         CoverageClaimReport report = CoverageClaimCheck.Verify(FlatBody, FlatMap, Piece("upper", "lower"), [PlateOverUpper(0.01f)], Limit);

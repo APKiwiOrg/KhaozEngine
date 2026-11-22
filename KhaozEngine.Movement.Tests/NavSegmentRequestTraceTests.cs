@@ -122,6 +122,28 @@ public sealed class NavSegmentRequestTraceTests
             ], accepted: !refuseSecond, cells: 14, total);
     }
 
+    [Theory]
+    [InlineData(false, 74)]
+    [InlineData(true, 65)]
+    public void PositiveXNegativeZCrossingTakesTheEarlierXExit(bool refuseSecond, int total)
+    {
+        var tuning = MoveTuning.Default with { CapsuleRadius = 0f };
+        var columns = NavAreaFootprintRowsTests.Columns(NavAreaFootprintRowsTests.Options(0f, 8f));
+        var footprint = new NavAreaFootprint(columns, columns.Options, tuning, default);
+        // X=2 is at 1/6 and Z=11 is at 1/4. Only this ordered directed staircase is open.
+        var navigation = SegmentAdmissionFixture.Build(footprint, tuning,
+            allowsEdge: (x, z, nx, nz) => (x, z, nx, nz) is (1, 3, 2, 3) ||
+                !refuseSecond && (x, z, nx, nz) is (2, 3, 2, 2) or (2, 2, 3, 2) or (3, 2, 3, 1) or (3, 1, 4, 1));
+        Vector3 from = new(1.5f, 0f, 11.5f), to = new(4.5f, 0f, 9.5f);
+        (NavSegmentOperation, int)[] remainingCrossings = refuseSecond ? [] :
+            [(CellCrossing, 3), (CellCrossing, 3), (CellCrossing, 3)];
+        AssertEveryCut(navigation, from, to,
+            [
+                .. PointEndpoint, .. PointEndpoint, (SegmentStart, 1), .. ScanRow(4), .. ScanRow(4), .. ScanRow(4),
+                (CellCrossing, 3), (CellCrossing, 3), .. remainingCrossings,
+            ], accepted: !refuseSecond, cells: 14, total);
+    }
+
     [Fact]
     public void CaptureMaximumTangencyRefusesBeforeAnyRow()
     {

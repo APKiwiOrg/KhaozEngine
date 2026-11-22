@@ -4,6 +4,51 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 24.6.0
+
+2026-11-23
+
+A minor with additive API in `KhaozEngine.Navigation` and `KhaozEngine.Movement`. A follower or a mover can plan a
+region route across simulation ticks under a fixed work quota per call. A planning wait returns zero motion. A
+finished request has the same route status and waypoint bits as synchronous planning with the same frozen inputs,
+including the straightening setting and captured fallback. An owner without the option continues to plan
+synchronously.
+
+**Planning routes across calls.**
+
+- `PathFollowConfig.Planning` defaults to `null`, which keeps planning synchronous. A `PathWorkBudget(units)`
+  exposes `Units`, the work allowed per planning call in abstract integer units. Use it in
+  `PathPlanningConfig(quota, workspaces)`, which exposes `Quota` and `Workspaces` and requires at least
+  `PathPlanningConfig.MinimumQuotaUnits`. A configured call spends at most its quota. With the same engine version,
+  equal frozen inputs and equal workspace stamp history spend equal total work units when the numeric kernel makes
+  the same planning decisions. A request that holds a workspace and keeps receiving planning calls finishes within a
+  bounded number of calls. While queued, it spends no work and waits for a workspace to be released. A quota bounds
+  work, not elapsed time, and it covers the sliced planning work only.
+- `GroundNavigation.CreatePlanningWorkspaces(count, largestBudget)` returns a `PathPlanWorkspaces` pool with
+  `Count`, `Waits` and `Dispose`. A pool serves its profile and every straightener bound to it, including the one
+  `MoveToRange` creates when straightening is enabled. Requests beyond the workspace count wait in arrival order.
+  Keep the pool alive while its owners use it, reset each owner before dropping it and dispose the pool last.
+- Check `GroundNavigation.SupportsPlanningRequests` for the profile before opting in. It is false for a view with
+  query-time area exclusions, which declines workspace creation and keeps planning synchronously
+  ([#1877](https://github.com/APKiwiOrg/KhaozEngine/issues/1877)). Point queries stay synchronous. Leave `Planning`
+  unset for custom planners and `GroundPursuit`, which reject the enabled option.
+- While a request is outstanding, `PathFollower.PlanningPending` and `MoveToRange.PlanningPending` are true. A
+  planning wait returns `WaitingForPath` at zero motion with no active path, and neither counts toward the mover's
+  stall latch nor clears its stall window. A mover that suspends returns `Suspended` and leaves the request in
+  place. A result that completes on the first call is adopted in that call and can steer immediately. A result that
+  completes on a later call waits for the next tick that processes it: feet inside the goal region arrive and drop
+  it, otherwise the owner adopts it if the feet are bit-identical to the query start or still resolve to the same
+  admitted start node, and plans again from the current feet if not.
+- The work weights behind a quota are calibrated. Under the provisional weights, several footprint and segment
+  operations cost roughly twice as much per unit as the measured search expansion bundle on the calibration machine,
+  and the table now charges those operations accordingly. Weights are internal accounting and can change between
+  versions, so a tuned quota belongs to the engine version it was measured on and is checked against the runtime
+  minimum after an upgrade. Route algorithms, tolerances and navigation formats are unchanged.
+- The route calibration diagnostic in `KhaozEngine.Movement.Tests` (`KE_ROUTE_CALIBRATION_TIMING=1`) reports sampled
+  timings, work units by kind and advance counts at several quotas. `docs/USING-KHAOZENGINE.md` and
+  `docs/design/REGION-ROUTE-PLANNING.md` explain how those observations were used to estimate unit costs and size
+  quotas, and state the contract and its limits ([#1290](https://github.com/APKiwiOrg/KhaozEngine/issues/1290)).
+
 ## 24.5.0
 
 2026-11-22

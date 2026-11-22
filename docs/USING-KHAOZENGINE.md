@@ -10728,8 +10728,9 @@ wiring.
 A call that has a workspace spends at most the larger of the quota and the largest indivisible
 operation weight. The first operation always runs and later operations must fit the remaining quota.
 `PathPlanningConfig.MinimumQuotaUnits` covers the largest weight, so a configured follower or mover
-stays within its quota. Equal frozen inputs and equal workspace stamp history spend equal total units
-on every machine. A waiting request spends nothing. Once it holds a workspace, it completes on the
+stays within its quota. With the same engine version, equal frozen inputs and equal workspace stamp
+history spend equal total units under any quota schedule, on every machine whose numeric kernel makes
+the same planning decisions. A waiting request spends nothing. Once it holds a workspace, it completes on the
 call that runs its last operation, or on its first call if it has no operations. For total work W
 greater than zero, completion needs at most W planning calls, and at fixed quota q at least the largest
 weight L it needs at most `ceil(W / (q - L + 1))` calls. A quota bounds work. Elapsed time varies
@@ -10748,8 +10749,10 @@ adopted in that call and can steer immediately. A result that completes on a lat
 the next tick that processes it. On that tick, feet inside the goal region arrive and drop the
 result. Otherwise the owner adopts the route if the feet are bit-identical to the start of the query
 or still resolve to the same admitted start node, and begins a new request from the current feet if
-they do not. A change of the mover's target shape, range or capsule cancels the request when the
-mover next processes a tick. The result has the same status and waypoint bits as
+they do not. A mover tick that processes a target shape or range change cancels the old request,
+and returning `InRange` also drops it. If the capsule no longer matches the navigation profile, the
+tick refuses it before any cancellation, so reset the old mover and use a compatible profile. The
+result has the same status and waypoint bits as
 synchronous planning for the same frozen start, goal, radius and query budget, including the
 straightening fallback captured at the start. Leave `Planning` unset for point queries, custom
 planners and views with query-time area exclusions. They plan synchronously.

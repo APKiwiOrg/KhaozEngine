@@ -317,9 +317,9 @@ public sealed partial class PathFollower
     /// <summary>Clears all stored path state, including an active Drop (path, index, cooldown, plan origin and goal, height
     /// included), as if this follower had just been constructed. Any pending region request is cancelled first. The next tick plans fresh
     /// with no cooldown wait.</summary>
-    /// <exception cref="InvalidOperationException">The follower still holds a request and the reset overlaps
-    /// another call into that request's workspace pool. This includes a completed result awaiting adoption and
-    /// a cancelled request the follower has yet to clear.</exception>
+    /// <exception cref="InvalidOperationException">The follower still holds a request and another call already
+    /// holds its workspace pool's guard when the reset enters the pool to clear it. This includes a completed
+    /// result awaiting adoption and a cancelled request the follower has yet to clear.</exception>
     public void Reset()
     {
         CancelPlanning();

@@ -11,8 +11,9 @@ namespace KhaozEngine.Navigation;
 /// <remarks>
 /// <para><see cref="PathPlanningConfig.MinimumQuotaUnits"/> covers the largest operation, so a follower or mover
 /// configured with at least that quota stays within it. A request waiting for a workspace spends nothing.</para>
-/// <para>Equal frozen inputs and equal workspace stamp history spend equal total units on every machine and
-/// under any quota schedule. Once a request holds a workspace, it finishes on the call that runs its last
+/// <para>With the same engine version, equal frozen inputs and equal workspace stamp history spend equal total
+/// units under any quota schedule, on every machine whose numeric kernel makes the same planning decisions.
+/// Once a request holds a workspace, it finishes on the call that runs its last
 /// operation, or its first call if it has no operations. With total work W greater than zero and fixed quota
 /// q at least the largest weight L, it finishes within <c>ceil(W / (q - L + 1))</c> planning calls.</para>
 /// <para>Elapsed time varies with the machine, compilation tier, cache and heap state, interruptions, open set

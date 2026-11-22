@@ -55,8 +55,10 @@ Suspension pauses work: the mover returns `Suspended` at zero motion and leaves 
 request in place with `PlanningPending` still true. A route that completes on a later slice waits for
 the next tick that processes it. Feet inside range arrive and drop it. Otherwise the mover adopts it
 if the feet are bit-identical to the query start or still resolve to the same admitted start node,
-and plans again from the current feet if not. Reaching range or changing target shape, range or
-capsule cancels a pending request when the mover next processes a tick.
+and plans again from the current feet if not. A tick that processes a target shape or range change
+cancels the old request, and returning `InRange` also drops it. If the capsule no longer matches the
+navigation profile, the tick refuses it before any cancellation, so reset the old mover and use a
+compatible profile.
 
 Use synchronous planning for custom planners, profiles with query-time area exclusions and
 `GroundPursuit`. The area check can scan an entire footprint within a search operation, so those

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -141,7 +142,13 @@ public partial class GridSearchRequestEqualityTests
             DriveQuantum(quantum, work);
             Assert.Equal(total, work.Total);
             foreach (var kind in operations.GroupBy(operation => operation.Kind))
-                Assert.Equal(kind.Sum(operation => operation.Weight), work[(PathWorkKind)kind.Key]);
+            {
+                long units = work[(PathWorkKind)kind.Key];
+                Assert.Equal(kind.Sum(operation => operation.Weight), units);
+                long count = Math.DivRem(units, PathWorkWeights.For(kind.Key), out long remainder);
+                Assert.Equal(0, remainder);
+                Assert.Equal(kind.Count(), count);
+            }
         }
 
         void DriveQuantum(int quantum, PathWorkByKind? work)

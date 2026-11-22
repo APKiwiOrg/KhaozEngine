@@ -221,6 +221,9 @@ public sealed class NavSegmentRequestTraceTests
         Assert.Equal(total, measured.WorkSpent);
         Assert.Equal(measured.WorkSpent, units.Total);
         foreach (var kind in trace.GroupBy(step => (PathWorkKind)((int)PathWorkKind.EndpointStart + (int)step.Op)))
+        {
             Assert.Equal(kind.Sum(step => step.Weight), units[kind.Key]);
+            Assert.Equal(kind.Count(), CalibrationWork.Operations(units, kind.Key));
+        }
     }
 }

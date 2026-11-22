@@ -7,7 +7,7 @@ using Xunit.Abstractions;
 
 namespace KhaozEngine.Tests.Movement;
 
-public sealed class RouteCalibrationWorkTests(ITestOutputHelper output)
+public sealed partial class RouteCalibrationWorkTests(ITestOutputHelper output)
 {
     [Fact]
     public void CalibrationWorkloadsRetainTheirLiteralWorkMix()
@@ -74,6 +74,7 @@ public sealed class RouteCalibrationWorkTests(ITestOutputHelper output)
         var fixtures = RouteCalibrationFixture.SearchRows().Concat(RouteCalibrationFixture.StraighteningRows())
             .Concat(RouteCalibrationFixture.WholeRoutes()).ToArray();
         Assert.Equal(expected.Length, fixtures.Length);
+        Assert.Equal(OperationCounts.Length, fixtures.Length);
         for (int i = 0; i < fixtures.Length; i++)
         {
             RouteCalibrationFixture fixture = fixtures[i];
@@ -83,6 +84,7 @@ public sealed class RouteCalibrationWorkTests(ITestOutputHelper output)
             request.AdvanceForTests(new(int.MaxValue), work);
             Assert.Equal(PathPlanState.Ready, request.State);
             Assert.Equal(request.WorkSpent, work.Total);
+            Assert.Equal(OperationCounts[i], $"{fixture.Name} {CalibrationWork.DescribeOperations(work)}");
             string units = $"{fixture.Name} {CalibrationWork.Describe(work)}";
             output.WriteLine(units);
             actual.Add((units, work));
@@ -101,7 +103,7 @@ public sealed class RouteCalibrationWorkTests(ITestOutputHelper output)
     }
 }
 
-internal static class CalibrationWork
+internal static partial class CalibrationWork
 {
     internal static string Describe(PathWorkByKind work)
         => string.Join(",", Enum.GetValues<PathWorkKind>()

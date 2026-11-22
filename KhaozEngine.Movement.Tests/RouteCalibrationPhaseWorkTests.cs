@@ -9,11 +9,11 @@ namespace KhaozEngine.Tests.Movement;
 public sealed class RouteCalibrationPhaseWorkTests
 {
     [Theory]
-    [InlineData((int)Phase.Parent, (int)Phase.Reverse, (int)PathWorkKind.Parent, 2049)]
-    [InlineData((int)Phase.Reverse, (int)Phase.Decode, (int)PathWorkKind.Reverse, 1024)]
-    [InlineData((int)Phase.Decode, (int)Phase.Allocate, (int)PathWorkKind.Decode, 4096)]
-    [InlineData((int)Phase.Copy, (int)Phase.Done, (int)PathWorkKind.Copy, 2048)]
-    public void ReconstructionWindowSpendsOnlyItsNamedPhase(int phase, int next, int kind, int units)
+    [InlineData((int)Phase.Parent, (int)Phase.Reverse, (int)PathWorkKind.Parent, 2049, 2049)]
+    [InlineData((int)Phase.Reverse, (int)Phase.Decode, (int)PathWorkKind.Reverse, 1024, 1024)]
+    [InlineData((int)Phase.Decode, (int)Phase.Allocate, (int)PathWorkKind.Decode, 4096, 2048)]
+    [InlineData((int)Phase.Copy, (int)Phase.Done, (int)PathWorkKind.Copy, 2048, 2048)]
+    public void ReconstructionWindowSpendsOnlyItsNamedPhase(int phase, int next, int kind, int units, int operations)
     {
         var fixture = RouteCalibrationFixture.LongReconstruction();
         var slice = RouteCalibrationPhases.Reconstruction.Single(slice => slice.Phase == (Phase)phase);
@@ -29,6 +29,7 @@ public sealed class RouteCalibrationPhaseWorkTests
         Assert.Equal(units, request.WorkSpent - prior);
         Assert.Equal(units, work[(PathWorkKind)kind]);
         Assert.Equal(units, work.Total);
+        Assert.Equal(operations, CalibrationWork.Operations(work, (PathWorkKind)kind));
     }
 
     [Fact]
@@ -49,6 +50,7 @@ public sealed class RouteCalibrationPhaseWorkTests
 
         Assert.Equal(258, work[PathWorkKind.FootprintRow]);
         Assert.Equal(258, work.Total);
+        Assert.Equal(129, CalibrationWork.Operations(work, PathWorkKind.FootprintRow));
     }
 
     [Fact]
@@ -63,6 +65,8 @@ public sealed class RouteCalibrationPhaseWorkTests
         Assert.Equal(768, longWork[PathWorkKind.CellCrossing]);
         Assert.Equal(384, shortWork.Total);
         Assert.Equal(768, longWork.Total);
+        Assert.Equal(128, CalibrationWork.Operations(shortWork, PathWorkKind.CellCrossing));
+        Assert.Equal(256, CalibrationWork.Operations(longWork, PathWorkKind.CellCrossing));
 
         static PathWorkByKind Measure(NavSegmentRequest cursor, int quota)
         {

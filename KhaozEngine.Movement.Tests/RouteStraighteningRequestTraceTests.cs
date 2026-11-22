@@ -81,7 +81,10 @@ public sealed partial class RouteStraighteningRequestTests
         Assert.Equal(measured.WorkSpent, work.Total);
         foreach (var kind in trace.GroupBy(step => step.Start == Segment.Done
             ? (PathWorkKind)step.Search : SegmentWorkKind(step.Start)))
+        {
             Assert.Equal(kind.Sum(step => step.Units), work[kind.Key]);
+            Assert.Equal(kind.Count(), CalibrationWork.Operations(work, kind.Key));
+        }
     }
 
     [Fact]
@@ -311,7 +314,10 @@ public sealed partial class RouteStraighteningRequestTests
         Assert.Equal(total, measuredSpent);
         Assert.Equal(measuredSpent, work.Total);
         foreach (var kind in trace.GroupBy(TraceWorkKind))
+        {
             Assert.Equal(kind.Sum(step => step.Units), work[kind.Key]);
+            Assert.Equal(kind.Count(), CalibrationWork.Operations(work, kind.Key));
+        }
     }
 
     static PathWorkKind TraceWorkKind(Paid step) => step.Operation switch

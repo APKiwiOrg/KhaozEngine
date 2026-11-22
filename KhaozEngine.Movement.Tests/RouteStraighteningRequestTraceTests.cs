@@ -48,16 +48,14 @@ public sealed partial class RouteStraighteningRequestTests
         for (int cut = 0; cut < trace.Length; cut++)
         {
             using var request = Assert.IsType<RouteStraighteningRequest>(planner.BeginPath(start, goal, 0f, Budget, pool));
-            var work = new PathWorkByKind();
-            if (spent != 0) request.AdvanceForTests(new(spent), work);
+            if (spent != 0) request.Advance(new(spent));
             Assert.Equal(spent, request.WorkSpent);
             Assert.Equal(trace[cut].Start, request.NextStartOperationForTests);
             if (trace[cut].Start == Segment.Done) Assert.Equal(trace[cut].Search, request.NextPhaseForTests);
             Assert.Null(request.Result);
             bool last = cut + 1 == trace.Length;
-            request.AdvanceForTests(new(1), work);
+            request.Advance(new(1));
             spent += trace[cut].Units;
-            Assert.Equal(request.WorkSpent, work.Total);
             Assert.Equal(spent, request.WorkSpent);
             if (last)
             {
@@ -74,6 +72,16 @@ public sealed partial class RouteStraighteningRequestTests
             }
         }
         Assert.Equal(member ? 31 : 14, spent);
+
+        using var measured = Assert.IsType<RouteStraighteningRequest>(planner.BeginPath(start, goal, 0f, Budget, pool));
+        var work = new PathWorkByKind();
+        measured.AdvanceForTests(new(int.MaxValue), work);
+        AssertBits(expected, Assert.IsType<NavPath>(measured.Result));
+        Assert.Equal(spent, measured.WorkSpent);
+        Assert.Equal(measured.WorkSpent, work.Total);
+        foreach (var kind in trace.GroupBy(step => step.Start == Segment.Done
+            ? (PathWorkKind)step.Search : SegmentWorkKind(step.Start)))
+            Assert.Equal(kind.Sum(step => step.Units), work[kind.Key]);
     }
 
     [Fact]
@@ -259,10 +267,9 @@ public sealed partial class RouteStraighteningRequestTests
         foreach (var (operation, segment, units) in trace)
         {
             using var diagnostic = new NavFootprintDiagnostics();
-            var work = new PathWorkByKind();
             var cursor = new RouteStraighteningCursor(slicedStraightener, Start, 0, raw, fallBack: false, scratch);
             int spent = 0;
-            if (prefix != 0) cursor.RunSliceForTests(prefix, ref spent, work);
+            if (prefix != 0) cursor.RunSlice(prefix, ref spent);
             Assert.Equal(prefix, spent);
             Assert.Equal(operation, cursor.NextOperation);
             if (operation == Straight.Segment)
@@ -275,7 +282,7 @@ public sealed partial class RouteStraighteningRequestTests
             Assert.Null(cursor.Result);
 
             spent = 0;
-            cursor.RunSliceForTests(1, ref spent, work);
+            cursor.RunSlice(1, ref spent);
             prefix += units;
             Assert.Equal(units, spent);
             bool last = prefix == total;
@@ -286,17 +293,41 @@ public sealed partial class RouteStraighteningRequestTests
                 Paid next = trace.First(step => (cumulative += step.Units) > prefix);
                 Assert.Equal(next.Operation, cursor.NextOperation);
                 if (next.Operation == Straight.Segment) Assert.Equal(next.Segment, cursor.NextSegmentOperation);
-                cursor.RunSliceForTests(int.MaxValue, ref spent, work);
+                cursor.RunSlice(int.MaxValue, ref spent);
             }
             Assert.Equal(total - prefix + units, spent);
-            Assert.Equal(total, work.Total);
             AssertBits(expected, Assert.IsType<NavPath>(cursor.Result));
             if (ReferenceEquals(raw, expected)) Assert.Same(raw, cursor.Result);
             Assert.Equal(cells, diagnostic.CandidateCells);
         }
         Assert.Equal(total, prefix);
         if (expectedGuards is not null) Assert.Equal(expectedGuards, slicedGuards);
+
+        var measured = new RouteStraighteningCursor(slicedStraightener, Start, 0, raw, fallBack: false, scratch);
+        var work = new PathWorkByKind();
+        int measuredSpent = 0;
+        measured.RunSliceForTests(int.MaxValue, ref measuredSpent, work);
+        AssertBits(expected, Assert.IsType<NavPath>(measured.Result));
+        Assert.Equal(total, measuredSpent);
+        Assert.Equal(measuredSpent, work.Total);
+        foreach (var kind in trace.GroupBy(TraceWorkKind))
+            Assert.Equal(kind.Sum(step => step.Units), work[kind.Key]);
     }
+
+    static PathWorkKind TraceWorkKind(Paid step) => step.Operation switch
+    {
+        Straight.ValidateFeet => PathWorkKind.ValidateFeet,
+        Straight.Candidate => PathWorkKind.Candidate,
+        Straight.Segment => SegmentWorkKind(step.Segment),
+        Straight.SideOffsets => PathWorkKind.SideOffsets,
+        Straight.KeepAnchor => PathWorkKind.KeepAnchor,
+        Straight.Allocate => PathWorkKind.StraighteningAllocate,
+        Straight.Copy => PathWorkKind.StraighteningCopy,
+        _ => throw new System.ArgumentOutOfRangeException(nameof(step)),
+    };
+
+    static PathWorkKind SegmentWorkKind(Segment step)
+        => (PathWorkKind)((int)PathWorkKind.EndpointStart + (int)step);
 
     readonly record struct Paid(Straight Operation, Segment Segment, int Units);
 

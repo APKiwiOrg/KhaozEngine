@@ -136,8 +136,17 @@ public partial class GridSearchRequestEqualityTests
 
         foreach (int quantum in LiteralTraceQuanta)
         {
-            using var request = Begin();
+            DriveQuantum(quantum, null);
             var work = new PathWorkByKind();
+            DriveQuantum(quantum, work);
+            Assert.Equal(total, work.Total);
+            foreach (var kind in operations.GroupBy(operation => operation.Kind))
+                Assert.Equal(kind.Sum(operation => operation.Weight), work[(PathWorkKind)kind.Key]);
+        }
+
+        void DriveQuantum(int quantum, PathWorkByKind? work)
+        {
+            using var request = Begin();
             int spent = 0;
             int cut = 0;
             AssertCut(request, cut, spent);
@@ -148,13 +157,12 @@ public partial class GridSearchRequestEqualityTests
                 while (cut < operations.Length && operations[cut].Weight <= quantum - slice)
                     slice += operations[cut++].Weight;
                 spent += slice;
-                request.AdvanceForTests(new PathWorkBudget(quantum), work);
+                var budget = new PathWorkBudget(quantum);
+                if (work is null) request.Advance(budget);
+                else request.AdvanceForTests(budget, work);
                 AssertCut(request, cut, spent);
             }
             Assert.Equal(total, request.WorkSpent);
-            Assert.Equal(request.WorkSpent, work.Total);
-            foreach (var kind in operations.GroupBy(operation => operation.Kind))
-                Assert.Equal(kind.Sum(operation => operation.Weight), work[(PathWorkKind)kind.Key]);
         }
 
         GridPathPlanner.GridSearchRequest Begin()

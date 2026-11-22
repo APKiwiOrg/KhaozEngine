@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Numerics;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Movement;
@@ -193,26 +194,33 @@ public sealed class NavSegmentRequestTraceTests
         for (int cut = 0; cut < trace.Length; cut++)
         {
             var request = new NavSegmentRequest(navigation, from, to);
-            var units = new PathWorkByKind();
             using var work = new NavFootprintDiagnostics();
-            if (prefix != 0) request.AdvanceForTests(prefix, units);
+            if (prefix != 0) request.Advance(prefix);
             Assert.Equal(prefix, request.WorkSpent);
             Assert.Equal(trace[cut].Op, request.NextOperation);
             Assert.Null(request.Result);
 
-            request.AdvanceForTests(1, units);
+            request.Advance(1);
             prefix += trace[cut].Weight;
             Assert.Equal(prefix, request.WorkSpent);
             bool last = cut + 1 == trace.Length;
             Assert.Equal(last ? Done : trace[cut + 1].Op, request.NextOperation);
             Assert.Equal(last ? accepted : (bool?)null, request.Result);
 
-            request.AdvanceForTests(int.MaxValue, units);
+            request.Advance(int.MaxValue);
             Assert.Equal(accepted, request.Result);
             Assert.Equal(total, request.WorkSpent);
-            Assert.Equal(request.WorkSpent, units.Total);
             Assert.Equal(cells, work.CandidateCells);
         }
         Assert.Equal(total, prefix);
+
+        var measured = new NavSegmentRequest(navigation, from, to);
+        var units = new PathWorkByKind();
+        measured.AdvanceForTests(int.MaxValue, units);
+        Assert.Equal(accepted, measured.Result);
+        Assert.Equal(total, measured.WorkSpent);
+        Assert.Equal(measured.WorkSpent, units.Total);
+        foreach (var kind in trace.GroupBy(step => (PathWorkKind)((int)PathWorkKind.EndpointStart + (int)step.Op)))
+            Assert.Equal(kind.Sum(step => step.Weight), units[kind.Key]);
     }
 }

@@ -206,29 +206,43 @@ public class GridSearchRequestScratchTests
 
         using var ordinaryPool = planner.CreateWorkspaces(1, PathQueryBudget.Default);
         using var ordinary = NewRequest(planner, ordinaryPool, goal);
-        var (ordinaryAdvances, ordinaryBlocks) = Drive(ordinary, expectedWrapUnits: 0);
+        var (ordinaryAdvances, ordinaryBlocks) = Drive(ordinary);
         EqualBits(expected, Assert.IsType<NavPath>(ordinary.Result));
         Assert.Equal(0, ordinaryBlocks);
 
         using var retry = NewRequest(planner, pool, goal);
-        var (wrapAdvances, wrapBlocks) = Drive(retry, expectedWrapUnits: 16);
+        var (wrapAdvances, wrapBlocks) = Drive(retry);
         EqualBits(expected, Assert.IsType<NavPath>(retry.Result));
         Assert.Equal(8, wrapBlocks);
         Assert.Equal(8, wrapAdvances - ordinaryAdvances);
         Assert.Equal(16, retry.WorkSpent - ordinary.WorkSpent);
 
-        (int Advances, int Blocks) Drive(GridPathPlanner.GridSearchRequest request, int expectedWrapUnits)
+        using var measuredPool = grid.CreateWorkspacesForTests(1, PathQueryBudget.Default, int.MaxValue);
+        var baseline = MeasureWrap(ordinaryPool);
+        var wrapped = MeasureWrap(measuredPool);
+        Assert.Equal(0, baseline[PathWorkKind.Wrap]);
+        Assert.Equal(16, wrapped[PathWorkKind.Wrap]);
+        Assert.Equal(16, wrapped.Total - baseline.Total);
+
+        PathWorkByKind MeasureWrap(PathPlanWorkspaces measured)
         {
+            using var request = NewRequest(planner, measured, goal);
             var work = new PathWorkByKind();
+            request.AdvanceForTests(new(int.MaxValue), work);
+            EqualBits(expected, Assert.IsType<NavPath>(request.Result));
+            Assert.Equal(request.WorkSpent, work.Total);
+            return work;
+        }
+
+        (int Advances, int Blocks) Drive(GridPathPlanner.GridSearchRequest request)
+        {
             int advances = 0, blocks = 0;
             while (request.State == PathPlanState.Pending)
             {
                 Assert.True(advances++ < 1000);
                 if (request.NextPhaseForTests == Phase.Wrap) blocks++;
-                request.AdvanceForTests(one, work);
+                request.Advance(one);
             }
-            Assert.Equal(expectedWrapUnits, work[PathWorkKind.Wrap]);
-            Assert.Equal(request.WorkSpent, work.Total);
             return (advances, blocks);
         }
     }

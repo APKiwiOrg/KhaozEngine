@@ -202,7 +202,7 @@ public sealed partial class RouteStraighteningRequestTests
     }
 
     [Fact]
-    public void ProfileAndStraightenerKeepSeparatePoolOwnership()
+    public void ProfilePoolAcceptsItsStraightenersAndTheirPoolsStayExclusive()
     {
         GroundNavigation navigation = Flat(9, 6, 0.25f);
         var profile = (IIncrementalRegionPathPlanner)navigation.Planner;
@@ -210,7 +210,10 @@ public sealed partial class RouteStraighteningRequestTests
         using var profilePool = profile.CreateWorkspaces(1, Budget);
         using var straightenerPool = straightener.CreateWorkspaces(1, Budget);
         NavGoalRegion goal = Goal(Start with { X = 4.5f });
-        Assert.Throws<ArgumentException>(() => straightener.BeginPath(Start, goal, navigation.AgentRadius, Budget, profilePool));
+        using (var adapted = straightener.BeginPath(Start, goal, navigation.AgentRadius, Budget, profilePool))
+            AssertBits(Path(NavPathStatus.Complete, Waypoint(4.5f)), Finish(adapted, [6]));
+        IIncrementalRegionPathPlanner other = new RouteStraightener(navigation);
+        Assert.Throws<ArgumentException>(() => other.BeginPath(Start, goal, navigation.AgentRadius, Budget, straightenerPool));
         Assert.Throws<ArgumentException>(() => profile.BeginPath(Start, goal, navigation.AgentRadius, Budget, straightenerPool));
         using var request = profile.BeginPath(Start, goal, navigation.AgentRadius, Budget, profilePool);
         AssertBits(Path(NavPathStatus.Complete, Waypoint(2.5f), Waypoint(3.5f), Waypoint(4.5f)), Finish(request, [1]));

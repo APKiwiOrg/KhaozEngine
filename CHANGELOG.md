@@ -17,10 +17,12 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   the integer cell boundary.
 - Internal groundwork in `KhaozEngine.Navigation` and `KhaozEngine.Movement` for route requests that plan across
   calls under a fixed work quota: the request contract, a resumable exact grid search with a pool of search
-  workspaces, and resumable segment admission and route straightening under the same workspace lease. Nothing
-  public uses them yet. The synchronous `FindPath`, `RouteStraightener` and segment admission keep their routes
-  and their allocations, apart from the boundary case above. A navigation view that excludes areas offers no
-  request and keeps planning synchronously
+  workspaces, resumable segment admission and route straightening under the same workspace lease, and internal
+  doors on `PathFollower` and `MoveToRange` that plan region routes through such requests and hold while a route
+  is pending. Nothing public uses them yet. The synchronous `FindPath`, `RouteStraightener` and segment admission
+  keep their routes and their allocations, apart from the boundary case above, and a follower or mover without
+  the planning option does what it did. A navigation view that excludes areas offers no request and keeps
+  planning synchronously
   ([#1877](https://github.com/APKiwiOrg/KhaozEngine/issues/1877)). No public API, tolerance or navigation format
   changes.
 

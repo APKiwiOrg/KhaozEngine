@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 
 namespace KhaozEngine.Navigation;
 
@@ -30,22 +31,33 @@ public sealed partial class PathFollower
     /// with no cooldown returns Unreachable at zero motion and retries on the next tick.
     /// Switching between point and region calls clears the previous route and cooldown. Call
     /// <see cref="Reset"/> when target identity, shape, range or traversal profile changes.
+    /// With fixed-quota planning, this tick holds at zero motion while waiting for a workspace,
+    /// spending slices or awaiting adoption. Pool disposal cancels leased and queued requests.
+    /// A completed route awaiting adoption remains available.
     /// </summary>
     /// <param name="feetPosition">The moving body's actual world feet position.</param>
     /// <param name="goal">The current goal predicate and its conservative anchor and extent.</param>
     /// <param name="agentRadius">Agent radius passed through to the planner on a replan.</param>
     /// <param name="dt">Timestep in seconds.</param>
     /// <exception cref="NotSupportedException">The planner does not implement <see cref="IRegionPathPlanner"/>.</exception>
+    /// <exception cref="ObjectDisposedException">This tick needs to begin a region request and its pool is disposed.</exception>
+    /// <exception cref="InvalidOperationException">A request call overlaps another call into the pool.</exception>
     public PathFollowOutput Tick(Vector3 feetPosition, NavGoalRegion goal, float agentRadius, float dt)
+    {
+        ValidateRegionTick(goal);
+        return TickCore(feetPosition, goal.Anchor, agentRadius, dt, goal);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    void ValidateRegionTick(NavGoalRegion goal)
     {
         ArgumentNullException.ThrowIfNull(goal);
         if (_planner is not IRegionPathPlanner)
             throw new NotSupportedException("Region following requires an IRegionPathPlanner.");
-        return TickCore(feetPosition, goal.Anchor, agentRadius, dt, goal);
     }
 
-    PathFollowOutput TickCore(Vector3 position, Vector3 goal, float agentRadius, float dt, NavGoalRegion? region,
-        bool preparingDrop = false)
+    PathFollowOutput TickCore<TPlanning>(Vector3 position, Vector3 goal, float agentRadius, float dt, NavGoalRegion? region,
+        bool preparingDrop) where TPlanning : struct
     {
         if (_drop is not null && !preparingDrop)
         {
@@ -55,7 +67,7 @@ public sealed partial class PathFollower
         bool followingRegion = region is not null;
         if (_followingRegion != followingRegion)
         {
-            Reset();
+            Reset<TPlanning>();
             _followingRegion = followingRegion;
         }
 
@@ -71,12 +83,24 @@ public sealed partial class PathFollower
             : Vector2.Distance(posXz, goalXz) <= _config.AcceptRadius
                 && MathF.Abs(position.Y - goal.Y) <= _config.VerticalAcceptTolerance;
         if (arrived && (followingRegion || !HasPendingDrop()))
+        {
+            if (typeof(TPlanning) == typeof(IncrementalPlanning)) CancelPlanning();
             return Arrive();
+        }
+
+        bool pointIntentMatches;
+        bool replanned;
+        if (typeof(TPlanning) == typeof(IncrementalPlanning) && region is not null && _request is not null)
+        {
+            if (!ContinuePlanning(position, region, agentRadius)) return HoldForPlanning();
+            pointIntentMatches = replanned = true;
+            goto FollowRoute;
+        }
 
         // A reached Complete endpoint belongs only to the point intent that was queried. Retain it
         // until that check so obsolete endpoints can refresh through the single query site below.
         // Point Partial consumption stays after query eligibility, preserving its raw-goal tick.
-        bool pointIntentMatches = goalXz == _plannedGoalXz && goal.Y == _plannedGoalY;
+        pointIntentMatches = goalXz == _plannedGoalXz && goal.Y == _plannedGoalY;
         bool completeAtTerminal = (followingRegion || _path?.Status == NavPathStatus.Complete)
             && AdvanceReachedWaypoints(position, posXz, retainCompleteTerminal: true);
         if (!completeAtTerminal) _freshRegionTerminal = false;
@@ -95,9 +119,15 @@ public sealed partial class PathFollower
         // A due query is also immediate before an unlocked one-way Drop, which must never launch on an
         // obsolete route. The refreshed route locks any Drop that is next in this same tick.
         bool staleCompleteTerminal = completeAtTerminal && !_freshRegionTerminal;
-        bool replanned = needsPlan && (_cooldown == 0f || staleCompleteTerminal || DropIsNext(position, posXz));
+        replanned = needsPlan && (_cooldown == 0f || staleCompleteTerminal || DropIsNext(position, posXz));
         if (replanned)
         {
+            if (typeof(TPlanning) == typeof(IncrementalPlanning) && region is not null)
+            {
+                if (!BeginPlanning(position, region, agentRadius)) return HoldForPlanning();
+                pointIntentMatches = true;
+                goto FollowRoute;
+            }
             _path = region is not null
                 ? ((IRegionPathPlanner)_planner).FindPath(position, region, agentRadius, _config.Budget)
                 : _planner.FindPath(position, goal, agentRadius, _config.Budget);
@@ -111,6 +141,7 @@ public sealed partial class PathFollower
             _drop = null;
         }
 
+    FollowRoute:
         // Supported preparation keeps the existing endpoints and preview unless the goal actually refreshed.
         if (_drop is not null) return DropOutput();
 

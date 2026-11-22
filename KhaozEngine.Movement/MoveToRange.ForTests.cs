@@ -9,9 +9,8 @@ public sealed partial class MoveToRange
         => new(planner, navigation, follow);
 
     private MoveToRange(IRegionPathPlanner planner, GroundNavigation navigation, PathFollowConfig? follow)
-        : this(planner, navigation.Space, navigation.AllowsSegment, follow)
+        : this(planner, navigation.Space, navigation.AllowsSegment, follow, RouteApproachOptions.Default, navigation)
     {
-        _navigation = navigation;
     }
 
     internal NavPath? ActivePathForTests => _follower.ActivePath;

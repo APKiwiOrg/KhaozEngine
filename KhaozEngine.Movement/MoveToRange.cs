@@ -18,6 +18,11 @@ public sealed partial class MoveToRange
     private readonly StepAdmission _admits;
     private readonly RouteApproachOptions _options;
 
+    /// <summary>Uses the navigation profile's guarded planner and segment admission with default approach options.</summary>
+    /// <exception cref="ArgumentException">Fixed-quota planning requires a profile that supports requests and a
+    /// compatible workspace pool sized for the query budget.</exception>
+    /// <exception cref="ObjectDisposedException">The planning pool is disposed.</exception>
+    /// <exception cref="InvalidOperationException">Workspace validation overlaps another call into the pool.</exception>
     public MoveToRange(GroundNavigation navigation, PathFollowConfig? follow = null)
         : this(navigation, follow, RouteApproachOptions.Default)
     {
@@ -25,17 +30,24 @@ public sealed partial class MoveToRange
 
     /// <summary>Route following with opt-in <paramref name="options"/>.</summary>
     /// <exception cref="ArgumentException"><see cref="RouteApproachOptions.SteerWhileSwimming"/> is set and the
-    /// profile is not <see cref="GroundNavigation.Aquatic"/>.</exception>
+    /// profile is not <see cref="GroundNavigation.Aquatic"/>, or fixed-quota planning was supplied with a profile
+    /// or pool that cannot serve the request. The query budget must fit the pool.</exception>
+    /// <exception cref="ObjectDisposedException">The planning pool is disposed.</exception>
+    /// <exception cref="InvalidOperationException">Workspace validation overlaps another call into the pool.</exception>
     public MoveToRange(GroundNavigation navigation, PathFollowConfig? follow, RouteApproachOptions options)
         : this((navigation ?? throw new ArgumentNullException(nameof(navigation))).Planner,
-            navigation.Space, navigation.AllowsSegment, follow, options)
+            navigation.Space, navigation.AllowsSegment, follow, options, navigation)
     {
         if (options.SteerWhileSwimming && !navigation.Aquatic)
             throw new ArgumentException("Steering swimmers needs an aquatic profile.", nameof(options));
-        _navigation = navigation;
     }
 
     /// <summary>The caller supplies equivalent guarded region planning and segment admission.</summary>
+    /// <exception cref="ArgumentException">Fixed-quota planning requires a compatible engine planner and workspace
+    /// pool, and the query budget must fit the pool. <paramref name="space"/> must be the exact instance used by
+    /// the request planner.</exception>
+    /// <exception cref="ObjectDisposedException">The planning pool is disposed.</exception>
+    /// <exception cref="InvalidOperationException">Workspace validation overlaps another call into the pool.</exception>
     public MoveToRange(IRegionPathPlanner planner, NavSpace space,
         Func<Vector3, Vector3, bool> allowsSegment, PathFollowConfig? follow = null)
         : this(planner, space, allowsSegment, follow, RouteApproachOptions.Default)
@@ -44,17 +56,32 @@ public sealed partial class MoveToRange
 
     /// <summary>The caller supplies equivalent guarded region planning and segment admission, with opt-in
     /// <paramref name="options"/>.</summary>
+    /// <exception cref="ArgumentException">Fixed-quota planning requires a compatible engine planner and workspace
+    /// pool, and the query budget must fit the pool. <paramref name="space"/> must be the exact instance used by
+    /// the request planner. Combining fixed-quota planning with <see cref="RouteApproachOptions.StraightenRoutes"/>
+    /// requires the navigation-profile overload.</exception>
+    /// <exception cref="ObjectDisposedException">The planning pool is disposed.</exception>
+    /// <exception cref="InvalidOperationException">Workspace validation overlaps another call into the pool.</exception>
     public MoveToRange(IRegionPathPlanner planner, NavSpace space,
         Func<Vector3, Vector3, bool> allowsSegment, PathFollowConfig? follow, RouteApproachOptions options)
+        : this(planner, space, allowsSegment, follow, options, navigation: null)
+    {
+    }
+
+    private MoveToRange(IRegionPathPlanner planner, NavSpace space,
+        Func<Vector3, Vector3, bool> allowsSegment, PathFollowConfig? follow, RouteApproachOptions options,
+        GroundNavigation? navigation)
     {
         ArgumentNullException.ThrowIfNull(planner);
         ArgumentNullException.ThrowIfNull(space);
         _allowsSegment = allowsSegment ?? throw new ArgumentNullException(nameof(allowsSegment));
         _options = options ?? throw new ArgumentNullException(nameof(options));
-        if (options.StraightenRoutes) _straightener = new RouteStraightener(planner, space, allowsSegment);
-        if (options.Stall is { } stall) _stallRing = new RangeProgressRing(stall.WindowTicks);
+        _navigation = navigation;
+        _straightener = CreateStraightener(planner, space, allowsSegment, follow, options, navigation);
+        // The follower validates the planning pairing. Nothing sized by the options is allocated before it accepts.
         _follower = new PathFollower(_straightener ?? planner,
             StrictConfig(follow ?? PathFollowConfig.Default, options.CarryThroughStraightRuns), space);
+        if (options.Stall is { } stall) _stallRing = new RangeProgressRing(stall.WindowTicks);
         _admits = AllowsStep;
     }
 
@@ -65,7 +92,10 @@ public sealed partial class MoveToRange
     /// waypoint or a predicted destination. Range uses no tolerance. A certified Drop owns its airborne
     /// traversal and completes only on actual supported arrival. Supported preparation reconsiders membership
     /// and due goal drift before issuing departure. Blocked comes from ground stall or a known
-    /// live Drop obstruction. Unavailable evidence never proves an unreachable edge.</summary>
+    /// live Drop obstruction. Unavailable evidence never proves an unreachable edge. Disposing the planning pool
+    /// cancels leased and queued requests. Completed routes awaiting adoption remain available.</summary>
+    /// <exception cref="ObjectDisposedException">This tick needs to begin a region request and its pool is disposed.</exception>
+    /// <exception cref="InvalidOperationException">A request call overlaps another call into the pool.</exception>
     public RangeSteering Tick(in MoveState body, in MoveTuning tuning, in ReachTarget target,
         float range, bool run, float dt, GroundMoveContext context)
         => TickCore(body, tuning, target, range, run, dt, context, null);
@@ -73,12 +103,14 @@ public sealed partial class MoveToRange
     /// <summary>Predicts Contact Drops through the exact player command from <paramref name="input"/>.
     /// Submit <see cref="PlayerPathInput.Command"/> using that same value and the returned steering.
     /// The overload without player input retains world-space NPC prediction.</summary>
+    /// <exception cref="ObjectDisposedException">This tick needs to begin a region request and its pool is disposed.</exception>
+    /// <exception cref="InvalidOperationException">A request call overlaps another call into the pool.</exception>
     public RangeSteering Tick(in MoveState body, in MoveTuning tuning, in ReachTarget target,
         float range, bool run, float dt, GroundMoveContext context, PlayerPathInput input)
         => TickCore(body, tuning, target, range, run, dt, context, input);
 
-    RangeSteering TickCore(in MoveState body, in MoveTuning tuning, in ReachTarget target,
-        float range, bool run, float dt, GroundMoveContext context, PlayerPathInput? playerInput)
+    RangeSteering TickCore<TPlanning>(in MoveState body, in MoveTuning tuning, in ReachTarget target,
+        float range, bool run, float dt, GroundMoveContext context, PlayerPathInput? playerInput) where TPlanning : struct
     {
         ArgumentNullException.ThrowIfNull(context);
         context.ValidateTuning(tuning);
@@ -98,14 +130,15 @@ public sealed partial class MoveToRange
         if ((!body.Grounded && !swims && _drop is null) || body.Commitment.IsActive || body.JumpBufferRemaining > 0)
             return Hold(RangeMoveStatus.Suspended);
         if (swims && Settling(body, tuning, context)) return Hold(RangeMoveStatus.Suspended);
-        NavGoalRegion goal = Goal(tuning, target, range);
+        NavGoalRegion goal = Goal<TPlanning>(tuning, target, range);
         if (!body.Grounded && !swims && _drop is null) return Hold(RangeMoveStatus.Suspended);
         if (_drop is not null && _stalled) return Hold(RangeMoveStatus.Blocked) with { DropRefusal = _drop.Refusal };
         bool preparingDrop = _drop is { Preparing: true } && body.Grounded && !body.Swimming;
         if (_drop is not null && !preparingDrop &&
-            TickDrop(body, tuning, run, dt, context, playerInput, out RangeSteering dropping)) return dropping;
+            TickDrop<TPlanning>(body, tuning, run, dt, context, playerInput, out RangeSteering dropping)) return dropping;
         if (within && !preparingDrop)
         {
+            if (typeof(TPlanning) == typeof(PathFollower.IncrementalPlanning)) _follower.CancelPlanning();
             ClearStall();
             return Hold(RangeMoveStatus.InRange);
         }
@@ -113,24 +146,26 @@ public sealed partial class MoveToRange
         if (_stalled) return Hold(RangeMoveStatus.Blocked);
         Vector3 feet = Feet(body, tuning);
         PathFollowOutput route = preparingDrop
-            ? _follower.TickDropPreparation(feet, goal, tuning.CapsuleRadius)
-            : _follower.Tick(feet, goal, tuning.CapsuleRadius, followerDt);
+            ? _follower.TickDropPreparation<TPlanning>(feet, goal, tuning.CapsuleRadius)
+            : _follower.TickRegion<TPlanning>(feet, goal, tuning.CapsuleRadius, followerDt);
         if (route.State == PathFollowState.Dropping)
         {
             if (_navigation is null || _navigation.MaxDropMetres == 0 || route.DropTraversal is not { } traversal)
                 return Hold(RangeMoveStatus.UnsupportedTransition);
             if (_drop is null || _drop.Traversal != traversal) _drop = new ContactDropFollower(_navigation, traversal);
-            if (TickDrop(body, tuning, run, dt, context, playerInput, out dropping)) return dropping;
+            if (TickDrop<TPlanning>(body, tuning, run, dt, context, playerInput, out dropping)) return dropping;
             return Counted(body, Hold(RangeMoveStatus.Following));
         }
         if (preparingDrop)
         {
             _drop = null;
-            ClearStall();
+            if (typeof(TPlanning) != typeof(PathFollower.IncrementalPlanning) || !PlanningPending) ClearStall();
             if (within) return Hold(RangeMoveStatus.InRange);
         }
         if (route.State == PathFollowState.Hopping) return Hold(RangeMoveStatus.UnsupportedTransition);
-        if (route.State == PathFollowState.WaitingForPath) return Counted(body, Hold(RangeMoveStatus.WaitingForPath));
+        if (route.State == PathFollowState.WaitingForPath)
+            return typeof(TPlanning) == typeof(PathFollower.IncrementalPlanning) && PlanningPending
+                ? Hold(RangeMoveStatus.WaitingForPath) : Counted(body, Hold(RangeMoveStatus.WaitingForPath));
         if (route.State == PathFollowState.Unreachable) return Hold(RangeMoveStatus.Unreachable);
         if (route.State != PathFollowState.Following) return Counted(body, Hold(RangeMoveStatus.Following));
 
@@ -151,7 +186,7 @@ public sealed partial class MoveToRange
         MoveState predicted = context.Step(body, command, run, dt, tuning);
         if (!AllowsStep(body, predicted, tuning))
         {
-            FallBackToRawRoute();
+            FallBackToRawRoute<TPlanning>();
             return Counted(body, Hold(RangeMoveStatus.Following));
         }
         command = StopAtRange(body, tuning, target, range, run, dt, context, command, predicted, _admits);
@@ -162,6 +197,11 @@ public sealed partial class MoveToRange
     public void Reset()
     {
         _follower.Reset();
+        ClearRouteGoal();
+    }
+
+    private void ClearRouteGoal()
+    {
         _drop = null;
         _goal = null;
         ClearStall();
@@ -204,6 +244,7 @@ public sealed partial class MoveToRange
             CorridorTolerance = follow.CorridorTolerance,
             ReplanCooldownSeconds = follow.ReplanCooldownSeconds,
             Budget = follow.Budget,
+            Planning = follow.Planning,
         };
     }
 }

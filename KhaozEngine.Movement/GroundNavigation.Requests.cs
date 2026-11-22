@@ -13,19 +13,29 @@ public sealed partial class GroundNavigation
     /// A view's traversal constraint can scan a footprint within one grid search operation.</summary>
     internal bool SupportsRequests => ((ProfilePlanner)Planner).SupportsRequests;
 
-    /// <summary>Prewarms all buffers for the profile's incremental planner. Area excluding views plan
-    /// synchronously, as their grid search constraint can scan an entire footprint in one operation.</summary>
-    /// <exception cref="ArgumentException">The supplied straightener is bound to a different profile or has no profile.</exception>
+    /// <summary>Prewarms <paramref name="count"/> workspaces for this profile and its straighteners.
+    /// A null <paramref name="largestBudget"/> uses <see cref="PathQueryBudget.Default"/>.</summary>
+    /// <exception cref="ArgumentOutOfRangeException">The count is below one or the snap limit is NaN.</exception>
+    /// <exception cref="ArgumentException">The declared budget requires a frontier larger than an array.</exception>
+    /// <exception cref="NotSupportedException">This profile requires synchronous planning.</exception>
+    internal PathPlanWorkspaces CreatePlanningWorkspaces(int count, PathQueryBudget? largestBudget = null)
+        => ((ProfilePlanner)Planner).CreateWorkspaces(count, largestBudget ?? PathQueryBudget.Default);
+
+    /// <summary>Prewarms workspaces that serve only the supplied straightener.</summary>
+    /// <exception cref="ArgumentException">The straightener is bound to a different profile or has no profile,
+    /// or the declared budget requires a frontier larger than an array.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">The count is below one or the snap limit is NaN.</exception>
     /// <exception cref="NotSupportedException">This profile requires synchronous planning.</exception>
     internal PathPlanWorkspaces CreatePlanningWorkspaces(int count, PathQueryBudget largestBudget,
-        RouteStraightener? straightener = null)
+        RouteStraightener straightener)
         => ((ProfilePlanner)Planner).CreateWorkspaces(count, largestBudget, straightener);
 
     /// <summary>Freezes a region plan whose start admission, grid search and optional straightening share one lease.
     /// Area excluding views require synchronous planning to keep whole-footprint constraints outside the quota.</summary>
     /// <exception cref="ArgumentException">The straightener belongs to another profile or has no profile,
-    /// or the pool does not belong to the straightener.</exception>
+    /// or the pool does not belong to the straightener or its profile.</exception>
     /// <exception cref="NotSupportedException">This profile requires synchronous planning.</exception>
+    /// <exception cref="ObjectDisposedException">The workspace pool is disposed.</exception>
     internal PathPlanRequest BeginPlanningPath(Vector3 start, NavGoalRegion goal, float radius, PathQueryBudget budget,
         PathPlanWorkspaces workspaces, RouteStraightener straightener)
     {
@@ -38,7 +48,7 @@ public sealed partial class GroundNavigation
 
     private sealed partial class ProfilePlanner : IGridRequestAdapter
     {
-        internal bool SupportsRequests => !navigation._footprint.HasAreaExclusions && planner.SupportsRequests;
+        internal bool SupportsRequests => !navigation._footprint.HasAreaExclusions && planner.SupportsRegionRequests;
 
         GridPathPlanner IGridRequestAdapter.RequestGrid
         {
@@ -48,6 +58,9 @@ public sealed partial class GroundNavigation
                 return planner;
             }
         }
+
+        bool IGridRequestAdapter.OwnsWorkspaceRequestsFrom(IGridRequestAdapter adapter)
+            => ReferenceEquals(this, adapter) || adapter is RouteStraightener straightener && straightener.UsesNavigation(navigation);
 
         GridSearchRequest IGridRequestAdapter.CreateRequest(RequestAdmission admission)
             => new ProfilePathRequest(navigation, admission);
@@ -60,11 +73,14 @@ public sealed partial class GroundNavigation
 
         bool IIncrementalRegionPathPlanner.SupportsRequests => SupportsRequests;
 
+        NavSpace IIncrementalRegionPathPlanner.Space => navigation.Space;
+
         PathPlanWorkspaces IIncrementalRegionPathPlanner.CreateWorkspaces(int count, PathQueryBudget largestBudget)
             => CreateWorkspaces(count, largestBudget);
 
         internal PathPlanWorkspaces CreateWorkspaces(int count, PathQueryBudget largestBudget, RouteStraightener? straightener = null)
         {
+            RequireRequestSupport();
             RequireStraightenerProfile(straightener);
             return new GridPlanningWorkspaces((IGridRequestAdapter?)straightener ?? this, count, largestBudget);
         }
@@ -75,6 +91,12 @@ public sealed partial class GroundNavigation
                 throw new ArgumentException("The straightener must be bound to this ground navigation profile.", nameof(straightener));
         }
 
+        void IIncrementalRegionPathPlanner.ValidateWorkspaces(PathPlanWorkspaces workspaces, PathQueryBudget budget)
+        {
+            if (!SupportsRequests) throw new ArgumentException("This profile requires synchronous queries.", nameof(workspaces));
+            GridPlanningWorkspaces.Require(workspaces).ValidateAdapted(this, budget);
+        }
+
         PathPlanRequest IIncrementalRegionPathPlanner.BeginPath(Vector3 start, NavGoalRegion goal, float agentRadius,
             PathQueryBudget budget, PathPlanWorkspaces workspaces)
             => BeginPath(start, goal, agentRadius, budget, workspaces);
@@ -82,8 +104,8 @@ public sealed partial class GroundNavigation
         internal PathPlanRequest BeginPath(Vector3 start, NavGoalRegion goal, float agentRadius, PathQueryBudget budget,
             PathPlanWorkspaces workspaces, RouteStraightener? straightener = null)
         {
-            RequireStraightenerProfile(straightener);
             RequireRequestSupport();
+            RequireStraightenerProfile(straightener);
             return GridPlanningWorkspaces.Require(workspaces)
                 .BeginAdapted((IGridRequestAdapter?)straightener ?? this, start, goal, agentRadius, budget);
         }

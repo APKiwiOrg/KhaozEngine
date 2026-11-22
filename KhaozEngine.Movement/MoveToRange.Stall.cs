@@ -9,7 +9,7 @@ public sealed partial class MoveToRange
     private readonly RangeProgressRing? _stallRing;
     private bool _stalled;
 
-    // Records a tick that returns Following or WaitingForPath and latches Blocked when the window shows no ground made.
+    // Records a steering or exhausted-corridor cooldown tick and latches Blocked when the window shows no ground made.
     private RangeSteering Counted(in MoveState body, RangeSteering steering)
     {
         if (_stallRing is null) return steering;

@@ -15,10 +15,15 @@ public sealed partial class MoveToRange
     // translation normally moves the anchor too. Rounding can hide a small vertical move of a capsule target
     // in its anchor. The new region then has the same anchor bits. When only the sign of an anchor zero changes,
     // reusing the equal anchor keeps the previous region's bits.
-    private NavGoalRegion Goal(in MoveTuning tuning, in ReachTarget target, float range)
+    private NavGoalRegion Goal<TPlanning>(in MoveTuning tuning, in ReachTarget target, float range)
+        where TPlanning : struct
     {
         var key = RangeShapeKey.From(tuning, target, range);
-        if (_goal is not null && key != _goalShape) Reset();
+        if (_goal is not null && key != _goalShape)
+        {
+            _follower.Reset<TPlanning>();
+            ClearRouteGoal();
+        }
         _goalShape = key;
         if (_goal is not null && _reach is not null &&
             _reach.Matches(target, range, tuning.CapsuleRadius, tuning.CapsuleHalfHeight))

@@ -8,8 +8,9 @@ namespace KhaozEngine.Navigation;
 /// Synchronous queries keep the planner's own working memory and never touch a pool.
 /// </summary>
 /// <remarks>
-/// <para>Ownership. A pool belongs to the planner that created it. A begin from another planner throws
-/// <see cref="ArgumentException"/>, and a planner over an area-excluding view is another planner.</para>
+/// <para>Ownership. A pool serves its creating planner and any adapter the owner explicitly authorizes.
+/// A begin from an unrelated planner throws <see cref="ArgumentException"/>. An area-excluding view has
+/// its own planner and does not support requests.</para>
 /// <para>One owner sequence. Calls into a pool, its begins and its requests' advances and cancels, must not
 /// overlap. An overlapping call, from a second thread or from a region predicate that re-enters the planner,
 /// throws <see cref="InvalidOperationException"/>. No thread is pinned, so a pool created on a loading thread may
@@ -22,7 +23,8 @@ namespace KhaozEngine.Navigation;
 /// in the next tick.</para>
 /// <para>Release. A request releases its workspace when it completes, before its owner adopts the result, and when
 /// it is cancelled or disposed. A cancelled waiter leaves the queue. A cancelled request holds no lease and cannot
-/// release another's. Disposing the pool cancels every request it holds or queues, and a later begin throws
+/// release another's. Disposing the pool cancels every request it holds or queues. Ready results have already
+/// released their leases and remain available for adoption. A later begin throws
 /// <see cref="ObjectDisposedException"/>.</para>
 /// <para>Sizing. The count has no default because the engine cannot know how many owners share a pool. With
 /// at most one pending request per sharing owner, one workspace per owner prevents waiting. A request that waits
@@ -47,5 +49,6 @@ internal abstract class PathPlanWorkspaces : IDisposable
     public abstract long Waits { get; }
 
     /// <summary>Cancels every request the pool holds or queues and refuses later begins. Idempotent.</summary>
+    /// <exception cref="InvalidOperationException">Disposal overlaps another call into the pool.</exception>
     public abstract void Dispose();
 }

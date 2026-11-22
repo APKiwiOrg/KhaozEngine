@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Numerics;
 using RequestAdmission = KhaozEngine.Navigation.GridPathPlanner.GridSearchRequest.GridPlanningWorkspaces.RequestAdmission;
 
@@ -16,7 +15,8 @@ public sealed partial class GridPathPlanner
         bool _started;
         RequestScratch? _leasedScratch;
         int _leaseSlot = -1;
-        LinkedListNode<GridSearchRequest>? _waitNode;
+        GridSearchRequest? _previousWaiter;
+        GridSearchRequest? _nextWaiter;
 
         GridSearchRequest(RequestAdmission admission)
             => _admission = admission ?? throw new ArgumentNullException(nameof(admission));

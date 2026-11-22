@@ -7,30 +7,40 @@ namespace KhaozEngine.Navigation;
 
 public sealed partial class GridPathPlanner
 {
-    /// <summary>Constrained traversals can scan a footprint within a single search operation and plan
-    /// synchronously. Unconstrained legacy and baked-graph planners support requests.</summary>
-    internal bool SupportsRequests => _allowsTraversal is null;
+    /// <summary>Region requests require unconstrained traversal and surface heights on every layer.</summary>
+    internal bool SupportsRegionRequests => _allowsTraversal is null && _hasRegionSurfaces;
 
-    bool IIncrementalRegionPathPlanner.SupportsRequests => SupportsRequests;
+    bool IIncrementalRegionPathPlanner.SupportsRequests => SupportsRegionRequests;
+
+    NavSpace IIncrementalRegionPathPlanner.Space => _space;
 
     PathPlanWorkspaces IIncrementalRegionPathPlanner.CreateWorkspaces(int count, PathQueryBudget largestBudget)
-        => new GridPlanningWorkspaces(this, count, largestBudget);
+    {
+        RequireRegionRequestSupport();
+        return new GridPlanningWorkspaces(this, count, largestBudget);
+    }
+
+    void IIncrementalRegionPathPlanner.ValidateWorkspaces(PathPlanWorkspaces workspaces, PathQueryBudget budget)
+    {
+        if (!SupportsRegionRequests)
+            throw new ArgumentException("This planner does not support region requests.", nameof(workspaces));
+        GridPlanningWorkspaces.Require(workspaces).ValidateRaw(this, budget);
+    }
 
     PathPlanRequest IIncrementalRegionPathPlanner.BeginPath(Vector3 start, NavGoalRegion goal, float agentRadius,
         PathQueryBudget budget, PathPlanWorkspaces workspaces)
     {
-        RequireRequestSupport();
+        RequireRegionRequestSupport();
         GridPlanningWorkspaces pool = GridPlanningWorkspaces.Require(workspaces);
         if (!ReferenceEquals(pool.Planner, this))
             throw new ArgumentException("The workspace pool belongs to another planner.", nameof(workspaces));
         return pool.BeginRaw(start, goal, agentRadius, budget);
     }
 
-    /// <summary>Refuses the incremental door before it can invoke an unbudgeted traversal constraint.</summary>
-    internal void RequireRequestSupport()
+    void RequireRegionRequestSupport()
     {
-        if (!SupportsRequests)
-            throw new NotSupportedException("Traversal constraints can scan a footprint inside one search operation and require synchronous planning.");
+        if (!SupportsRegionRequests)
+            throw new NotSupportedException("Region requests require unconstrained traversal and surface heights on every grid layer.");
     }
 
     /// <summary>Seeds prewarmed stamps near wrap, using the same pool and requests as ordinary creation.</summary>

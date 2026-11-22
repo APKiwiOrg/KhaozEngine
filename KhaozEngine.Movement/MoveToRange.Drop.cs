@@ -4,8 +4,8 @@ namespace KhaozEngine.Movement;
 
 public sealed partial class MoveToRange
 {
-    bool TickDrop(in MoveState body, in MoveTuning tuning, bool run, float dt,
-        GroundMoveContext context, PlayerPathInput? playerInput, out RangeSteering steering)
+    bool TickDrop<TPlanning>(in MoveState body, in MoveTuning tuning, bool run, float dt,
+        GroundMoveContext context, PlayerPathInput? playerInput, out RangeSteering steering) where TPlanning : struct
     {
         steering = _drop!.Tick(body, tuning, run, dt, context, playerInput, out bool complete, out bool replan);
         if (complete)
@@ -18,7 +18,7 @@ public sealed partial class MoveToRange
         if (replan)
         {
             _drop = null;
-            _follower.Reset();
+            _follower.Reset<TPlanning>();
             ClearStall();
             return false;
         }

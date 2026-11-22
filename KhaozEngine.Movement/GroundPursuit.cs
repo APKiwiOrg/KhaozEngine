@@ -26,6 +26,7 @@ public sealed class GroundPursuit
 
     /// <summary>Uses the profile's guarded planner and supported-walk segment admission. The runtime capsule
     /// and resolved context binding must match the profile. Follower defaults supply query and replan policy.</summary>
+    /// <exception cref="ArgumentException"><paramref name="follow"/> enables fixed-quota planning.</exception>
     public GroundPursuit(GroundNavigation navigation, PathFollowConfig? follow = null)
         : this((navigation ?? throw new ArgumentNullException(nameof(navigation))).Planner,
             navigation.Space, navigation.AllowsSegment, follow)
@@ -36,6 +37,7 @@ public sealed class GroundPursuit
     /// <summary>The caller supplies equivalent guarded region planning, surface heights and segment admission,
     /// including runtime profile compatibility. Hop, Drop and unknown waypoint kinds are still refused even
     /// if this planner ignores PathQueryBudget.WalkOnly. The supplied follower configuration is immutable.</summary>
+    /// <exception cref="ArgumentException"><paramref name="follow"/> enables fixed-quota planning.</exception>
     public GroundPursuit(IRegionPathPlanner planner, NavSpace space,
         Func<Vector3, Vector3, bool> allowsSegment, PathFollowConfig? follow = null)
     {
@@ -43,6 +45,8 @@ public sealed class GroundPursuit
         _space = space ?? throw new ArgumentNullException(nameof(space));
         _allowsSegment = allowsSegment ?? throw new ArgumentNullException(nameof(allowsSegment));
         _follow = follow ?? PathFollowConfig.Default;
+        if (_follow.Planning is not null)
+            throw new ArgumentException("Ground pursuit requires synchronous route planning.", nameof(follow));
         ValidateFollow(_follow);
         _budget = _follow.Budget with { WalkOnly = true };
         _planner = new RouteStraightener(planner, space, allowsSegment);

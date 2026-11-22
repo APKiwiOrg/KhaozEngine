@@ -11,9 +11,9 @@ namespace KhaozEngine.Tests.Movement;
 public sealed class RoutePublicationDigestTests
 {
     [Theory]
-    [InlineData(0, "?")]
-    [InlineData(1, "?")]
-    [InlineData(2, "?")]
+    [InlineData(0, "6E4C8E09AA583E91/DE4E57320ED16394")]
+    [InlineData(1, "6E4C8E09AA583E91/C06A9DF8068DB617")]
+    [InlineData(2, "6E4C8E09AA583E91/068B5E557E5D0EE1")]
     public void StraightenedRequestsPublishIdenticalRouteBitsAndCalls(int schedule, string expected)
     {
         var fixtures = RouteCalibrationFixture.StraighteningRows()
@@ -40,9 +40,9 @@ public sealed class RoutePublicationDigestTests
 public sealed partial class MoveToRangePlanningTests
 {
     [Theory]
-    [InlineData(int.MaxValue, "?")]
-    [InlineData(64, "?")]
-    [InlineData(17, "?")]
+    [InlineData(int.MaxValue, "65135DF7E8BB2CEE/AD2ACA7747985764")]
+    [InlineData(64, "65135DF7E8BB2CEE/EDCAA17D2D4C3E66")]
+    [InlineData(17, "65135DF7E8BB2CEE/4A50DAED6A5A40FD")]
     public void WalkingMoverAdoptsEveryRouteOnTheSameCall(int quota, string expected)
     {
         var navigation = Flat(10, 3, Tuning.CapsuleRadius);

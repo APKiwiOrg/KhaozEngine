@@ -22,16 +22,16 @@ internal sealed class RouteStraighteningRequest : GroundNavigation.ProfilePathRe
 
     internal bool HasStagedStraightenedArrayForTests => _cursor.HasStagedArray;
 
-    private protected override NavPath? RunSlice(int quota, ref int spent)
+    private protected override NavPath? RunSlice<TRecorder>(int quota, ref int spent, TRecorder recorder)
     {
         if (!_straightening)
         {
-            if (base.RunSlice(quota, ref spent) is not { } raw) return null;
+            if (base.RunSlice(quota, ref spent, recorder) is not { } raw) return null;
             _cursor = new RouteStraighteningCursor(_straightener, Start, StartLayer, raw, _fallBack, Scratch.Waypoints);
             _straightening = true;
         }
 
-        _cursor.RunSlice(quota, ref spent);
+        _cursor.RunSlice(quota, ref spent, recorder);
         if (_cursor.Result is not { } result) return null;
         // Only the paid allocation creates a changed route. An unchanged result may be published directly.
         _straightener.RecordStraightened(_cursor.HasStagedArray ? result : null);

@@ -141,17 +141,18 @@ public sealed partial class GroundNavigation
         private protected override bool AdmitsStartChange(Vector3 feet)
             => Navigation.Resolve(Start, out _) && Navigation.Resolve(feet, out _);
 
-        private protected override NavPath? RunSlice(int quota, ref int spent)
+        private protected override NavPath? RunSlice<TRecorder>(int quota, ref int spent, TRecorder recorder)
         {
-            while (_endpoint.NextOperation != NavSegmentOperation.Done)
+            while (_endpoint.NextOperation is var operation && operation != NavSegmentOperation.Done)
             {
-                int weight = NavSegmentRequest.WeightOf(_endpoint.NextOperation);
+                int weight = NavSegmentRequest.WeightOf(operation);
                 if (spent != 0 && weight > quota - spent) return null;
                 _endpoint.Step();
                 spent += weight;
+                recorder.Add(NavSegmentRequest.WorkKind(operation), weight);
             }
 
-            return _endpoint.Result is null ? NavPath.Unreachable : base.RunSlice(quota, ref spent);
+            return _endpoint.Result is null ? NavPath.Unreachable : base.RunSlice(quota, ref spent, recorder);
         }
     }
 }

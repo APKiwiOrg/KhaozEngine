@@ -170,6 +170,12 @@ public sealed partial class GridPathPlanner
                 request.RunOwnedCall(budget);
             }
 
+            void IRequestPool.RunMeasuredCall(GridSearchRequest request, PathWorkBudget budget, PathWorkRecorder recorder)
+            {
+                using var call = new PoolCall(this);
+                if (request.State == PathPlanState.Pending) request.AdvanceOwned(budget, recorder);
+            }
+
             void Enter()
             {
                 if (Interlocked.CompareExchange(ref _inCall, 1, 0) != 0)

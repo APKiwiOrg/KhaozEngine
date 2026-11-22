@@ -48,27 +48,30 @@ internal sealed record RouteCalibrationFixture(string Name, IIncrementalRegionPa
         yield return Straightened("rows-mixed", Flat(3, 64, 0f), Feet(1, 2), Feet(1, 60));
         yield return Straightened("crossings-mixed", Flat(64, 3, 0f), Feet(2, 1), Feet(60, 1));
 
-        // Coincident layers are intentional. Every endpoint traverses the full list and ties pick layer zero.
-        const int layers = 128;
-        var flat = Flat(6, 3, 0f);
-        var multiple = new NavSpace(Enumerable.Repeat(flat.Space.Layers[0], layers).ToArray());
+        // Every endpoint visits the entire layer list. Only the base layer has a member at the goal height.
+        const int layers = 256;
+        var flat = Flat(24, 3, 0f);
+        NavGrid upper = NavGrid.FromSurfaces(24, 3, 1f, 0f, 0f,
+            static (_, _) => new NavSurfaceSample(true, 4f, float.PositiveInfinity), 0.5f, 1f);
+        var multiple = new NavSpace([flat.Space.Layers[0], .. Enumerable.Repeat(upper, layers - 1)]);
         var graph = new NavTraversalGraph(multiple, flat.Graph.AgentRadius, flat.Graph.AgentHeight,
             Enumerable.Repeat(flat.Graph.Layers[0], layers).ToArray(), []);
         var layered = new GroundNavigation(graph, MoveTuning.Default with { CapsuleRadius = 0f }, flat.Footprint);
-        yield return Straightened("endpoint-layers", layered, Feet(1, 1), Feet(4, 1));
+        yield return Straightened("endpoint-layers", layered, Feet(1, 1), Feet(21, 1));
     }
 
     internal static IEnumerable<RouteCalibrationFixture> WholeRoutes()
     {
         yield return Walk("small", 12);
-        yield return Walk("median", 88);
-        yield return Walk("maximum", 154);
+        yield return Walk("median", 82);
+        yield return Walk("maximum", 153);
         var deadEnd = MakeGrid(4102, 1, static (x, _) => x != 4100);
         yield return Search("unreachable-region-4096", new([deadEnd], [new NavLink(0, 4101, 0, 0, 4099, 0)]),
             Feet(0, 0), Goal(Feet(4101, 0)), 4096);
 
+        // This radius keeps the centre line on one row while the two side guards each span two.
         static RouteCalibrationFixture Walk(string name, int distance)
-            => Straightened(name, Flat(distance + 4, 3, 0f), Feet(1, 1), Feet(distance + 1, 1));
+            => Straightened(name, Flat(distance + 4, 3, 0.01f), Feet(1, 1), Feet(distance + 1, 1));
     }
 
     static RouteCalibrationFixture Straightened(string name, GroundNavigation navigation, Vector3 start, Vector3 goal)

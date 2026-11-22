@@ -78,18 +78,38 @@ internal struct RouteStraighteningCursor
     internal NavPath? Result { get; private set; }
 
     /// <summary>Joins the profile's current slice. Its first-operation allowance may already have been used.</summary>
-    internal void RunSlice(int quota, ref int spent)
+    internal void RunSlice<TRecorder>(int quota, ref int spent, TRecorder recorder)
+        where TRecorder : struct, IPathWorkRecorder
     {
-        while (NextOperation != RouteStraighteningOperation.Done)
+        while (NextOperation is var operation && operation != RouteStraighteningOperation.Done)
         {
-            int weight = NextWeight();
+            int weight = NextWeight(operation);
             if (spent != 0 && weight > quota - spent) return;
+            PathWorkKind kind = default;
+            if (typeof(TRecorder) != typeof(NoPathWorkRecorder))
+                kind = WorkKind(operation);
             Step();
             spent += weight;
+            recorder.Add(kind, weight);
         }
     }
 
-    int NextWeight() => NextOperation switch
+    internal void RunSliceForTests(int quota, ref int spent, PathWorkByKind work)
+        => RunSlice(quota, ref spent, new PathWorkRecorder(work));
+
+    PathWorkKind WorkKind(RouteStraighteningOperation operation) => operation switch
+    {
+        RouteStraighteningOperation.ValidateFeet => PathWorkKind.ValidateFeet,
+        RouteStraighteningOperation.Candidate => PathWorkKind.Candidate,
+        RouteStraighteningOperation.Segment => NavSegmentRequest.WorkKind(_segment.NextOperation),
+        RouteStraighteningOperation.SideOffsets => PathWorkKind.SideOffsets,
+        RouteStraighteningOperation.KeepAnchor => PathWorkKind.KeepAnchor,
+        RouteStraighteningOperation.Allocate => PathWorkKind.StraighteningAllocate,
+        RouteStraighteningOperation.Copy => PathWorkKind.StraighteningCopy,
+        _ => throw new InvalidOperationException("A finished straightener has no next operation."),
+    };
+
+    int NextWeight(RouteStraighteningOperation operation) => operation switch
     {
         RouteStraighteningOperation.ValidateFeet or RouteStraighteningOperation.KeepAnchor => PathWorkWeights.StraighteningFeet,
         RouteStraighteningOperation.Candidate => PathWorkWeights.StraighteningCandidate,

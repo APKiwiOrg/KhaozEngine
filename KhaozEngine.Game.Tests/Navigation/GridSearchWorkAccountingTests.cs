@@ -25,10 +25,10 @@ public sealed class GridSearchWorkAccountingTests
         Assert.Same(NavPath.Unreachable, request.Result);
         Assert.Equal(2, units[PathWorkKind.Snap]);
         Assert.Equal(2, units[PathWorkKind.MemberBox]);
-        Assert.Equal(8, units[PathWorkKind.Member]);
+        Assert.Equal(16, units[PathWorkKind.Member]);
         Assert.Equal(2, units[PathWorkKind.CertificateLabel]);
         Assert.Equal(6, units[PathWorkKind.CertificateProgress]);
-        Assert.Equal(20, units.Total);
+        Assert.Equal(28, units.Total);
         Assert.Equal(request.WorkSpent, units.Total);
     }
 }

@@ -10,23 +10,23 @@ public sealed partial class GridPathPlanner
     /// <summary>The next paid request operation. Done means no paid operation remains.</summary>
     internal enum SearchPhase
     {
-        Layer,
-        Snap,
-        MemberBox,
-        Member,
-        CertificateLabel,
-        CertificateProgress,
-        Wrap,
-        Seed,
-        Pop,
-        SearchProgress,
-        Neighbor,
-        Link,
-        Parent,
-        Reverse,
-        Decode,
-        Allocate,
-        Copy,
+        Layer = (int)PathWorkKind.Layer,
+        Snap = (int)PathWorkKind.Snap,
+        MemberBox = (int)PathWorkKind.MemberBox,
+        Member = (int)PathWorkKind.Member,
+        CertificateLabel = (int)PathWorkKind.CertificateLabel,
+        CertificateProgress = (int)PathWorkKind.CertificateProgress,
+        Wrap = (int)PathWorkKind.Wrap,
+        Seed = (int)PathWorkKind.Seed,
+        Pop = (int)PathWorkKind.Pop,
+        SearchProgress = (int)PathWorkKind.SearchProgress,
+        Neighbor = (int)PathWorkKind.Neighbor,
+        Link = (int)PathWorkKind.Link,
+        Parent = (int)PathWorkKind.Parent,
+        Reverse = (int)PathWorkKind.Reverse,
+        Decode = (int)PathWorkKind.Decode,
+        Allocate = (int)PathWorkKind.Allocate,
+        Copy = (int)PathWorkKind.Copy,
         Done,
     }
 
@@ -66,18 +66,21 @@ public sealed partial class GridPathPlanner
         internal int StartLayer => _startLayer;
         internal bool HasStagedResultArrayForTests => _resultArray is not null;
 
-        internal void RunSlice(int quota, ref int spent)
+        internal void RunSlice<TRecorder>(int quota, ref int spent, TRecorder recorder)
+            where TRecorder : struct, IPathWorkRecorder
         {
-            while (Phase != SearchPhase.Done)
+            while (Phase is var phase && phase != SearchPhase.Done)
             {
-                int weight = PathWorkWeights.For(Phase);
+                int weight = PathWorkWeights.For(phase);
                 if (spent != 0 && weight > quota - spent) return;
                 // Comparisons within one reduction share a weight and keep their exact running minimum.
-                int operations = Phase is SearchPhase.CertificateProgress or SearchPhase.SearchProgress
+                int operations = phase is SearchPhase.CertificateProgress or SearchPhase.SearchProgress
                     ? Math.Min(_goal.MemberCount - _progressIndex, Math.Max(1, (quota - spent) / weight))
                     : 1;
                 Step(operations);
-                spent += operations * weight;
+                int units = operations * weight;
+                spent += units;
+                recorder.Add((PathWorkKind)phase, units);
             }
         }
 

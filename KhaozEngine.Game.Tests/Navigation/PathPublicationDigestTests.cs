@@ -9,9 +9,9 @@ namespace KhaozEngine.Tests.Navigation;
 public sealed class PathPublicationDigestTests
 {
     [Theory]
-    [InlineData(0, "?")]
-    [InlineData(1, "?")]
-    [InlineData(2, "?")]
+    [InlineData(0, "6D5B11075786EB44/041369EF5D05D565")]
+    [InlineData(1, "6D5B11075786EB44/0C79EB2698535903")]
+    [InlineData(2, "6D5B11075786EB44/8E7E88F4203E1089")]
     public void SeededSearchPublishesIdenticalRouteBitsAndCalls(int schedule, string expected)
     {
         var digest = new PathPublicationDigest();
@@ -45,9 +45,9 @@ public sealed class PathPublicationDigestTests
     }
 
     [Theory]
-    [InlineData(int.MaxValue, "?")]
-    [InlineData(64, "?")]
-    [InlineData(17, "?")]
+    [InlineData(int.MaxValue, "493130EAE1A5B078/8977F1AE8086B8B4")]
+    [InlineData(64, "493130EAE1A5B078/8178C9B426532534")]
+    [InlineData(17, "493130EAE1A5B078/ED697DA5C2DA4996")]
     public void WalkingFollowerAdoptsEveryRouteOnTheSameCall(int quota, string expected)
     {
         const int cells = 9;

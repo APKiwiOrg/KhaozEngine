@@ -206,26 +206,29 @@ public class GridSearchRequestScratchTests
 
         using var ordinaryPool = planner.CreateWorkspaces(1, PathQueryBudget.Default);
         using var ordinary = NewRequest(planner, ordinaryPool, goal);
-        var (ordinaryAdvances, ordinaryBlocks) = Drive(ordinary);
+        var (ordinaryAdvances, ordinaryBlocks) = Drive(ordinary, expectedWrapUnits: 0);
         EqualBits(expected, Assert.IsType<NavPath>(ordinary.Result));
         Assert.Equal(0, ordinaryBlocks);
 
         using var retry = NewRequest(planner, pool, goal);
-        var (wrapAdvances, wrapBlocks) = Drive(retry);
+        var (wrapAdvances, wrapBlocks) = Drive(retry, expectedWrapUnits: 16);
         EqualBits(expected, Assert.IsType<NavPath>(retry.Result));
         Assert.Equal(8, wrapBlocks);
         Assert.Equal(8, wrapAdvances - ordinaryAdvances);
         Assert.Equal(16, retry.WorkSpent - ordinary.WorkSpent);
 
-        (int Advances, int Blocks) Drive(GridPathPlanner.GridSearchRequest request)
+        (int Advances, int Blocks) Drive(GridPathPlanner.GridSearchRequest request, int expectedWrapUnits)
         {
+            var work = new PathWorkByKind();
             int advances = 0, blocks = 0;
             while (request.State == PathPlanState.Pending)
             {
                 Assert.True(advances++ < 1000);
                 if (request.NextPhaseForTests == Phase.Wrap) blocks++;
-                request.Advance(one);
+                request.AdvanceForTests(one, work);
             }
+            Assert.Equal(expectedWrapUnits, work[PathWorkKind.Wrap]);
+            Assert.Equal(request.WorkSpent, work.Total);
             return (advances, blocks);
         }
     }

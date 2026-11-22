@@ -48,18 +48,23 @@ internal struct NavSegmentRequest(GroundNavigation navigation, Vector3 from, Vec
     };
 
     /// <summary>Spends whole operations up to the quota, allowing the first operation by itself to exceed it.</summary>
-    internal void Advance(int quota)
+    internal void Advance(int quota) => Advance(quota, default(NoPathWorkRecorder));
+
+    internal void AdvanceForTests(int quota, PathWorkByKind work) => Advance(quota, new PathWorkRecorder(work));
+
+    void Advance<TRecorder>(int quota, TRecorder recorder) where TRecorder : struct, IPathWorkRecorder
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(quota, 1);
         int spent = 0;
         try
         {
-            while (NextOperation != NavSegmentOperation.Done)
+            while (NextOperation is var operation && operation != NavSegmentOperation.Done)
             {
-                int weight = WeightOf(NextOperation);
+                int weight = WeightOf(operation);
                 if (spent != 0 && weight > quota - spent) return;
                 Step();
                 spent += weight;
+                recorder.Add(WorkKind(operation), weight);
             }
         }
         catch
@@ -83,6 +88,10 @@ internal struct NavSegmentRequest(GroundNavigation navigation, Vector3 from, Vec
         NavSegmentOperation.CellCrossing => PathWorkWeights.CellCrossing,
         _ => throw new InvalidOperationException("A finished segment has no next operation."),
     };
+
+    // The two enums have the same order for this contiguous group of segment operations.
+    internal static PathWorkKind WorkKind(NavSegmentOperation operation)
+        => (PathWorkKind)((int)PathWorkKind.EndpointStart + (int)operation);
 
     /// <summary>Runs one operation after the owner admits its charge.</summary>
     internal void Step()

@@ -13,6 +13,13 @@ public sealed partial class GroundNavigation
     /// A view's traversal constraint can scan a footprint within one grid search operation.</summary>
     internal bool SupportsRequests => ((ProfilePlanner)Planner).SupportsRequests;
 
+    /// <summary>Prewarms <paramref name="count"/> workspaces for this profile's region planner, with the
+    /// expansion and snap limits in <see cref="PathQueryBudget.Default"/>.</summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="count"/> is below one.</exception>
+    /// <exception cref="NotSupportedException">This profile requires synchronous planning.</exception>
+    internal PathPlanWorkspaces CreatePlanningWorkspaces(int count)
+        => CreatePlanningWorkspaces(count, PathQueryBudget.Default);
+
     /// <summary>Prewarms all buffers for the profile's incremental planner. Area excluding views plan
     /// synchronously, as their grid search constraint can scan an entire footprint in one operation.</summary>
     /// <exception cref="ArgumentException">The supplied straightener is bound to a different profile or has no profile.</exception>

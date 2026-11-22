@@ -41,6 +41,9 @@ profile planner or straightener that created it. A successful begin clears `Last
 shortcut or clears `LastStraightened` if the route is unchanged. A spent quota keeps the route private
 until the final operation.
 
+The internal `GroundNavigation.CreatePlanningWorkspaces(count)` factory prewarms a pool for that profile
+planner with the expansion and snap limits of `PathQueryBudget.Default`. It requires a positive count.
+
 A footprint with query-time area exclusions requires synchronous planning, including when combined with
 an unconstrained grid. An area excluding view adds a traversal constraint that can scan a footprint
 inside one search operation. The graph already enforces the area filter specified when the profile was baked.

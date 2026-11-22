@@ -1,5 +1,4 @@
 using System;
-using System.Linq;
 using System.Numerics;
 using KhaozEngine.Navigation;
 using Xunit;
@@ -94,12 +93,19 @@ public class GridPathPlannerEqualityCorpusTests
     internal static void AssertSame(NavPath expected, NavPath actual, StatusTally? seen, string context)
     {
         Assert.True(expected.Status == actual.Status, $"{context}: status {actual.Status}, expected {expected.Status}");
-        NavWaypoint[] want = expected.Waypoints.ToArray();
-        NavWaypoint[] got = actual.Waypoints.ToArray();
-        Assert.True(want.SequenceEqual(got),
-            $"{context}: waypoints [{string.Join(", ", got)}], expected [{string.Join(", ", want)}]");
+        Assert.True(expected.Waypoints.Count == actual.Waypoints.Count,
+            $"{context}: waypoint count {actual.Waypoints.Count}, expected {expected.Waypoints.Count}");
+        for (int i = 0; i < expected.Waypoints.Count; i++)
+        {
+            NavWaypoint want = expected.Waypoints[i], got = actual.Waypoints[i];
+            Assert.True(Bits(want) == Bits(got), $"{context}: waypoint {i} was {got}, expected {want}");
+        }
         seen?.Add(expected.Status);
     }
+
+    static (NavWaypointKind Kind, int Layer, int X, int Z) Bits(NavWaypoint waypoint)
+        => (waypoint.Kind, waypoint.Layer,
+            BitConverter.SingleToInt32Bits(waypoint.Position.X), BitConverter.SingleToInt32Bits(waypoint.Position.Y));
 
     internal sealed class StatusTally
     {

@@ -6,29 +6,14 @@ namespace KhaozEngine.Navigation;
 
 public sealed partial class GridPathPlanner
 {
-    partial struct SearchKernel<TGoal>
+    partial struct RequestStepper
     {
         enum ProgressPurpose { CertificateStart, CertificateNode, SearchStart, PoppedNode }
 
         void BeginCertificate()
         {
-            // Rounded legacy snaps can decode to another cell. Only the actual search node can anchor a proof.
-            if (!_useCertificate || !_planner._space.Layers[_startLayer].InBounds(_startX, _startZ))
-            {
-                BeginSearch();
-                return;
-            }
-
-            _component = _planner._connectivity.ComponentOf(_startId);
-            if (_component < 0)
-            {
-                BeginSearch();
-                return;
-            }
-
-            int nodes = _planner._connectivity.Members(_component).Length;
-            int members = _goal.MemberCount;
-            if (nodes > CertificateNodeLimit || members <= 0 || (long)nodes * members > CertificateComparisonLimit)
+            _component = _planner.CertificateComponent(_startLayer, _startX, _startZ, _startId);
+            if (_component < 0 || !FitsCertificate(_planner._connectivity.Members(_component).Length, _goal.MemberCount))
                 BeginSearch();
             else
                 Phase = SearchPhase.CertificateLabel;
@@ -36,8 +21,8 @@ public sealed partial class GridPathPlanner
 
         void CheckCertificateLabel()
         {
-            int label = _planner._connectivity.ComponentOf(_goal.MemberNode(_progressIndex++));
-            if (label < 0 || label == _component)
+            int node = _scratch.MemberNodeIds[_progressIndex++];
+            if (!CertificateMemberIsDisconnected(_planner._connectivity, _component, node))
                 BeginSearch();
             else if (_progressIndex == _goal.MemberCount)
                 BeginProgress(_startLayer, _startX, _startZ, ProgressPurpose.CertificateStart);
@@ -53,26 +38,15 @@ public sealed partial class GridPathPlanner
                 ? SearchPhase.CertificateProgress : SearchPhase.SearchProgress;
         }
 
-        void FinishUnboundedSearchProgress(int operations)
-        {
-            if (operations == int.MaxValue && Phase == SearchPhase.SearchProgress)
-                CompareProgress(operations);
-        }
-
         void CompareProgress(int operations)
         {
             int members = _goal.MemberCount;
             int end = _progressIndex + Math.Min(operations, members - _progressIndex);
             Vector3 feet = _progressFeet;
             double progress = _progress;
+            var goalMembers = _scratch.Members;
             for (int index = _progressIndex; index < end; index++)
-            {
-                Vector3 member = _goal.MemberFeet(index);
-                double dx = (double)feet.X - member.X;
-                double dy = (double)feet.Y - member.Y;
-                double dz = (double)feet.Z - member.Z;
-                progress = Math.Min(progress, dx * dx + dy * dy + dz * dz);
-            }
+                progress = ReduceProgress(progress, feet, goalMembers[index]);
             _progress = progress;
             _progressIndex = end;
             if (end < members) return;
@@ -98,7 +72,7 @@ public sealed partial class GridPathPlanner
 
         void FinishCertificateComparison()
         {
-            if (!double.IsFinite(_progress) || _progress < _startProgress)
+            if (!SupportsCertificate(_progress, _startProgress))
             {
                 BeginSearch();
                 return;

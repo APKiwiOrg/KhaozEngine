@@ -100,6 +100,17 @@ public sealed partial class GridPathPlanner
             MemberBounds = MemberBounds.Include(x, z);
         }
 
+        /// <summary>Clears the entire stamp array at once when a synchronous search wraps.</summary>
+        internal void BeginSynchronousSearch()
+        {
+            if (NeedsWrap)
+            {
+                Array.Clear(_stamp);
+                _generation = 0;
+            }
+            BeginSearch();
+        }
+
         public bool NeedsWrap => _generation >= int.MaxValue - 2;
 
         public int ClearStampBlock(int offset)
@@ -162,27 +173,13 @@ public sealed partial class GridPathPlanner
             return offset + width * height;
         }
 
-        // Synchronous scratch keeps one flag per layer. Prewarmed scratch keeps the nonempty layers
-        // packed so a sliced advance can move to the next candidate layer in constant work.
-        internal void RecordCandidateLayer(int layer, int index, bool hasCandidates)
-        {
-            if (_memberLayers is int[] layers)
-            {
-                if (hasCandidates) layers[index] = layer;
-            }
-            else
-            {
-                ((bool[])_memberLayers)[layer] = hasCandidates;
-            }
-        }
+        // Synchronous loops use flags. The stepper packs only the nonempty layers so advancing
+        // to the next layer always takes constant work.
+        internal bool[] SynchronousCandidateLayers => (bool[])_memberLayers;
 
-        internal int NextCandidateLayer(int previous, int index)
-        {
-            if (_memberLayers is int[] layers) return layers[index];
-            var candidates = (bool[])_memberLayers;
-            do { previous++; } while (!candidates[previous]);
-            return previous;
-        }
+        internal void RecordCandidateLayer(int layer, int index) => ((int[])_memberLayers)[index] = layer;
+
+        internal int CandidateLayer(int index) => ((int[])_memberLayers)[index];
 
         /// <summary>Ensures flags fit the candidate boxes. Only synchronous scratch can need to grow here.</summary>
         public void EnsureMemberFlags(int cells)

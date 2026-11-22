@@ -95,7 +95,19 @@ public sealed class NavSpace
     /// <paramref name="y"/> to its band center (YMin + YMax) * 0.5, considering only layers with a
     /// finite band, ties going to the lowest index. If every layer has an infinite band, returns 0.
     /// </summary>
-    public int LayerOf(float y) => ResolveLayer(new Vector3(0f, y, 0f), surfaces: false);
+    public int LayerOf(float y)
+    {
+        if (Layers.Count == 1) return 0;
+
+        for (int i = 0; i < Layers.Count; i++)
+            if (Layers[i].ContainsY(y)) return i;
+
+        int bestIndex = 0;
+        float bestDistance = float.PositiveInfinity;
+        for (int i = 0; i < Layers.Count; i++)
+            CompareBandCenter(Layers[i], y, i, ref bestIndex, ref bestDistance);
+        return bestIndex;
+    }
 
     /// <summary>
     /// Resolves the layer a world position belongs to, using physical feet heights. With a single layer, always 0.
@@ -107,21 +119,47 @@ public sealed class NavSpace
     /// <see cref="NavGrid.FromWalkable"/> grids), falls back to <see cref="LayerOf"/> on the Y band,
     /// so every pre-layered space resolves exactly as before.
     /// </summary>
-    public int LayerAt(Vector3 position) => ResolveLayer(position, surfaces: true);
-
-    int ResolveLayer(Vector3 position, bool surfaces)
+    public int LayerAt(Vector3 position)
     {
-        var cursor = new LayerCursor(this, position, surfaces);
-        while (!cursor.Done) cursor.Probe();
-        return cursor.Layer;
+        if (Layers.Count == 1) return 0;
+
+        int bestIndex = -1;
+        float bestDistance = float.PositiveInfinity;
+        for (int i = 0; i < Layers.Count; i++)
+            CompareSurface(Layers[i], position, i, ref bestIndex, ref bestDistance);
+        return bestIndex >= 0 ? bestIndex : LayerOf(position.Y);
+    }
+
+    static void CompareSurface(NavGrid grid, Vector3 position, int index, ref int bestIndex, ref float bestDistance)
+    {
+        if (!grid.HasSurfaceHeights) return;
+        (int x, int z) = grid.CellOf(position.X, position.Z);
+        if (grid.RestingHeightAt(x, z) is float height)
+            CompareLayer(position.Y, height, index, ref bestIndex, ref bestDistance);
+    }
+
+    static void CompareBandCenter(NavGrid grid, float y, int index, ref int bestIndex, ref float bestDistance)
+    {
+        if (!float.IsInfinity(grid.YMin) && !float.IsInfinity(grid.YMax))
+            CompareLayer(y, (grid.YMin + grid.YMax) * 0.5f, index, ref bestIndex, ref bestDistance);
+    }
+
+    static void CompareLayer(float y, float candidateHeight, int index, ref int bestIndex, ref float bestDistance)
+    {
+        float distance = Math.Abs(y - candidateHeight);
+        if (distance < bestDistance)
+        {
+            bestDistance = distance;
+            bestIndex = index;
+        }
     }
 
     /// <summary>Resolves a position in constructor order, one surface or band probe at a time.</summary>
-    internal struct LayerCursor(NavSpace space, Vector3 position, bool surfaces = true)
+    internal struct LayerCursor(NavSpace space, Vector3 position)
     {
         enum ProbeKind { Surface, ContainsY, BandCenter }
 
-        ProbeKind _kind = surfaces ? ProbeKind.Surface : ProbeKind.ContainsY;
+        ProbeKind _kind;
         int _index;
         int _best;
         float _distance = float.PositiveInfinity;
@@ -132,13 +170,14 @@ public sealed class NavSpace
 
         internal void Probe()
         {
+            NavGrid grid = space.Layers[_index];
             switch (_kind)
             {
                 case ProbeKind.Surface:
-                    _best = LayerAt(space, position, _index, _best, ref _distance);
+                    CompareSurface(grid, position, _index, ref _best, ref _distance);
                     break;
                 case ProbeKind.ContainsY:
-                    if (space.Layers[_index].ContainsY(position.Y))
+                    if (grid.ContainsY(position.Y))
                     {
                         _best = _index;
                         Done = true;
@@ -146,9 +185,7 @@ public sealed class NavSpace
                     }
                     break;
                 case ProbeKind.BandCenter:
-                    NavGrid grid = space.Layers[_index];
-                    if (!float.IsInfinity(grid.YMin) && !float.IsInfinity(grid.YMax))
-                        Compare((grid.YMin + grid.YMax) * 0.5f);
+                    CompareBandCenter(grid, position.Y, _index, ref _best, ref _distance);
                     break;
             }
 
@@ -162,30 +199,5 @@ public sealed class NavSpace
             _kind++;
         }
 
-        // Extends the closest layer found so far with one surface-height probe.
-        static int LayerAt(NavSpace space, Vector3 position, int candidate, int closest, ref float closestDistance)
-        {
-            NavGrid grid = space.Layers[candidate];
-            if (!grid.HasSurfaceHeights) return closest;
-            (int x, int z) = grid.CellOf(position.X, position.Z);
-            if (grid.RestingHeightAt(x, z) is not float height) return closest;
-            float distance = Math.Abs(position.Y - height);
-            if (distance < closestDistance)
-            {
-                closestDistance = distance;
-                return candidate;
-            }
-            return closest;
-        }
-
-        void Compare(float y)
-        {
-            float distance = Math.Abs(position.Y - y);
-            if (distance < _distance)
-            {
-                _distance = distance;
-                _best = _index;
-            }
-        }
     }
 }

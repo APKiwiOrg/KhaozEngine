@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Threading;
 
 namespace KhaozEngine.Navigation;
 
@@ -33,10 +34,9 @@ public sealed partial class GridPathPlanner
     {
         NavGrid goalGrid = _space.Layers[goalLayer];
         (int goalX, int goalZ) = goalGrid.CellOf(goalPoint.X, goalPoint.Y);
-        var goal = new PointGoal(this, goalLayer, goalX, goalZ, CellFeet(goalLayer, goalX, goalZ));
-        var kernel = new SearchKernel<PointGoal>(this, scratch, startLayer, startPoint, goal,
+        return RunSearch(scratch, startLayer, startPoint,
+            new PointGoal(this, goalLayer, goalX, goalZ, CellFeet(goalLayer, goalX, goalZ)),
             goalPoint, agentRadius, budget, useCertificate);
-        return kernel.RunUnbounded();
     }
 
     /// <summary>What one search is looking for. A struct keeps goal calls free of delegate allocations.</summary>
@@ -44,8 +44,10 @@ public sealed partial class GridPathPlanner
     {
         bool IsGoal(int layer, int x, int z);
         int MemberCount { get; }
-        int MemberNode(int index);
-        Vector3 MemberFeet(int index);
+        bool IsDisconnected(PlannerConnectivity connectivity, int component);
+
+        /// <summary>Lower is closer. Only chooses a partial endpoint.</summary>
+        double Progress(int layer, int x, int z);
 
         /// <summary>Added to the g-score for the open-set order. Bounds the remaining route cost.</summary>
         double Priority(int layer, int x, int z);
@@ -58,16 +60,75 @@ public sealed partial class GridPathPlanner
         public bool IsGoal(int layer, int x, int z) => layer == goalLayer && x == goalX && z == goalZ;
         public int MemberCount => 1;
 
-        public int MemberNode(int index)
+        bool ISearchGoal.IsDisconnected(PlannerConnectivity connectivity, int component)
         {
             NavGrid grid = planner._space.Layers[goalLayer];
-            return grid.InBounds(goalX, goalZ) ? planner._layerOffset[goalLayer] + goalZ * grid.Width + goalX : -1;
+            return grid.InBounds(goalX, goalZ) &&
+                CertificateMemberIsDisconnected(connectivity, component,
+                    planner._layerOffset[goalLayer] + goalZ * grid.Width + goalX);
         }
-
-        public Vector3 MemberFeet(int index) => goalFeet;
 
         public double Priority(int layer, int x, int z)
             => planner._spatialBound.Point(layer, x, z, goalLayer, goalX, goalZ);
+
+        double ISearchGoal.Progress(int layer, int x, int z)
+            => DistanceSquared(planner.CellFeet(layer, x, z), goalFeet);
+    }
+
+    // Priority bounds remaining route cost. Progress only chooses a partial endpoint.
+    NavPath RunSearch<TGoal>(SearchScratch scratch, int startLayer, Vector2 startPoint, TGoal goal,
+        Vector2? goalPoint, float agentRadius, PathQueryBudget budget, bool useCertificate)
+        where TGoal : struct, ISearchGoal
+    {
+        NavGrid startGrid = _space.Layers[startLayer];
+        (int startX, int startZ) = startGrid.CellOf(startPoint.X, startPoint.Y);
+        int startId = _layerOffset[startLayer] + startZ * startGrid.Width + startX;
+
+        if (useCertificate && TryCertifyNoProgress(startLayer, startX, startZ, startId, ref goal))
+        {
+            Interlocked.Increment(ref _certificatesForTests);
+            return NavPath.Unreachable;
+        }
+
+        Interlocked.Increment(ref _searchesForTests);
+        scratch.BeginSynchronousSearch();
+        PriorityQueue<int, (double F, int Seq)> open = scratch.Open;
+        int seq = 0;
+        SeedOpen(scratch, open, ref goal, ref seq, startId, startLayer, startX, startZ);
+
+        int closestNode = startId;
+        double closestProgress = goal.Progress(startLayer, startX, startZ);
+        int expanded = 0;
+        bool reachedGoal = false;
+
+        while (CanPop(open, expanded, budget.MaxExpandedNodes))
+        {
+            int current = open.Dequeue();
+            if (!TryClosePoppedNode(scratch, current, ref expanded)) continue;
+
+            (int layer, int cx, int cz) = Decode(current);
+            NavGrid grid = _space.Layers[layer];
+            int width = grid.Width;
+            int baseOffset = _layerOffset[layer];
+
+            double progress = goal.Progress(layer, cx, cz);
+            reachedGoal = SelectPoppedEndpoint(ref goal, current, layer, cx, cz, progress, ref closestNode, ref closestProgress);
+            if (reachedGoal) break;
+
+            double gCurrent = scratch.GScore(current);
+            int neighbor = 0;
+            for (; neighbor < NeighborCount; neighbor++)
+                RelaxNeighbor(scratch, open, ref goal, ref seq, current, layer, cx, cz, grid, width,
+                    baseOffset, gCurrent, agentRadius, neighbor);
+
+            if (LinksAfterNeighbors(current, neighbor) is { } links)
+                foreach (PlannerLink link in links)
+                    RelaxLink(scratch, open, ref goal, ref seq, current, layer, cx, cz, gCurrent,
+                        agentRadius, budget.WalkOnly, link);
+        }
+
+        if (!ShouldReconstruct(reachedGoal, closestNode, startId)) return NavPath.Unreachable;
+        return Reconstruct(scratch, closestNode, reachedGoal, goalPoint, agentRadius);
     }
 
     /// <summary>Pulls a reversed-to-travel-order chain for legacy point queries. Special links split runs.
@@ -102,11 +163,7 @@ public sealed partial class GridPathPlanner
             if (!firstRun)
             {
                 Vector2 landing = grid.CellCenter(cells[runStart].Cx, cells[runStart].Cz);
-                NavWaypointKind kind = WaypointKind(scratch.Incoming(chain[runStart]));
-                waypoints.Add(new NavWaypoint(landing, layer)
-                {
-                    Kind = kind,
-                });
+                waypoints.Add(WaypointFromIncoming(landing, layer, scratch.Incoming(chain[runStart])));
             }
 
             if (firstRun && runEnd == runStart && count > 1 && scratch.Incoming(chain[1]) == NavLinkKind.Drop)
@@ -157,7 +214,7 @@ public sealed partial class GridPathPlanner
             }
         }
 
-        return new NavPath(reachedGoal ? NavPathStatus.Complete : NavPathStatus.Partial, waypoints.ToArray());
+        return new NavPath(PathStatus(reachedGoal), waypoints.ToArray());
     }
 
     /// <summary>Decodes a flat node id into its layer index and grid cell (cx, cz), inverting the

@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Navigation;
@@ -11,33 +10,82 @@ namespace KhaozEngine.Tests.Navigation;
 
 public partial class GridSearchRequestEqualityTests
 {
-    [Fact]
-    public void PhaseBoundaryQuanta()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void PhaseBoundaryQuanta(bool useLinks)
     {
-        var (planner, goal) = DisconnectedCorridor();
+        RegionQuery links = EqualPriceLinks();
+        var (planner, goal) = useLinks ? (Incremental(links.Planner), links.Goal) : DisconnectedCorridor();
+        Vector3 start = useLinks ? links.Start : Start;
         using var pool = planner.CreateWorkspaces(1, PathQueryBudget.Default);
-        using var baseline = NewRequest(planner, pool, goal);
-        var boundaries = new Dictionary<Phase, (long WorkSpent, Phase Next)>();
-        for (int i = 0; baseline.State == PathPlanState.Pending; i++)
+        using var baseline = Begin();
+        var trace = new List<(Phase Operation, int After)>();
+        for (int call = 0; baseline.State == PathPlanState.Pending; call++)
         {
-            Assert.True(i < 1000);
+            Assert.True(call < 1000);
             Phase phase = baseline.NextPhaseForTests;
+            int before = checked((int)baseline.WorkSpent);
             baseline.Advance(new PathWorkBudget(1));
-            if (phase != baseline.NextPhaseForTests)
-                boundaries[phase] = (baseline.WorkSpent, baseline.NextPhaseForTests);
+            int after = checked((int)baseline.WorkSpent);
+            Assert.Equal(PathWorkWeights.For(phase), after - before);
+            trace.Add((phase, after));
         }
 
-        using var request = NewRequest(planner, pool, goal);
-        Phase[] cuts = { Phase.Member, Phase.CertificateProgress, Phase.Neighbor, Phase.Parent, Phase.Reverse, Phase.Copy };
-        Array.Sort(cuts, (left, right) => boundaries[left].WorkSpent.CompareTo(boundaries[right].WorkSpent));
-        foreach (Phase cut in cuts)
+        Phase[] required = useLinks
+            ? new[] { Phase.Layer, Phase.Link, Phase.Decode, Phase.Copy }
+            : new[] { Phase.Snap, Phase.MemberBox, Phase.Member, Phase.CertificateLabel, Phase.CertificateProgress,
+                Phase.Seed, Phase.Pop, Phase.SearchProgress, Phase.Neighbor, Phase.Parent, Phase.Reverse,
+                Phase.Decode, Phase.Allocate, Phase.Copy };
+        foreach (Phase phase in required)
+            Assert.Contains(trace, step => step.Operation == phase);
+
+        // Pin both sides of the first two operations of each kind and of its last operation.
+        // The second cut is within a repeated reduction, link list, decode or copy on these fixtures.
+        var seen = new Dictionary<Phase, int>();
+        var cuts = new SortedSet<int> { trace.Count };
+        for (int index = 0; index < trace.Count; index++)
         {
-            var (workSpent, next) = boundaries[cut];
-            request.Advance(new PathWorkBudget(checked((int)(workSpent - request.WorkSpent))));
-            Assert.Equal((workSpent, next), (request.WorkSpent, request.NextPhaseForTests));
+            Phase operation = trace[index].Operation;
+            seen.TryGetValue(operation, out int occurrences);
+            seen[operation] = occurrences + 1;
+            if (occurrences >= 2 && trace.FindLastIndex(step => step.Operation == operation) != index) continue;
+            if (index > 0) cuts.Add(index);
+            cuts.Add(index + 1);
         }
-        Assert.Equal(PathPlanState.Ready, request.State);
-        EqualBits(Assert.IsType<NavPath>(baseline.Result), Assert.IsType<NavPath>(request.Result));
+
+        using var request = Begin();
+        int callCount = 0;
+        int? readyCall = null;
+        foreach (int cut in cuts)
+        {
+            bool last = cut == trace.Count;
+            int workSpent = trace[cut - 1].After;
+            Phase next = last ? Phase.Done : trace[cut].Operation;
+            int quota = checked((int)(workSpent - request.WorkSpent));
+            // Spare quota below the next operation's weight must leave it wholly untouched.
+            if (!last) quota += PathWorkWeights.For(next) - 1;
+            request.Advance(new PathWorkBudget(quota));
+
+            Assert.Equal((workSpent, next), (request.WorkSpent, request.NextPhaseForTests));
+            callCount++;
+            if (request.State == PathPlanState.Ready)
+                readyCall ??= callCount;
+            else
+            {
+                Assert.Equal(PathPlanState.Pending, request.State);
+                Assert.Null(request.Result);
+            }
+        }
+        Assert.Equal(cuts.Count, readyCall);
+        Assert.Equal(baseline.WorkSpent, request.WorkSpent);
+        NavPath path = Assert.IsType<NavPath>(request.Result);
+        EqualBits(Assert.IsType<NavPath>(baseline.Result), path);
+        EqualBits(planner.FindPath(start, goal, 0f, PathQueryBudget.Default), path);
+
+        GridPathPlanner.GridSearchRequest Begin()
+            => Assert.IsType<GridPathPlanner.GridSearchRequest>(
+                planner.BeginPath(start, goal, 0f, PathQueryBudget.Default, pool));
     }
 
     [Fact]

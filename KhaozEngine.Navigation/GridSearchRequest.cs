@@ -6,11 +6,11 @@ namespace KhaozEngine.Navigation;
 
 public sealed partial class GridPathPlanner
 {
-    /// <summary>Frozen raw region query. Only an advance by an owner holding a lease starts or resumes the kernel.</summary>
+    /// <summary>Frozen raw region query. Only an advance by an owner holding a lease starts or resumes the stepper.</summary>
     internal sealed class GridSearchRequest(GridPlanningWorkspaces pool, Vector3 start, NavGoalRegion goal,
         float radius, PathQueryBudget queryBudget) : PathPlanRequest
     {
-        SearchKernel<RegionGoal> _kernel;
+        RequestStepper _stepper;
         bool _started;
 
         internal int LeaseSlot { get; set; } = -1;
@@ -18,7 +18,7 @@ public sealed partial class GridPathPlanner
 
         /// <summary>The next indivisible operation for a leased request, used to test exact quota cuts.</summary>
         internal SearchPhase NextPhaseForTests => State != PathPlanState.Pending ? SearchPhase.Done :
-            _started ? _kernel.Phase :
+            _started ? _stepper.Phase :
             pool.Planner._space.Layers.Count == 1 ? SearchPhase.Snap : SearchPhase.Layer;
 
         public override bool StartsFrom(Vector3 feet)
@@ -53,22 +53,21 @@ public sealed partial class GridPathPlanner
             {
                 if (!_started)
                 {
-                    _kernel = pool.Planner.CreateRegionSearch(pool.ScratchAt(LeaseSlot),
-                        start, goal, radius, queryBudget, useCertificate: true);
+                    _stepper = new RequestStepper(pool.Planner, pool.ScratchAt(LeaseSlot), start, goal, radius, queryBudget);
                     _started = true;
                 }
 
                 int spent = 0;
                 try
                 {
-                    _kernel.RunSlice(budget.Units, ref spent);
+                    _stepper.RunSlice(budget.Units, ref spent);
                 }
                 finally
                 {
                     if (spent > 0) Spend(spent);
                 }
 
-                if (_kernel.Result is { } path) Complete(path);
+                if (_stepper.Result is { } path) Complete(path);
             }
             catch
             {
@@ -84,7 +83,7 @@ public sealed partial class GridPathPlanner
         {
             pool.Release(this, LeaseSlot);
             LeaseSlot = -1;
-            _kernel = default;
+            _stepper = default;
         }
     }
 }

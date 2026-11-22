@@ -37,7 +37,7 @@ public class SurfaceHeightCallSiteTests
             "KhaozEngine.Movement/GroundPursuitRoute.cs:Validate:RestingHeightAt",
             "KhaozEngine.Movement/PhysicsNavBake.Profiles.cs:Feet:RestingHeightAt",
             "KhaozEngine.Navigation/GridPathPlanner.Region.cs:CellFeet:RestingHeightAt",
-            "KhaozEngine.Navigation/NavSpace.cs:LayerAt:RestingHeightAt",
+            "KhaozEngine.Navigation/NavSpace.cs:CompareSurface:RestingHeightAt",
             "KhaozEngine.Movement/PhysicsNavBake.Profiles.cs:IsFloatNode:SurfaceHeightAt",
             // Match original raw source slots before either contact path substitutes resting heights.
             "KhaozEngine.Movement/ContactNavigationSources.cs:BindLayers:SurfaceHeightAt",

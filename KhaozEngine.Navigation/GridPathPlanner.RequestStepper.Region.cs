@@ -4,12 +4,17 @@ namespace KhaozEngine.Navigation;
 
 public sealed partial class GridPathPlanner
 {
-    partial struct SearchKernel<TGoal>
+    partial struct RequestStepper
     {
-        internal SearchKernel(GridPathPlanner planner, SearchScratch scratch, Vector3 feet, NavGoalRegion region,
-            TGoal goal, float radius, PathQueryBudget budget, bool useCertificate)
-            : this(planner, scratch, goal, radius, budget, useCertificate)
+        internal RequestStepper(GridPathPlanner planner, SearchScratch scratch, Vector3 feet, NavGoalRegion region,
+            float radius, PathQueryBudget budget)
         {
+            _planner = planner;
+            _scratch = scratch;
+            _goal = planner.CreateRegionGoal(scratch, region);
+            _radius = radius;
+            _budget = budget;
+            _grid = planner._space.Layers[0];
             _region = region;
             _feet = feet;
             _layerProbe = new NavSpace.LayerCursor(planner._space, feet);
@@ -49,12 +54,11 @@ public sealed partial class GridPathPlanner
 
         void PrepareMemberBox()
         {
-            (int x0, int z0, int x1, int z1) = RegionCellBounds(_planner._space.Layers[_boxLayer], _region!);
+            (int x0, int z0, int x1, int z1) = RegionCellBounds(_planner._space.Layers[_boxLayer], _region);
             int width = x1 - x0 + 1, height = z1 - z0 + 1;
             _flagCount = _scratch.SetMemberBox(_boxLayer, x0, z0, width, height, _flagCount);
-            bool hasCandidates = width > 0 && height > 0;
-            _scratch.RecordCandidateLayer(_boxLayer, _candidateLayerCount, hasCandidates);
-            if (hasCandidates) _candidateLayerCount++;
+            if (width > 0 && height > 0)
+                _scratch.RecordCandidateLayer(_boxLayer, _candidateLayerCount++);
 
             if (++_boxLayer < _planner._space.Layers.Count) return;
             if (_candidateLayerCount == 0)
@@ -64,14 +68,13 @@ public sealed partial class GridPathPlanner
             }
 
             _scratch.EnsureMemberFlags(_flagCount);
-            _memberLayer = -1;
             BeginMemberLayer();
             Phase = SearchPhase.Member;
         }
 
         void BeginMemberLayer()
         {
-            _memberLayer = _scratch.NextCandidateLayer(_memberLayer, _memberLayerIndex);
+            _memberLayer = _scratch.CandidateLayer(_memberLayerIndex);
             SearchScratch.MemberBox box = _scratch.CandidateBox(_memberLayer);
             _memberX = box.X0;
             _memberZ = box.Z0;
@@ -80,13 +83,8 @@ public sealed partial class GridPathPlanner
         void TestMember()
         {
             int layer = _memberLayer;
-            bool member = _planner.IsRegionMember(_region!, _radius, layer, _memberX, _memberZ, out Vector3 feet);
-            _scratch.SetMember(layer, _memberX, _memberZ, member);
-            if (member)
-            {
-                int id = _planner._layerOffset[layer] + _memberZ * _planner._space.Layers[layer].Width + _memberX;
-                _scratch.AddMember(feet, _memberX, _memberZ, id);
-            }
+            _planner.TestRegionMember(_scratch, _region, _radius, _planner._space.Layers[layer], layer,
+                _planner._layerOffset[layer], _memberX, _memberZ);
 
             SearchScratch.MemberBox box = _scratch.CandidateBox(layer);
             if (++_memberX - box.X0 < box.Width) return;

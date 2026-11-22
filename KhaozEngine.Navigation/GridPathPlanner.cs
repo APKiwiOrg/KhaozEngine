@@ -198,10 +198,34 @@ public sealed partial class GridPathPlanner : IIncrementalRegionPathPlanner
     /// </summary>
     Vector2? SnapToPassable(int layer, NavGrid grid, Vector2 worldXz, float agentRadius, float snapRadius, out bool snappedToOwnCell)
     {
-        var cursor = new SnapCursor(this, layer, grid, worldXz, agentRadius, snapRadius);
-        while (!cursor.Done) cursor.Probe();
-        snappedToOwnCell = cursor.SnappedToOwnCell;
-        return cursor.Result;
+        (int queryX, int queryZ) = grid.CellOf(worldXz.X, worldXz.Y);
+        if (_traversal is not null) return SnapTraversal(layer, queryX, queryZ, out snappedToOwnCell);
+        int maxRing = SnapRingLimit(grid, snapRadius);
+
+        for (int ring = 0; ring <= maxRing; ring++)
+        {
+            if (!SnapRingIsRepresentable(queryX, queryZ, ring)) break;
+            int right = queryX + ring, bottom = queryZ + ring;
+            if (!CanSelectSnapRing(right, bottom)) break;
+
+            Vector2 bestCenter = default;
+            float bestDistance = float.PositiveInfinity;
+            for (int z = queryZ - ring; z <= bottom; z++)
+                for (int x = queryX - ring; x <= right; x++)
+                {
+                    if (Math.Max(Math.Abs(x - queryX), Math.Abs(z - queryZ)) != ring) continue;
+                    ConsiderSnapCandidate(grid, layer, agentRadius, worldXz, x, z, ref bestDistance, ref bestCenter);
+                }
+
+            if (bestDistance < float.PositiveInfinity)
+            {
+                snappedToOwnCell = ring == 0;
+                return bestCenter;
+            }
+        }
+
+        snappedToOwnCell = false;
+        return null;
     }
 
     /// <summary>True when an agent of <paramref name="agentRadius"/> does not fit at

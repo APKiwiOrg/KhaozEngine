@@ -1,10 +1,36 @@
 using System;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 
 namespace KhaozEngine.Navigation;
 
 public sealed partial class GridPathPlanner
 {
+    static int SnapRingLimit(NavGrid grid, float snapRadius) => (int)MathF.Ceiling(snapRadius / grid.CellSize);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static bool SnapRingIsRepresentable(int queryX, int queryZ, int ring)
+        => (long)queryX - ring >= int.MinValue && (long)queryX + ring <= int.MaxValue &&
+            (long)queryZ - ring >= int.MinValue && (long)queryZ + ring <= int.MaxValue;
+
+    // A positive inclusive bound cannot terminate the legacy ring loop. Even a winner on that ring
+    // is refused. The stepper charges the representable ring's candidates before it checks the result.
+    static bool CanSelectSnapRing(int right, int bottom) => right != int.MaxValue && bottom != int.MaxValue;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    void ConsiderSnapCandidate(NavGrid grid, int layer, float radius, Vector2 query, int x, int z,
+        ref float bestDistance, ref Vector2 bestCenter)
+    {
+        if (!grid.InBounds(x, z) || Blocks(grid, layer, radius, x, z)) return;
+        Vector2 center = grid.CellCenter(x, z);
+        float distance = Vector2.DistanceSquared(center, query);
+        if (distance < bestDistance)
+        {
+            bestDistance = distance;
+            bestCenter = center;
+        }
+    }
+
     /// <summary>Visits the same Chebyshev ring candidates in z then x order as synchronous snapping.
     /// Guarded planners probe only the query cell. The first ring with a passable centre wins.</summary>
     struct SnapCursor
@@ -26,7 +52,7 @@ public sealed partial class GridPathPlanner
             _query = query;
             _radius = radius;
             (_queryX, _queryZ) = grid.CellOf(query.X, query.Y);
-            _maxRing = planner._traversal is null ? (int)MathF.Ceiling(snapRadius / grid.CellSize) : 0;
+            _maxRing = planner._traversal is null ? SnapRingLimit(grid, snapRadius) : 0;
             _x = _queryX;
             _z = _queryZ;
             _bestDistance = float.PositiveInfinity;
@@ -34,29 +60,18 @@ public sealed partial class GridPathPlanner
         }
 
         internal bool Done { get; private set; }
-        internal bool SnappedToOwnCell { get; private set; }
         internal Vector2? Result { get; private set; }
 
         internal void Probe()
         {
             if (_planner._traversal is not null)
             {
-                Result = _planner.SnapTraversal(_layer, _queryX, _queryZ, out bool ownCell);
-                SnappedToOwnCell = ownCell;
+                Result = _planner.SnapTraversal(_layer, _queryX, _queryZ, out _);
                 Done = true;
                 return;
             }
 
-            if (_grid.InBounds(_x, _z) && !_planner.Blocks(_layer, _radius, _x, _z))
-            {
-                Vector2 centre = _grid.CellCenter(_x, _z);
-                float distance = Vector2.DistanceSquared(centre, _query);
-                if (distance < _bestDistance)
-                {
-                    _bestDistance = distance;
-                    _bestCentre = centre;
-                }
-            }
+            _planner.ConsiderSnapCandidate(_grid, _layer, _radius, _query, _x, _z, ref _bestDistance, ref _bestCentre);
 
             int right = _queryX + _ring, bottom = _queryZ + _ring;
             if (_x < right)
@@ -73,9 +88,7 @@ public sealed partial class GridPathPlanner
                 return;
             }
 
-            // A ring whose inclusive right or bottom bound is int.MaxValue ends the snap without a result, even with a
-            // passable cell on it. No loop over that ring can finish without passing the bound.
-            if (right == int.MaxValue || bottom == int.MaxValue)
+            if (!CanSelectSnapRing(right, bottom))
             {
                 Done = true;
                 return;
@@ -84,16 +97,11 @@ public sealed partial class GridPathPlanner
             if (_bestDistance < float.PositiveInfinity)
             {
                 Result = _bestCentre;
-                SnappedToOwnCell = _ring == 0;
                 Done = true;
                 return;
             }
 
-            // Stop at the last representable ring. An inclusive bound of int.MaxValue
-            // must end here too, without incrementing a coordinate past it.
-            if (_ring == _maxRing || (long)_queryX - _ring - 1 < int.MinValue ||
-                (long)_queryX + _ring + 1 > int.MaxValue || (long)_queryZ - _ring - 1 < int.MinValue ||
-                (long)_queryZ + _ring + 1 > int.MaxValue)
+            if (_ring == _maxRing || !SnapRingIsRepresentable(_queryX, _queryZ, _ring + 1))
             {
                 Done = true;
                 return;

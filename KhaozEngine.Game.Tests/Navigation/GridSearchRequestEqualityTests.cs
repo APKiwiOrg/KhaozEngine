@@ -26,6 +26,10 @@ public partial class GridSearchRequestEqualityTests
             NavPath expected = planner.FindPath(query.Start, query.Goal, 0f, query.Budget);
             var afterSync = query.Planner.WorkForTests;
             Assert.Equal(query.Status, expected.Status);
+            if (query.ReferenceSpace is { } space)
+                GridPathPlannerEqualityCorpusTests.AssertSame(
+                    new ReferenceGridPathPlanner(space).FindPath(query.Start, query.Goal, 0f, query.Budget),
+                    expected, null, query.Name);
             using var request = planner.BeginPath(query.Start, query.Goal, 0f, query.Budget, pool);
             NavPath actual = Finish(request, quantum);
             EqualBits(expected, actual);

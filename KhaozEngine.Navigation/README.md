@@ -326,8 +326,9 @@ A* implementation over a `NavSpace`.
 A query snaps both endpoints onto a passable cell (within `PathQueryBudget.SnapRadius`, else
 `NavPath.Unreachable`), tries a same-layer line-of-sight shortcut, then searches eight-connected grid exits and
 accepted links. A legacy snap whose ring reaches `int.MaxValue` on either cell axis returns `NavPath.Unreachable`.
-Snapping also stops before entering a ring whose cell coordinates cannot be represented as integers. Diagonals require both companion cells. Stair costs the greater of its spatial metric span
-and one source cell, rounded upward when needed to cover that span. Hop costs `hopCostCells`
+Snapping also stops before entering a ring whose cell coordinates cannot be represented as integers. Diagonals
+require both companion cells. Stair costs the greater of its spatial metric span and one source cell, rounded
+upward when needed to cover that span. Hop costs `hopCostCells`
 source cells and Drop costs world XZ octile displacement plus positive physical descent in metres. Expansion is
 bounded by `MaxExpandedNodes`. An incomplete query returns its closest reached node as Partial or Unreachable
 when no progress was made. Legacy point routes string-pull ordinary runs. Incoming edge identity preserves Hop
@@ -363,8 +364,15 @@ A planner allocates synchronous search scratch on its first query and reuses it 
 holds generation-stamped per-node g-scores, parents, incoming edge kinds and closed marks, plus region flags,
 the open set and reconstruction lists kept at the largest query seen. A search writes stamps only for
 visited nodes and clears them when the generation wraps. A region query scans each layer's cell box around
-the region's extent. Keep one planner per `NavSpace`
-and reuse it across queries. Overlapping synchronous queries use separate scratch.
+the region's extent. Keep one planner per `NavSpace` and reuse it across queries. Overlapping synchronous
+queries use separate scratch.
+
+Synchronous queries use direct loops for endpoint resolution, membership, the certificate, search and
+reconstruction. The internal region request stepper uses the same edge, scoring and waypoint rules with
+a leased, prewarmed workspace. Advances charge whole operations in order and publish the complete result
+with the final paid operation. Stamp wrap clears fixed blocks and adds work according to the leased
+workspace's generation. The planner's buffers never grow during an advance. Publishing a nonempty result
+allocates its path storage, and caller predicates may allocate their own storage.
 
 These are the legacy point-query rules. The original `GridPathPlanner(NavSpace space, float hopCostCells =
 4f)` constructor keeps radius-aware clearance, endpoint ring snapping, line-of-sight shortcuts,

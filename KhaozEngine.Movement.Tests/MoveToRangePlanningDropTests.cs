@@ -26,9 +26,12 @@ public sealed partial class MoveToRangePlanningTests
         var body = new MoveState { Position = new(-0.25f, 4.875f, 0), Grounded = true, SpeedScale = 1f };
         var below = ReachTarget.Point(new(1.25f, 0.75f, 0));
         var behind = ReachTarget.Point(new(-1.25f, 4.75f, 0));
+        NavPath? initial = null;
         for (int call = 1; call <= 10; call++)
         {
             Assert.Equal(RangeMoveStatus.Following, TickDrop(below).Status);
+            initial ??= mover.ActivePathForTests;
+            Assert.Same(initial, mover.ActivePathForTests);
             Assert.Equal(NavWaypointKind.Drop, mover.ActivePathForTests!.Waypoints[mover.ActiveWaypointIndexForTests].Kind);
         }
 

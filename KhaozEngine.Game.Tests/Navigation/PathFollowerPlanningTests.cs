@@ -76,7 +76,7 @@ public sealed partial class PathFollowerPlanningTests
             var goal = call == 1 ? member : new NavGoalRegion(anchor, 50f, _ => false);
             Waiting(follower, follower.Tick(Start, goal, 0f, 1f));
         }
-        var drifted = new NavGoalRegion(vertical ? new(2.5f, 10f, 0.5f) : new(10f, 0f, 0.5f), 0f, _ => false);
+        var drifted = new NavGoalRegion(vertical ? new(2.5f, 10f, 0.5f) : new(10f, 0f, 0.5f), 16f, _ => false);
         AssertPartial(follower, follower.Tick(Start, drifted, 0f, 1f));
         AssertPartial(follower, follower.Tick(Start, drifted, 0f, 0.25f));
         Waiting(follower, follower.Tick(Start, drifted, 0f, 0.25f));

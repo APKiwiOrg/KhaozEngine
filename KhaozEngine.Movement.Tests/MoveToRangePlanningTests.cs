@@ -3,6 +3,7 @@ using System.Numerics;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Movement;
 using KhaozEngine.Navigation;
+using KhaozEngine.Tests.Movement.Fixtures;
 using Xunit;
 using static KhaozEngine.Tests.Movement.SegmentAdmissionFixture;
 
@@ -31,9 +32,10 @@ public sealed partial class MoveToRangePlanningTests
         for (int call = 0; call < routes.Length; call++)
         {
             AssertBits(0.5f + 0.5f * call, body.Position.X);
-            AssertSteering(new(Vector2.UnitX, RangeMoveStatus.Following), Tick(mover, body, target, context));
+            RangeSteering steer = Tick(mover, body, target, context);
+            AssertSteering(new(call == 3 ? ArrivalCommand : Vector2.UnitX, RangeMoveStatus.Following), steer);
             AssertRoute(mover, NavPathStatus.Complete, routes[call]);
-            body = context.Step(body, Vector2.UnitX, false, Dt, Tuning);
+            body = context.Step(body, steer.WorldDirection, false, Dt, Tuning);
         }
         AssertBits(2.5f, body.Position.X);
         AssertSteering(new(Vector2.Zero, RangeMoveStatus.InRange), Tick(mover, body, target, context));
@@ -54,8 +56,8 @@ public sealed partial class MoveToRangePlanningTests
         MoveState body = At(0.5f);
         for (int call = 1; call <= 5; call++)
         {
-            RangeSteering expected = new(call == 5 ? Vector2.Zero : Vector2.UnitX,
-                call == 5 ? RangeMoveStatus.InRange : RangeMoveStatus.Following);
+            Vector2 command = call == 4 ? ArrivalCommand : call == 5 ? Vector2.Zero : Vector2.UnitX;
+            RangeSteering expected = new(command, call == 5 ? RangeMoveStatus.InRange : RangeMoveStatus.Following);
             AssertSteering(expected, Tick(synchronous, body, target, context));
             AssertSteering(expected, Tick(planned, body, target, context));
             Assert.False(planned.PlanningPending);
@@ -133,32 +135,40 @@ public sealed partial class MoveToRangePlanningTests
     [Fact]
     public void FinalSliceNeverSharesACallWithAStep()
     {
-        var navigation = Flat(6, 3, Tuning.CapsuleRadius);
-        using var context = new GroundMoveContext((_, _) => 0f);
-        using var pool = navigation.CreatePlanningWorkspaces(1);
-        var mover = new MoveToRange(navigation, Follow(pool, 128));
-        Vector3 start = new(0.5f, 0f, 1.5f);
-        IIncrementalRegionPathPlanner planner = (IIncrementalRegionPathPlanner)navigation.Planner;
-        var far = Target(4.5f);
+        using var scene = new FlatArrivalScene();
+        MoveTuning tuning = scene.Tuning;
+        var space = NavSpace.Single(NavGrid.FromWalkable(2, 1, 0.5f, -0.25f, -0.25f, (_, _) => true));
+        var planner = new GridPathPlanner(space);
+        using var pool = ((IIncrementalRegionPathPlanner)planner).CreateWorkspaces(1, PathQueryBudget.Default);
+        var mover = new MoveToRange(planner, space, (_, _) => true, Follow(pool, 32));
+        var body = new MoveState { Position = new(0, tuning.CapsuleHalfHeight, 0), Grounded = true };
+        var target = ReachTarget.Point(body.Position with { X = 0.4f });
+        using var arrival = new ArrivalPreviewDiagnostics();
 
-        HoldPending(mover, At(start.X), far, context);
-        using var witness = planner.BeginPath(start, Goal(start), Tuning.CapsuleRadius, PathQueryBudget.Default, pool);
-        Assert.Equal(1, pool.Waits);
-        int exitCall = 0;
-        for (int call = 2; call <= 8; call++)
+        // Snap, member box, two candidate cells, label, seed, first pop and its eight
+        // edges, terminal pop, then one waypoint. With quota 32 the slices spend 31, 30 and 19.
+        for (int call = 1; call <= 3; call++)
         {
-            HoldPending(mover, At(start.X), far, context);
-            witness.Advance(new(int.MaxValue));
-            if (witness.State == PathPlanState.Ready)
-            {
-                exitCall = call;
-                break;
-            }
+            AssertSteering(new(Vector2.Zero, RangeMoveStatus.WaitingForPath), Step(body));
+            Assert.True(mover.PlanningPending);
+            Assert.Null(mover.ActivePathForTests);
+            Assert.Equal(0, arrival.CertifiedTrials);
+            Assert.Equal(0, arrival.FullSteps);
         }
-        Assert.InRange(exitCall, 2, 8);
-        AssertSteering(new(Vector2.UnitX, RangeMoveStatus.Following), Tick(mover, At(start.X), far, context));
-        AssertRoute(mover, NavPathStatus.Complete, [1.5f, 2.5f, 3.5f, 4.5f]);
+
+        RangeSteering steering = Step(body);
+        Assert.Equal(RangeMoveStatus.Following, steering.Status);
+        Assert.False(mover.PlanningPending);
+        Assert.InRange(arrival.CertifiedTrials, 1, 32);
+        Assert.Equal(0, arrival.FullSteps);
+        MoveState arrived = scene.Context.Step(body, steering.WorldDirection, false, 0.1f, tuning);
+        Assert.Equal(RangeMoveStatus.InRange, Step(arrived).Status);
+
+        RangeSteering Step(MoveState at) => mover.Tick(at, tuning, target, 0.1f, false, 0.1f, scene.Context);
     }
+
+    // At X=2, the smallest command rounding the next position to X=2.5 is the halfway tie.
+    static Vector2 ArrivalCommand => new(BitConverter.Int32BitsToSingle(0x3f7ffffc), 0f);
 
     static PathFollowConfig Follow(PathPlanWorkspaces pool, int quota) => new() { Planning = new(new(quota), pool) };
 

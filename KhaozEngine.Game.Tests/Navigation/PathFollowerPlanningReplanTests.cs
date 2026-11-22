@@ -66,4 +66,29 @@ public sealed partial class PathFollowerPlanningTests
         var changed = new NavGoalRegion(near.Anchor, 0f, _ => false);
         Waiting(follower, follower.Tick(near.Anchor, changed, 0f, 0f));
     }
+
+    [Fact]
+    public void AdoptedCorridorMeasuresBreachFromTheFrozenFeet()
+    {
+        var planner = Corridor(3);
+        using var pool = Incremental(planner).CreateWorkspaces(1, Budget(2));
+        var follower = new PathFollower(planner, new PathFollowConfig
+        {
+            Budget = Budget(2),
+            Planning = new(new(6), pool),
+            CorridorTolerance = 0.01f,
+        });
+        for (int call = 1; call <= 23; call++)
+            Waiting(follower, follower.Tick(Start, End(3), 0f, 0f));
+
+        Vector3 pushed = Start with { Z = 0.625f };
+        var adopted = follower.Tick(pushed, End(3), 0f, 0f);
+        Assert.Equal(PathFollowState.Following, adopted.State);
+        Bits(new(1.5f, 0.5f), adopted.ActiveWaypoint);
+        Assert.False(follower.PlanningPending);
+
+        // The push remained in the same cell but lies off the leg from the query start.
+        Assert.Equal(PathFollowState.Following, follower.Tick(pushed, End(3), 0f, 0.25f).State);
+        Waiting(follower, follower.Tick(pushed, End(3), 0f, 0.25f));
+    }
 }

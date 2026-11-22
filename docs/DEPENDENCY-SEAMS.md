@@ -537,7 +537,7 @@ canonical JSON, reference checks, the `IAttachmentAssetSource` byte seam, direct
 embedded rigid and skinned GLB preflight. `AttachmentGlb.ComputeRigIdentity` provides versioned body
 fit evidence from raw accessor bytes and canonical rest frames, excluding animation and appearance.
 Body region maps, the outfit rule and the coverage claim check live here too. The check takes plain
-positions and indices rather than a renderer mesh, so a tool can explain or check an outfit offline.
+positions, indices and optional vertex masks, so a tool can explain or check an outfit offline.
 JSON uses `System.Text.Json` and hashing uses SHA-256 from the BCL. No renderer or particular
 skeleton type appears in its API. Publishers reference it directly. Foundation and Server do not
 gain an attachment dependency.

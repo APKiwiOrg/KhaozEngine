@@ -364,18 +364,20 @@ with an `OutfitRefusal Reason`.
 
 A piece's `Covers` hides the skin in those regions, so a false claim opens a hole in the body.
 `CoverageClaimCheck.Verify(bodyMeshes, body, piece, pieceMeshes, maxDistanceMetres)` checks the claim offline: at
-the rest pose the piece must lie over every triangle of every region it claims. A tool runs it when a piece is made.
-It casts one ray per claimed body triangle against every piece triangle, which suits low poly meshes, so it is never
-meant to run per frame and builds no acceleration structure.
+the rest pose the fixed part of the piece must lie over every triangle of every region it claims. A tool runs it when
+a piece is made. It casts one ray per claimed body triangle against the fixed piece triangles, which suits low poly
+meshes, so it is never meant to run per frame and builds no acceleration structure.
 
 Geometry arrives as `CoverageClaimMesh(Positions, Indices)`, plain `ReadOnlyMemory<Vector3>` positions and a
-`ReadOnlyMemory<uint>` triangle list, so publishers and tools stay GPU free and never need a renderer mesh. The rules,
-with the reason for each:
+`ReadOnlyMemory<uint>` triangle list, so publishers and tools stay GPU free.
 
 - `bodyMeshes` follow the region map's part order, one mesh per part with the part's triangle count, because the map
   tags triangles by part and position and a mesh that disagrees would be checked against the wrong regions.
 - `pieceMeshes` are already in the body's rest frame. A rigid part is placed by its joint's rest transform and its
   local transform before the call, since the check has no rig to place it with.
+- Set a piece mesh's init-only `Swinging` mask with one `bool` per position. An empty mask means all vertices are
+  fixed. The check skips a piece triangle if any of its vertices swings. The hidden body regions are fixed when the
+  outfit binds, so a moving piece triangle could swing away and leave a hole.
 - The ray starts at each claimed body triangle's centroid and runs along its outward normal, taken from counter
   clockwise winding as glTF front faces. The centroid is the one point that always lies inside the triangle, and the
   outward normal is the direction a piece worn over the skin lies in.
@@ -401,17 +403,26 @@ with the reason for each:
   never makes a claim dishonest, because it cannot show through anything. A sliver, a triangle of nearly zero area,
   does get a normal, but its direction is only as good as its winding and its rounded positions, so a sliver may test
   along a noisy direction.
-- A piece with no layer, as formats 1 and 2 read, claims nothing. It is honest with an empty report.
+- A piece with no layer, as formats 1 and 2 read, claims nothing. It is honest and its report has no region entries.
+
+For a skinned part, pass the joint names from its `ChainMotionDefinition.Chains` to
+`AttachmentGlb.SwingingVertices(glb, sourceName, chainJoints)` and use the returned flags as the mask. The helper
+validates the bytes with the skinned embedded GLB policy. It returns flags in flattened skinned import order (mesh,
+primitive, vertex). A vertex swings if it has a positive weight on any named joint. Joint names use ordinal matching.
+Names absent from the skin match no vertices.
 
 The `CoverageClaimReport` lists each claimed region in the body map's region order as a `CoverageClaimRegion` with
 its `Name`, `TriangleCount`, `DegenerateCount`, `UncoveredCount` and the `Uncovered` triangles as
 `CoverageClaimTriangle(PartIndex, TriangleIndex)`, in part then triangle order, so a tool can show them. `Honest` is
-true when no claimed triangle is uncovered. The ray test runs in double precision, so float geometry neither
+true when no claimed triangle is uncovered. `IgnoredSwingingTriangleCount` counts the piece triangles skipped across
+all piece meshes, even outside the claimed regions. The ray test runs in double precision, so float geometry neither
 overflows nor underflows and only a triangle of truly zero area counts as degenerate.
 
-A null argument throws `ArgumentNullException`. Every other refusal throws `CoverageClaimDataException`, derived from
-`MalformedDataException`, with a `CoverageClaimRefusal Reason`. `MeshKind` says whether a refused mesh is a `Body`
-or `Piece` mesh and `MeshIndex` is its zero-based position in that list, which for a body mesh is its map part.
+A null argument throws `ArgumentNullException`. An invalid maximum distance throws `ArgumentOutOfRangeException`.
+A nonempty `Swinging` mask with a length different from its mesh's position count throws `ArgumentException`.
+The geometry and region refusals below throw `CoverageClaimDataException`, derived from `MalformedDataException`, with
+a `CoverageClaimRefusal Reason`. `MeshKind` says whether a refused mesh is a `Body` or `Piece` mesh and `MeshIndex`
+is its zero-based position in that list, which for a body mesh is its map part.
 
 | Reason | What it refuses | Other identifiers |
 |---|---|---|

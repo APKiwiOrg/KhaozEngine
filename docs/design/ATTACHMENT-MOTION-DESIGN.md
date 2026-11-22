@@ -288,6 +288,10 @@ then swing away and show a hole. A claim may therefore rest only on triangles th
 `CoverageClaimCheck` ignores every piece triangle with a vertex weighted to a chain joint, and a fitting step claims
 only what the fixed part of a piece covers, such as a cloak's collar.
 
+The fitting tool derives a per-vertex mask from the same skinned GLB it imports and the part's chain joint names.
+Both use flattened mesh, primitive and vertex order so each flag describes the position at the same index.
+The [coverage claim check reference](../../KhaozEngine.Attachments/README.md#coverage-claim-check) describes the API.
+
 ## Room for cloth
 
 - A part's movement kind is data, `motion.kind`. Cloth adds a kind and its settings in a later format.

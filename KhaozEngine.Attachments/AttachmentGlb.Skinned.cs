@@ -8,7 +8,10 @@ public static partial class AttachmentGlb
 {
     internal const int MaxSkinnedJoints = 128;
 
-    public static void ValidateSkinnedEmbedded(ReadOnlyMemory<byte> glb, string sourceName) => Validate(glb, sourceName, container =>
+    public static void ValidateSkinnedEmbedded(ReadOnlyMemory<byte> glb, string sourceName) =>
+        Validate(glb, sourceName, container => ReadSkinned(container, chainJoints: null));
+
+    static bool[] ReadSkinned(Container container, IReadOnlyCollection<string>? chainJoints)
     {
         JsonElement root = container.Root;
         JsonElement buffers = AttachmentGlbAccessors.Required(root, "buffers", "skinned buffer");
@@ -28,6 +31,7 @@ public static partial class AttachmentGlb
 
         var accessors = new AttachmentGlbAccessors(root, container.Binary);
         int jointCount = ValidateSkin(root, skins[0], accessors);
+        var swinging = chainJoints is null ? null : new SwingingVertexCollector(root, skins[0], chainJoints);
         int nodeIndex = 0;
         foreach (JsonElement node in Array(root, "nodes"))
         {
@@ -63,10 +67,12 @@ public static partial class AttachmentGlb
             foreach (JsonElement primitive in Array(mesh, "primitives"))
             {
                 int index = primitiveIndex++;
-                ValidatePrimitive(primitive, context + $" primitive {index}", accessors, jointCount, $"$.meshes[{meshOrdinal - 1}].primitives[{index}]");
+                ValidatePrimitive(primitive, context + $" primitive {index}", accessors, jointCount,
+                    $"$.meshes[{meshOrdinal - 1}].primitives[{index}]", swinging);
             }
         }
-    });
+        return swinging?.ToArray() ?? [];
+    }
 
     internal static int ValidateSkin(JsonElement root, JsonElement skin, AttachmentGlbAccessors accessors, int maxJoints = MaxSkinnedJoints)
     {
@@ -134,7 +140,8 @@ public static partial class AttachmentGlb
         return count;
     }
 
-    static void ValidatePrimitive(JsonElement primitive, string context, AttachmentGlbAccessors accessors, int jointCount, string jsonPath)
+    static void ValidatePrimitive(JsonElement primitive, string context, AttachmentGlbAccessors accessors, int jointCount,
+        string jsonPath, SwingingVertexCollector? swinging)
     {
         if (primitive.TryGetProperty("targets", out _))
             throw new AttachmentSkinnedGeometryDataException(AttachmentSkinnedGeometryRefusal.MorphTargetsPresent, $"{context}: morph targets are refused.")
@@ -196,6 +203,7 @@ public static partial class AttachmentGlb
                     JsonPath = AttachmentJsonPath.Property(AttachmentJsonPath.Property(jsonPath, "attributes"), "WEIGHTS_0"),
                     VertexIndex = vertex,
                 };
+            swinging?.Add(jointValues, weightValues);
         }
     }
 }

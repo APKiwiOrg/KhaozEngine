@@ -120,6 +120,52 @@ public class SkinnedGlbPolicyTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Swinging_vertices_follow_flattened_primitive_order_and_require_positive_weights(bool separateMeshes)
+    {
+        var fixture = new SkinnedAttachmentGlbFixture(weightComponentType: 5121, strided: true);
+        fixture.SetSkinJoints(2, 0, 3, 1);
+        fixture.SetElement(2, 0, 0, 1, 0, 0);
+        fixture.SetElement(2, 1, 1, 0, 0, 0);
+        fixture.SetElement(2, 2, 0, 0, 1, 0);
+        int nextWeights = fixture.Accessors.Count;
+        fixture.Accessors.Add(fixture.Accessors[2]!.DeepClone());
+        fixture.SetSparse(nextWeights, [0, 2], [[1, 0, 0, 0], [0, 0, 0, 1]]);
+        JsonNode nextPrimitive = fixture.Primitives[0]!.DeepClone();
+        nextPrimitive["attributes"]!["WEIGHTS_0"] = nextWeights;
+        if (separateMeshes)
+        {
+            fixture.Root["meshes"]!.AsArray().Add(new JsonObject { ["primitives"] = new JsonArray(nextPrimitive) });
+            fixture.Nodes.Add(new JsonObject { ["mesh"] = 1, ["skin"] = 0 });
+            fixture.Root["scenes"]![0]!["nodes"]!.AsArray().Add(fixture.JointCount + 1);
+        }
+        else
+            fixture.Primitives.Add(nextPrimitive);
+
+        bool[] flags = AttachmentGlb.SwingingVertices(fixture.Build(), "piece.glb", ["joint-0", "joint-1", "Joint-2", "absent"]);
+
+        Assert.Equal(new[] { true, false, false, false, false, true }, flags);
+    }
+
+    [Fact]
+    public void Swinging_vertices_validates_joint_indices_even_in_zero_weight_lanes()
+    {
+        var fixture = new SkinnedAttachmentGlbFixture();
+        fixture.SetElement(2, 1, 1, 0, 0, 0);
+        Assert.Equal(new[] { true, true, true }, AttachmentGlb.SwingingVertices(fixture.Build(), "control.glb", ["joint-0"]));
+
+        fixture.SetElement(1, 1, 0, 1, 2, fixture.JointCount);
+        var error = Assert.Throws<AttachmentSkinnedGeometryDataException>(() =>
+            AttachmentGlb.SwingingVertices(fixture.Build(), "piece.glb", ["joint-0"]));
+
+        Assert.Equal(AttachmentSkinnedGeometryRefusal.JointIndexOutsideSkin, error.Reason);
+        Assert.Equal("piece.glb", error.SourceName);
+        Assert.Equal(1, error.VertexIndex);
+        Assert.Equal(3, error.Lane);
+    }
+
+    [Theory]
     [InlineData("zero-skins")]
     [InlineData("two-skins")]
     [InlineData("missing-skin")]

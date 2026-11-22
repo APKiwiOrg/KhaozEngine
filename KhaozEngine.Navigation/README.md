@@ -383,7 +383,11 @@ synchronous queries only. Area excluding views use that constraint, which can sc
 inside one search operation, so even direct workspace construction and begin require an unconstrained
 planner. The pool validates and freezes each query against its declared limits. A pending request must
 carry that exact admission to take or wait for a lease. Raw grid pools start raw search. Pools created for
-an adapter require requests from that adapter instance, with begin effects applied after ownership checks.
+an adapter require requests from that adapter instance. The begin hook applies the adapter's begin
+effects after ownership checks and must leave the request pending and detached. The pool refuses a
+request that violates this contract before granting or queueing it. A request may use workspace scratch
+only while holding its lease and must drop every scratch reference when it completes, is cancelled or
+is disposed.
 
 These are the legacy point-query rules. The original `GridPathPlanner(NavSpace space, float hopCostCells =
 4f)` constructor keeps radius-aware clearance, endpoint ring snapping, line-of-sight shortcuts,

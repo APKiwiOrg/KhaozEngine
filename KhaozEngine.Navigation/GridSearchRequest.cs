@@ -18,7 +18,7 @@ public sealed partial class GridPathPlanner
         int _leaseSlot = -1;
         LinkedListNode<GridSearchRequest>? _waitNode;
 
-        internal GridSearchRequest(RequestAdmission admission)
+        GridSearchRequest(RequestAdmission admission)
             => _admission = admission ?? throw new ArgumentNullException(nameof(admission));
 
         private protected GridSearchRequest(RequestAdmission admission, IGridRequestAdapter adapter) : this(admission)
@@ -29,7 +29,9 @@ public sealed partial class GridPathPlanner
         /// <summary>Whether the pool has granted this request a slot.</summary>
         private protected bool HasLease => _leaseSlot >= 0;
 
-        /// <summary>Applies begin effects only after the pool has checked the adapter and query admission.</summary>
+        /// <summary>Applies only the adapter's begin effects, such as consuming a fallback flag or clearing
+        /// the visible straightened route, after the pool checks adapter and query ownership.
+        /// The hook must leave the request pending and detached. It may not complete, cancel or dispose it.</summary>
         private protected virtual void OnBegin() { }
 
         /// <summary>Reports whether the stepper holds the staged result array before publication.</summary>
@@ -57,7 +59,8 @@ public sealed partial class GridPathPlanner
         /// <summary>The raw search's selected start layer, available once it returns a nonempty route.</summary>
         private protected int StartLayer => _stepper.StartLayer;
 
-        /// <summary>The scratch remains owned until the final result has been published or the request is cancelled.</summary>
+        /// <summary>Use this scratch only while holding the lease. Drop every reference to it when the request
+        /// completes, is cancelled or is disposed, including references held by profile stages.</summary>
         private protected RequestScratch Scratch => _leasedScratch!;
 
         public override bool StartsFrom(Vector3 feet)
@@ -84,9 +87,10 @@ public sealed partial class GridPathPlanner
         static bool SameBits(float first, float second)
             => BitConverter.SingleToInt32Bits(first) == BitConverter.SingleToInt32Bits(second);
 
-        private protected sealed override void EnterCall() => Pool.Enter();
+        private protected sealed override void RunGuardedCall(PathWorkBudget? budget)
+            => ((IRequestPool)Pool).RunCall(this, budget);
 
-        private protected sealed override void ExitCall() => Pool.Exit();
+        void RunOwnedCall(PathWorkBudget? budget) => base.RunGuardedCall(budget);
 
         private protected sealed override void AdvanceCore(PathWorkBudget budget)
         {
@@ -129,7 +133,7 @@ public sealed partial class GridPathPlanner
 
         private protected sealed override void Release()
         {
-            Pool.Release(this);
+            ((IRequestPool)Pool).Release(this);
             _leaseSlot = -1;
             _leasedScratch = null;
             _stepper = default;
@@ -138,5 +142,13 @@ public sealed partial class GridPathPlanner
 
         /// <summary>Discards any cursor references to the released workspace and unpublished route.</summary>
         private protected virtual void ClearProfileStages() { }
+
+        /// <summary>Only this request type can call into the pool to run a guarded operation or release a lease.</summary>
+        interface IRequestPool
+        {
+            void RunCall(GridSearchRequest request, PathWorkBudget? budget);
+
+            void Release(GridSearchRequest request);
+        }
     }
 }

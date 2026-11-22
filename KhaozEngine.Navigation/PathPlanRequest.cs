@@ -62,15 +62,7 @@ internal abstract class PathPlanRequest : IDisposable
     {
         if (budget.Units < 1)
             throw new ArgumentOutOfRangeException(nameof(budget), "A work budget holds at least one unit.");
-        EnterCall();
-        try
-        {
-            if (State == PathPlanState.Pending) AdvanceCore(budget);
-        }
-        finally
-        {
-            ExitCall();
-        }
+        RunGuardedCall(budget);
     }
 
     /// <summary>
@@ -84,18 +76,7 @@ internal abstract class PathPlanRequest : IDisposable
     /// <summary>Cancels a pending request and releases its workspace, or leaves the pool's queue if it was still
     /// waiting. Does nothing to a Ready or Cancelled request.</summary>
     /// <exception cref="InvalidOperationException">The call overlaps another call into the pool.</exception>
-    public void Cancel()
-    {
-        EnterCall();
-        try
-        {
-            CancelPending();
-        }
-        finally
-        {
-            ExitCall();
-        }
-    }
+    public void Cancel() => RunGuardedCall(null);
 
     /// <summary>Cancels while the caller already owns the pool's call guard. Also used on query failure.</summary>
     private protected void CancelPending()
@@ -112,11 +93,17 @@ internal abstract class PathPlanRequest : IDisposable
         GC.SuppressFinalize(this);
     }
 
-    /// <summary>Acquires an owner sequence guard before an advance or cancel can change request state.</summary>
-    private protected virtual void EnterCall() { }
-
-    /// <summary>Releases a successfully acquired owner sequence guard.</summary>
-    private protected virtual void ExitCall() { }
+    /// <summary>Runs the whole advance or cancel under the owner sequence guard when the request has one.
+    /// A null budget selects cancellation.</summary>
+    private protected virtual void RunGuardedCall(PathWorkBudget? budget)
+    {
+        if (budget is { } work)
+        {
+            if (State == PathPlanState.Pending) AdvanceCore(work);
+        }
+        else
+            CancelPending();
+    }
 
     /// <summary>Spends work according to <paramref name="budget"/>. Called only while the request is pending,
     /// with a quota of at least one unit. An implementation records the work of finished operations through

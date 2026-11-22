@@ -11,7 +11,7 @@ public sealed partial class GridPathPlanner
     {
         /// <summary>Fixed leases for one raw grid planner or one adapter. Requests wait when all leases are occupied.
         /// Nesting keeps slot and queue assignment private to the request and its pool.</summary>
-        internal sealed class GridPlanningWorkspaces : PathPlanWorkspaces
+        internal sealed class GridPlanningWorkspaces : PathPlanWorkspaces, IRequestPool
         {
             readonly IGridRequestAdapter? _adapter;
             readonly int _count;
@@ -110,6 +110,9 @@ public sealed partial class GridPathPlanner
                     throw new ArgumentException("The adapter must create its own pending request for this admission.", nameof(adapter));
 
                 request.OnBegin();
+                if (request.State != PathPlanState.Pending || request._leaseSlot >= 0 || request._waitNode is not null)
+                    throw new InvalidOperationException("A begin hook must leave its request pending and detached.");
+
                 return Attach(request);
             }
 
@@ -127,16 +130,22 @@ public sealed partial class GridPathPlanner
                 return request;
             }
 
-            internal void Enter()
+            void IRequestPool.RunCall(GridSearchRequest request, PathWorkBudget? budget)
+            {
+                using var call = new PoolCall(this);
+                request.RunOwnedCall(budget);
+            }
+
+            void Enter()
             {
                 if (Interlocked.CompareExchange(ref _inCall, 1, 0) != 0)
                     throw new InvalidOperationException("Calls into a path workspace pool must not overlap.");
             }
 
-            internal void Exit() => Volatile.Write(ref _inCall, 0);
+            void Exit() => Volatile.Write(ref _inCall, 0);
 
             /// <summary>Returns a lease only after the request has completed or been cancelled.</summary>
-            internal void Release(GridSearchRequest request)
+            void IRequestPool.Release(GridSearchRequest request)
             {
                 if (request.State == PathPlanState.Pending || !ReferenceEquals(request._admission.Pool, this))
                     throw new ArgumentException("Only a finished request from this pool can release a lease.", nameof(request));

@@ -15,10 +15,14 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   ([#1290](https://github.com/APKiwiOrg/KhaozEngine/issues/1290)).
 - Grid path queries now return `Unreachable` instead of throwing when the snap ring of a start or goal reaches
   the integer cell boundary.
-- Internal groundwork in `KhaozEngine.Navigation` for route requests that plan across calls under a fixed work
-  quota: the request contract, a resumable exact grid search and a pool of search workspaces. Nothing public
-  uses them yet. The synchronous `FindPath` keeps its routes and its allocations, apart from the boundary case
-  above. No public API, tolerance or navigation format changes.
+- Internal groundwork in `KhaozEngine.Navigation` and `KhaozEngine.Movement` for route requests that plan across
+  calls under a fixed work quota: the request contract, a resumable exact grid search with a pool of search
+  workspaces, and resumable segment admission and route straightening under the same workspace lease. Nothing
+  public uses them yet. The synchronous `FindPath`, `RouteStraightener` and segment admission keep their routes
+  and their allocations, apart from the boundary case above. A navigation view that excludes areas offers no
+  request and keeps planning synchronously
+  ([#1877](https://github.com/APKiwiOrg/KhaozEngine/issues/1877)). No public API, tolerance or navigation format
+  changes.
 
 ## 24.4.0
 

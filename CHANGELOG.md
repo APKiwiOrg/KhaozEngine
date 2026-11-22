@@ -4,9 +4,84 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 24.4.1
+## 24.5.0
 
 2026-11-22
+
+A minor with additive API in `KhaozEngine.Attachments`, `KhaozEngine.Attachments.Render3D` and
+`KhaozEngine.Render3D`. Worn skinned parts can swing from the body's joints and clear capsules on the wearer.
+A consumer can also load a skinned body, its material maps and its animation clips from one GLB byte snapshot.
+Existing sets and draws are unchanged.
+
+**Hanging parts that swing.**
+
+- Format 4 adds root `colliders` and skinned part `motion`, each optional. A set that uses either requires a
+  layer. Canonical bytes and semantic hashes for formats 1 to 3 stay unchanged. `AttachmentSetJson.MotionFormatVersion`
+  is 4 and `CurrentFormatVersion` stays 2. `AttachmentSetDefinition` gains `Colliders`, `MaxColliders` (8)
+  and a constructor taking parts, layer, covers and colliders. `SkinnedAttachmentPartDefinition.Motion` is init
+  only and takes a `PartMotionDefinition`. The supported kind is `ChainMotionDefinition(Chains, Links)`, using
+  `ChainDefinition(Joints, Tip, Settings)`, `ChainSettings(Stiffness, Damping, Gravity, Trail, AngleLimit, Radius)`
+  and `ChainLink(First, Second)`. The chain and motion definitions implement `Equals` and `GetHashCode` over
+  their ordered contents.
+- `AttachmentSetRefusal` appends `MotionKindUnsupported`, `ChainsEmpty`, `TooManyChains`, `ChainJointsEmpty`,
+  `TooManyChainJoints`, `ChainJointNameEmpty`, `ChainJointNameMalformedUtf16`, `ChainJointDuplicate`,
+  `ChainTipInvalid`, `ChainSettingOutOfRange`, `ChainLinkInvalid`, `ChainLinkDuplicate`, `TooManyLinks`,
+  `ColliderJointNameEmpty`, `ColliderJointNameMalformedUtf16`, `ColliderPointInvalid`, `ColliderRadiusInvalid`,
+  `TooManyColliders` and `MotionWithoutLayer`. `AttachmentSetArgumentException` and `AttachmentSetDataException`
+  gain `ChainIndex`, `JointIndex`, `LinkIndex`, `ColliderIndex` and `SettingName`. The argument exception also
+  gains `ActualCount` and `ExpectedCount`.
+- Body and worn set capsules use `ColliderDefinition(Joint, Start, End, Radius)` in the body's rest model space.
+  `BodyColliderSet(rigIdentity, colliders)` exposes `MaxColliders` (32), `RigIdentity`, `Colliders` and `Sha256`.
+  `BodyCollidersJson` has `FormatVersion` (1), `Parse` and `Write`. The two `BodyCollidersDataException`
+  constructors take a reason and message, with an optional inner exception via the second overload. The exception
+  derives from `MalformedDataException` and exposes `Reason`, `SourceName`, `JsonPath`, `PropertyName`,
+  `FormatVersion`, `RigIdentity`, `ColliderIndex`, `JointName` and `ColliderCount`. `BodyCollidersRefusal` has
+  `FormatVersionUnsupported`, `JsonPropertyUnknown`, `JsonPropertyDuplicate`, `JsonPropertyMissing`,
+  `JsonValueShapeInvalid`, `JsonMalformed`, `RigIdentityInvalid`, `JointNameEmpty`, `JointNameMalformedUtf16`,
+  `PointInvalid`, `RadiusInvalid` and `TooManyColliders`.
+- The GPU-free solver substeps Verlet chains through gravity, spring, bend, length and capsule constraints.
+  `ChainRig(anchorCount, chains, links)` takes `ChainRigChain(Anchor, Joints, Tip, Settings)` values with
+  `ChainJointRest(Translation, Rotation, Scale)` joints. The rig exposes `AnchorCount`, `Chains`, `Links`,
+  `JointCount` and `FirstJoint(chain)`. `ChainSimulation(rig, colliderCount, options)` exposes `Rig`,
+  `ColliderCount`, `Options`, `JointsFromAnchor`, `Step`, `Reset`, `Tune` and `ComposeJointWorlds`. It takes
+  posed `ColliderCapsule(Start, End, Radius)` values. `ChainSimulationOptions` exposes `MaxStepSeconds`,
+  `MaxStepsPerFrame`, `TeleportDistance`, `LongestGapSeconds`, `HoldBlendSeconds` and `Gravity`.
+  `MotionLevels.Assign` chooses the closest wearers within a distance and count budget and assigns
+  `MotionLevel.Simulated` or `MotionLevel.Held`.
+- `AttachmentSetCache.GetBodyColliders(key, expectedSha256, bodyRigIdentity)` returns `LoadedBodyColliders`,
+  whose `Set` is the verified collider data. `BoundAttachmentSet.CreateMotion` and `BoundOutfit.CreateMotion`
+  accept that data or null, plus optional simulation options. Each `WornMotion` exposes `Step`, `Reset` and
+  `Tune` for one wearer. Animate, step once and pass the motion to the set's `WriteDraws`, either `Queue`
+  overload or `QueueOutline`, or to the outfit's `WriteDraws` or `QueueOutline`. Every pass uses the same
+  swing. Existing overloads draw chains at their rest hang. The shipped Scene3D uploads grow the source mesh and
+  its views' culling bounds for chain reach. Custom scene leases own their culling policy.
+- `AttachmentBindingRefusal` appends `ChainJointMissing`, `ChainJointIsHostJoint`, `ChainNotParentLine`,
+  `ChainAnchorNotHostJoint`, `ChainBindMismatch`, `BodyCollidersMismatch`, `ColliderJointUnresolved`,
+  `WearerCollidersTooMany` and `ColliderHostMeshRequired`. `AttachmentBindingDataException` gains
+  `ChainIndex`, `ColliderIndex`, `ColliderCount` and `MaximumColliderCount`. `AttachmentSubmissionRefusal`
+  appends `MotionMismatch` for a motion used with a binding that did not create it.
+- Coverage claims use fixed geometry. `AttachmentGlb.SwingingVertices(glb, sourceName, chainJoints)` reads
+  the vertex mask for a garment GLB. Supply it as the init-only `CoverageClaimMesh.Swinging` property so
+  `CoverageClaimCheck.Verify` skips every piece triangle with a swinging vertex. The
+  `CoverageClaimReport.IgnoredSwingingTriangleCount` records how many it skipped.
+- Publish format 4 only after every reader is on 24.5.0 or later. A 24.4.0 reader raises
+  `AttachmentSetDataException` with `JsonPropertyUnknown`, `JsonPath` of `$` and `PropertyName` of
+  `colliders` if the root contains that member, including an empty array. For format 4 without that member
+  it raises `FormatVersionUnsupported` at `$.formatVersion` with `FormatVersion` 4. Readers at 24.3.0 and
+  earlier raise `JsonPropertyUnknown` for the first unfamiliar root member, `layer` in canonical bytes.
+  [Consumer guide](docs/USING-KHAOZENGINE.md#hanging-parts-that-swing).
+  [#1879](https://github.com/APKiwiOrg/KhaozEngine/issues/1879).
+
+**Skinned body and clip loading from bytes.**
+
+- `GltfLoader.LoadSkinnedWithMaterial(ReadOnlyMemory<byte>, string)` and
+  `GltfLoader.LoadAnimations(ReadOnlyMemory<byte>, string)` take the same GLB snapshot and caller-supplied
+  identity. Images in GLB buffer views or data URIs work with both overloads. An external image URI anywhere
+  in the GLB raises `GltfImportDataException` with `GltfImportRefusal.ExternalImageInByteImport`, the
+  supplied `Identity` and the new zero-based `ImageIndex` property. Use the path overloads for external images.
+  [#1876](https://github.com/APKiwiOrg/KhaozEngine/issues/1876).
+
+**Navigation and movement.**
 
 - A goal region built by `MoveToRange` now owns the reach it was made for: the target, the range and the mover's
   capsule, frozen when the region is built. A change to any bit of the reach builds a new region, so every route

@@ -13,9 +13,12 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   query still tests the current reach and every route is unchanged. A custom planner that keeps a `NavGoalRegion`
   after its query returns now sees that frozen reach, not the mover's later target
   ([#1290](https://github.com/APKiwiOrg/KhaozEngine/issues/1290)).
+- Grid path queries now return `Unreachable` instead of throwing when the snap ring of a start or goal reaches
+  the integer cell boundary.
 - Internal groundwork in `KhaozEngine.Navigation` for route requests that plan across calls under a fixed work
-  quota. The contract types have no planner behind them yet. No public API, route, tolerance or navigation
-  format changes.
+  quota: the request contract, a resumable exact grid search and a pool of search workspaces. Nothing public
+  uses them yet. The synchronous `FindPath` keeps its routes and its allocations, apart from the boundary case
+  above. No public API, tolerance or navigation format changes.
 
 ## 24.4.0
 

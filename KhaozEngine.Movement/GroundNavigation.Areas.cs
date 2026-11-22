@@ -11,7 +11,8 @@ public sealed partial class GroundNavigation
     /// and never widen the baked profile, including when an excluded bit is required by that profile.
     /// Terrain ownership and preparation follow the source, including later evidence rebinding.
     /// Search nodes, edges and supported-walk segments check the complete captured footprint.
-    /// Terrain links also check excluded areas across their full certified shell.</summary>
+    /// Terrain links also check excluded areas across their full certified shell.
+    /// These views plan synchronously because the exclusion constraint can scan a footprint in one search operation.</summary>
     public GroundNavigation ExcludingAreas(uint excludedAreas)
         => excludedAreas == 0 ? this : new GroundNavigation(this, excludedAreas);
 

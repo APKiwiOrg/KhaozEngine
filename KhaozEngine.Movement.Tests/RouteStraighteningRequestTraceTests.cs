@@ -32,7 +32,7 @@ public sealed partial class RouteStraighteningRequestTests
             (Segment.FootprintColumn, Search.Done, 3), (Segment.EndpointLayer, Search.Done, 2),
             (Segment.Done, Search.Snap, 2), (Segment.Done, Search.MemberBox, 2), (Segment.Done, Search.Member, 2),
         ];
-        (Segment, Search, int)[] search = member
+        (Segment Start, Search Search, int Units)[] search = member
             ?
             [
                 (Segment.Done, Search.CertificateLabel, 1), (Segment.Done, Search.Seed, 4),

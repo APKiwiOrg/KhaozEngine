@@ -7,7 +7,7 @@ namespace KhaozEngine.Navigation;
 public sealed partial class GridPathPlanner
 {
     /// <summary>Frozen raw region query. Only an advance by an owner holding a lease starts or resumes the stepper.</summary>
-    internal sealed class GridSearchRequest(GridPlanningWorkspaces pool, Vector3 start, NavGoalRegion goal,
+    internal class GridSearchRequest(GridPlanningWorkspaces pool, Vector3 start, NavGoalRegion goal,
         float radius, PathQueryBudget queryBudget) : PathPlanRequest
     {
         RequestStepper _stepper;
@@ -35,12 +35,24 @@ public sealed partial class GridPathPlanner
             }
         }
 
+        /// <summary>The query feet supplied to both the raw search and its profile stages.</summary>
+        private protected Vector3 Start => start;
+
+        /// <summary>The raw search's selected start layer, available once it returns a nonempty route.</summary>
+        private protected int StartLayer => _stepper.StartLayer;
+
+        /// <summary>The scratch remains owned until the final result has been published or the request is cancelled.</summary>
+        private protected RequestScratch Scratch => pool.ScratchAt(LeaseSlot);
+
         public override bool StartsFrom(Vector3 feet)
         {
             if (SameBits(start.X, feet.X) && SameBits(start.Y, feet.Y) && SameBits(start.Z, feet.Z)) return true;
             var planner = pool.Planner;
-            return Resolve(planner, start) is { } original && Resolve(planner, feet) == original;
+            return AdmitsStartChange(feet) && Resolve(planner, start) is { } original && Resolve(planner, feet) == original;
         }
+
+        /// <summary>Checks profile start admission before comparing two different feet against the grid start.</summary>
+        private protected virtual bool AdmitsStartChange(Vector3 feet) => true;
 
         (int Layer, int X, int Z)? Resolve(GridPathPlanner planner, Vector3 feet)
         {
@@ -65,29 +77,38 @@ public sealed partial class GridPathPlanner
             if (LeaseSlot < 0) return;
             try
             {
-                if (!_started)
-                {
-                    _stepper = new RequestStepper(pool.Planner, pool.ScratchAt(LeaseSlot), start, goal, radius, queryBudget);
-                    _started = true;
-                }
-
                 int spent = 0;
+                NavPath? path;
                 try
                 {
-                    _stepper.RunSlice(budget.Units, ref spent);
+                    path = RunSlice(budget.Units, ref spent);
                 }
                 finally
                 {
                     if (spent > 0) Spend(spent);
                 }
 
-                if (_stepper.Result is { } path) Complete(path);
+                if (path is not null) Complete(path);
             }
             catch
             {
                 CancelPending();
                 throw;
             }
+        }
+
+        /// <summary>Runs the search with any prior effort in this advance included in <paramref name="spent"/>.
+        /// Profile requests may do work before search and hold its result while preparing their final route.</summary>
+        private protected virtual NavPath? RunSlice(int quota, ref int spent)
+        {
+            if (!_started)
+            {
+                _stepper = new RequestStepper(pool.Planner, Scratch, start, goal, radius, queryBudget);
+                _started = true;
+            }
+
+            _stepper.RunSlice(quota, ref spent);
+            return _stepper.Result;
         }
 
         /// <summary>Cancels under the pool's existing disposal guard.</summary>
@@ -98,6 +119,10 @@ public sealed partial class GridPathPlanner
             pool.Release(this, LeaseSlot);
             LeaseSlot = -1;
             _stepper = default;
+            ClearProfileStages();
         }
+
+        /// <summary>Discards any cursor references to the released workspace and unpublished route.</summary>
+        private protected virtual void ClearProfileStages() { }
     }
 }

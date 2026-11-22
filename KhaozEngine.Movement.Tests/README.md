@@ -20,7 +20,8 @@ correctness tests remain here.
 
 Segment admission tests compare the synchronous guard and sliced requests against the frozen rectangle
 on the exact-footprint corpus. Literal traces pin the work and result visibility at each operation
-boundary. The synchronous segment and straightening diagnostics have a separate untimed sampling-window
+boundary. Route tests also pin bitwise equality across quota schedules, the shared lease from profile
+admission to publication, and the synchronous-only policy for area excluding views. The synchronous segment and straightening diagnostics have a separate untimed sampling-window
 check. Their ordinary test verifies row workload sizes using footprint candidate counts.
 
 Passing a research fixture does not authorize a measurement campaign.

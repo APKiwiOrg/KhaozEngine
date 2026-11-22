@@ -8,21 +8,52 @@ namespace KhaozEngine.Navigation;
 
 public sealed partial class GridPathPlanner
 {
+    /// <summary>Constrained traversals can scan a footprint within a single search operation and plan
+    /// synchronously. Unconstrained legacy and baked-graph planners support requests.</summary>
+    internal bool SupportsRequests => _allowsTraversal is null;
+
+    bool IIncrementalRegionPathPlanner.SupportsRequests => SupportsRequests;
+
     PathPlanWorkspaces IIncrementalRegionPathPlanner.CreateWorkspaces(int count, PathQueryBudget largestBudget)
-        => new GridPlanningWorkspaces(this, count, largestBudget);
+        => CreateRequestWorkspaces(this, count, largestBudget);
 
     PathPlanRequest IIncrementalRegionPathPlanner.BeginPath(Vector3 start, NavGoalRegion goal, float agentRadius,
         PathQueryBudget budget, PathPlanWorkspaces workspaces)
+        => BeginRequest(this, start, goal, agentRadius, budget, workspaces);
+
+    /// <summary>Prewarms the grid workspace for its raw planner or one of its profile adapters.</summary>
+    internal PathPlanWorkspaces CreateRequestWorkspaces(object owner, int count, PathQueryBudget largestBudget)
     {
+        RequireRequestSupport();
+        return new GridPlanningWorkspaces(this, owner, count, largestBudget);
+    }
+
+    /// <summary>Validates a query, then starts its grid request and any profile stages on the same lease.</summary>
+    internal PathPlanRequest BeginRequest(object owner, Vector3 start, NavGoalRegion goal, float agentRadius,
+        PathQueryBudget budget, PathPlanWorkspaces workspaces,
+        Func<GridPlanningWorkspaces, GridSearchRequest>? createRequest = null)
+    {
+        RequireRequestSupport();
         ArgumentNullException.ThrowIfNull(workspaces);
-        if (workspaces is not GridPlanningWorkspaces pool || !ReferenceEquals(pool.Planner, this))
+        if (workspaces is not GridPlanningWorkspaces pool || !ReferenceEquals(pool.Planner, this) ||
+            !ReferenceEquals(pool.PlannerOwner, owner))
             throw new ArgumentException("The workspace pool belongs to another planner.", nameof(workspaces));
-        return pool.Begin(start, goal, agentRadius, budget);
+        return pool.Begin(start, goal, agentRadius, budget, createRequest);
+    }
+
+    /// <summary>Refuses the incremental door before it can invoke an unbudgeted traversal constraint.</summary>
+    internal void RequireRequestSupport()
+    {
+        if (!SupportsRequests)
+            throw new NotSupportedException("Traversal constraints can scan a footprint inside one search operation and require synchronous planning.");
     }
 
     /// <summary>Seeds prewarmed stamps near wrap, using the same pool and requests as ordinary creation.</summary>
     internal PathPlanWorkspaces CreateWorkspacesForTests(int count, PathQueryBudget largestBudget, int generation)
-        => new GridPlanningWorkspaces(this, count, largestBudget, generation);
+    {
+        RequireRequestSupport();
+        return new GridPlanningWorkspaces(this, this, count, largestBudget, generation);
+    }
 
     int WorkspaceFrontierCapacity(int expansions, PathQueryBudget largestBudget)
     {
@@ -70,13 +101,15 @@ public sealed partial class GridPathPlanner
         long _waits;
         bool _disposed;
 
-        internal GridPlanningWorkspaces(GridPathPlanner planner, int count, PathQueryBudget largestBudget, int generation = 0)
+        internal GridPlanningWorkspaces(GridPathPlanner planner, object owner, int count, PathQueryBudget largestBudget,
+            int generation = 0)
         {
             ArgumentOutOfRangeException.ThrowIfLessThan(count, 1);
             if (float.IsNaN(largestBudget.SnapRadius))
                 throw new ArgumentOutOfRangeException(nameof(largestBudget), "The snap radius limit must be ordered.");
 
             Planner = planner;
+            PlannerOwner = owner;
             _count = count;
             _largestBudget = largestBudget;
 
@@ -96,6 +129,8 @@ public sealed partial class GridPathPlanner
 
         internal GridPathPlanner Planner { get; }
 
+        internal object PlannerOwner { get; }
+
         public override int Count
         {
             get
@@ -114,7 +149,8 @@ public sealed partial class GridPathPlanner
             }
         }
 
-        internal PathPlanRequest Begin(Vector3 start, NavGoalRegion goal, float radius, PathQueryBudget budget)
+        internal PathPlanRequest Begin(Vector3 start, NavGoalRegion goal, float radius, PathQueryBudget budget,
+            Func<GridPlanningWorkspaces, GridSearchRequest>? createRequest)
         {
             using var call = new PoolCall(this);
             ObjectDisposedException.ThrowIf(_disposed, this);
@@ -122,7 +158,7 @@ public sealed partial class GridPathPlanner
             if (budget.MaxExpandedNodes > _largestBudget.MaxExpandedNodes ||
                 !(budget.SnapRadius <= _largestBudget.SnapRadius))
                 throw new ArgumentException("The query budget exceeds the workspace pool's declared limits.", nameof(budget));
-            var request = new GridSearchRequest(this, start, goal, radius, budget);
+            GridSearchRequest request = createRequest?.Invoke(this) ?? new GridSearchRequest(this, start, goal, radius, budget);
             if (_waiters.Count == 0 && _free.TryPop(out int slot))
             {
                 Grant(request, slot);

@@ -111,7 +111,7 @@ public sealed partial class GroundNavigation
     private readonly record struct ProfileTuning(float Radius, float HalfHeight, float Slope, float Step);
     private readonly record struct SwimFractions(float Enter, float Exit, float Submersion);
 
-    private sealed class ProfilePlanner(GroundNavigation navigation, GridPathPlanner planner) : IRegionPathPlanner
+    private sealed partial class ProfilePlanner(GroundNavigation navigation, GridPathPlanner planner) : IIncrementalRegionPathPlanner
     {
         public NavPath FindPath(Vector3 start, Vector3 goal, float agentRadius, PathQueryBudget budget)
         {

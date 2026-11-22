@@ -377,6 +377,10 @@ allocates its path storage, and caller predicates may allocate their own storage
 The internal work table also defines the charges for Movement's segment admission cursor. Its
 endpoint layer, footprint row, footprint column and directed edge checks each spend a fixed
 number of work units. A column's surface count affects execution time without changing its charge.
+Movement can keep the same lease through start admission and straightening, including a charged
+allocation and copy of the changed route. An internal planner with a traversal constraint supports
+synchronous queries only. Area excluding views use that constraint, which can scan a whole footprint
+inside one search operation, so they refuse workspace creation and request begin.
 
 These are the legacy point-query rules. The original `GridPathPlanner(NavSpace space, float hopCostCells =
 4f)` constructor keeps radius-aware clearance, endpoint ring snapping, line-of-sight shortcuts,

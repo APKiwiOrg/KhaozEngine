@@ -10,11 +10,16 @@ namespace KhaozEngine.Navigation;
 /// </summary>
 internal interface IIncrementalRegionPathPlanner : IRegionPathPlanner
 {
+    /// <summary>Whether this planner can run every engine-owned query operation under a request quota.</summary>
+    bool SupportsRequests { get; }
+
     /// <summary>Creates a pool of <paramref name="count"/> search workspaces for this planner's requests.
     /// Each workspace's buffers are preallocated for the grid and the expansion cap in <paramref name="largestBudget"/>.
     /// The planner's workspace buffers never grow during an advance. Publishing a nonempty route allocates its
     /// result. Caller predicates may allocate their own storage. The declared expansion cap and snap radius limit
     /// every begin. Either walk policy is supported. See <see cref="PathPlanWorkspaces"/> for the lease rules.</summary>
+    /// <exception cref="NotSupportedException">The planner requires synchronous queries. A grid traversal
+    /// constraint can scan a footprint inside one search operation and is excluded from requests.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="count"/> is below one or
     /// <paramref name="largestBudget"/> has a NaN snap radius.</exception>
     /// <exception cref="ArgumentException">The budget requires a frontier larger than an array.</exception>
@@ -26,6 +31,8 @@ internal interface IIncrementalRegionPathPlanner : IRegionPathPlanner
     /// <paramref name="workspaces"/> now when nothing waits, else it joins the pool's queue. The owner advances it
     /// in the same call. The goal's predicate must stay pure until the request is Ready or Cancelled.
     /// </summary>
+    /// <exception cref="NotSupportedException">The planner requires synchronous queries. Check
+    /// <see cref="SupportsRequests"/> before creating a workspace or beginning a request.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="goal"/> or <paramref name="workspaces"/> is
     /// null.</exception>
     /// <exception cref="ArgumentException"><paramref name="workspaces"/> belongs to another planner, or

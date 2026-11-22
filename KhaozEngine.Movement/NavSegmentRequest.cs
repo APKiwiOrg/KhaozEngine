@@ -53,7 +53,7 @@ internal struct NavSegmentRequest(GroundNavigation navigation, Vector3 from, Vec
         {
             while (NextOperation != NavSegmentOperation.Done)
             {
-                int weight = NextWeight;
+                int weight = WeightOf(NextOperation);
                 if (spent != 0 && weight > quota - spent) return;
                 Step();
                 spent += weight;
@@ -70,7 +70,8 @@ internal struct NavSegmentRequest(GroundNavigation navigation, Vector3 from, Vec
         }
     }
 
-    int NextWeight => NextOperation switch
+    /// <summary>The fixed charge for an admission operation, shared with profile start resolution.</summary>
+    internal static int WeightOf(NavSegmentOperation operation) => operation switch
     {
         NavSegmentOperation.EndpointStart or NavSegmentOperation.SegmentStart => PathWorkWeights.FootprintSetup,
         NavSegmentOperation.FootprintRow => PathWorkWeights.FootprintRow,
@@ -80,7 +81,8 @@ internal struct NavSegmentRequest(GroundNavigation navigation, Vector3 from, Vec
         _ => throw new InvalidOperationException("A finished segment has no next operation."),
     };
 
-    void Step()
+    /// <summary>Runs one operation after the owner admits its charge.</summary>
+    internal void Step()
     {
         switch (_stage)
         {

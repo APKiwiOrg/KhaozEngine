@@ -32,6 +32,14 @@ An advance charges whole operations and the decision becomes visible after the f
 The charge of one column includes all of its captured surfaces. A paused request keeps only its cursors
 and can continue without rebuilding the query or allocating a scan buffer.
 
+A ground profile can also plan an internal region request. One prewarmed workspace covers sliced start
+admission, grid search and optional straightening. The straightener validates raw waypoints, keeps
+required anchors and checks the centre, positive and negative side lines in order. It captures
+`FallBackOnce` at begin and updates `LastStraightened` only for a published shortcut. A spent quota
+keeps the route private until the final operation. Area excluding views plan synchronously because
+their grid traversal constraint can scan a footprint inside one search operation. They do not offer
+profile or straightened requests.
+
 For an ability that refuses an area the actor may otherwise enter, pass
 `navigation.ExcludingAreas(wetSurfaceBit)` to `GroundPursuit`. The mask uses the game's captured `uint` area
 bits. This immutable view shares the baked graph and captured columns, including those loaded from a bake,

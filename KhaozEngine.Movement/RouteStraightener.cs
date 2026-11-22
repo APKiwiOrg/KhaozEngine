@@ -8,7 +8,7 @@ namespace KhaozEngine.Movement;
 /// <summary>Drops cell-centre waypoints from planned routes where the segment guard accepts the centre line and
 /// both side lines, so a body walks straight instead of along the grid's 45 and 90 degree staircase. Waypoints are
 /// only dropped, never created or moved, and the inner path's status is kept.</summary>
-internal sealed class RouteStraightener : IRegionPathPlanner
+internal sealed partial class RouteStraightener : IIncrementalRegionPathPlanner
 {
     /// <summary>How far a side line sits from the centre line, in cells of the anchor's layer. Just under half a cell
     /// keeps a side line off the cell boundary, so an axis-aligned segment judges both sides alike while an oblique
@@ -41,17 +41,12 @@ internal sealed class RouteStraightener : IRegionPathPlanner
 
     private NavPath Straighten(Vector3 start, NavPath inner)
     {
-        LastStraightened = null;
-        if (_fallBack)
-        {
-            _fallBack = false;
-            return inner;
-        }
-        if (inner.Status == NavPathStatus.Unreachable) return inner;
+        if (BeginStraightening()) return inner;
+        if (!CanStraighten(inner)) return inner;
 
         IReadOnlyList<NavWaypoint> wp = inner.Waypoints;
         int n = wp.Count;
-        if (n < 2) return inner;
+        if (!HasShortcutCandidates(n)) return inner;
         // Keep malformed planner output intact for the caller's typed admission checks. A shortcut must
         // neither hide an invalid waypoint nor index its unknown layer while seeking an anchor.
         for (int i = 0; i < n; i++)
@@ -65,10 +60,10 @@ internal sealed class RouteStraightener : IRegionPathPlanner
         // unchecked.
         for (int a = -1; a < n - 1;)
         {
-            int best = a + 1;
-            for (int j = a + 2; j < n && anchorKnown && !Mandatory(wp, best, startLayer); j++)
+            int best = NextEdge(a);
+            for (int j = FirstShortcut(a); j < n && anchorKnown && !Mandatory(wp, best, startLayer); j++)
             {
-                if (wp[j].Kind != NavWaypointKind.Walk || wp[j].Layer != anchorLayer) break;
+                if (!IsWalk(wp[j]) || !OnLayer(wp[j], anchorLayer)) break;
                 if (!TryFeet(wp[j], out Vector3 feet) || !Clear(anchorFeet, feet, anchorLayer)) break;
                 best = j;
             }
@@ -77,15 +72,15 @@ internal sealed class RouteStraightener : IRegionPathPlanner
             anchorKnown = TryFeet(wp[best], out anchorFeet);
             anchorLayer = wp[best].Layer;
         }
-        if (kept.Count == n) return inner;
+        if (!DroppedWaypoints(kept.Count, n)) return inner;
         var straightened = new NavPath(inner.Status, kept);
-        LastStraightened = straightened;
+        RecordStraightened(straightened);
         return straightened;
     }
 
     // The final waypoint carries region membership, a special transition needs its start and landing, and a layer change needs
     // both ends, so a scan never passes any of them.
-    private static bool Mandatory(IReadOnlyList<NavWaypoint> wp, int i, int startLayer)
+    internal static bool Mandatory(IReadOnlyList<NavWaypoint> wp, int i, int startLayer)
     {
         if (i == wp.Count - 1 || wp[i].Kind != NavWaypointKind.Walk) return true;
         int previousLayer = i == 0 ? startLayer : wp[i - 1].Layer;
@@ -93,7 +88,7 @@ internal sealed class RouteStraightener : IRegionPathPlanner
     }
 
     // A waypoint on a heightless or blocked cell has no feet to check, so no shortcut reaches or leaves it.
-    private bool TryFeet(NavWaypoint waypoint, out Vector3 feet)
+    internal bool TryFeet(NavWaypoint waypoint, out Vector3 feet)
     {
         feet = default;
         if ((uint)waypoint.Layer >= (uint)_space.Layers.Count ||
@@ -108,15 +103,15 @@ internal sealed class RouteStraightener : IRegionPathPlanner
     private bool Clear(Vector3 from, Vector3 to, int layer)
     {
         if (!_allowsSegment(from, to)) return false;
-        double dx = (double)to.X - from.X, dz = (double)to.Z - from.Z;
-        double length = Math.Sqrt(dx * dx + dz * dz);
-        if (length == 0d) return true;
-        double scale = SideOffsetCells * (double)_space.Layers[layer].CellSize / length;
-        double ox = -dz * scale, oz = dx * scale;
+        double dx = Delta(to.X, from.X), dz = Delta(to.Z, from.Z);
+        double length = SideLength(dx, dz);
+        if (NoSideLines(length)) return true;
+        double scale = SideScale(layer, length);
+        double ox = SideOffsetX(dz, scale), oz = SideOffsetZ(dx, scale);
         return _allowsSegment(Offset(from, ox, oz), Offset(to, ox, oz)) &&
             _allowsSegment(Offset(from, -ox, -oz), Offset(to, -ox, -oz));
     }
 
-    private static Vector3 Offset(Vector3 feet, double ox, double oz)
+    internal static Vector3 Offset(Vector3 feet, double ox, double oz)
         => new((float)(feet.X + ox), feet.Y, (float)(feet.Z + oz));
 }

@@ -20,6 +20,9 @@ public sealed class GridSearchSynchronousTimingTests(ITestOutputHelper output)
     const long SmallHeapBudget = 16 * 1024 * 1024;
     const long LargeHeapBudget = 16 * 1024 * 1024;
 
+    // Unmeasured batches run inside the region after the heap is prepared and before the first recorded sample.
+    const int PreludeBatches = 8;
+
     [Fact]
     public void RowsTakeTheExpectedPlannerDoor()
     {
@@ -164,6 +167,10 @@ public sealed class GridSearchSynchronousTimingTests(ITestOutputHelper output)
             gen2 = GC.CollectionCount(2);
             windowBytes = GC.GetTotalAllocatedBytes(precise: true);
             threadBytes = GC.GetAllocatedBytesForCurrentThread();
+            // The collections, the reservation and the precise counter read leave caches cold and the reserved
+            // allocation space untouched. These batches absorb that, so the recorded samples start warm.
+            for (int prelude = 0; prelude < PreludeBatches; prelude++)
+                for (int call = 0; call < batch; call++) GC.KeepAlive(run());
             for (int i = 0; i < samples.Length; i++)
             {
                 long start = TClock.GetTimestamp();

@@ -315,9 +315,13 @@ scene state. Passing it to another binding raises `MotionMismatch` before submit
 When the cache loads a chained set through a shipped `Scene3D` upload lease, it expands the
 chained meshes' rest bounds for culling. Each chain contributes a sphere at its first joint's
 rest position. The radius covers the rest segments and tip, plus the farthest weighted vertex
-from its chain joint. A shared mesh keeps the union of every loaded definition's reach.
-Existing and future views use the grown source bounds. A custom `IAttachmentScene` lease keeps
-its own culling policy.
+from its chain joint. This growth covers the chain's swing around the anchor. An animated anchor
+carried far from rest can still take the whole chain outside the culling bounds, which is the
+same limit as ordinary skinned meshes
+([#1492](https://github.com/APKiwiOrg/KhaozEngine/issues/1492) and
+[#1538](https://github.com/APKiwiOrg/KhaozEngine/issues/1538)).
+A shared mesh keeps the union of every loaded definition's reach. Existing and future views use
+the grown source bounds. A custom `IAttachmentScene` lease keeps its own culling policy.
 
 ## Table coverage preparation
 

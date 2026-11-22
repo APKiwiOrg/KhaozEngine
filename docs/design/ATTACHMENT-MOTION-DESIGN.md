@@ -275,6 +275,11 @@ Its canonical bytes and SHA-256 follow the region map's rules.
 - **Culling.** A skinned draw is culled by its mesh's rest bounds sphere times 1.5, and a swung tip can leave that
   sphere. Loading a set grows each chained mesh's bounds to contain a sphere at each chain's first joint in mesh rest
   space. The radius sums the rest segments, the tip segment and the farthest weighted vertex from its chain joint.
+  This growth covers the chain's swing around the anchor.
+  An animated anchor carried far from rest can still take the whole chain outside the culling bounds,
+  which is the same limit as ordinary skinned meshes
+  ([#1492](https://github.com/APKiwiOrg/KhaozEngine/issues/1492) and
+  [#1538](https://github.com/APKiwiOrg/KhaozEngine/issues/1538)).
   The shipped upload leases use an internal `Scene3D` seam that grows the source and its views together. A custom
   lease keeps its own culling policy.
 - **Hidden parts.** A part the outfit hides entirely is not stepped.

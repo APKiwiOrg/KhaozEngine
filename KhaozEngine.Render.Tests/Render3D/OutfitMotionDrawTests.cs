@@ -14,6 +14,9 @@ namespace KhaozEngine.Tests.Render3D;
 public sealed class OutfitMotionDrawTests
 {
     const int ChainedWornIndex = 1;
+    const int HostHipBone = 1;
+    // Chained() declares its garment skin as left1, knee, left0, hip.
+    const int ChainRootSlot = 2, LastChainJointSlot = 0;
 
     [Theory]
     [InlineData(false)]
@@ -30,23 +33,36 @@ public sealed class OutfitMotionDrawTests
             DissolveEdgeColor = Color.White, CastsShadows = true, ShadowOnly = true,
             InvertShadowDissolve = true, DissolveComplement = 1f,
         };
+        Matrix4x4 model = Matrix4x4.CreateRotationY(.4f) * rig.Model;
         int drawCount = outfit?.DrawCount(ChainedWornIndex) ?? set.DrawCount;
         Assert.Equal(3, drawCount);
         var baseline = new AttachmentDraw[drawCount];
-        Assert.Equal(drawCount, outfit?.WriteDraws(ChainedWornIndex, rig.Skeleton, rig.Palette, rig.Model, rig.Key, template, baseline)
-            ?? set.WriteDraws(rig.Skeleton, rig.Palette, rig.Model, rig.Key, template, baseline));
+        Assert.Equal(drawCount, outfit?.WriteDraws(ChainedWornIndex, rig.Skeleton, rig.Palette, model, rig.Key, template, baseline)
+            ?? set.WriteDraws(rig.Skeleton, rig.Palette, model, rig.Key, template, baseline));
         Assert.False(baseline[0].IsSkinned);
         Assert.Equal(asOutfit, rig.Scene.IsSkinnedMeshView(baseline[1].Skinned.Mesh));
         Assert.False(rig.Scene.IsSkinnedMeshView(baseline[2].Skinned.Mesh));
         Matrix4x4[] rest = baseline[1].BoneMatrices.ToArray();
 
-        Step(rig, motion);
+        // Replay the fixture's solver inputs without the wearer's binding or palette code.
+        var chain = new ChainRigChain(0,
+            [new(Vector3.UnitX * .25f, Quaternion.Identity, Vector3.One),
+             new(Vector3.UnitX * .5f, Quaternion.Identity, Vector3.One)], Vector3.UnitX * .5f, FallSettings);
+        var solver = new ChainSimulation(new ChainRig(1, [chain], []), 0);
+        Matrix4x4 anchorWorld = rig.Palette[HostHipBone] * model;
+        for (int frame = 0; frame < 8; frame++)
+        {
+            motion.Step(rig.Skeleton, rig.Palette, model, 1f / 60f);
+            solver.Step([anchorWorld], [], model, 1f / 60f);
+        }
+
+        Assert.True(Matrix4x4.Invert(model, out Matrix4x4 inverseModel));
+        ReadOnlySpan<Matrix4x4> frames = solver.JointsFromAnchor;
+        Assert.Equal(2, frames.Length);
+        Matrix4x4 rootJoint = frames[0] * anchorWorld * inverseModel;
+        Matrix4x4 lastJoint = frames[1] * anchorWorld * inverseModel;
+        Assert.NotEqual(rest[LastChainJointSlot], lastJoint);
         var actual = new AttachmentDraw[drawCount];
-        var expected = new Matrix4x4[4];
-        motion.CopyChainPalette(asOutfit ? ChainedWornIndex : 0, ChainPartId, rig.Palette, expected);
-        expected[1] = rig.Palette[0]; // knee
-        expected[3] = rig.Palette[1]; // hip
-        Assert.NotEqual(rest[0], expected[0]);
         Assert.Equal(drawCount, Write(rig.Palette));
         Assert.Equal(baseline[0], actual[0]);
         for (int i = 1; i < drawCount; i++)
@@ -54,23 +70,28 @@ public sealed class OutfitMotionDrawTests
             Assert.Equal(baseline[i].PartId, actual[i].PartId);
             Assert.Equal(baseline[i].MaterialIndex, actual[i].MaterialIndex);
             Assert.Equal(baseline[i].Skinned, actual[i].Skinned);
-            Assert.Equal(expected, actual[i].BoneMatrices.ToArray());
+            ReadOnlySpan<Matrix4x4> palette = actual[i].BoneMatrices.Span;
+            Assert.Equal(4, palette.Length);
+            AssertMatrix(rootJoint, palette[ChainRootSlot]);
+            AssertMatrix(lastJoint, palette[LastChainJointSlot]);
+            Assert.Equal(rig.Palette[0], palette[1]); // knee
+            Assert.Equal(rig.Palette[HostHipBone], palette[3]); // hip
         }
 
         // Move and turn the host anchor without stepping. Only the anchor and its chain move.
         Matrix4x4[] moved = (Matrix4x4[])rig.Palette.Clone();
         Matrix4x4 movement = Matrix4x4.CreateRotationZ(.5f) * Matrix4x4.CreateTranslation(2, 3, 4);
-        moved[1] *= movement;
+        moved[HostHipBone] *= movement;
         Assert.Equal(drawCount, Write(moved));
         Assert.Equal(4, actual[1].BoneMatrices.Length);
         ReadOnlySpan<Matrix4x4> carried = actual[1].BoneMatrices.Span;
-        AssertMatrix(expected[0] * movement, carried[0]);
-        AssertMatrix(expected[2] * movement, carried[2]);
+        AssertMatrix(rootJoint * movement, carried[ChainRootSlot]);
+        AssertMatrix(lastJoint * movement, carried[LastChainJointSlot]);
         Assert.Equal(moved[0], carried[1]);
-        Assert.Equal(moved[1], carried[3]);
+        Assert.Equal(moved[HostHipBone], carried[3]);
 
-        int Write(Matrix4x4[] palette) => outfit?.WriteDraws(ChainedWornIndex, motion, rig.Skeleton, palette, rig.Model, rig.Key, template, actual)
-            ?? set.WriteDraws(motion, rig.Skeleton, palette, rig.Model, rig.Key, template, actual);
+        int Write(Matrix4x4[] palette) => outfit?.WriteDraws(ChainedWornIndex, motion, rig.Skeleton, palette, model, rig.Key, template, actual)
+            ?? set.WriteDraws(motion, rig.Skeleton, palette, model, rig.Key, template, actual);
     }
 
     [Theory]
@@ -110,6 +131,7 @@ public sealed class OutfitMotionDrawTests
     [InlineData("set queue")]
     [InlineData("set templated queue")]
     [InlineData("set outline")]
+    [InlineData("member set write")]
     [InlineData("outfit write")]
     [InlineData("outfit outline")]
     public void Motion_from_a_different_binding_refuses_before_submission(string entry)
@@ -123,7 +145,12 @@ public sealed class OutfitMotionDrawTests
         using BoundOutfit otherOutfit = rig.Cache.BindOutfit(body, [set]);
         bool asOutfit = entry.StartsWith("outfit", StringComparison.Ordinal);
         WornMotion match = asOutfit ? outfit.CreateMotion(null) : set.CreateMotion(null);
-        WornMotion mismatch = asOutfit ? otherOutfit.CreateMotion(null) : otherSet.CreateMotion(null);
+        WornMotion mismatch = entry switch
+        {
+            "member set write" => outfit.CreateMotion(null),
+            _ when asOutfit => otherOutfit.CreateMotion(null),
+            _ => otherSet.CreateMotion(null),
+        };
         var template = new RigidInstanceDraw(default, Matrix4x4.Identity);
         var draws = new AttachmentDraw[1];
         rig.Scene.Begin();
@@ -140,6 +167,7 @@ public sealed class OutfitMotionDrawTests
         switch (entry)
         {
             case "set write":
+            case "member set write":
             case "outfit write":
                 Assert.True(draws[0].IsSkinned);
                 break;
@@ -156,7 +184,8 @@ public sealed class OutfitMotionDrawTests
         {
             switch (entry)
             {
-                case "set write": set.WriteDraws(motion, rig.Skeleton, rig.Palette, rig.Model, rig.Key, template, draws); break;
+                case "set write":
+                case "member set write": set.WriteDraws(motion, rig.Skeleton, rig.Palette, rig.Model, rig.Key, template, draws); break;
                 case "set queue": set.Queue(motion, rig.Skeleton, rig.Palette, rig.Model, rig.Key); break;
                 case "set templated queue": set.Queue(motion, rig.Skeleton, rig.Palette, rig.Model, rig.Key, template); break;
                 case "set outline": QueueOutline(rig, set, null, motion, group); break;

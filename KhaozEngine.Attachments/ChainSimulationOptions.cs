@@ -18,9 +18,10 @@ public sealed record ChainSimulationOptions
 
     internal void Validate()
     {
-        if (!float.IsFinite(MaxStepSeconds) || MaxStepSeconds <= 0)
+        if (!(MaxStepSeconds > 0 && MaxStepSeconds <= 1f / 30))
             throw new ArgumentOutOfRangeException(nameof(MaxStepSeconds));
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(MaxStepsPerFrame);
+        if (MaxStepsPerFrame is < 1 or > 64)
+            throw new ArgumentOutOfRangeException(nameof(MaxStepsPerFrame));
         if (!float.IsFinite(TeleportDistance) || TeleportDistance < 0)
             throw new ArgumentOutOfRangeException(nameof(TeleportDistance));
         if (!float.IsFinite(LongestGapSeconds) || LongestGapSeconds < 0)

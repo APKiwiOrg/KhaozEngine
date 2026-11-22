@@ -7,6 +7,7 @@ namespace KhaozEngine.Attachments;
 public sealed class ChainSimulation
 {
     private readonly ChainParticles _particles;
+    private readonly ChainLinks _links;
     private readonly ChainPresentationBlend _blend;
     private readonly ChainSettings[] _settings;
     private readonly Matrix4x4[] _jointsFromAnchor;
@@ -34,6 +35,7 @@ public sealed class ChainSimulation
         ColliderCount = colliderCount;
         Options = options;
         _particles = new ChainParticles(rig);
+        _links = new ChainLinks(rig);
         _blend = new ChainPresentationBlend(rig.JointCount);
         _settings = new ChainSettings[rig.Chains.Count];
         for (int chain = 0; chain < _settings.Length; chain++)
@@ -207,7 +209,7 @@ public sealed class ChainSimulation
                     _stepColliders, _settings[chain], seconds, pullTowardRest: true);
             }
 
-            if (ChainConstraints.ApplyLinks(_particles, seconds))
+            if (_links.Apply(_particles, seconds))
             {
                 for (int chain = 0; chain < _settings.Length; chain++)
                 {

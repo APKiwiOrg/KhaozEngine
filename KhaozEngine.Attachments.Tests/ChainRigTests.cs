@@ -145,7 +145,9 @@ public class ChainRigTests
 
     [Theory]
     [InlineData("step seconds")]
+    [InlineData("step seconds above cap")]
     [InlineData("step count")]
+    [InlineData("step count above cap")]
     [InlineData("teleport")]
     [InlineData("gap")]
     [InlineData("blend")]
@@ -157,7 +159,9 @@ public class ChainRigTests
         var edited = invalid switch
         {
             "step seconds" => options with { MaxStepSeconds = 0 },
+            "step seconds above cap" => options with { MaxStepSeconds = 1f / 29 },
             "step count" => options with { MaxStepsPerFrame = 0 },
+            "step count above cap" => options with { MaxStepsPerFrame = 65 },
             "teleport" => options with { TeleportDistance = -1 },
             "gap" => options with { LongestGapSeconds = float.NaN },
             "blend" => options with { HoldBlendSeconds = -1 },

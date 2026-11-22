@@ -73,7 +73,7 @@ internal sealed class ChainParticles
         double velocityFactor = previousSeconds > 0 && seconds > 0
             ? (double)seconds / previousSeconds * MathF.Exp(-settings.Damping * seconds)
             : 0;
-        var acceleration = gravity * (settings.Gravity * seconds * seconds);
+        var gravityDisplacement = gravity * (0.5f * settings.Gravity * seconds * seconds);
         for (int particle = root + 1; particle <= root + jointCount; particle++)
         {
             var current = Positions[particle];
@@ -89,8 +89,9 @@ internal sealed class ChainParticles
             Positions[particle] = current + new Vector3(
                 (float)(displacement.X * velocityFactor),
                 (float)(displacement.Y * velocityFactor),
-                (float)(displacement.Z * velocityFactor)) + acceleration;
-            Previous[particle] = seconds > 0 ? current : previous;
+                (float)(displacement.Z * velocityFactor)) + gravityDisplacement;
+            // Encode the other half so the next substep sees the full velocity impulse.
+            Previous[particle] = seconds > 0 ? current - gravityDisplacement : previous;
         }
 
         Vector3 Carry(Vector3 position) => carriedTurn == Quaternion.Identity

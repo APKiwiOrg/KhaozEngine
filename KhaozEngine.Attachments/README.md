@@ -327,7 +327,9 @@ Build a `ChainRig` with an anchor count, ordered chains and optional `ChainLink`
 its anchor index and supplies one to sixteen `ChainJointRest` transforms in parent-to-child order. The
 first joint stays on its anchor and can turn. The tip is a point in the last joint's local frame, so
 even a one-joint chain can swing. A link keeps corresponding movable joints and both virtual tips near
-their rest spacing. The link springs have a natural frequency of 10 radians per second.
+their rest spacing. The link springs have a natural frequency of 10 radians per second. All links
+read the same substep poses. When several links touch a joint or tip, it receives their average
+correction.
 The rig owns its rest data and can be shared. Create a `ChainSimulation` for each wearer with a fixed
 collider count.
 
@@ -339,19 +341,24 @@ metres, Y is up, and local transforms compose as scale, rotation, translation in
 The solver uses damped Verlet particles with implicit midpoint springs. Stiffness is the nonnegative
 natural frequency in radians per second for a segment returning to its rest direction. Damping is a
 nonnegative velocity decay rate per second.
-Gravity scales world gravity from 0 to 10. Trail ranges from 0, carrying the chain with the wearer's
+Gravity scales world gravity from 0 to 10. Half of the gravity displacement goes into the position
+prediction and half into the stored previous position, so the next substep carries the full velocity
+change even when its duration differs. Trail ranges from 0, carrying the chain with the wearer's
 rigid movement, to 1, giving the chain full inertia. The bend limit is greater than zero and at most
 pi radians. The nonnegative chain radius adds clearance against capsules. `Tune` applies settings
 starting at the next substep.
 
 Substeps interpolate the input poses and end on the current frame, so chains follow their anchors
 through fast movement. A hitch may drop integration time to stay within the step budget while still
-reaching the current pose. Segment lengths use the posed rest scale. Capsule correction keeps the
+reaching the current pose. `MaxStepSeconds` is greater than zero and at most 1/30 s.
+`MaxStepsPerFrame` is from 1 through 64. Segment lengths use the posed rest scale. Capsule correction keeps the
 root and segment lengths fixed and can exceed the bend limit to clear a collider. The first step,
 `Reset()`, a teleport or a long gap places the chain at rest with zero velocity. `Held` blends from the
 last shape to rest without stepping physics. On resume, physics starts from the held shape with zero
 velocity. The displayed joint swings blend from that shape toward the live solution over
-`HoldBlendSeconds`. During the blend, display can still intersect a collider the live solution clears.
+`HoldBlendSeconds`. Each frame continues from the last displayed swing, so an anchor turning through
+a half turn keeps a continuous blend. During the blend, display can still intersect a collider the
+live solution clears.
 Use `MotionLevels.Assign` to select the nearest wearers within a range and budget, with ties in input order.
 
 Read `JointsFromAnchor` in rig joint order or call `ComposeJointWorlds` with the latest anchors and an

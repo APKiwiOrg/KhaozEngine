@@ -94,5 +94,8 @@
   <ItemGroup>
     <Compile Include="../test-shared/RefusalConstructorFence.cs" Link="Shared/RefusalConstructorFence.cs" />
   </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../test-shared/PathPublicationDigest.cs" Link="Fixtures/PathPublicationDigest.cs" />
+  </ItemGroup>
   <Import Project="../test-shared/AllocationMeasurement.props" />
 </Project>

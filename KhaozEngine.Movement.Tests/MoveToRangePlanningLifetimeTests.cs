@@ -126,6 +126,15 @@ public sealed partial class MoveToRangePlanningTests
     }
 
     [Fact]
+    public void FollowerRefusesAPointOnlyGridEvenWithItsOwnPool()
+    {
+        var space = NavSpace.Single(NavGrid.FromWalkable(3, 1, 1f, 0f, 0f, (_, _) => true));
+        var grid = new GridPathPlanner(space);
+        using var pool = ((IIncrementalRegionPathPlanner)grid).CreateWorkspaces(1, PathQueryBudget.Default);
+        Assert.Throws<ArgumentException>(() => new PathFollower(grid, Follow(pool, 6), space));
+    }
+
+    [Fact]
     public void ConstructorsRefuseIncompatibleDoors()
     {
         var navigation = Flat(6, 3, Tuning.CapsuleRadius, (x, _) => x == 1 ? 1u : 0u);

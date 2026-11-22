@@ -137,7 +137,8 @@ public sealed partial class MoveToRangePlanningTests
     {
         using var scene = new FlatArrivalScene();
         MoveTuning tuning = scene.Tuning;
-        var space = NavSpace.Single(NavGrid.FromWalkable(2, 1, 0.5f, -0.25f, -0.25f, (_, _) => true));
+        var space = NavSpace.Single(NavGrid.FromSurfaces(2, 1, 0.5f, -0.25f, -0.25f,
+            (_, _) => new NavSurfaceSample(true, 0f, float.PositiveInfinity), tuning.StepHeight, 2f * tuning.CapsuleHalfHeight));
         var planner = new GridPathPlanner(space);
         using var pool = ((IIncrementalRegionPathPlanner)planner).CreateWorkspaces(1, PathQueryBudget.Default);
         var mover = new MoveToRange(planner, space, (_, _) => true, Follow(pool, 32));

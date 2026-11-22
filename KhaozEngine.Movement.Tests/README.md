@@ -28,4 +28,7 @@ workspace or behind a live owner, and the next valid request can advance. The sy
 check. Ordinary tests verify workload sizes, query endpoints, route positions, layer and waypoint kind,
 and the Stair workload's dependency on its directed link.
 
+The count-only workspace factory tests cover the requested pool size, the default region query budget
+and refusals for a zero count and a profile with query-time area exclusions.
+
 Passing a research fixture does not authorize a measurement campaign.

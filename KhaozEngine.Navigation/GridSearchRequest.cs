@@ -92,19 +92,7 @@ public sealed partial class GridPathPlanner
 
         void RunOwnedCall(PathWorkBudget? budget) => base.RunGuardedCall(budget);
 
-        /// <summary>Runs one guarded advance and accumulates its completed operations in caller-owned test counters.</summary>
-        internal void AdvanceForTests(PathWorkBudget budget, PathWorkByKind work)
-        {
-            ArgumentOutOfRangeException.ThrowIfLessThan(budget.Units, 1);
-            ArgumentNullException.ThrowIfNull(work);
-            ((IRequestPool)Pool).RunMeasuredCall(this, budget, new PathWorkRecorder(work));
-        }
-
         private protected sealed override void AdvanceCore(PathWorkBudget budget)
-            => AdvanceOwned(budget, default(NoPathWorkRecorder));
-
-        void AdvanceOwned<TRecorder>(PathWorkBudget budget, TRecorder recorder)
-            where TRecorder : struct, IPathWorkRecorder
         {
             if (!HasLease) return;
             try
@@ -113,7 +101,7 @@ public sealed partial class GridPathPlanner
                 NavPath? path;
                 try
                 {
-                    path = RunSlice(budget.Units, ref spent, recorder);
+                    path = RunSlice(budget.Units, ref spent);
                 }
                 finally
                 {
@@ -131,8 +119,7 @@ public sealed partial class GridPathPlanner
 
         /// <summary>Runs the search with any prior effort in this advance included in <paramref name="spent"/>.
         /// Profile requests may do work before search and hold its result while preparing their final route.</summary>
-        private protected virtual NavPath? RunSlice<TRecorder>(int quota, ref int spent, TRecorder recorder)
-            where TRecorder : struct, IPathWorkRecorder
+        private protected virtual NavPath? RunSlice(int quota, ref int spent)
         {
             if (!_started)
             {
@@ -140,7 +127,53 @@ public sealed partial class GridPathPlanner
                 _started = true;
             }
 
-            _stepper.RunSlice(quota, ref spent, recorder);
+            _stepper.RunSlice(quota, ref spent);
+            return _stepper.Result;
+        }
+
+        /// <summary>Runs one guarded advance and accumulates its completed operations in caller-owned test counters.</summary>
+        internal void AdvanceForTests(PathWorkBudget budget, PathWorkByKind work)
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(budget.Units, 1);
+            ArgumentNullException.ThrowIfNull(work);
+            ((IRequestPool)Pool).RunMeasuredCall(this, budget, work);
+        }
+
+        // Keep the measured dispatch off the ordinary lease, publication and cancellation path.
+        void AdvanceMeasuredOwned(PathWorkBudget budget, PathWorkByKind work)
+        {
+            if (!HasLease) return;
+            try
+            {
+                int spent = 0;
+                NavPath? path;
+                try
+                {
+                    path = RunMeasuredSlice(budget.Units, ref spent, work);
+                }
+                finally
+                {
+                    if (spent > 0) Spend(spent);
+                }
+
+                if (path is not null) Complete(path);
+            }
+            catch
+            {
+                CancelPending();
+                throw;
+            }
+        }
+
+        private protected virtual NavPath? RunMeasuredSlice(int quota, ref int spent, PathWorkByKind work)
+        {
+            if (!_started)
+            {
+                _stepper = new RequestStepper(Pool.Planner, Scratch, Start, _admission.Goal, _admission.Radius, _admission.Budget);
+                _started = true;
+            }
+
+            _stepper.RunMeasuredSlice(quota, ref spent, work);
             return _stepper.Result;
         }
 
@@ -161,9 +194,9 @@ public sealed partial class GridPathPlanner
         {
             void RunCall(GridSearchRequest request, PathWorkBudget? budget);
 
-            void RunMeasuredCall(GridSearchRequest request, PathWorkBudget budget, PathWorkRecorder recorder);
-
             void Release(GridSearchRequest request);
+
+            void RunMeasuredCall(GridSearchRequest request, PathWorkBudget budget, PathWorkByKind work);
         }
     }
 }

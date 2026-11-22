@@ -78,24 +78,29 @@ internal struct RouteStraighteningCursor
     internal NavPath? Result { get; private set; }
 
     /// <summary>Joins the profile's current slice. Its first-operation allowance may already have been used.</summary>
-    internal void RunSlice<TRecorder>(int quota, ref int spent, TRecorder recorder)
-        where TRecorder : struct, IPathWorkRecorder
+    internal void RunSlice(int quota, ref int spent)
     {
-        while (NextOperation is var operation && operation != RouteStraighteningOperation.Done)
+        while (NextOperation != RouteStraighteningOperation.Done)
         {
-            int weight = NextWeight(operation);
+            int weight = NextWeight();
             if (spent != 0 && weight > quota - spent) return;
-            PathWorkKind kind = default;
-            if (typeof(TRecorder) != typeof(NoPathWorkRecorder))
-                kind = WorkKind(operation);
             Step();
             spent += weight;
-            recorder.Add(kind, weight);
         }
     }
 
     internal void RunSliceForTests(int quota, ref int spent, PathWorkByKind work)
-        => RunSlice(quota, ref spent, new PathWorkRecorder(work));
+    {
+        while (NextOperation is var operation && operation != RouteStraighteningOperation.Done)
+        {
+            int weight = NextWeight();
+            if (spent != 0 && weight > quota - spent) return;
+            PathWorkKind kind = WorkKind(operation);
+            Step();
+            spent += weight;
+            work.Add(kind, weight);
+        }
+    }
 
     PathWorkKind WorkKind(RouteStraighteningOperation operation) => operation switch
     {
@@ -109,7 +114,7 @@ internal struct RouteStraighteningCursor
         _ => throw new InvalidOperationException("A finished straightener has no next operation."),
     };
 
-    int NextWeight(RouteStraighteningOperation operation) => operation switch
+    int NextWeight() => NextOperation switch
     {
         RouteStraighteningOperation.ValidateFeet or RouteStraighteningOperation.KeepAnchor => PathWorkWeights.StraighteningFeet,
         RouteStraighteningOperation.Candidate => PathWorkWeights.StraighteningCandidate,

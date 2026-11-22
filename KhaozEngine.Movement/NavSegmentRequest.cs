@@ -48,11 +48,32 @@ internal struct NavSegmentRequest(GroundNavigation navigation, Vector3 from, Vec
     };
 
     /// <summary>Spends whole operations up to the quota, allowing the first operation by itself to exceed it.</summary>
-    internal void Advance(int quota) => Advance(quota, default(NoPathWorkRecorder));
+    internal void Advance(int quota)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(quota, 1);
+        int spent = 0;
+        try
+        {
+            while (NextOperation != NavSegmentOperation.Done)
+            {
+                int weight = WeightOf(NextOperation);
+                if (spent != 0 && weight > quota - spent) return;
+                Step();
+                spent += weight;
+            }
+        }
+        catch
+        {
+            _stage = Stage.Done;
+            throw;
+        }
+        finally
+        {
+            WorkSpent += spent;
+        }
+    }
 
-    internal void AdvanceForTests(int quota, PathWorkByKind work) => Advance(quota, new PathWorkRecorder(work));
-
-    void Advance<TRecorder>(int quota, TRecorder recorder) where TRecorder : struct, IPathWorkRecorder
+    internal void AdvanceForTests(int quota, PathWorkByKind work)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(quota, 1);
         int spent = 0;
@@ -64,7 +85,7 @@ internal struct NavSegmentRequest(GroundNavigation navigation, Vector3 from, Vec
                 if (spent != 0 && weight > quota - spent) return;
                 Step();
                 spent += weight;
-                recorder.Add(WorkKind(operation), weight);
+                work.Add(WorkKind(operation), weight);
             }
         }
         catch

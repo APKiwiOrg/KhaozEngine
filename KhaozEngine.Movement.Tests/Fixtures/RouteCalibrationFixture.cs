@@ -36,9 +36,12 @@ internal sealed record RouteCalibrationFixture(string Name, IIncrementalRegionPa
             new(Feet(48, 48), 96f, static _ => false), 8);
         yield return Search("snap", NavSpace.Single(MakeGrid(63, 63, static (_, _) => false)), Feet(31, 31),
             Goal(Feet(31, 31)), 8, snapRadius: 31);
-        yield return Search("long-reconstruction", NavSpace.Single(MakeGrid(2049, 1)), Feet(0, 0),
-            Goal(Feet(2048, 0)), 2049);
+        yield return LongReconstruction();
     }
+
+    internal static RouteCalibrationFixture LongReconstruction()
+        => Search("long-reconstruction", NavSpace.Single(MakeGrid(2049, 1)), Feet(0, 0),
+            Goal(Feet(2048, 0)), 2049);
 
     internal static IEnumerable<RouteCalibrationFixture> StraighteningRows()
     {

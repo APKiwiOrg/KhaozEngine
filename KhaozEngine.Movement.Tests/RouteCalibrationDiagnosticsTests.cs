@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
+using System.Linq;
 using System.Runtime;
 using System.Runtime.CompilerServices;
 using KhaozEngine.Navigation;
@@ -11,7 +12,7 @@ using Xunit.Abstractions;
 namespace KhaozEngine.Tests.Movement;
 
 [Collection("AllocSensitive")]
-public sealed class RouteCalibrationDiagnosticsTests(ITestOutputHelper output)
+public sealed partial class RouteCalibrationDiagnosticsTests(ITestOutputHelper output)
 {
     const long SmallHeapBudget = 16 * 1024 * 1024;
     const long LargeHeapBudget = 16 * 1024 * 1024;
@@ -45,6 +46,8 @@ public sealed class RouteCalibrationDiagnosticsTests(ITestOutputHelper output)
             ReportFixture(fixture, sliced: false);
         foreach (var fixture in RouteCalibrationFixture.WholeRoutes())
             ReportFixture(fixture, sliced: true);
+
+        ReportPhases<TClock>(invalidWindows);
 
         if (!TClock.IsTimed)
             Assert.True(invalidWindows.Count == 0,
@@ -83,12 +86,40 @@ public sealed class RouteCalibrationDiagnosticsTests(ITestOutputHelper output)
     bool Report<TClock>(RouteCalibrationFixture fixture, PathPlanWorkspaces pool, bool sliced, PathWorkBudget quota,
         string units) where TClock : struct, ISampleClock
     {
-        // Reuse the large-row window from the synchronous movement diagnostic, with one request per batch.
         var shape = ReadWarmedShape(fixture, pool, quota);
-        int sampleSize = sliced ? shape.Advances : 1;
+        long[] charges = ReplayCharges(fixture, pool, quota, shape);
+        int sampleSize = sliced ? charges.Length : 1;
+        var window = MeasureWindow(sampleSize,
+            samples => RunBatch<UntimedClock>(fixture, pool, sliced, quota, shape.Path, charges, samples),
+            samples => RunBatch<TClock>(fixture, pool, sliced, quota, shape.Path, charges, samples));
+
+        string mode = sliced ? "advance" : "request";
+        string key = $"name={fixture.Name} mode={mode} quota={quota.Units}";
+        string? rawTicks = TClock.IsTimed ? string.Join(",", window.Samples) : null;
+        string slowest = TClock.IsTimed && sliced ? SlowestAdvance(window.Samples, charges) : "";
+        string timing = TClock.IsTimed ? TimingFields(window.Samples) : "";
+        output.WriteLine(string.Create(CultureInfo.InvariantCulture,
+            $"{key} status={shape.Path.Status} waypoints={shape.Path.Waypoints.Count} " +
+            $"advances={charges.Length} max_advance_units={charges.Max()} " +
+            $"begin_bytes={shape.BeginBytes} request_bytes={shape.RequestBytes} {timing}{slowest}" +
+            $"{window.ValidityFields()} units={units}"));
+        if (rawTicks is not null)
+        {
+            if (sliced)
+                output.WriteLine($"{key} advance_units={string.Join(",", charges)}");
+            output.WriteLine($"{key} raw_ticks={rawTicks}");
+        }
+        return window.IsValid;
+    }
+
+    delegate void SampleBatch(Span<long> samples);
+
+    static SampleWindow MeasureWindow(int sampleSize, SampleBatch runUntimed, SampleBatch run)
+    {
+        // Reuse the large-row window from the synchronous movement diagnostic.
         var samples = new long[Samples * sampleSize];
         for (int warm = 0; warm < WarmCalls; warm++)
-            RunBatch<UntimedClock>(fixture, pool, sliced, quota, samples.AsSpan(0, sampleSize));
+            runUntimed(samples.AsSpan(0, sampleSize));
 
         CompactHeaps();
         GC.WaitForPendingFinalizers();
@@ -106,9 +137,9 @@ public sealed class RouteCalibrationDiagnosticsTests(ITestOutputHelper output)
             windowBytes = GC.GetTotalAllocatedBytes(precise: true);
             threadBytes = GC.GetAllocatedBytesForCurrentThread();
             for (int prelude = 0; prelude < PreludeBatches; prelude++)
-                RunBatch<UntimedClock>(fixture, pool, sliced, quota, samples.AsSpan(0, sampleSize));
+                runUntimed(samples.AsSpan(0, sampleSize));
             for (int i = 0; i < Samples; i++)
-                RunBatch<TClock>(fixture, pool, sliced, quota, samples.AsSpan(i * sampleSize, sampleSize));
+                run(samples.AsSpan(i * sampleSize, sampleSize));
             held = started && GCSettings.LatencyMode == GCLatencyMode.NoGCRegion;
             gen0 = GC.CollectionCount(0) - gen0;
             gen1 = GC.CollectionCount(1) - gen1;
@@ -125,43 +156,42 @@ public sealed class RouteCalibrationDiagnosticsTests(ITestOutputHelper output)
             }
         }
 
-        string mode = sliced ? "advance" : "request";
-        string? rawTicks = TClock.IsTimed ? string.Join(",", samples) : null;
-        string timing = TClock.IsTimed ? TimingFields(samples) : "";
-        output.WriteLine(string.Create(CultureInfo.InvariantCulture,
-            $"name={fixture.Name} mode={mode} quota={quota.Units} status={shape.Status} waypoints={shape.Waypoints} " +
-            $"advances={shape.Advances} max_advance_units={shape.LargestAdvanceUnits} " +
-            $"begin_bytes={shape.BeginBytes} request_bytes={shape.RequestBytes} {timing}" +
-            $"gc={gen0},{gen1},{gen2} nogc={(held ? "held" : "lost")} " +
-            $"window_bytes={windowBytes} thread_bytes={threadBytes} units={units}"));
-        if (rawTicks is not null)
-            output.WriteLine($"name={fixture.Name} mode={mode} quota={quota.Units} raw_ticks={rawTicks}");
-        return held && gen0 == 0 && gen1 == 0 && gen2 == 0;
+        return new(samples, gen0, gen1, gen2, held, windowBytes, threadBytes);
     }
 
     static void RunBatch<TClock>(RouteCalibrationFixture fixture, PathPlanWorkspaces pool, bool sliced,
-        PathWorkBudget quota, Span<long> samples) where TClock : struct, ISampleClock
+        PathWorkBudget quota, NavPath expected, long[] charges, Span<long> samples) where TClock : struct, ISampleClock
     {
         if (!sliced)
         {
             long start = TClock.GetTimestamp();
             using var request = fixture.Begin(pool);
             request.Advance(quota);
-            samples[0] = TClock.GetTimestamp() - start;
-            if (request.State != PathPlanState.Ready) throw new InvalidOperationException("The unbounded request did not finish.");
+            long end = TClock.GetTimestamp();
+            samples[0] = end - start;
+
+            if (charges.Length != 1 || request.WorkSpent != charges[0])
+                throw new InvalidOperationException("The unbounded request spent different work from its warm replay.");
+            ValidateResult(expected, request.Result);
             return;
         }
 
         using var slicedRequest = fixture.Begin(pool);
+        long prior = 0;
         for (int i = 0; i < samples.Length; i++)
         {
             long start = TClock.GetTimestamp();
             slicedRequest.Advance(quota);
-            samples[i] = TClock.GetTimestamp() - start;
-            bool published = slicedRequest.State == PathPlanState.Ready;
-            if (published != (i == samples.Length - 1))
-                throw new InvalidOperationException("The request published on a different advance from its warm call.");
+            long end = TClock.GetTimestamp();
+            samples[i] = end - start;
+
+            long spent = slicedRequest.WorkSpent;
+            if (spent - prior != charges[i])
+                throw new InvalidOperationException($"Advance {i + 1} spent different work from its warm replay.");
+            prior = spent;
+            ValidatePublication(slicedRequest, i == samples.Length - 1);
         }
+        ValidateResult(expected, slicedRequest.Result);
     }
 
     static RequestShape ReadWarmedShape(RouteCalibrationFixture fixture, PathPlanWorkspaces pool, PathWorkBudget quota)
@@ -170,17 +200,61 @@ public sealed class RouteCalibrationDiagnosticsTests(ITestOutputHelper output)
         using var request = fixture.Begin(pool);
         long begun = GC.GetAllocatedBytesForCurrentThread();
         int advances = 0;
-        long largest = 0;
         while (request.State == PathPlanState.Pending)
         {
-            long prior = request.WorkSpent;
             request.Advance(quota);
-            largest = Math.Max(largest, request.WorkSpent - prior);
             advances++;
         }
         long bytes = GC.GetAllocatedBytesForCurrentThread() - start;
         NavPath path = request.Result ?? throw new InvalidOperationException("The request did not publish.");
-        return new(advances, largest, begun - start, bytes, path.Status, path.Waypoints.Count);
+        return new(advances, begun - start, bytes, path);
+    }
+
+    static long[] ReplayCharges(RouteCalibrationFixture fixture, PathPlanWorkspaces pool, PathWorkBudget quota,
+        RequestShape shape)
+    {
+        var charges = new long[shape.Advances];
+        using var request = fixture.Begin(pool);
+        long prior = 0;
+        for (int i = 0; i < charges.Length; i++)
+        {
+            request.Advance(quota);
+            long spent = request.WorkSpent;
+            charges[i] = spent - prior;
+            prior = spent;
+            ValidatePublication(request, i == charges.Length - 1);
+        }
+        ValidateResult(shape.Path, request.Result);
+        return charges;
+    }
+
+    static void ValidatePublication(PathPlanRequest request, bool last)
+    {
+        if (request.State != (last ? PathPlanState.Ready : PathPlanState.Pending))
+            throw new InvalidOperationException("The request published on a different advance from its warm call.");
+    }
+
+    static void ValidateResult(NavPath expected, NavPath? actual)
+    {
+        if (actual is null || expected.Status != actual.Status || expected.Waypoints.Count != actual.Waypoints.Count)
+            throw new InvalidOperationException("The request published a different route from its warm call.");
+        for (int i = 0; i < expected.Waypoints.Count; i++)
+        {
+            NavWaypoint a = expected.Waypoints[i], b = actual.Waypoints[i];
+            if (a.Layer != b.Layer || a.Kind != b.Kind ||
+                BitConverter.SingleToInt32Bits(a.Position.X) != BitConverter.SingleToInt32Bits(b.Position.X) ||
+                BitConverter.SingleToInt32Bits(a.Position.Y) != BitConverter.SingleToInt32Bits(b.Position.Y))
+                throw new InvalidOperationException($"Waypoint {i} differs from its warm call.");
+        }
+    }
+
+    static string SlowestAdvance(long[] samples, long[] charges)
+    {
+        int index = Array.IndexOf(samples, samples.Max());
+        int ordinal = index % charges.Length;
+        return string.Create(CultureInfo.InvariantCulture,
+            $"slowest_advance_batch={index / charges.Length + 1} slowest_advance_ordinal={ordinal + 1} " +
+            $"slowest_advance_units={charges[ordinal]} ");
     }
 
     static string TimingFields(long[] samples)
@@ -221,6 +295,15 @@ public sealed class RouteCalibrationDiagnosticsTests(ITestOutputHelper output)
         static long ISampleClock.GetTimestamp() => 0;
     }
 
-    readonly record struct RequestShape(int Advances, long LargestAdvanceUnits, long BeginBytes, long RequestBytes,
-        NavPathStatus Status, int Waypoints);
+    readonly record struct RequestShape(int Advances, long BeginBytes, long RequestBytes, NavPath Path);
+
+    readonly record struct SampleWindow(long[] Samples, int Gen0, int Gen1, int Gen2, bool Held,
+        long WindowBytes, long ThreadBytes)
+    {
+        internal bool IsValid => Held && Gen0 == 0 && Gen1 == 0 && Gen2 == 0;
+
+        internal string ValidityFields() => string.Create(CultureInfo.InvariantCulture,
+            $"gc={Gen0},{Gen1},{Gen2} nogc={(Held ? "held" : "lost")} " +
+            $"window_bytes={WindowBytes} thread_bytes={ThreadBytes}");
+    }
 }

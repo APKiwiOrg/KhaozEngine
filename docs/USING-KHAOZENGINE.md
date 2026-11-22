@@ -7718,7 +7718,8 @@ draws its own handle, and one that is wholly covered draws nothing, so both stil
 
 **Check a claim offline.** A false `Covers` claim hides skin that nothing replaces and opens a hole in the body.
 `CoverageClaimCheck.Verify(bodyMeshes, body, piece, pieceMeshes, maxDistanceMetres)` checks at the rest pose that
-the piece lies over every triangle of every region it claims, and its report lists the uncovered triangles by part.
+fixed triangles of the piece lie over every triangle of every region it claims. The report lists the uncovered
+triangles by part and counts the piece triangles skipped because a vertex swings.
 A tool runs it when a piece is made, never per frame. The consumer chooses the distance, because how far a piece
 may stand off the skin depends on the game's art and scale. The
 [coverage claim check reference](../KhaozEngine.Attachments/README.md#coverage-claim-check) gives the ray rules and

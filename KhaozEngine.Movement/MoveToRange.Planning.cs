@@ -9,7 +9,7 @@ namespace KhaozEngine.Movement;
 public sealed partial class MoveToRange
 {
     /// <inheritdoc cref="PathFollower.PlanningPending"/>
-    internal bool PlanningPending => _follower.PlanningPending;
+    public bool PlanningPending => _follower.PlanningPending;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     RangeSteering TickCore(in MoveState body, in MoveTuning tuning, in ReachTarget target,

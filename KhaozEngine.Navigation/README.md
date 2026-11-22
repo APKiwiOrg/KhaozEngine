@@ -65,16 +65,40 @@ single layer, always 0. `GridPathPlanner.FindPath` resolves both endpoints with 
 `KhaozEngine.Dungeon`'s `DungeonNav.Bake` is a worked multi-layer example: one `NavGrid` layer per
 dungeon floor, joined by directed `NavLink` pairs at every stair run.
 
-## Internal fixed-quota region following
+## Fixed-quota region following
 
-`PathFollowConfig.Planning` opts a follower into region requests. Construction requires a planner that
-supports requests, a live pool that belongs to it and a query budget within the pool's declared limits.
-The follower uses the planner's exact navigation space and refuses a different space at construction.
-The incremental planner capability stays internal so the engine owns space and pool validation.
-Custom planners and point queries use synchronous planning. A grid with a traversal constraint or a
-layer without surface heights reports no region request support and refuses both workspace creation
-and region begins with `NotSupportedException`. The quota must cover the largest indivisible operation.
-Each region tick begins or advances at most one request.
+Set `PathFollowConfig.Planning` to plan a region route across ticks. Use `GroundNavigation.Planner`
+from a Movement profile that reports `SupportsPlanningRequests`. Create one pool per profile and
+allow one workspace per follower or mover sharing it. The pool must be live and prewarmed for at
+least the follower's expansion and snap limits. If you supply a navigation space, use the exact
+space of the profile's planner.
+
+Point queries, custom planners and profiles with query-time area exclusions use synchronous
+planning. Leave `Planning` unset for these callers. Supply at least
+`PathPlanningConfig.MinimumQuotaUnits` per planning tick. For one follower:
+
+```csharp
+using var pool = profile.CreatePlanningWorkspaces(count: 1);
+var config = new PathFollowConfig
+{
+    Planning = new PathPlanningConfig(new PathWorkBudget(quotaUnits), pool),
+};
+var follower = new PathFollower(profile.Planner, config);
+try
+{
+    // Call once per simulation tick with the current feet and goal.
+    PathFollowOutput step = follower.Tick(feet, goal, profile.AgentRadius, dt);
+}
+finally
+{
+    follower.Reset();
+}
+```
+
+Keep the pool alive while its followers use it. Serialize ticks, resets and pool operations. Reset
+each follower before dropping it, then dispose the pool. A caller-supplied goal predicate must stay
+pure for the life of the request. See the
+[consumer guide](../docs/USING-KHAOZENGINE.md#planning-routes-across-calls) for quota selection.
 
 A planning wait returns `WaitingForPath` at zero motion with no `ActivePath`. `PlanningPending` also covers
 a queued request and a completed route awaiting adoption. A route that completes in its begin call can
@@ -393,17 +417,17 @@ the region's extent. Keep one planner per `NavSpace` and reuse it across queries
 queries use separate scratch.
 
 Synchronous queries use direct loops for endpoint resolution, membership, the certificate, search and
-reconstruction. The internal region request stepper uses the same edge, scoring and waypoint rules with
+reconstruction. The region request stepper uses the same edge, scoring and waypoint rules with
 a leased, prewarmed workspace. Advances charge whole operations in order and publish the complete result
 with the final paid operation. A query that needs no paid operation publishes on its first advance with a
 lease. Stamp wrap clears fixed blocks and adds work according to the leased
 workspace's generation. The planner's buffers never grow during an advance. Publishing a nonempty result
 allocates its path storage, and caller predicates may allocate their own storage.
-The internal work table also defines the charges for Movement's segment admission cursor. Its
+The same work table defines the charges for Movement's segment admission cursor. Its
 endpoint layer, footprint row, footprint column and directed edge checks each spend a fixed
 number of work units. A column's surface count affects execution time without changing its charge.
 Movement can keep the same lease through start admission and straightening, including a charged
-allocation and copy of the changed route. An internal planner with a traversal constraint supports
+allocation and copy of the changed route. A planner with a traversal constraint supports
 synchronous queries only. Area excluding views use that constraint, which can scan a whole footprint
 inside one search operation, so even direct workspace construction and begin require an unconstrained
 planner. The pool validates and freezes each query against its declared limits. A pending request must

@@ -3,38 +3,26 @@ using System;
 namespace KhaozEngine.Navigation;
 
 /// <summary>
-/// A fixed set of search workspaces that <see cref="PathPlanRequest"/>s lease, created and prewarmed by
-/// <see cref="IIncrementalRegionPathPlanner.CreateWorkspaces"/> with an explicit count and largest query budget.
-/// Synchronous queries keep the planner's own working memory and never touch a pool.
+/// A caller-owned pool of prewarmed workspaces for fixed-quota region planning. Create one from the ground
+/// navigation profile the followers or movers use. Synchronous queries use the planner's own working memory.
 /// </summary>
 /// <remarks>
-/// <para>Ownership. A pool serves its creating planner and any adapter the owner explicitly authorizes.
-/// A begin from an unrelated planner throws <see cref="ArgumentException"/>. An area-excluding view has
-/// its own planner and does not support requests.</para>
-/// <para>One owner sequence. Calls into a pool, its begins and its requests' advances and cancels, must not
-/// overlap. An overlapping call, from a second thread or from a region predicate that re-enters the planner,
-/// throws <see cref="InvalidOperationException"/>. No thread is pinned, so a pool created on a loading thread may
-/// be used from the simulation thread.</para>
-/// <para>Grant at begin. A request takes a free workspace at begin only when nothing waits, and spends from the
-/// owner's advance in that same call. Otherwise it joins the back of a first in, first out queue and spends
-/// nothing until it holds one.</para>
-/// <para>Hand-over. A released workspace passes at once to the oldest waiter, which spends from its own next
-/// advance: later in the same tick if its owner comes after the releasing owner in the consumer's call order, else
-/// in the next tick.</para>
-/// <para>Release. A request releases its workspace when it completes, before its owner adopts the result, and when
-/// it is cancelled or disposed. A cancelled waiter leaves the queue. A cancelled request holds no lease and cannot
-/// release another's. Disposing the pool cancels every request it holds or queues. Ready results have already
-/// released their leases and remain available for adoption. A later begin throws
-/// <see cref="ObjectDisposedException"/>.</para>
-/// <para>Sizing. The count has no default because the engine cannot know how many owners share a pool. With
-/// at most one pending request per sharing owner, one workspace per owner prevents waiting. A request that waits
-/// also depends on the begins, completions and releases of requests ahead of it.
-/// Each workspace preallocates node and region membership storage for all layer cells, reconstruction storage
-/// up to the expansion cap or node count, whichever is smaller, and frontier storage for possible pushes
-/// within that cap. Its buffers never grow during a request. An owner dropped while its request is pending keeps
-/// the lease, so cancel or reset an owner first. <see cref="Waits"/> lets a consumer check that nothing waited.</para>
+/// <para>A pool belongs to its creating profile and serves that profile and its bound route straighteners.
+/// A follower or mover constructor rejects a pool from another profile. Keep it alive while its owners use it,
+/// and reset each owner before discarding it. Dispose the pool last.</para>
+/// <para>Serialize construction of owners, ticks, resets, pool reads and disposal for each shared pool.
+/// An overlapping call, including a region predicate that calls back into the pool, throws
+/// <see cref="InvalidOperationException"/>. A pool can move to another thread between calls.</para>
+/// <para>Each follower or mover holds at most one request. Use one workspace per sharing owner to avoid
+/// waiting. In a smaller pool, new requests queue in order and spend no work until granted a workspace.
+/// Completion or reset passes the workspace immediately to the oldest waiter, which can spend its quota on
+/// its next tick. Tick order determines whether that happens in the same simulation tick or the next.</para>
+/// <para>Each workspace preallocates node and membership storage for every layer cell, reconstruction storage
+/// up to the smaller of the node count and the expansion limit, and frontier storage for possible pushes
+/// within that limit. These buffers stay fixed during planning. Publishing a nonempty route allocates its
+/// result.</para>
 /// </remarks>
-internal abstract class PathPlanWorkspaces : IDisposable
+public abstract class PathPlanWorkspaces : IDisposable
 {
     /// <summary>Creates an empty pool shell. The planner that implements it supplies the workspaces.</summary>
     private protected PathPlanWorkspaces()
@@ -42,13 +30,18 @@ internal abstract class PathPlanWorkspaces : IDisposable
     }
 
     /// <summary>The number of workspaces, at least one and fixed at creation.</summary>
+    /// <exception cref="InvalidOperationException">This read overlaps another call into the pool.</exception>
     public abstract int Count { get; }
 
-    /// <summary>How many requests have joined the queue because no workspace was free at their begin, since the
-    /// pool was created. Zero means no request has waited.</summary>
+    /// <summary>The cumulative number of requests queued for a workspace. Zero means none has waited.</summary>
+    /// <exception cref="InvalidOperationException">This read overlaps another call into the pool.</exception>
     public abstract long Waits { get; }
 
-    /// <summary>Cancels every request the pool holds or queues and refuses later begins. Idempotent.</summary>
+    /// <summary>
+    /// Cancels leased and queued requests. Completed results awaiting adoption remain available. A later
+    /// attempt to configure an owner with the pool or begin another request throws
+    /// <see cref="ObjectDisposedException"/>. Repeated disposal has no effect.
+    /// </summary>
     /// <exception cref="InvalidOperationException">Disposal overlaps another call into the pool.</exception>
     public abstract void Dispose();
 }

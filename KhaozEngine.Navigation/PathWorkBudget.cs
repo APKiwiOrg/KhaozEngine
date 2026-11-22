@@ -3,28 +3,26 @@ using System;
 namespace KhaozEngine.Navigation;
 
 /// <summary>
-/// The quota one <see cref="PathPlanRequest.Advance"/> call may spend, in abstract work units. Each indivisible
-/// operation of a request (a footprint point test, a candidate member, a heap pop, a parent step, a copied
-/// waypoint and so on) has a fixed integer weight of at least one unit. A call performs whole operations in
-/// order and stops before one that would pass its quota, except that a call's first operation always runs.
-/// Every call on a pending request that holds a workspace therefore makes progress and spends at most the
-/// larger of the quota and the largest weight. The excess shows in <see cref="PathPlanRequest.WorkSpent"/> and
-/// is never repaid. With the same frozen inputs and leased-workspace stamp history, a completed request spends
-/// the same total work under every quota schedule. The quota may differ on every call.
+/// An immutable quota in abstract work units for a region planning call. Each operation, such as testing a
+/// candidate cell or copying a waypoint, has a fixed positive weight. Planning runs whole operations in order
+/// and stops before the next one would exceed the quota. The first operation always runs, so a call that holds
+/// a workspace spends at most the larger of the quota and the largest operation weight.
 /// </summary>
 /// <remarks>
-/// A quota bounds work. Equal frozen inputs and equal leased-workspace stamp history spend equal units on every
-/// machine. A request completes on the advance that runs its last operation, or on its first advance with a
-/// workspace if it has no operations. For positive final
-/// work W, its final <see cref="PathPlanRequest.WorkSpent"/>, it completes within W advances with a workspace,
-/// and within ceil(W / (q - L + 1)) such advances at a fixed quota q of at least the largest operation weight L.
-/// Elapsed time per unit varies with the machine, runtime tier, cache and heap state, interruption, open set
-/// size, column depth and the cost of a caller's region predicate, which counts as one operation whatever it
-/// costs. A quota does not bound first use or JIT time.
+/// <para><see cref="PathPlanningConfig.MinimumQuotaUnits"/> covers the largest operation, so a follower or mover
+/// configured with at least that quota stays within it. A request waiting for a workspace spends nothing.</para>
+/// <para>Equal frozen inputs and equal workspace stamp history spend equal total units on every machine and
+/// under any quota schedule. Once a request holds a workspace, it finishes on the call that runs its last
+/// operation, or its first call if it has no operations. With total work W greater than zero and fixed quota
+/// q at least the largest weight L, it finishes within <c>ceil(W / (q - L + 1))</c> planning calls.</para>
+/// <para>Elapsed time varies with the machine, compilation tier, cache and heap state, interruptions, open set
+/// size, column depth and the cost of a caller's region predicate. A quota also leaves first-use and JIT time
+/// unbounded. This value owns no resources and can be copied between threads.</para>
 /// </remarks>
-internal readonly struct PathWorkBudget
+public readonly struct PathWorkBudget
 {
     /// <summary>Creates a quota of <paramref name="units"/> work units.</summary>
+    /// <param name="units">The positive number of work units allowed per planning call.</param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="units"/> is below one.</exception>
     public PathWorkBudget(int units)
     {
@@ -32,7 +30,7 @@ internal readonly struct PathWorkBudget
         Units = units;
     }
 
-    /// <summary>The quota in work units, at least one. The default value holds zero and
-    /// <see cref="PathPlanRequest.Advance"/> refuses it.</summary>
+    /// <summary>The quota in work units. A default value has zero units and is refused by
+    /// <see cref="PathPlanningConfig"/>.</summary>
     public int Units { get; }
 }

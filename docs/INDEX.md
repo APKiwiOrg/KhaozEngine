@@ -55,6 +55,7 @@ against the engine version line. A completed design keeps decisions that still e
 | Doc | The program | Status |
 |---|---|---|
 | [Water boundary certificate](design/WATER-BOUNDARY-CERTIFICATE.md) | Capture certificate that answers a runtime water boundary proof without a coverage trace: the producer guarantees, the three answers, the refusal differences and why navigation bakes keep the full solve. | Implemented. |
+| [Fixed-quota region route planning](design/REGION-ROUTE-PLANNING.md) | Request ownership, deterministic work and adoption, calibrated charges and their limits. | Implemented. |
 | [Forced movement](design/FORCED-MOVEMENT.md) | Ground commitment authority, guarded pursuit, prediction tradeoffs, arrival and recovery, and fine speed migration. | Current rationale. |
 | [Status effects](design/STATUS-EFFECTS.md) | Actor-keyed timed effects, stable refresh and periodic cadence, transient replication and ownership-gap retries. | Implemented. Fine movement speed quantization is documented in [Forced movement](design/FORCED-MOVEMENT.md). |
 | [Per-body water optics](design/WATER-OBJECT-OPTICS-DESIGN-2026-10-24.md) | Independent bed depth for shoreline and submerged-object appearance, explicit coverage and resource lifetime, TileWorld preparation and the R8b handoff. | Implemented for 21.14.0. Consumer and native R8b handoff open. |

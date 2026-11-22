@@ -20,10 +20,13 @@ public sealed partial class PathFollower
     /// <summary>Whether this follower uses requests for region planning.</summary>
     internal bool UsesPlanning => _config.Planning is not null;
 
-    /// <summary>True while a region request is queued for a lease, has slices remaining, or holds a
-    /// finished result for adoption. Reset and cancellation clear it. Disposing the workspace pool
-    /// cancels leased and queued requests, clearing this flag for those followers immediately.</summary>
-    internal bool PlanningPending => _request is { State: not PathPlanState.Cancelled };
+    /// <summary>
+    /// True while the owner is waiting for a workspace, still planning, or holding a completed route for
+    /// adoption on its next tick. Reset and cancellation clear the flag. Pool disposal cancels leased and
+    /// queued work immediately, and completed results remain available for adoption.
+    /// </summary>
+    /// <remarks>Read on the same serialized sequence as the owner's ticks and resets.</remarks>
+    public bool PlanningPending => _request is { State: not PathPlanState.Cancelled };
 
     /// <summary>Releases a leased or waiting request and drops any ready result without resetting the route.</summary>
     internal void CancelPlanning()

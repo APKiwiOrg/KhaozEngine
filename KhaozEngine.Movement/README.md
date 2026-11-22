@@ -10,6 +10,55 @@ Ordinary contact configuration refusals use the shared
 `MovementConfigurationException` preserves `ArgumentException` catches and `MovementCapabilityException`
 preserves `NotSupportedException` catches. Head admission and movement arithmetic are unchanged.
 
+## Fixed-quota region planning
+
+`MoveToRange` plans across calls when `PathFollowConfig.Planning` is set. Check the profile's
+`SupportsPlanningRequests` and create one `GroundNavigation.CreatePlanningWorkspaces` pool per
+profile. It serves the profile planner and every straightener bound to that profile, including the
+one a mover creates with `RouteApproachOptions.StraightenRoutes`. One workspace per sharing mover
+prevents queueing. A smaller pool lends workspaces to the oldest waiter first, so the other owners'
+tick order affects when a route is adopted.
+
+The optional factory budget defaults to `PathQueryBudget.Default` and must cover the expansion and
+snap limits used by the movers. The per-call work quota is separate. Choose it using the
+[consumer guide](../docs/USING-KHAOZENGINE.md#planning-routes-across-calls) and supply at least
+`PathPlanningConfig.MinimumQuotaUnits`. For one straightening mover:
+
+```csharp
+using var pool = profile.CreatePlanningWorkspaces(count: 1);
+var follow = new PathFollowConfig
+{
+    Planning = new PathPlanningConfig(new PathWorkBudget(quotaUnits), pool),
+};
+var mover = new MoveToRange(profile, follow, new RouteApproachOptions { StraightenRoutes = true });
+try
+{
+    // Call once per simulation tick with the current body and target.
+    RangeSteering step = mover.Tick(body, tuning, target, range, run, dt, context);
+}
+finally
+{
+    mover.Reset();
+}
+```
+
+Keep the pool alive while its movers use it. Serialize pool reads, ticks, resets and disposal.
+Reset each mover before dropping it or changing target identity, placement or profile, then dispose
+the pool. Disposal cancels leased or queued work. Completed routes awaiting adoption remain
+available. A later tick that needs to begin a request on a disposed pool throws `ObjectDisposedException`.
+
+One lease covers start admission, search and optional straightening. The result matches synchronous
+planning on the same inputs. While `PlanningPending` is true, a planning wait returns
+`WaitingForPath` at zero motion, drops the old route and leaves the stall window untouched, including
+in supported Drop preparation. An exhausted Partial route still counts its cooldown wait toward stall.
+Suspension pauses work. Reaching range or changing target shape, range or capsule cancels a pending
+request.
+
+Use synchronous planning for custom planners, profiles with query-time area exclusions and
+`GroundPursuit`. The area check can scan an entire footprint within a search operation, so those
+views decline workspace creation. The delegate mover overload requires the request planner's exact
+navigation space when configured for planning. Straightened requests use the profile overload.
+
 ## Ground pursuit for committed travel
 
 `GroundPursuit` plans and steers one active pursuit without stepping physics or writing actor state. Construct it
@@ -24,46 +73,6 @@ Hop, Drop and unknown transitions refuse. Pursuit sets `PathQueryBudget.WalkOnly
 so a drop-enabled profile can choose a longer walking detour. It also checks returned waypoint kinds for planners
 that ignore that option. `RouteStraightener` drops only guarded walking shortcuts. Actual-to-route entry and every
 kept segment use the supplied supported-walk guard.
-
-The internal `NavSegmentRequest` can also resolve one supported-walk segment in slices. It admits both
-endpoint footprints and their layers in order, visits the swept footprint row by row, then checks directed
-graph crossings. It shares the capture, height and crossing rules with `GroundNavigation.AllowsSegment`.
-An advance charges whole operations and the decision becomes visible after the final required check.
-The charge of one column includes all of its captured surfaces. A paused request keeps only its cursors
-and can continue without rebuilding the query or allocating a scan buffer.
-
-A ground profile can also plan an internal region request. One prewarmed workspace covers sliced start
-admission, grid search and optional straightening. The straightener validates raw waypoints, keeps
-required anchors and checks the centre, positive and negative side lines in order. A profile's pool serves
-the profile planner and any straightener bound to that exact profile. A straightener's own pool serves
-only that instance. A begin validates the pairing and budget before acquiring or queueing a lease,
-clearing `LastStraightened` or consuming that instance's `FallBackOnce`. Completion records a shortcut
-in `LastStraightened` only if it dropped waypoints.
-
-The internal `GroundNavigation.CreatePlanningWorkspaces(count, largestBudget)` factory requires a positive
-count and prewarms the expansion and snap limits in the supplied budget, or `PathQueryBudget.Default` when
-omitted. Use one workspace per sharing mover to avoid waiting. Smaller pools hand leases to the oldest
-waiter first, making the publication call depend on the owners that share the pool and their call order.
-An immediate or queued begin allocates the request and its admission. Pending advances have prewarmed
-working memory. Publishing a nonempty route allocates the result.
-
-`MoveToRange` uses requests when its internal `PathFollowConfig.Planning` is set. The pool must be live,
-serve the selected planner and accommodate the follower budget at construction. The delegate constructor
-requires the request planner's exact navigation space. Straightened requests need the profile constructor.
-`GroundPursuit` requires synchronous planning and refuses the option.
-A planning wait holds at zero motion, drops the old route and neither counts toward stall nor clears the
-stall window, including when it releases supported Drop preparation. Exhausted Partial cooldown waits
-still count. Suspension leaves a request unadvanced. InRange and Reset release a lease or remove its waiter
-before returning, and changes to target shape, range or capsule use Reset. Call Reset before discarding a
-mover or changing its target identity, placement or profile.
-
-Disposing the pool clears `PlanningPending` for movers with leased or queued requests. Completed
-routes awaiting adoption remain available. The next due tick that needs to begin a request on
-the disposed pool throws `ObjectDisposedException`.
-
-A footprint with query-time area exclusions requires synchronous planning, including when combined with
-an unconstrained grid. An area excluding view adds a traversal constraint that can scan a footprint
-inside one search operation. The graph already enforces the area filter specified when the profile was baked.
 
 For an ability that refuses an area the actor may otherwise enter, pass
 `navigation.ExcludingAreas(wetSurfaceBit)` to `GroundPursuit`. The mask uses the game's captured `uint` area
@@ -386,6 +395,8 @@ public sealed class GroundNavigation
     public bool Aquatic { get; }
     public float MaxDropMetres { get; }
     public bool AllowTerrainDescents { get; }
+    public bool SupportsPlanningRequests { get; }
+    public PathPlanWorkspaces CreatePlanningWorkspaces(int count, PathQueryBudget? largestBudget = null);
     public GroundNavigation ExcludingAreas(uint excludedAreas);
     public bool AllowsSegment(Vector3 fromFeet, Vector3 toFeet);
     public void Validate(EffectiveMovementBinding binding);
@@ -1109,6 +1120,7 @@ public sealed class MoveToRange
         Func<Vector3, Vector3, bool> allowsSegment, PathFollowConfig? follow = null);
     public MoveToRange(IRegionPathPlanner planner, NavSpace space,
         Func<Vector3, Vector3, bool> allowsSegment, PathFollowConfig? follow, RouteApproachOptions options);
+    public bool PlanningPending { get; }
     public RangeSteering Tick(in MoveState body, in MoveTuning tuning, in ReachTarget target,
         float range, bool run, float dt, GroundMoveContext context);
     public RangeSteering Tick(in MoveState body, in MoveTuning tuning, in ReachTarget target,

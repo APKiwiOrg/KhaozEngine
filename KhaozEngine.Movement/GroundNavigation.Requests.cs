@@ -9,16 +9,31 @@ namespace KhaozEngine.Movement;
 
 public sealed partial class GroundNavigation
 {
-    /// <summary>Query-time footprint exclusions require synchronous planning, even with an unconstrained grid.
-    /// A view's traversal constraint can scan a footprint within one grid search operation.</summary>
-    internal bool SupportsRequests => ((ProfilePlanner)Planner).SupportsRequests;
+    /// <summary>
+    /// Whether this profile supports fixed-quota region planning. Profiles with query-time area exclusions
+    /// or traversal constraints, or with missing layer surface heights, require synchronous planning.
+    /// </summary>
+    public bool SupportsPlanningRequests => ((ProfilePlanner)Planner).SupportsRequests;
 
-    /// <summary>Prewarms <paramref name="count"/> workspaces for this profile and its straighteners.
-    /// A null <paramref name="largestBudget"/> uses <see cref="PathQueryBudget.Default"/>.</summary>
-    /// <exception cref="ArgumentOutOfRangeException">The count is below one or the snap limit is NaN.</exception>
+    /// <summary>
+    /// Creates a caller-owned, prewarmed workspace pool for this profile and every route straightener bound
+    /// to it, including the straighteners created by <see cref="MoveToRange"/>.
+    /// </summary>
+    /// <param name="count">The number of workspaces. Use one per sharing follower or mover to avoid waiting.</param>
+    /// <param name="largestBudget">
+    /// The largest expansion and snap limits of any query using this pool. Null uses
+    /// <see cref="PathQueryBudget.Default"/>.
+    /// </param>
+    /// <returns>
+    /// A pool to pass in <see cref="PathPlanningConfig"/>. Keep it alive while its owners use it, serialize
+    /// their access, and reset them before disposing the pool.
+    /// </returns>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="count"/> is below one or the snap radius in <paramref name="largestBudget"/> is NaN.
+    /// </exception>
     /// <exception cref="ArgumentException">The declared budget requires a frontier larger than an array.</exception>
-    /// <exception cref="NotSupportedException">This profile requires synchronous planning.</exception>
-    internal PathPlanWorkspaces CreatePlanningWorkspaces(int count, PathQueryBudget? largestBudget = null)
+    /// <exception cref="NotSupportedException"><see cref="SupportsPlanningRequests"/> is false.</exception>
+    public PathPlanWorkspaces CreatePlanningWorkspaces(int count, PathQueryBudget? largestBudget = null)
         => ((ProfilePlanner)Planner).CreateWorkspaces(count, largestBudget ?? PathQueryBudget.Default);
 
     /// <summary>Prewarms workspaces that serve only the supplied straightener.</summary>

@@ -18,7 +18,7 @@ internal sealed partial class RouteStraightener : IGridRequestAdapter
 
     /// <summary>True when the profile can account for every operation. Area excluding views plan synchronously
     /// because their grid traversal constraint can scan a footprint in one search operation.</summary>
-    internal bool SupportsRequests => _navigation?.SupportsRequests == true;
+    internal bool SupportsRequests => _navigation?.SupportsPlanningRequests == true;
 
     GridPathPlanner IGridRequestAdapter.RequestGrid => RequestNavigation().RequestGrid;
 

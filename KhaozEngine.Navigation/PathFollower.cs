@@ -151,9 +151,16 @@ public sealed class PathFollowConfig
     /// <summary>Search budget for each synchronous replan or fixed-quota region request.</summary>
     public PathQueryBudget Budget { get; init; } = PathQueryBudget.Default;
 
-    /// <summary>Optional fixed-quota region planning. Requires a compatible, live pool with room for <see cref="Budget"/>.
-    /// The follower uses the request planner's navigation space.</summary>
-    internal PathPlanningConfig? Planning { get; init; }
+    /// <summary>
+    /// Opts region following into fixed-quota planning. The default value is null and uses synchronous planning.
+    /// Supply a live workspace pool for the follower's planner, prewarmed for at least the expansion and snap
+    /// limits of <see cref="Budget"/>. The follower uses that planner's exact navigation space.
+    /// </summary>
+    /// <remarks>
+    /// Point queries remain synchronous. Use synchronous planning with custom planners and profiles that
+    /// decline requests. Keep the pool alive while its owners use it and reset each owner before dropping it.
+    /// </remarks>
+    public PathPlanningConfig? Planning { get; init; }
 
     /// <summary>Default tuning: a 0.6 unit accept radius paired with a 0.8 unit vertical tolerance, 1.5
     /// unit horizontal and 0.8 unit vertical goal-drift tolerances, a 2.5 unit corridor tolerance, a 0.5

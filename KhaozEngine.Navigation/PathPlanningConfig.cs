@@ -2,22 +2,38 @@ using System;
 
 namespace KhaozEngine.Navigation;
 
-/// <summary>Opts a region follower into one fixed-quota advance per tick over a compatible prewarmed pool.</summary>
-internal sealed class PathPlanningConfig
+/// <summary>
+/// Opts a follower or mover into fixed-quota region planning over a prewarmed workspace pool.
+/// The settings are immutable. The caller owns the pool and must serialize calls into it.
+/// </summary>
+public sealed class PathPlanningConfig
 {
-    /// <summary>Configures the quota and pool. The follower validates ownership and capacity against its planner.</summary>
-    /// <exception cref="ArgumentOutOfRangeException">The quota is smaller than the largest indivisible operation.</exception>
-    /// <exception cref="ArgumentNullException">The pool is null.</exception>
-    internal PathPlanningConfig(PathWorkBudget quota, PathPlanWorkspaces workspaces)
+    /// <summary>Creates planning settings for use with <see cref="PathFollowConfig.Planning"/>.</summary>
+    /// <param name="quota">The work allowed on each planning call, at least <see cref="MinimumQuotaUnits"/>.</param>
+    /// <param name="workspaces">
+    /// A caller-owned pool for the owner's navigation profile. The follower or mover validates its lifetime,
+    /// profile and query budget at construction. Keep it alive while the owner uses it.
+    /// </param>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="quota"/> has fewer units than <see cref="MinimumQuotaUnits"/>, including a default quota.
+    /// </exception>
+    /// <exception cref="ArgumentNullException"><paramref name="workspaces"/> is null.</exception>
+    public PathPlanningConfig(PathWorkBudget quota, PathPlanWorkspaces workspaces)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(quota.Units, PathWorkWeights.Largest, nameof(quota));
         Quota = quota;
         Workspaces = workspaces ?? throw new ArgumentNullException(nameof(workspaces));
     }
 
-    /// <summary>The work allowed on each planning tick, including the begin tick if a lease is immediately available.</summary>
-    internal PathWorkBudget Quota { get; }
+    /// <summary>The smallest accepted quota in work units. It covers the largest indivisible operation.</summary>
+    public static int MinimumQuotaUnits => PathWorkWeights.Largest;
 
-    /// <summary>The pool shared by the planners and bodies that own these requests.</summary>
-    internal PathPlanWorkspaces Workspaces { get; }
+    /// <summary>
+    /// The work quota per planning call, including the first call if a workspace is free.
+    /// See <see cref="PathWorkBudget"/> for the work bound.
+    /// </summary>
+    public PathWorkBudget Quota { get; }
+
+    /// <summary>The caller-owned pool from which the follower or mover leases a workspace when planning.</summary>
+    public PathPlanWorkspaces Workspaces { get; }
 }

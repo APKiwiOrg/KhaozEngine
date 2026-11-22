@@ -9985,6 +9985,8 @@ public sealed class GroundNavigation
     public bool Aquatic { get; }
     public float MaxDropMetres { get; }
     public bool AllowTerrainDescents { get; }
+    public bool SupportsPlanningRequests { get; }
+    public PathPlanWorkspaces CreatePlanningWorkspaces(int count, PathQueryBudget? largestBudget = null);
     public GroundNavigation ExcludingAreas(uint excludedAreas);
     public bool AllowsSegment(Vector3 fromFeet, Vector3 toFeet);
     public void Validate(EffectiveMovementBinding binding);
@@ -10456,6 +10458,7 @@ public sealed class MoveToRange
         Func<Vector3, Vector3, bool> allowsSegment, PathFollowConfig? follow = null);
     public MoveToRange(IRegionPathPlanner planner, NavSpace space,
         Func<Vector3, Vector3, bool> allowsSegment, PathFollowConfig? follow, RouteApproachOptions options);
+    public bool PlanningPending { get; }
     public RangeSteering Tick(in MoveState body, in MoveTuning tuning, in ReachTarget target,
         float range, bool run, float dt, GroundMoveContext context);
     public RangeSteering Tick(in MoveState body, in MoveTuning tuning, in ReachTarget target,
@@ -10709,6 +10712,62 @@ and nonfinite requests become finite idle commands. A nonfinite yaw is encoded a
 direction is clamped to unit length. Player automation emits ordinary client commands, and the authority
 simulates those commands. There is no server-side player following. The game still owns manual cancellation,
 target death, action dispatch and any final authoritative tolerance check.
+
+### Planning routes across calls
+
+Use `PathFollowConfig.Planning` to spread region planning over simulation ticks. Check
+`GroundNavigation.SupportsPlanningRequests` and create a pool with
+`GroundNavigation.CreatePlanningWorkspaces`. A pool serves its profile and every straightener bound
+to it, including the one `MoveToRange` creates when straightening is enabled. Use one workspace per
+sharing follower or mover to avoid queueing. Prewarm for the largest expansion and snap limits the
+owners will use. Keep the pool alive while its owners use it, reset them before dropping them, and
+dispose the pool last. Serialize ticks, resets, reads and disposal for each pool. The
+[Movement package example](../KhaozEngine.Movement/README.md#fixed-quota-region-planning) shows the
+wiring.
+
+A call that has a workspace spends at most the larger of the quota and the largest indivisible
+operation weight. The first operation always runs and later operations must fit the remaining quota.
+`PathPlanningConfig.MinimumQuotaUnits` covers the largest weight, so a configured follower or mover
+stays within its quota. Equal frozen inputs and equal workspace stamp history spend equal total units
+on every machine. A waiting request spends nothing. Once it holds a workspace, it completes on the
+call that runs its last operation, or on its first call if it has no operations. For total work W
+greater than zero, completion needs at most W planning calls, and at fixed quota q at least the largest
+weight L it needs at most `ceil(W / (q - L + 1))` calls. A quota bounds work. Elapsed time varies
+with hardware, runtime tier, cache and data, the cost of the region predicate and interruptions.
+First-use and JIT time are outside the quota.
+
+Pending owners hold at zero motion with `WaitingForPath` and `PlanningPending`. That wait neither
+counts toward the mover's stall latch nor clears its stall window. A first-call result can steer
+immediately. A result that completes later is used on the next owner tick after the follower checks
+current membership and the resolved start. The result has the same status and waypoint bits as
+synchronous planning for the same frozen start, goal, radius and query budget, including the
+straightening fallback captured at the start. Leave `Planning` unset for point queries, custom
+planners and views with query-time area exclusions. They plan synchronously.
+
+Publication depends on the ordered operations and their weights, the sequence of owner calls and
+quotas, the workspace grant and the adoption rule. For equal publication ticks, keep simulation inputs,
+engine version, quotas, pool counts and memberships, call order within each tick, and Reset or
+cancellation events fixed. This also reproduces workspace stamp maintenance. A smaller pool makes
+publication depend on the work and releases of earlier requests. Keep a supplied region predicate
+pure until the result is ready or cancelled. Equal route bits across platforms also depend on the
+numeric kernel.
+
+Choose a quota on the hardware that runs the simulation. From an engine source checkout, the
+calibration diagnostic reports sampled costs, work by kind, and slice counts at several quotas.
+Compare those observations with the workload and time available on your own hardware.
+
+```bash
+DOTNET_TieredCompilation=0 KE_ROUTE_CALIBRATION_TIMING=1 dotnet test KhaozEngine.Movement.Tests -c Release --filter FullyQualifiedName~RouteCalibrationDiagnosticsTests.ReportsRouteCalibrationTimes --logger 'console;verbosity=detailed'
+```
+
+On 2026-11-22, one development machine (Apple M2 Max, arm64, .NET 10, tiered compilation off) provided
+the reference measurements. The machine was busy. Rescaling the measured operations to the calibrated
+table gives about 6 ns per unit for common work (5.7 to 6.7 ns), and 4.3 and 4.4 ns for the two rare
+reconstruction steps with weight 1. A search unit in a constrained unreachable fixture cost about
+2.7 ns against 6.7 ns in the open-ground expansion fixture. For the footprint-heavy requests, the
+observed 99th percentile advance cost per unit was about 1.2 to 1.45 times the median depending on the
+quota. These figures describe that machine and those fixtures. Use your own measurements for deployment
+and see the [calibration rationale](design/REGION-ROUTE-PLANNING.md#calibration) for the limits.
 
 ### Route-free approach (`DirectMoveToRange`)
 

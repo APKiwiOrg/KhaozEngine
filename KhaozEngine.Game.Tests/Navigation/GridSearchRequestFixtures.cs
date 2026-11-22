@@ -90,7 +90,7 @@ internal static partial class GridSearchRequestFixtures
         // The raw region result retains one waypoint per grid exit.
         const int length = 8193;
         yield return new("long-raw-reconstruction", Corridor(length), Start, End(length), Budget(length),
-            NavPathStatus.Complete, Waypoints: length - 1);
+            NavPathStatus.Complete, Waypoints: 8192);
     }
 
     internal static RegionQuery EqualPriceLinks()

@@ -102,11 +102,11 @@ public sealed class NavSpace
         for (int i = 0; i < Layers.Count; i++)
             if (Layers[i].ContainsY(y)) return i;
 
-        int bestIndex = 0;
+        int bestIndex = -1;
         float bestDistance = float.PositiveInfinity;
         for (int i = 0; i < Layers.Count; i++)
             CompareBandCenter(Layers[i], y, i, ref bestIndex, ref bestDistance);
-        return bestIndex;
+        return bestIndex >= 0 ? bestIndex : 0;
     }
 
     /// <summary>
@@ -134,8 +134,9 @@ public sealed class NavSpace
     {
         if (!grid.HasSurfaceHeights) return;
         (int x, int z) = grid.CellOf(position.X, position.Z);
-        if (grid.RestingHeightAt(x, z) is float height)
-            CompareLayer(position.Y, height, index, ref bestIndex, ref bestDistance);
+        float? resting = grid.RestingHeightAt(x, z);
+        if (resting is null) return;
+        CompareLayer(position.Y, resting.Value, index, ref bestIndex, ref bestDistance);
     }
 
     static void CompareBandCenter(NavGrid grid, float y, int index, ref int bestIndex, ref float bestDistance)

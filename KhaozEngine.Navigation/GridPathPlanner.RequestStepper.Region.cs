@@ -6,7 +6,7 @@ public sealed partial class GridPathPlanner
 {
     partial struct RequestStepper
     {
-        internal RequestStepper(GridPathPlanner planner, SearchScratch scratch, Vector3 feet, NavGoalRegion region,
+        internal RequestStepper(GridPathPlanner planner, RequestScratch scratch, Vector3 feet, NavGoalRegion region,
             float radius, PathQueryBudget budget)
         {
             _planner = planner;
@@ -48,7 +48,7 @@ public sealed partial class GridPathPlanner
             }
 
             SetStart(_layerProbe.Layer, position);
-            _scratch.ResetMembers();
+            _scratch.StartMembership();
             Phase = SearchPhase.MemberBox;
         }
 
@@ -83,8 +83,11 @@ public sealed partial class GridPathPlanner
         void TestMember()
         {
             int layer = _memberLayer;
-            _planner.TestRegionMember(_scratch, _region, _radius, _planner._space.Layers[layer], layer,
-                _planner._layerOffset[layer], _memberX, _memberZ);
+            bool member = _planner.IsRegionMember(_region, _radius, layer, _memberX, _memberZ, out Vector3 feet);
+            _scratch.SetMember(layer, _memberX, _memberZ, member);
+            if (member)
+                _scratch.AddMember(feet, _memberX, _memberZ,
+                    _planner._layerOffset[layer] + _memberZ * _planner._space.Layers[layer].Width + _memberX);
 
             SearchScratch.MemberBox box = _scratch.CandidateBox(layer);
             if (++_memberX - box.X0 < box.Width) return;

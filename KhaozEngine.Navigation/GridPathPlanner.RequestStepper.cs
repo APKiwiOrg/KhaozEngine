@@ -7,7 +7,7 @@ namespace KhaozEngine.Navigation;
 
 public sealed partial class GridPathPlanner
 {
-    /// <summary>The next paid request operation, or Done after publication.</summary>
+    /// <summary>The next paid request operation. Done means no paid operation remains.</summary>
     internal enum SearchPhase
     {
         Layer,
@@ -34,7 +34,7 @@ public sealed partial class GridPathPlanner
     partial struct RequestStepper
     {
         readonly GridPathPlanner _planner;
-        readonly SearchScratch _scratch;
+        readonly RequestScratch _scratch;
         RegionGoal _goal;
         readonly float _radius;
         readonly PathQueryBudget _budget;
@@ -139,7 +139,7 @@ public sealed partial class GridPathPlanner
 
         void NextPop()
         {
-            if (CanPop(_scratch.Open, _expanded, _budget.MaxExpandedNodes))
+            if (_scratch.Open.Count > 0 && !ExpansionCapReached(_expanded, _budget.MaxExpandedNodes))
                 Phase = SearchPhase.Pop;
             else
                 BeginReconstruction();
@@ -182,8 +182,7 @@ public sealed partial class GridPathPlanner
                 _layer, _x, _z, _grid, _width, _layerBase, _gCurrent, _radius, _neighbor);
             if (++_neighbor < NeighborCount) return;
 
-            _links = _planner.LinksAfterNeighbors(_current, _neighbor);
-            if (_links is null)
+            if (!_planner.TryGetLinks(_current, out _links))
                 NextPop();
             else
             {

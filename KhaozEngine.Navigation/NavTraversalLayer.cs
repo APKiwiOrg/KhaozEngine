@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 
 namespace KhaozEngine.Navigation;
 
@@ -41,6 +42,8 @@ public sealed class NavTraversalLayer
     /// <summary>Directed neighbor exits from this cell. Zero outside the layer.</summary>
     public byte ExitMask(int x, int z) => InBounds(x, z) ? _exits[z * Width + x] : (byte)0;
 
+    // Keep this check inline through the search driver's shared link admission.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     bool InBounds(int x, int z) => x >= 0 && z >= 0 && x < Width && z < Height;
 
     internal static int NeighborX(int index) => index switch

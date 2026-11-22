@@ -16,10 +16,21 @@ public sealed partial class GridPathPlanner
         internal int LeaseSlot { get; set; } = -1;
         internal LinkedListNode<GridSearchRequest>? WaitNode { get; set; }
 
-        /// <summary>The next indivisible operation for a leased request, used to test exact quota cuts.</summary>
-        internal SearchPhase NextPhaseForTests => State != PathPlanState.Pending ? SearchPhase.Done :
-            _started ? _stepper.Phase :
-            pool.Planner._space.Layers.Count == 1 ? SearchPhase.Snap : SearchPhase.Layer;
+        /// <summary>Predicts the next paid operation while this request holds a lease.
+        /// Done means no work is due, including a pending request that will publish with zero work.</summary>
+        internal SearchPhase NextPhaseForTests
+        {
+            get
+            {
+                if (State != PathPlanState.Pending || LeaseSlot < 0) return SearchPhase.Done;
+                if (_started) return _stepper.Phase;
+
+                GridPathPlanner planner = pool.Planner;
+                if (planner._space.Layers.Count > 1) return SearchPhase.Layer;
+                return planner._traversal is null && SnapRingLimit(planner._space.Layers[0], queryBudget.SnapRadius) < 0
+                    ? SearchPhase.Done : SearchPhase.Snap;
+            }
+        }
 
         public override bool StartsFrom(Vector3 feet)
         {

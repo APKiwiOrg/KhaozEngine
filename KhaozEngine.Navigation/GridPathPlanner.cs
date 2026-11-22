@@ -204,22 +204,35 @@ public sealed partial class GridPathPlanner : IIncrementalRegionPathPlanner
 
         for (int ring = 0; ring <= maxRing; ring++)
         {
-            if (!SnapRingIsRepresentable(queryX, queryZ, ring)) break;
-            int right = queryX + ring, bottom = queryZ + ring;
-            if (!CanSelectSnapRing(right, bottom)) break;
+            if (!SnapRingIsRepresentable(queryX, queryZ, ring) ||
+                !CanSelectSnapRing(queryX + ring, queryZ + ring)) break;
 
+            bool found = false;
+            int bestX = 0, bestZ = 0;
             Vector2 bestCenter = default;
-            float bestDistance = float.PositiveInfinity;
-            for (int z = queryZ - ring; z <= bottom; z++)
-                for (int x = queryX - ring; x <= right; x++)
-                {
-                    if (Math.Max(Math.Abs(x - queryX), Math.Abs(z - queryZ)) != ring) continue;
-                    ConsiderSnapCandidate(grid, layer, agentRadius, worldXz, x, z, ref bestDistance, ref bestCenter);
-                }
+            float bestDistanceSq = float.PositiveInfinity;
 
-            if (bestDistance < float.PositiveInfinity)
+            for (int z = queryZ - ring; z <= queryZ + ring; z++)
             {
-                snappedToOwnCell = ring == 0;
+                for (int x = queryX - ring; x <= queryX + ring; x++)
+                {
+                    if (Math.Max(Math.Abs(x - queryX), Math.Abs(z - queryZ)) != ring)
+                    {
+                        continue;
+                    }
+
+                    if (TryImproveSnap(grid, layer, agentRadius, worldXz, x, z, ref bestDistanceSq, ref bestCenter))
+                    {
+                        bestX = x;
+                        bestZ = z;
+                        found = true;
+                    }
+                }
+            }
+
+            if (found)
+            {
+                snappedToOwnCell = bestX == queryX && bestZ == queryZ;
                 return bestCenter;
             }
         }

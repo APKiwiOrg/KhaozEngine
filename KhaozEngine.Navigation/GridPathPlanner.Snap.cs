@@ -10,25 +10,29 @@ public sealed partial class GridPathPlanner
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static bool SnapRingIsRepresentable(int queryX, int queryZ, int ring)
-        => (long)queryX - ring >= int.MinValue && (long)queryX + ring <= int.MaxValue &&
-            (long)queryZ - ring >= int.MinValue && (long)queryZ + ring <= int.MaxValue;
+    {
+        int low = int.MinValue + ring, high = int.MaxValue - ring;
+        return queryX >= low && queryX <= high && queryZ >= low && queryZ <= high;
+    }
 
     // A positive inclusive bound cannot terminate the legacy ring loop. Even a winner on that ring
     // is refused. The stepper charges the representable ring's candidates before it checks the result.
     static bool CanSelectSnapRing(int right, int bottom) => right != int.MaxValue && bottom != int.MaxValue;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    void ConsiderSnapCandidate(NavGrid grid, int layer, float radius, Vector2 query, int x, int z,
+    bool TryImproveSnap(NavGrid grid, int layer, float radius, Vector2 query, int x, int z,
         ref float bestDistance, ref Vector2 bestCenter)
     {
-        if (!grid.InBounds(x, z) || Blocks(grid, layer, radius, x, z)) return;
+        if (!grid.InBounds(x, z) || Blocks(layer, radius, x, z)) return false;
         Vector2 center = grid.CellCenter(x, z);
         float distance = Vector2.DistanceSquared(center, query);
         if (distance < bestDistance)
         {
             bestDistance = distance;
             bestCenter = center;
+            return true;
         }
+        return false;
     }
 
     /// <summary>Visits the same Chebyshev ring candidates in z then x order as synchronous snapping.
@@ -71,7 +75,7 @@ public sealed partial class GridPathPlanner
                 return;
             }
 
-            _planner.ConsiderSnapCandidate(_grid, _layer, _radius, _query, _x, _z, ref _bestDistance, ref _bestCentre);
+            _planner.TryImproveSnap(_grid, _layer, _radius, _query, _x, _z, ref _bestDistance, ref _bestCentre);
 
             int right = _queryX + _ring, bottom = _queryZ + _ring;
             if (_x < right)

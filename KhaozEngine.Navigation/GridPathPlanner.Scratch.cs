@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using KhaozEngine.Collision;
 
@@ -37,7 +38,7 @@ public sealed partial class GridPathPlanner
     /// by two, so nothing is cleared between queries. When the counter would overflow, the stamps are
     /// cleared once and counting restarts.
     /// </summary>
-    internal sealed class SearchScratch
+    internal class SearchScratch
     {
         readonly double[] _gScore;
         readonly int[] _cameFrom;
@@ -46,7 +47,6 @@ public sealed partial class GridPathPlanner
         int _generation;
 
         readonly MemberBox[] _memberBoxes;
-        readonly Array _memberLayers;
         bool[] _memberFlags;
         (int Layer, int Cx, int Cz)[] _cells;
 
@@ -59,14 +59,14 @@ public sealed partial class GridPathPlanner
         {
         }
 
-        internal SearchScratch(int totalNodes, int layerCount, int memberCapacity, int frontierCapacity, int chainCapacity)
+        protected SearchScratch(int totalNodes, int layerCount, int memberCapacity, int frontierCapacity, int chainCapacity)
         {
             _gScore = new double[totalNodes];
             _cameFrom = new int[totalNodes];
             _incoming = new NavLinkKind?[totalNodes];
             _stamp = new int[totalNodes];
             _memberBoxes = new MemberBox[layerCount];
-            _memberLayers = frontierCapacity == 0 ? new bool[layerCount] : new int[layerCount];
+            MemberLayers = frontierCapacity == 0 ? new bool[layerCount] : Array.Empty<bool>();
             _memberFlags = memberCapacity == 0 ? Array.Empty<bool>() : new bool[memberCapacity];
             _cells = chainCapacity == 0 ? Array.Empty<(int, int, int)>() : new (int, int, int)[chainCapacity];
             Open = frontierCapacity == 0 ? new() : new(frontierCapacity);
@@ -101,9 +101,10 @@ public sealed partial class GridPathPlanner
         }
 
         /// <summary>Clears the entire stamp array at once when a synchronous search wraps.</summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
         internal void BeginSynchronousSearch()
         {
-            if (NeedsWrap)
+            if (_generation >= int.MaxValue - 2)
             {
                 Array.Clear(_stamp);
                 _generation = 0;
@@ -123,6 +124,7 @@ public sealed partial class GridPathPlanner
             return end;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void BeginSearch()
         {
             _generation += 2;
@@ -158,8 +160,20 @@ public sealed partial class GridPathPlanner
             return _cells;
         }
 
-        /// <summary>Starts membership with no members. Each box and its candidate status are recorded before use.</summary>
+        /// <summary>Per layer, whether a synchronous region query found any member on it.</summary>
+        public bool[] MemberLayers { get; }
+
+        /// <summary>Clears the member lists and boxes before synchronous membership.</summary>
         public void ResetMembers()
+        {
+            ClearMemberLists();
+            Array.Clear(MemberLayers);
+            Array.Clear(_memberBoxes);
+        }
+
+        /// <summary>Clears member data shared by both drivers. The stepper replaces each candidate box.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        protected void ClearMemberLists()
         {
             Members.Clear();
             MemberNodeIds.Clear();
@@ -172,14 +186,6 @@ public sealed partial class GridPathPlanner
             _memberBoxes[layer] = new MemberBox(x0, z0, width, height, offset);
             return offset + width * height;
         }
-
-        // Synchronous loops use flags. The stepper packs only the nonempty layers so advancing
-        // to the next layer always takes constant work.
-        internal bool[] SynchronousCandidateLayers => (bool[])_memberLayers;
-
-        internal void RecordCandidateLayer(int layer, int index) => ((int[])_memberLayers)[index] = layer;
-
-        internal int CandidateLayer(int index) => ((int[])_memberLayers)[index];
 
         /// <summary>Ensures flags fit the candidate boxes. Only synchronous scratch can need to grow here.</summary>
         public void EnsureMemberFlags(int cells)

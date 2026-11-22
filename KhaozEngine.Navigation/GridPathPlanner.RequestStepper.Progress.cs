@@ -12,12 +12,22 @@ public sealed partial class GridPathPlanner
 
         void BeginCertificate()
         {
-            _component = _planner.CertificateComponent(_startLayer, _startX, _startZ, _startId);
-            if (_component < 0 || !FitsCertificate(_planner._connectivity.Members(_component).Length, _goal.MemberCount))
+            if (!_planner.CertificateStartsInBounds(_startLayer, _startX, _startZ))
+            {
+                BeginSearch();
+                return;
+            }
+
+            _component = _planner._connectivity.ComponentOf(_startId);
+            if (_component < 0 || ExceedsCertificateLimits(_planner._connectivity.Members(_component).Length))
                 BeginSearch();
             else
                 Phase = SearchPhase.CertificateLabel;
         }
+
+        bool ExceedsCertificateLimits(int nodes)
+            => ExceedsCertificateNodeLimit(nodes) || _goal.MemberCount <= 0 ||
+                ExceedsCertificateComparisonLimit(nodes, _goal.MemberCount);
 
         void CheckCertificateLabel()
         {
@@ -72,7 +82,7 @@ public sealed partial class GridPathPlanner
 
         void FinishCertificateComparison()
         {
-            if (!SupportsCertificate(_progress, _startProgress))
+            if (RejectsCertificate(_progress, _startProgress))
             {
                 BeginSearch();
                 return;

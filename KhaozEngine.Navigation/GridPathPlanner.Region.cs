@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 
@@ -20,7 +21,12 @@ public sealed partial class GridPathPlanner
 
     NavPath FindPathCore(Vector3 start, NavGoalRegion goal, float agentRadius, PathQueryBudget budget, bool useCertificate)
     {
-        ValidateRegion(goal, agentRadius);
+        ArgumentNullException.ThrowIfNull(goal);
+        ValidateTraversalRadius(agentRadius);
+        for (int layer = 0; layer < _space.Layers.Count; layer++)
+            if (!_space.Layers[layer].HasSurfaceHeights)
+                throw new ArgumentException("Region queries require surface heights on every grid.", nameof(goal));
+
         SearchScratch scratch = RentScratch();
         try
         {
@@ -58,48 +64,46 @@ public sealed partial class GridPathPlanner
             throw new ArgumentException("Region queries require surface heights on every grid.", nameof(goal));
     }
 
-    /// <summary>Records members in layer, z, x order using each layer's padded candidate box.</summary>
+    /// <summary>
+    /// Records the region's passable member cells in the scratch, layer by layer in z then x order. Only
+    /// the cells of each layer's <see cref="RegionCellBounds"/> box are visited, and each takes the exact
+    /// extent and predicate test, so the members match a whole-grid scan without one. False when no cell is
+    /// a member.
+    /// </summary>
     bool FindMembers(SearchScratch scratch, NavGoalRegion goal, float agentRadius)
     {
         scratch.ResetMembers();
-        bool[] candidates = scratch.SynchronousCandidateLayers;
         int flags = 0;
         for (int layer = 0; layer < _space.Layers.Count; layer++)
         {
             (int x0, int z0, int x1, int z1) = RegionCellBounds(_space.Layers[layer], goal);
-            flags = scratch.SetMemberBox(layer, x0, z0, x1 - x0 + 1, z1 - z0 + 1, flags);
-            candidates[layer] = x0 <= x1 && z0 <= z1;
+            if (x0 <= x1 && z0 <= z1)
+                flags = scratch.SetMemberBox(layer, x0, z0, x1 - x0 + 1, z1 - z0 + 1, flags);
         }
         scratch.EnsureMemberFlags(flags);
 
         for (int layer = 0; layer < _space.Layers.Count; layer++)
         {
-            if (!candidates[layer]) continue;
-            NavGrid grid = _space.Layers[layer];
-            int layerBase = _layerOffset[layer];
-            SearchScratch.MemberBox box = scratch.CandidateBox(layer);
-            int x1 = box.X0 + box.Width - 1, z1 = box.Z0 + box.Height - 1;
-            for (int z = box.Z0; z <= z1; z++)
-                for (int x = box.X0; x <= x1; x++)
-                    TestRegionMember(scratch, goal, agentRadius, grid, layer, layerBase, x, z);
+            (int x0, int z0, int x1, int z1) = RegionCellBounds(_space.Layers[layer], goal);
+            for (int z = z0; z <= z1; z++)
+                for (int x = x0; x <= x1; x++)
+                {
+                    bool member = IsRegionMember(goal, agentRadius, layer, x, z, out Vector3 feet);
+                    scratch.SetMember(layer, x, z, member);
+                    if (!member) continue;
+                    scratch.MemberLayers[layer] = true;
+                    scratch.AddMember(feet, x, z, _layerOffset[layer] + z * _space.Layers[layer].Width + x);
+                }
         }
         return scratch.Members.Count > 0;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    void TestRegionMember(SearchScratch scratch, NavGoalRegion goal, float agentRadius,
-        NavGrid grid, int layer, int layerBase, int x, int z)
-    {
-        bool member = IsRegionMember(goal, agentRadius, grid, layer, x, z, out Vector3 feet);
-        scratch.SetMember(layer, x, z, member);
-        if (member) scratch.AddMember(feet, x, z, layerBase + z * grid.Width + x);
-    }
-
-    bool IsRegionMember(NavGoalRegion goal, float agentRadius, NavGrid grid, int layer, int x, int z, out Vector3 feet)
+    bool IsRegionMember(NavGoalRegion goal, float agentRadius, int layer, int x, int z, out Vector3 feet)
     {
         feet = default;
-        if (Blocks(grid, layer, agentRadius, x, z)) return false;
-        feet = CellFeet(grid, x, z);
+        if (Blocks(layer, agentRadius, x, z)) return false;
+        feet = CellFeet(layer, x, z);
         if (Math.Abs((double)feet.X - goal.Anchor.X) > goal.HorizontalExtent ||
             Math.Abs((double)feet.Z - goal.Anchor.Z) > goal.HorizontalExtent) return false;
         return goal.Contains(feet);
@@ -164,10 +168,9 @@ public sealed partial class GridPathPlanner
         }
     }
 
-    Vector3 CellFeet(int layer, int x, int z) => CellFeet(_space.Layers[layer], x, z);
-
-    static Vector3 CellFeet(NavGrid grid, int x, int z)
+    Vector3 CellFeet(int layer, int x, int z)
     {
+        NavGrid grid = _space.Layers[layer];
         Vector2 centre = grid.CellCenter(x, z);
         // Height-less legacy point grids represent a plane. Region queries require physical heights.
         return new Vector3(centre.X, grid.RestingHeightAt(x, z) ?? 0f, centre.Y);

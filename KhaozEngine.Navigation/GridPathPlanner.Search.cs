@@ -71,8 +71,14 @@ public sealed partial class GridPathPlanner
         public double Priority(int layer, int x, int z)
             => planner._spatialBound.Point(layer, x, z, goalLayer, goalX, goalZ);
 
-        double ISearchGoal.Progress(int layer, int x, int z)
-            => DistanceSquared(planner.CellFeet(layer, x, z), goalFeet);
+        public double Progress(int layer, int x, int z)
+        {
+            Vector3 feet = planner.CellFeet(layer, x, z);
+            double dx = (double)feet.X - goalFeet.X;
+            double dy = (double)feet.Y - goalFeet.Y;
+            double dz = (double)feet.Z - goalFeet.Z;
+            return SquaredDistance(dx, dy, dz);
+        }
     }
 
     // Priority bounds remaining route cost. Progress only chooses a partial endpoint.
@@ -84,7 +90,7 @@ public sealed partial class GridPathPlanner
         (int startX, int startZ) = startGrid.CellOf(startPoint.X, startPoint.Y);
         int startId = _layerOffset[startLayer] + startZ * startGrid.Width + startX;
 
-        if (useCertificate && TryCertifyNoProgress(startLayer, startX, startZ, startId, ref goal))
+        if (useCertificate && TryCertifyNoProgress(startLayer, startX, startZ, startId, goal))
         {
             Interlocked.Increment(ref _certificatesForTests);
             return NavPath.Unreachable;
@@ -101,8 +107,10 @@ public sealed partial class GridPathPlanner
         int expanded = 0;
         bool reachedGoal = false;
 
-        while (CanPop(open, expanded, budget.MaxExpandedNodes))
+        while (open.Count > 0)
         {
+            if (ExpansionCapReached(expanded, budget.MaxExpandedNodes)) break;
+
             int current = open.Dequeue();
             if (!TryClosePoppedNode(scratch, current, ref expanded)) continue;
 
@@ -112,109 +120,31 @@ public sealed partial class GridPathPlanner
             int baseOffset = _layerOffset[layer];
 
             double progress = goal.Progress(layer, cx, cz);
-            reachedGoal = SelectPoppedEndpoint(ref goal, current, layer, cx, cz, progress, ref closestNode, ref closestProgress);
-            if (reachedGoal) break;
+            if (SelectPoppedEndpoint(ref goal, current, layer, cx, cz, progress, ref closestNode, ref closestProgress))
+            {
+                reachedGoal = true;
+                break;
+            }
 
             double gCurrent = scratch.GScore(current);
-            int neighbor = 0;
-            for (; neighbor < NeighborCount; neighbor++)
+            for (int i = 0; i < NeighborDx.Length; i++)
+            {
                 RelaxNeighbor(scratch, open, ref goal, ref seq, current, layer, cx, cz, grid, width,
-                    baseOffset, gCurrent, agentRadius, neighbor);
+                    baseOffset, gCurrent, agentRadius, i);
+            }
 
-            if (LinksAfterNeighbors(current, neighbor) is { } links)
+            if (TryGetLinks(current, out List<PlannerLink>? links))
+            {
                 foreach (PlannerLink link in links)
+                {
                     RelaxLink(scratch, open, ref goal, ref seq, current, layer, cx, cz, gCurrent,
                         agentRadius, budget.WalkOnly, link);
+                }
+            }
         }
 
         if (!ShouldReconstruct(reachedGoal, closestNode, startId)) return NavPath.Unreachable;
         return Reconstruct(scratch, closestNode, reachedGoal, goalPoint, agentRadius);
-    }
-
-    /// <summary>Pulls a reversed-to-travel-order chain for legacy point queries. Special links split runs.
-    /// Drop source and landing anchors are mandatory, including on the first edge.</summary>
-    NavPath PullPointPath(SearchScratch scratch, bool reachedGoal, Vector2 goalPoint, float agentRadius)
-    {
-        List<int> chain = scratch.Chain;
-        int count = chain.Count;
-        (int Layer, int Cx, int Cz)[] cells = scratch.CellsFor(count);
-        for (int i = 0; i < count; i++)
-        {
-            cells[i] = Decode(chain[i]);
-        }
-
-        List<NavWaypoint> waypoints = scratch.Waypoints;
-        waypoints.Clear();
-        bool firstRun = true;
-        int runStart = 0;
-        while (runStart < count)
-        {
-            // Runs contain ordinary selected exits only. An adjacent special link is still a boundary.
-            int runEnd = runStart;
-            while (runEnd + 1 < count && scratch.Incoming(chain[runEnd + 1]) is null)
-            {
-                runEnd++;
-            }
-
-            int layer = cells[runStart].Layer;
-            NavGrid grid = _space.Layers[layer];
-
-            // A selected link starts a new run. Its actual incoming kind determines the landing marker.
-            if (!firstRun)
-            {
-                Vector2 landing = grid.CellCenter(cells[runStart].Cx, cells[runStart].Cz);
-                waypoints.Add(WaypointFromIncoming(landing, layer, scratch.Incoming(chain[runStart])));
-            }
-
-            if (firstRun && runEnd == runStart && count > 1 && scratch.Incoming(chain[1]) == NavLinkKind.Drop)
-                waypoints.Add(new NavWaypoint(grid.CellCenter(cells[runStart].Cx, cells[runStart].Cz), layer));
-
-            int anchor = runStart;
-            while (anchor < runEnd)
-            {
-                Vector2 anchorCenter = grid.CellCenter(cells[anchor].Cx, cells[anchor].Cz);
-                int best = anchor + 1;
-                for (int candidate = runEnd; candidate > anchor; candidate--)
-                {
-                    Vector2 candidateCenter = grid.CellCenter(cells[candidate].Cx, cells[candidate].Cz);
-                    if (scratch.HasLineOfSight(grid, anchorCenter, candidateCenter, agentRadius))
-                    {
-                        best = candidate;
-                        break;
-                    }
-                }
-
-                waypoints.Add(new NavWaypoint(grid.CellCenter(cells[best].Cx, cells[best].Cz), layer));
-                anchor = best;
-            }
-
-            firstRun = false;
-            runStart = runEnd + 1;
-        }
-
-        if (reachedGoal)
-        {
-            if (waypoints.Count > 0)
-            {
-                // Move the final waypoint to the exact goal while keeping its Layer and Kind, so a hop
-                // landing that is also the goal stays NavWaypointKind.Hop.
-                if (waypoints[^1].Kind == NavWaypointKind.Drop)
-                {
-                    if (waypoints[^1].Position != goalPoint)
-                        waypoints.Add(new NavWaypoint(goalPoint, waypoints[^1].Layer));
-                }
-                else waypoints[^1] = waypoints[^1] with { Position = goalPoint };
-            }
-            else
-            {
-                // Single-cell chain (start cell == goal cell): the pull emitted nothing, so the exact
-                // goal is the whole path. Reachable only defensively today, the same-layer fast path
-                // already returns a one-waypoint result for a zero-length query.
-                waypoints.Add(new NavWaypoint(goalPoint, cells[count - 1].Layer));
-            }
-        }
-
-        return new NavPath(PathStatus(reachedGoal), waypoints.ToArray());
     }
 
     /// <summary>Decodes a flat node id into its layer index and grid cell (cx, cz), inverting the

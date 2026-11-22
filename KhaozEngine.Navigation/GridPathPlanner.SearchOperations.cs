@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 
@@ -9,10 +10,11 @@ public sealed partial class GridPathPlanner
 {
     static int NeighborCount => NeighborDx.Length;
 
-    /// <summary>Only after the ordered grid candidates, visit the node's links in stored order.</summary>
+    /// <summary>Looks up the stored links for a node. Both drivers examine the eight grid candidates
+    /// in offset order, then the node's links in stored order.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    List<PlannerLink>? LinksAfterNeighbors(int current, int nextNeighbor)
-        => nextNeighbor == NeighborCount && _linkEdges.TryGetValue(current, out List<PlannerLink>? links) ? links : null;
+    bool TryGetLinks(int current, [NotNullWhen(true)] out List<PlannerLink>? links)
+        => _linkEdges.TryGetValue(current, out links);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     void RelaxNeighbor<TGoal>(SearchScratch scratch, PriorityQueue<int, (double F, int Seq)> open,
@@ -21,11 +23,11 @@ public sealed partial class GridPathPlanner
     {
         int nx = x + NeighborDx[index];
         int nz = z + NeighborDz[index];
-        if (!grid.InBounds(nx, nz) || Blocks(grid, layer, radius, nx, nz) ||
+        if (!grid.InBounds(nx, nz) || Blocks(layer, radius, nx, nz) ||
             !CanWalkNeighbor(layer, x, z, nx, nz)) return;
 
         bool diagonal = index >= 4;
-        if (diagonal && (Blocks(grid, layer, radius, nx, z) || Blocks(grid, layer, radius, x, nz)))
+        if (diagonal && (Blocks(layer, radius, nx, z) || Blocks(layer, radius, x, nz)))
             return; // Both orthogonal companions must be passable.
 
         int id = layerBase + nz * width + nx;
@@ -35,6 +37,7 @@ public sealed partial class GridPathPlanner
             Enqueue(open, ref goal, ref sequence, id, tentative, layer, nx, nz);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     void RelaxLink<TGoal>(SearchScratch scratch, PriorityQueue<int, (double F, int Seq)> open,
         ref TGoal goal, ref int sequence, int current, int layer, int x, int z, double gCurrent,
         float radius, bool walkOnly, PlannerLink link) where TGoal : struct, ISearchGoal
@@ -58,27 +61,30 @@ public sealed partial class GridPathPlanner
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static void Enqueue<TGoal>(PriorityQueue<int, (double F, int Seq)> open, ref TGoal goal,
         ref int sequence, int id, double score, int layer, int x, int z) where TGoal : struct, ISearchGoal
     {
         double f = score + goal.Priority(layer, x, z);
-        Enqueue(open, id, f, ref sequence);
+        open.Enqueue(id, OrderedPriority(f, ref sequence));
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static void SeedOpen<TGoal>(SearchScratch scratch, PriorityQueue<int, (double F, int Seq)> open,
         ref TGoal goal, ref int sequence, int startId, int layer, int x, int z) where TGoal : struct, ISearchGoal
     {
         scratch.Relax(startId, 0d, -1);
         // The seed uses the heuristic as-is, even when adding zero could change its sign bit.
-        Enqueue(open, startId, goal.Priority(layer, x, z), ref sequence);
+        double f = goal.Priority(layer, x, z);
+        open.Enqueue(startId, OrderedPriority(f, ref sequence));
     }
 
-    static void Enqueue(PriorityQueue<int, (double F, int Seq)> open, int id, double priority, ref int sequence)
-        => open.Enqueue(id, (priority, sequence++));
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static (double F, int Seq) OrderedPriority(double priority, ref int sequence)
+        => (priority, sequence++);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static bool CanPop(PriorityQueue<int, (double F, int Seq)> open, int expanded, int maxExpanded)
-        => open.Count > 0 && expanded < maxExpanded;
+    static bool ExpansionCapReached(int expanded, int maxExpanded) => expanded >= maxExpanded;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static bool TryClosePoppedNode(SearchScratch scratch, int current, ref int expanded)
@@ -112,8 +118,11 @@ public sealed partial class GridPathPlanner
         double dx = (double)feet.X - member.X;
         double dy = (double)feet.Y - member.Y;
         double dz = (double)feet.Z - member.Z;
-        return dx * dx + dy * dy + dz * dz;
+        return SquaredDistance(dx, dy, dz);
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static double SquaredDistance(double dx, double dy, double dz) => dx * dx + dy * dy + dz * dz;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static double ReduceProgress(double closest, Vector3 feet, Vector3 member)

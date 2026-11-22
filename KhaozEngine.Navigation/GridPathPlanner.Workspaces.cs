@@ -44,6 +44,19 @@ public sealed partial class GridPathPlanner
         return (int)capacity;
     }
 
+    /// <summary>Prewarmed request storage with a packed list of the nonempty member layers.</summary>
+    internal sealed class RequestScratch(int totalNodes, int layerCount, int frontierCapacity, int chainCapacity)
+        : SearchScratch(totalNodes, layerCount, totalNodes, frontierCapacity, chainCapacity)
+    {
+        readonly int[] _candidateLayers = new int[layerCount];
+
+        internal void StartMembership() => ClearMemberLists();
+
+        internal void RecordCandidateLayer(int layer, int index) => _candidateLayers[index] = layer;
+
+        internal int CandidateLayer(int index) => _candidateLayers[index];
+    }
+
     /// <summary>Fixed leases for one grid planner. Requests queue only when all workspaces are occupied.</summary>
     internal sealed class GridPlanningWorkspaces : PathPlanWorkspaces
     {
@@ -51,7 +64,7 @@ public sealed partial class GridPathPlanner
         readonly PathQueryBudget _largestBudget;
         readonly LinkedList<GridSearchRequest> _waiters = new();
         readonly Stack<int> _free;
-        SearchScratch[] _scratch;
+        RequestScratch[] _scratch;
         GridSearchRequest?[] _owners;
         int _inCall;
         long _waits;
@@ -71,12 +84,11 @@ public sealed partial class GridPathPlanner
             int chainCapacity = Math.Clamp(largestBudget.MaxExpandedNodes, 0, planner._totalNodes);
             int frontierCapacity = planner.WorkspaceFrontierCapacity(chainCapacity, largestBudget);
             _free = new Stack<int>(count);
-            _scratch = new SearchScratch[count];
+            _scratch = new RequestScratch[count];
             _owners = new GridSearchRequest[count];
             for (int slot = 0; slot < count; slot++)
             {
-                _scratch[slot] = new SearchScratch(planner._totalNodes, planner._space.Layers.Count,
-                    memberCapacity: planner._totalNodes, frontierCapacity, chainCapacity);
+                _scratch[slot] = new RequestScratch(planner._totalNodes, planner._space.Layers.Count, frontierCapacity, chainCapacity);
                 _scratch[slot].SeedGeneration(generation);
                 _free.Push(slot);
             }
@@ -123,7 +135,7 @@ public sealed partial class GridPathPlanner
             return request;
         }
 
-        internal SearchScratch ScratchAt(int slot) => _scratch[slot];
+        internal RequestScratch ScratchAt(int slot) => _scratch[slot];
 
         internal void Enter()
         {
@@ -169,7 +181,7 @@ public sealed partial class GridPathPlanner
             foreach (GridSearchRequest? owner in _owners) owner?.CancelFromPool();
             _free.Clear();
             _owners = Array.Empty<GridSearchRequest>();
-            _scratch = Array.Empty<SearchScratch>();
+            _scratch = Array.Empty<RequestScratch>();
         }
 
         readonly ref struct PoolCall

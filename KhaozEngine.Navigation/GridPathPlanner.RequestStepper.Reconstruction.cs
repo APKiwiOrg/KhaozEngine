@@ -47,7 +47,7 @@ public sealed partial class GridPathPlanner
 
         void DecodeWaypoint()
         {
-            _scratch.Waypoints.Add(_planner.DecodeRawWaypoint(_scratch, _scratch.Chain[_waypoint], _waypoint));
+            _scratch.Waypoints.Add(_planner.DecodeRawWaypoint(_scratch, _scratch.Chain, _waypoint));
             if (++_waypoint == _scratch.Chain.Count) Phase = SearchPhase.Allocate;
         }
 

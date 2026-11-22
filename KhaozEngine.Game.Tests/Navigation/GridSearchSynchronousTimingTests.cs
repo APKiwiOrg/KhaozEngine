@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
+using System.Linq;
+using System.Numerics;
 using KhaozEngine.Navigation;
 using Xunit;
 using Xunit.Abstractions;
@@ -25,6 +27,41 @@ public sealed class GridSearchSynchronousTimingTests(ITestOutputHelper output)
                 (after.Searches - before.Searches, after.Certificates - before.Certificates));
             if (row.Waypoints is int count) Assert.Equal(count, result.Waypoints.Count);
         }
+    }
+
+    [Fact]
+    public void AdditionalRowsKeepTheirIntendedSearchAndCertificateSizes()
+    {
+        RegionQuery[] rows = AdditionalTimingQueries().ToArray();
+        RegionQuery bounded = Assert.Single(rows, row => row.Name == "bounded-astar-no-reconstruction");
+        // On the same topology, cell 1 is the 1,024th node popped from cell 1,024.
+        // The measured goal is across the blocked cell and preserves the no-reconstruction result.
+        var witness = Member(new Vector3(1.5f, 0f, 0.5f));
+        NavPath reached = bounded.Planner.FindPath(bounded.Start, witness, 0f, bounded.Budget);
+        Assert.Equal(NavPathStatus.Complete, reached.Status);
+        Assert.Equal(1023, reached.Waypoints.Count);
+        Assert.Equal(1024, bounded.Budget.MaxExpandedNodes);
+
+        RegionQuery nearCap = Assert.Single(rows, row => row.Name == "certificate-near-comparison-cap");
+        NavSpace space = Assert.IsType<NavSpace>(nearCap.ReferenceSpace);
+        NavGrid grid = Assert.Single(space.Layers);
+        (int startX, int startZ) = grid.CellOf(nearCap.Start.X, nearCap.Start.Z);
+        var connectivity = PlannerConnectivity.For(space, null);
+        Assert.Equal(1024, connectivity.Members(connectivity.ComponentOf(startZ * grid.Width + startX)).Length);
+
+        int members = 0;
+        for (int z = 0; z < grid.Height; z++)
+            for (int x = 0; x < grid.Width; x++)
+            {
+                if (!grid.IsPassable(x, z, 0f)) continue;
+                Vector2 center = grid.CellCenter(x, z);
+                var feet = new Vector3(center.X, grid.RestingHeightAt(x, z)!.Value, center.Y);
+                NavGoalRegion goal = nearCap.Goal;
+                if (Math.Abs((double)feet.X - goal.Anchor.X) <= goal.HorizontalExtent &&
+                    Math.Abs((double)feet.Z - goal.Anchor.Z) <= goal.HorizontalExtent && goal.Contains(feet))
+                    members++;
+            }
+        Assert.Equal(256, members);
     }
 
     [Fact]

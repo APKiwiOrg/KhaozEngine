@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.Navigation;
@@ -218,12 +219,23 @@ public class PathPlanWorkspacesTests
         var planner = Incremental(Corridor());
         using var pool = planner.CreateWorkspaces(1, PathQueryBudget.Default);
         var failure = new InvalidOperationException();
-        var goal = new NavGoalRegion(End().Anchor, 0f, _ => throw failure);
+        var visits = new List<float>();
+        var goal = new NavGoalRegion(End().Anchor, 1f, feet =>
+        {
+            visits.Add(feet.X);
+            if (feet.X == 15.5f) throw failure;
+            return true;
+        });
         using var owner = planner.BeginPath(Start, goal, 0f, PathQueryBudget.Default, pool);
         using var next = Begin(planner, pool);
         using var later = Begin(planner, pool);
 
+        owner.Advance(new PathWorkBudget(8)); // Snap, box, rejected x=13, then admitted x=14.
+        Assert.Equal(8, owner.WorkSpent);
+        Assert.Equal(new[] { 14.5f }, visits);
         Assert.Same(failure, Assert.Throws<InvalidOperationException>(() => owner.Advance(new PathWorkBudget(int.MaxValue))));
+        Assert.Equal(8, owner.WorkSpent);
+        Assert.Equal(new[] { 14.5f, 15.5f }, visits);
         Assert.Equal(PathPlanState.Cancelled, owner.State);
         owner.Cancel();
         owner.Dispose();

@@ -370,7 +370,8 @@ queries use separate scratch.
 Synchronous queries use direct loops for endpoint resolution, membership, the certificate, search and
 reconstruction. The internal region request stepper uses the same edge, scoring and waypoint rules with
 a leased, prewarmed workspace. Advances charge whole operations in order and publish the complete result
-with the final paid operation. Stamp wrap clears fixed blocks and adds work according to the leased
+with the final paid operation. A query that needs no paid operation publishes on its first advance with a
+lease. Stamp wrap clears fixed blocks and adds work according to the leased
 workspace's generation. The planner's buffers never grow during an advance. Publishing a nonempty result
 allocates its path storage, and caller predicates may allocate their own storage.
 
@@ -740,9 +741,9 @@ if (output.State == PathFollowState.Following)
 ## Determinism
 
 Baking is deterministic (fixed scan order, integer math in the clearance transform), and so is planning:
-`GridPathPlanner` iterates the eight neighbors in a fixed order (four orthogonals, then four diagonals)
-and breaks every A* priority tie with a monotone insertion counter, so the same grid and query always
-produce the same waypoints.
+`GridPathPlanner` iterates the eight neighbors in a fixed order (four orthogonals, then four diagonals),
+followed by the node's links in stored order. A monotone insertion counter breaks A* priority ties, so the
+same grid and query always produce the same waypoints.
 
 Depends on `KhaozEngine.Primitives`, `KhaozEngine.Collision` (`WorldColliders` footprints in
 `NavGridBaker`), and `KhaozEngine.Terrain` (`TerrainCollision` slope in `NavGridBaker`). In the

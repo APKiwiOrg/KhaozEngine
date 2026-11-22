@@ -78,7 +78,7 @@ public enum AttachmentSetRefusal
     /// <summary>Refuses a JSON value shape rejected by a framework accessor, or a covers entry or region run of the wrong shape.</summary>
     JsonValueShapeInvalid,
 
-    /// <summary>Refuses format 3 without a layer, or region tags on a set that has no layer.</summary>
+    /// <summary>Refuses a region-tagged format without a layer, or region tags on a set that has no layer.</summary>
     LayerMissing,
 
     /// <summary>Refuses a layer that is not one of the defined layers.</summary>
@@ -101,4 +101,61 @@ public enum AttachmentSetRefusal
 
     /// <summary>Refuses a skinned part whose region runs add up to more than <see cref="int.MaxValue"/> triangles.</summary>
     RegionTriangleCountOverflow,
+
+    /// <summary>Refuses an unsupported authored or programmatic motion kind.</summary>
+    MotionKindUnsupported,
+
+    /// <summary>Refuses chain motion without any chains.</summary>
+    ChainsEmpty,
+
+    /// <summary>Refuses a part with more than 32 chains.</summary>
+    TooManyChains,
+
+    /// <summary>Refuses a chain without any joints.</summary>
+    ChainJointsEmpty,
+
+    /// <summary>Refuses a chain with more than 16 joints.</summary>
+    TooManyChainJoints,
+
+    /// <summary>Refuses a blank or absent chain joint name.</summary>
+    ChainJointNameEmpty,
+
+    /// <summary>Refuses a chain joint name with malformed UTF-16.</summary>
+    ChainJointNameMalformedUtf16,
+
+    /// <summary>Refuses a joint named more than once in the chains of a part.</summary>
+    ChainJointDuplicate,
+
+    /// <summary>Refuses a chain tip without three finite components or with all components zero.</summary>
+    ChainTipInvalid,
+
+    /// <summary>Refuses a chain setting outside its allowed range.</summary>
+    ChainSettingOutOfRange,
+
+    /// <summary>Refuses a link that does not identify two distinct chains of the part.</summary>
+    ChainLinkInvalid,
+
+    /// <summary>Refuses a link that repeats a pair of chains in either direction.</summary>
+    ChainLinkDuplicate,
+
+    /// <summary>Refuses a part with more than 64 links.</summary>
+    TooManyLinks,
+
+    /// <summary>Refuses a blank or absent worn set collider joint name.</summary>
+    ColliderJointNameEmpty,
+
+    /// <summary>Refuses a worn set collider joint name with malformed UTF-16.</summary>
+    ColliderJointNameMalformedUtf16,
+
+    /// <summary>Refuses a worn set collider with a non-finite endpoint.</summary>
+    ColliderPointInvalid,
+
+    /// <summary>Refuses a worn set collider without a finite positive radius.</summary>
+    ColliderRadiusInvalid,
+
+    /// <summary>Refuses a worn set with more than eight colliders.</summary>
+    TooManyColliders,
+
+    /// <summary>Refuses motion or colliders in a set with no layer.</summary>
+    MotionWithoutLayer,
 }

@@ -219,8 +219,8 @@ Its canonical bytes and SHA-256 follow the region map's rules.
 
 `KhaozEngine.Attachments`, GPU free:
 
-- `ChainSettings`, `ChainDefinition`, `ChainLink`, `ChainMotionDefinition` and
-  `SkinnedAttachmentPartDefinition.Motion`, init only and null for a part that only follows the body.
+- `ChainSettings`, `ChainDefinition`, `ChainLink`, `PartMotionDefinition` and `ChainMotionDefinition`.
+  `SkinnedAttachmentPartDefinition.Motion` is init only and null for a part that only follows the body.
 - `ColliderDefinition`, `AttachmentSetDefinition.Colliders` and a constructor overload that takes them.
 - `BodyColliderSet`, `BodyCollidersJson`, `BodyCollidersRefusal` and `BodyCollidersDataException`.
 - `ChainRig` (immutable rest data for one wearer's chains), `ChainSimulation` (one wearer's particles, allocated once)
@@ -362,3 +362,6 @@ Each task records here any shape the code required that differs from this note, 
   `images` arrays as the model reader counts them. The scan reads the GLB's JSON chunk strictly, so invalid UTF-8 and
   broken chunk framing refuse as `MalformedModel`. The path overloads resolve external images against the asset's
   folder as before.
+- Worn set format. `AttachmentSetArgumentException` exposes `ActualCount` and `ExpectedCount` for collection
+  limits, using the existing names on `AttachmentSetDataException`. A joint name with an unpaired escaped
+  surrogate has no decoded `JointName`. The JSON refusal identifies it by path and input indices.

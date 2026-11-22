@@ -41,12 +41,12 @@ public class JsonTests
     }
 
     [Theory]
-    [InlineData(AttachmentLayer.Body, "body")]
-    [InlineData(AttachmentLayer.Underclothes, "underclothes")]
-    [InlineData(AttachmentLayer.Garment, "garment")]
-    [InlineData(AttachmentLayer.Armour, "armour")]
-    [InlineData(AttachmentLayer.Outerwear, "outerwear")]
-    public void A_format_3_set_round_trips_layer_covers_and_region_tags(AttachmentLayer layer, string name)
+    [InlineData(AttachmentLayer.Body, "body", "2902d15422e07799eed6dd3b0b4203242bcdfc9419dfade9a8486e564dfdc3f8")]
+    [InlineData(AttachmentLayer.Underclothes, "underclothes", "c785a9b3d2be99f7f1e1d96aa3557701a68e1b0f23488c70b1f302b9af3e4605")]
+    [InlineData(AttachmentLayer.Garment, "garment", "5fd9e7579ef53adc536649752ff57596568bb59e228e1bd0188626ef917056c7")]
+    [InlineData(AttachmentLayer.Armour, "armour", "fd8667238dd01c60894e624ab29ababef584dc583c27dad691df65602a81f85f")]
+    [InlineData(AttachmentLayer.Outerwear, "outerwear", "fc7fd18ed062d5a17573d4dcf2470d1e4543e1e93b723e1807e76111fb28247d")]
+    public void A_format_3_set_round_trips_layer_covers_and_region_tags(AttachmentLayer layer, string name, string expectedSha)
     {
         string json = AttachmentFixtures.RegionsSetJson(name);
         AttachmentSetDefinition parsed = Parse(json);
@@ -57,8 +57,102 @@ public class JsonTests
 
         byte[] written = AttachmentSetJson.Write(parsed);
         Assert.Equal(json, Encoding.UTF8.GetString(written));
-        Assert.Equal(AttachmentFixtures.RegionsSet(layer).SemanticSha256, parsed.SemanticSha256);
+        Assert.Equal(expectedSha, parsed.SemanticSha256);
+        Assert.Equal(expectedSha, AttachmentFixtures.RegionsSet(layer).SemanticSha256);
         Assert.Equal(parsed.SemanticSha256, AttachmentSetJson.Parse(written, "round-trip.json").SemanticSha256);
+    }
+
+    [Fact]
+    public void A_format_4_set_round_trips_its_canonical_bytes()
+    {
+        string canonical = AttachmentFixtures.MotionSetJson();
+        AttachmentSetDefinition set = Parse(canonical);
+        ChainMotionDefinition motion = Assert.IsType<ChainMotionDefinition>(Assert.IsType<SkinnedAttachmentPartDefinition>(Assert.Single(set.Parts)).Motion);
+        Assert.Equal(AttachmentFixtures.Motion().Chains, motion.Chains);
+        Assert.Equal([new ChainLink(0, 1), new ChainLink(1, 2)], motion.Links);
+        Assert.Equal(AttachmentFixtures.Colliders(), set.Colliders);
+        byte[] written = AttachmentSetJson.Write(set);
+        Assert.Equal(canonical, Encoding.UTF8.GetString(written));
+        Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(written)), set.SemanticSha256);
+    }
+
+    [Theory]
+    [InlineData("links")]
+    [InlineData("colliders")]
+    [InlineData("signed zero")]
+    public void Format_4_canonicalizes_unordered_data_and_signed_zero(string change)
+    {
+        string canonical = AttachmentFixtures.MotionSetJson();
+        string alternate = change switch
+        {
+            "links" => canonical.Replace("[[0,1],[1,2]]", "[[2,1],[1,0]]", StringComparison.Ordinal),
+            "colliders" => canonical.Replace(
+                AttachmentFixtures.Collider0Json + "," + AttachmentFixtures.Collider1Json,
+                AttachmentFixtures.Collider1Json + "," + AttachmentFixtures.Collider0Json, StringComparison.Ordinal),
+            "signed zero" => canonical.Replace("[0,", "[-0,", StringComparison.Ordinal)
+                .Replace("\"radius\":0}", "\"radius\":-0}", StringComparison.Ordinal),
+            _ => throw new ArgumentException(change),
+        };
+        Assert.NotEqual(alternate, canonical);
+        AttachmentSetDefinition set = Parse(alternate);
+        Assert.Equal(canonical, Encoding.UTF8.GetString(AttachmentSetJson.Write(set)));
+        Assert.Equal(Parse(canonical).SemanticSha256, set.SemanticSha256);
+    }
+
+    [Theory]
+    [InlineData("chains")]
+    [InlineData("joints")]
+    [InlineData("tip")]
+    [InlineData("settings")]
+    [InlineData("link")]
+    [InlineData("collider")]
+    public void Format_4_revision_tracks_each_semantic_change(string change)
+    {
+        string control = AttachmentFixtures.MotionSetJson();
+        string changed = change switch
+        {
+            "chains" => control.Replace(AttachmentFixtures.Chain0Json + "," + AttachmentFixtures.Chain1Json,
+                AttachmentFixtures.Chain1Json + "," + AttachmentFixtures.Chain0Json, StringComparison.Ordinal),
+            "joints" => control.Replace("\"left0\",\"left1\"", "\"left1\",\"left0\"", StringComparison.Ordinal),
+            "tip" => control.Replace("[0,-0.25,0]", "[0,-0.375,0]", StringComparison.Ordinal),
+            "settings" => control.Replace("\"damping\":3", "\"damping\":2", StringComparison.Ordinal),
+            "link" => control.Replace("[0,1],[1,2]", "[0,2],[1,2]", StringComparison.Ordinal),
+            "collider" => control.Replace("\"radius\":0.125", "\"radius\":0.1875", StringComparison.Ordinal),
+            _ => throw new ArgumentException(change),
+        };
+        Assert.NotEqual(Parse(control).SemanticSha256, Parse(changed).SemanticSha256);
+    }
+
+    [Theory]
+    [InlineData(false, false, 3)]
+    [InlineData(true, false, 4)]
+    [InlineData(false, true, 4)]
+    [InlineData(true, true, 4)]
+    public void Write_uses_the_lowest_format_for_a_worn_set(bool motion, bool colliders, int expectedVersion)
+    {
+        var part = AttachmentFixtures.TaggedSkinned() with
+        {
+            Motion = motion ? new ChainMotionDefinition([AttachmentFixtures.Chain(0)], []) : null,
+        };
+        var set = new AttachmentSetDefinition([part], AttachmentLayer.Garment, [], colliders ? AttachmentFixtures.Colliders() : []);
+        byte[] written = AttachmentSetJson.Write(set);
+        using JsonDocument document = JsonDocument.Parse(written);
+        JsonElement root = document.RootElement;
+        Assert.Equal(expectedVersion, root.GetProperty("formatVersion").GetInt32());
+        Assert.Equal(colliders, root.TryGetProperty("colliders", out _));
+        Assert.Equal(motion, root.GetProperty("parts")[0].TryGetProperty("motion", out JsonElement partMotion));
+        if (motion) Assert.False(partMotion.TryGetProperty("links", out _));
+        Assert.Equal(set.SemanticSha256, AttachmentSetJson.Parse(written, "round-trip.json").SemanticSha256);
+    }
+
+    [Fact]
+    public void Format_4_without_motion_or_colliders_canonicalizes_to_format_3()
+    {
+        string format3 = AttachmentFixtures.RegionsSetJson();
+        string format4 = format3.Replace("\"formatVersion\":3,", "\"formatVersion\":4,\"colliders\":[],", StringComparison.Ordinal);
+        AttachmentSetDefinition set = Parse(format4);
+        Assert.Equal(format3, Encoding.UTF8.GetString(AttachmentSetJson.Write(set)));
+        Assert.Equal(Parse(format3).SemanticSha256, set.SemanticSha256);
     }
 
     [Theory]
@@ -309,7 +403,7 @@ public class JsonTests
             "unknown-mesh" => V2(skinned.Replace("\"key\":", "\"extra\":0,\"key\":", StringComparison.Ordinal)),
             "duplicate-id-across-kinds" => V2(rigid + "," + skinned.Replace("\"id\":2", "\"id\":1", StringComparison.Ordinal)),
             "missing-mesh" => V2("{\"id\":1,\"kind\":\"skinned\"}"),
-            "unsupported-version" => V2(skinned).Replace("\"formatVersion\":2", "\"formatVersion\":4", StringComparison.Ordinal),
+            "unsupported-version" => V2(skinned).Replace("\"formatVersion\":2", "\"formatVersion\":5", StringComparison.Ordinal),
             "zero-id" => V2(skinned.Replace("\"id\":2", "\"id\":0", StringComparison.Ordinal)),
             "conflicting-hashes" => V2(rigid + "," + skinned.Replace(AttachmentFixtures.Hash, new string('b', 64), StringComparison.Ordinal)),
             _ => throw new ArgumentException(name),

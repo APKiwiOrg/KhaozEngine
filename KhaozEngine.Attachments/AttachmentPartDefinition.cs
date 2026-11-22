@@ -27,9 +27,13 @@ public sealed record SkinnedAttachmentPartDefinition(uint Id, AttachmentMeshRef 
     /// </summary>
     public IReadOnlyList<NamedRegionRun> Regions { get; init; } = [];
 
-    /// <summary>Equal when the base members match and both parts list the same runs, compared run by run.</summary>
+    /// <summary>The part's authored motion, or null when it only follows the body.</summary>
+    public PartMotionDefinition? Motion { get; init; }
+
+    /// <summary>Equal when the base members, region runs and authored motion match.</summary>
     public bool Equals(SkinnedAttachmentPartDefinition? other) =>
-        other is not null && base.Equals(other) && (Regions ?? []).SequenceEqual(other.Regions ?? []);
+        other is not null && base.Equals(other) && (Regions ?? []).SequenceEqual(other.Regions ?? [])
+        && Equals(Motion, other.Motion);
 
     /// <inheritdoc />
     public override int GetHashCode()
@@ -38,6 +42,7 @@ public sealed record SkinnedAttachmentPartDefinition(uint Id, AttachmentMeshRef 
         hash.Add(base.GetHashCode());
         foreach (NamedRegionRun run in Regions ?? [])
             hash.Add(run);
+        if (Motion is not null) hash.Add(Motion);
         return hash.ToHashCode();
     }
 }

@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 
 namespace KhaozEngine.Attachments;
@@ -22,4 +23,22 @@ public readonly record struct ColliderDefinition(string Joint, Vector3 Start, Ve
     }
 
     static bool IsFinite(Vector3 point) => float.IsFinite(point.X) && float.IsFinite(point.Y) && float.IsFinite(point.Z);
+
+    internal static int CompareCanonical(ColliderDefinition left, ColliderDefinition right)
+    {
+        int joint = StringComparer.Ordinal.Compare(left.Joint, right.Joint);
+        if (joint != 0) return joint;
+        int start = ComparePoint(left.Start, right.Start);
+        if (start != 0) return start;
+        int end = ComparePoint(left.End, right.End);
+        return end != 0 ? end : left.Radius.CompareTo(right.Radius);
+    }
+
+    static int ComparePoint(Vector3 left, Vector3 right)
+    {
+        int x = left.X.CompareTo(right.X);
+        if (x != 0) return x;
+        int y = left.Y.CompareTo(right.Y);
+        return y != 0 ? y : left.Z.CompareTo(right.Z);
+    }
 }

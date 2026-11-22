@@ -24,12 +24,14 @@ and deconstruction are unchanged. A set without a layer refuses parts that carry
 
 The set owns its region data. `Covers` holds unique names in ordinal order, and a skinned part's runs are copied
 with adjacent runs of one region merged, so two sets that tag every triangle alike and cover the same regions in
-any listing order share their canonical bytes and `SemanticSha256`. Two skinned parts are equal when their runs
-are equal run by run. Region names need well-formed UTF-16 and keep their ordinal identity. A name is only a name
+any listing order share their canonical bytes and `SemanticSha256`. Equality of skinned parts compares region runs
+and authored motion by value. Region names need well-formed UTF-16 and keep their ordinal identity. A name is only a name
 in the set: whether the body has that region is checked when an [outfit is resolved](#outfit-coverage) against the
 body's [region map](#body-region-maps).
 
-`AttachmentSetJson.Parse(utf8, sourceName)` accepts formats 1, 2 and 3. Format 1 contains only rigid parts
+## Attachment set JSON
+
+`AttachmentSetJson.Parse(utf8, sourceName)` accepts formats 1, 2, 3 and 4. Format 1 contains only rigid parts
 and has no `kind` member:
 
 ```json
@@ -99,6 +101,66 @@ An engine at 24.3.0 or earlier checks root members against `formatVersion` and `
 version, so it refuses a format 3 set as `JsonPropertyUnknown` on its first format 3 member, `layer` in canonical
 bytes, not as `FormatVersionUnsupported`. Publish format 3 only after every reader is on 24.4.0 or later.
 
+### Format 4
+
+Format 4 adds optional root `colliders` and optional skinned part `motion` to the layered format. Formats 1 to 3
+refuse either member as unknown. Rigid parts never accept `motion`.
+
+```json
+{
+  "formatVersion": 4,
+  "layer": "outerwear",
+  "covers": [],
+  "colliders": [
+    { "joint": "upper", "start": [0, 1.05, 0], "end": [0, 1.4, 0], "radius": 0.14 }
+  ],
+  "parts": [
+    {
+      "id": 1,
+      "kind": "skinned",
+      "mesh": {
+        "key": "parts/garment.glb",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "regions": [["a", 4]],
+      "motion": {
+        "kind": "chains",
+        "chains": [
+          {
+            "joints": ["left0", "left1"], "tip": [0, -0.25, 0],
+            "stiffness": 6, "damping": 3, "gravity": 1, "trail": 0.7, "angleLimit": 1.4, "radius": 0.02
+          },
+          {
+            "joints": ["right0"], "tip": [0, -0.25, 0],
+            "stiffness": 6, "damping": 3, "gravity": 1, "trail": 0.7, "angleLimit": 1.4, "radius": 0.02
+          }
+        ],
+        "links": [[0, 1]]
+      }
+    }
+  ]
+}
+```
+
+Set `SkinnedAttachmentPartDefinition.Motion` to a `ChainMotionDefinition` to declare chains, or leave it null for a
+part that only follows the body. A part declares 1 to 32 chains and each chain orders 1 to 16 garment joint names
+from its anchor toward its tip. Names are nonblank, well-formed UTF-16 and ordinally unique across the part's
+chains. The tip is a finite, nonzero vector in the last joint's rest frame. Every chain includes all six settings.
+Stiffness, damping and radius are finite and nonnegative. Gravity is 0 to 10 and trail is 0 to 1, both inclusive.
+The angle limit is greater than zero and at most pi radians. An optional link pairs distinct zero-based chain
+indices. A part can list up to 64 links and each pair can appear only once in either direction.
+
+Use `new AttachmentSetDefinition(parts, layer, covers, colliders)` to add up to `MaxColliders` (8) capsules while
+the set is worn. Colliders use the same joint, points and radius as the [body collider file](#body-colliders).
+The set owns copies of its motion and colliders. A layer is required when either is present.
+
+`AttachmentSetJson.MotionFormatVersion` is 4. A 24.4.x reader checks root members before it checks the version.
+It refuses a format 4 set with colliders as `JsonPropertyUnknown` for `colliders` and a motion-only set as
+`FormatVersionUnsupported`. Earlier readers refuse the first unfamiliar root member, which is `layer` in canonical
+bytes. Move every reader to 24.5.0 or later before publishing format 4.
+
+### Canonical set bytes
+
 The example hash is a placeholder. Hash the exact self-contained GLB bytes. `local` contains 16
 row-major finite numbers and must be affine and invertible. Unknown or duplicate members, missing
 fields, unsupported versions and invalid parts throw `AttachmentSetDataException` with `SourceName`.
@@ -108,14 +170,22 @@ every format's root members before the version is read, and against the declared
 document with a `layer` and no `formatVersion` is therefore refused as `JsonPropertyMissing` for the version,
 not as `JsonPropertyUnknown` for the layer, because the version decides what every other member means.
 
-`Write(definition)` emits the lowest format that expresses the definition. A set with a layer writes
-format 3, even when all its parts are rigid. Otherwise a set whose parts are all rigid writes format 1, even after
-parsing format 2, and a set containing skinned parts writes format 2. Existing canonical format 1 and 2 bytes and
-semantic hashes stay unchanged. Property order is `id, mesh, joint, local` in format 1 and `id, kind, mesh` followed
-by rigid `joint, local` in format 2. Format 3 writes `formatVersion, layer, covers, parts` at the root and appends
-`region` to a rigid part and `regions` to a skinned part. Signed zero is normalized without changing other float values.
-The writer emits canonical UTF-8 with no trailing newline. Its SHA-256 is
-`SemanticSha256`. Source whitespace and part-array order do not change that revision.
+`Write(definition)` emits the lowest format that expresses the definition. A set with motion or colliders writes
+format 4. A layered set with neither writes format 3, even when all its parts are rigid. A set without a layer
+writes format 1 if all its parts are rigid, even after parsing format 2, and format 2 if it contains skinned
+parts. Existing canonical format 1 to 3 bytes and semantic hashes stay unchanged.
+
+Property order is `id, mesh, joint, local` in format 1 and `id, kind, mesh` followed by rigid `joint, local` in
+format 2. Format 3 writes `formatVersion, layer, covers, parts` at the root and appends `region` to a rigid part
+and `regions` to a skinned part. Format 4 writes nonempty `colliders` between `covers` and `parts`, in ordinal
+joint, start, end and radius order. A skinned part writes `motion` after `regions`. Motion writes `kind, chains`
+and then `links` when nonempty. Each chain writes `joints, tip, stiffness, damping, gravity, trail, angleLimit,
+radius`. Chain and joint order are preserved. Links put the lower index first and sort by the two indices.
+
+Signed zero is normalized without changing other float values. The writer emits canonical UTF-8 with no trailing
+newline. Its SHA-256 is `SemanticSha256`. Source whitespace, part and collider listing order, and link listing
+order and direction do not change that revision.
+
 Keep each part ID stable across source reordering. The renderer derives temporal identities from
 that semantic revision, the part ID and material ordinal. A changed declared mesh hash changes
 the revision, including changes to embedded material images.
@@ -450,14 +520,30 @@ Every JSON refusal also carries `SourceName`. Direct constructor and reference c
 | `JsonPropertyMissing` | a required property absent from attachment JSON. | `JsonPath`, `PropertyName` |
 | `JsonStringRequired` | a non-string attachment schema member. | `JsonPath`, `PropertyName` |
 | `JsonMalformed` | malformed JSON syntax while retaining the caller source name. | `InnerException` |
-| `JsonValueShapeInvalid` | a JSON value shape rejected by a framework accessor, or a `covers` entry or region run of the wrong shape. | `InnerException`, or `JsonPath` with `CoverIndex` or `PartId` and `RunIndex` |
-| `LayerMissing` | format 3 without a layer, or a part with a region tag in a set built without a layer. | `JsonPath` and `PropertyName`, or `PartId` |
+| `JsonValueShapeInvalid` | a JSON value shape rejected by a framework accessor, or a `covers` entry, region run or format 4 member of the wrong shape. | `InnerException` or `JsonPath` with the applicable indices |
+| `LayerMissing` | a region-tagged format without a layer, or a part with a region tag in a set built without a layer. | `JsonPath` and `PropertyName`, or `PartId` |
 | `LayerUnknown` | a layer that names no defined layer. | `JsonPath` and `LayerName`, or `Layer` |
 | `CoveredRegionDuplicate` | a covered region listed more than once. | `CoverIndex`, `RegionName` |
 | `PartRegionMissing` | a part without its `region` or `regions` in a set with a layer. | `PartId`, and `JsonPath` and `PropertyName` from JSON |
 | `PartRegionRunEmpty` | a skinned part's run of fewer than one triangle. | `PartId`, `RunIndex`, `RegionName` |
 | `RegionNameEmpty`, `RegionNameMalformedUtf16` | a blank or malformed covered or part region name. | `RegionName`, with `CoverIndex` or `PartId` and `RunIndex` |
 | `RegionTriangleCountOverflow` | a skinned part whose runs add up past Int32. | `PartId`, `RunIndex`, `RegionName`, `ActualTriangleCount` |
+| `MotionKindUnsupported` | a motion kind the reader cannot represent. | `PartId`, `PartIndex`, and `Kind` from JSON or `ActualType` from the constructor |
+| `ChainsEmpty`, `TooManyChains` | a motion with fewer than 1 or more than 32 chains. | `PartId`, `PartIndex`, `ActualCount`, `ExpectedCount` |
+| `ChainJointsEmpty`, `TooManyChainJoints` | a chain with fewer than 1 or more than 16 joints. | `PartId`, `PartIndex`, `ChainIndex`, `ActualCount`, `ExpectedCount` |
+| `ChainJointNameEmpty`, `ChainJointNameMalformedUtf16`, `ChainJointDuplicate` | a blank, malformed or repeated joint name in a part's chains. | `PartId`, `PartIndex`, `ChainIndex`, `JointIndex`, `JointName` when available |
+| `ChainTipInvalid` | a tip without three finite components or with all three zero. | `PartId`, `PartIndex`, `ChainIndex` |
+| `ChainSettingOutOfRange` | a chain setting outside its range. | `PartId`, `PartIndex`, `ChainIndex`, `SettingName` |
+| `ChainLinkInvalid`, `ChainLinkDuplicate` | a link that fails to pair distinct existing chains or repeats an existing pair. | `PartId`, `PartIndex`, `LinkIndex` |
+| `TooManyLinks` | a part with more than 64 links. | `PartId`, `PartIndex`, `ActualCount`, `ExpectedCount` |
+| `ColliderJointNameEmpty`, `ColliderJointNameMalformedUtf16` | a collider with a blank or malformed joint name. | `ColliderIndex`, `JointName` when available |
+| `ColliderPointInvalid`, `ColliderRadiusInvalid` | a collider with non-finite endpoint components or a radius that is non-finite or nonpositive. | `ColliderIndex`, `JointName` |
+| `TooManyColliders` | a set with more than 8 colliders. | `ActualCount`, `ExpectedCount` |
+| `MotionWithoutLayer` | motion or colliders on a set with no layer. | `PartId` and `PartIndex` for motion, plus `PropertyName` from JSON |
+
+Format 4 JSON refusals above include `JsonPath`. Chain, joint, link and collider indices are zero-based and refer
+to input order. Counts report the supplied size and the required minimum or allowed maximum. For a collider
+sequence without a known count, construction stops at the first item past the cap.
 
 ## GLB refusals
 

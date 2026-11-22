@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
-using System.Numerics;
 using System.Security.Cryptography;
 
 namespace KhaozEngine.Attachments;
@@ -26,7 +25,7 @@ public sealed class BodyColliderSet
         for (int index = 0; index < owned.Length; index++)
             ValidateCollider(owned[index], index);
 
-        Array.Sort(owned, Compare);
+        Array.Sort(owned, ColliderDefinition.CompareCanonical);
         RigIdentity = rigIdentity;
         Colliders = ImmutableArray.CreateRange(owned);
         Sha256 = Convert.ToHexStringLower(SHA256.HashData(BodyCollidersJson.Write(this)));
@@ -81,23 +80,5 @@ public sealed class BodyColliderSet
         string path = $"$.colliders[{index}].{field}";
         throw new BodyCollidersDataException(reason, $"{path}: {message}")
         { JsonPath = path, ColliderIndex = index, JointName = collider.Joint };
-    }
-
-    static int Compare(ColliderDefinition left, ColliderDefinition right)
-    {
-        int joint = StringComparer.Ordinal.Compare(left.Joint, right.Joint);
-        if (joint != 0) return joint;
-        int start = ComparePoint(left.Start, right.Start);
-        if (start != 0) return start;
-        int end = ComparePoint(left.End, right.End);
-        return end != 0 ? end : left.Radius.CompareTo(right.Radius);
-    }
-
-    static int ComparePoint(Vector3 left, Vector3 right)
-    {
-        int x = left.X.CompareTo(right.X);
-        if (x != 0) return x;
-        int y = left.Y.CompareTo(right.Y);
-        return y != 0 ? y : left.Z.CompareTo(right.Z);
     }
 }

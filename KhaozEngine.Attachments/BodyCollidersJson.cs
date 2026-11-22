@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using System.Numerics;
 using System.Text.Json;
 using System.Text.Unicode;
 
@@ -68,15 +67,7 @@ public static class BodyCollidersJson
             writer.WriteNumber("formatVersion", FormatVersion);
             writer.WriteString("rig", set.RigIdentity);
             writer.WriteStartArray("colliders");
-            foreach (ColliderDefinition collider in set.Colliders)
-            {
-                writer.WriteStartObject();
-                writer.WriteString("joint", collider.Joint);
-                WritePoint(writer, "start", collider.Start);
-                WritePoint(writer, "end", collider.End);
-                writer.WriteNumber("radius", collider.Radius);
-                writer.WriteEndObject();
-            }
+            foreach (ColliderDefinition collider in set.Colliders) AttachmentColliderJson.Write(writer, collider);
             writer.WriteEndArray();
             writer.WriteEndObject();
         }
@@ -86,56 +77,12 @@ public static class BodyCollidersJson
     static ColliderDefinition ReadCollider(JsonElement value, int index)
     {
         string path = $"$.colliders[{index}]";
-        StrictAttachmentJson.Refuse refuse = Refuse;
-        StrictAttachmentJson.Members(value, path, refuse, "joint", "start", "end", "radius");
-        string joint = ReadJoint(StrictAttachmentJson.Required(value, "joint", path, refuse), path + ".joint", index, refuse);
-        Vector3 start = ReadPoint(StrictAttachmentJson.Required(value, "start", path, refuse), path + ".start", refuse);
-        Vector3 end = ReadPoint(StrictAttachmentJson.Required(value, "end", path, refuse), path + ".end", refuse);
-        float radius = ReadNumber(StrictAttachmentJson.Required(value, "radius", path, refuse), path + ".radius", refuse);
-        return new ColliderDefinition(joint, start, end, radius);
+        return AttachmentColliderJson.Read(value, path, Refuse, error =>
+            new BodyCollidersDataException(BodyCollidersRefusal.JointNameMalformedUtf16, $"{path}.joint: a joint name must contain well-formed UTF-16.", error)
+            { JsonPath = path + ".joint", ColliderIndex = index });
 
         Exception Refuse(StrictAttachmentJson.Fault fault, string jsonPath, string message, string? property) =>
             new BodyCollidersDataException(Reason(fault), message) { JsonPath = jsonPath, PropertyName = property, ColliderIndex = index };
-    }
-
-    static string ReadJoint(JsonElement value, string path, int index, StrictAttachmentJson.Refuse refuse)
-    {
-        try
-        {
-            return StrictAttachmentJson.Text(value, path, refuse);
-        }
-        catch (InvalidOperationException error)
-        {
-            // The JSON reader cannot decode an unpaired escaped surrogate to a joint name.
-            throw new BodyCollidersDataException(BodyCollidersRefusal.JointNameMalformedUtf16, $"{path}: a joint name must contain well-formed UTF-16.", error)
-            { JsonPath = path, ColliderIndex = index };
-        }
-    }
-
-    static Vector3 ReadPoint(JsonElement value, string path, StrictAttachmentJson.Refuse refuse)
-    {
-        if (value.ValueKind != JsonValueKind.Array || value.GetArrayLength() != 3)
-            throw refuse(StrictAttachmentJson.Fault.ValueShape, path, $"{path}: expected three numbers.");
-
-        return new Vector3(ReadNumber(value[0], path + "[0]", refuse),
-            ReadNumber(value[1], path + "[1]", refuse), ReadNumber(value[2], path + "[2]", refuse));
-    }
-
-    static float ReadNumber(JsonElement value, string path, StrictAttachmentJson.Refuse refuse)
-    {
-        if (value.ValueKind != JsonValueKind.Number)
-            throw refuse(StrictAttachmentJson.Fault.ValueShape, path, $"{path}: expected a number.");
-        // A numeric token outside the float domain is refused by the shared collider validation.
-        return value.TryGetSingle(out float number) ? number : float.NaN;
-    }
-
-    static void WritePoint(Utf8JsonWriter writer, string name, Vector3 point)
-    {
-        writer.WriteStartArray(name);
-        writer.WriteNumberValue(point.X == 0 ? 0f : point.X);
-        writer.WriteNumberValue(point.Y == 0 ? 0f : point.Y);
-        writer.WriteNumberValue(point.Z == 0 ? 0f : point.Z);
-        writer.WriteEndArray();
     }
 
     static Exception RefuseRoot(StrictAttachmentJson.Fault fault, string path, string message, string? property) =>

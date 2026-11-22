@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using KhaozEngine.Movement;
 using KhaozEngine.Navigation;
@@ -44,5 +45,34 @@ public sealed class MoveToRangePlanningAllocationTests(ITestOutputHelper output)
         AllocationMeasurement.NoPerCallAllocation("warmed pending path advance", () => owner.Advance(new(6)));
         Assert.Equal(PathPlanState.Pending, owner.State);
         Assert.Null(owner.Result);
+    }
+
+    [Fact]
+    public void WrongPlanningSpaceIsRefusedBeforeTheStallBufferIsAllocated()
+    {
+        NavSpace space = Flat(3, 1, 0.25f).Space;
+        NavSpace otherSpace = Flat(3, 1, 0.25f).Space;
+        var planner = new GridPathPlanner(space);
+        using var pool = ((IIncrementalRegionPathPlanner)planner).CreateWorkspaces(1, PathQueryBudget.Default);
+        var follow = new PathFollowConfig { Planning = new(new(6), pool) };
+        // A window this long makes the stall buffer far larger than everything else a refused construction allocates.
+        var options = new RouteApproachOptions { Stall = new RouteStallOptions(65_535, 0.1f) };
+        bool refused = false;
+
+        long allocated = AllocationMeasurement.Measure("refused planning space", () =>
+        {
+            try
+            {
+                _ = new MoveToRange(planner, otherSpace, (_, _) => true, follow, options);
+            }
+            catch (ArgumentException error) when (error.ParamName == "space")
+            {
+                refused = true;
+            }
+        });
+
+        output.WriteLine($"refused planning space allocated {allocated} bytes");
+        Assert.True(refused);
+        Assert.True(allocated < 65_536, $"A refused planning space allocated {allocated} bytes, so the stall buffer was built first.");
     }
 }

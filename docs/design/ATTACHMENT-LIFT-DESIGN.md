@@ -320,3 +320,13 @@ Each task records here any shape the code required that differs from this note, 
 - Displaced mesh views. The supplied position count on a `PositionCountMismatch` refusal is `PositionCount`, beside
   the source's `VertexCount`. A `PositionNonFinite` refusal names `VertexIndex`. Both carry the source index and
   generation, as every view refusal does. A displaced view owns its vertex buffer even when no vertex moves.
+- Lift rule. `OutfitLift.Resolve(OutfitCoverage coverage, IReadOnlyList<LiftingPartMesh> meshes)` takes the resolved
+  coverage as its one source of truth: the coverage captures layers, hidden sets, standoffs, region runs, each
+  skinned part's clearance and the body's region count, so a snapshot of another outfit cannot be paired with it.
+  A `LiftingPartMesh(WornIndex, PartId, Materials)` holds one `LiftMaterialMesh(Positions, Indices, Directions,
+  Bearings)` per material part in upload order. `LiftedPositions(wornIndex, partId)` is a query on the result and
+  returns every material part's positions, or null when no vertex of the part moves. A vertex counts as moved only
+  when its position changes in float, so a lift that rounds away asks for no displaced view. A weld of coincident
+  vertices takes the first vertex's direction and bearing in upload order, which the GLB policy keeps equal to the
+  others within its tolerance. A standoff region the body lacks refuses as `OutfitRefusal.RegionUnknown` when the
+  coverage resolves.

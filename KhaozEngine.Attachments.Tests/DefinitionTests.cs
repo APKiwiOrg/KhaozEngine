@@ -357,20 +357,22 @@ public class DefinitionTests
         int entry = -1, string? region = null, float value = 0)
     {
         bool lift = reason is AttachmentSetRefusal.LiftWithoutLayer or AttachmentSetRefusal.LiftClearanceOutOfRange;
+        bool noLayer = reason is AttachmentSetRefusal.StandoffWithoutLayer or AttachmentSetRefusal.LiftWithoutLayer;
         var part = AttachmentFixtures.TaggedSkinned() with { Lift = lift ? new(0.05f) : null };
+        // A set without a layer may not tag regions either, so the no-layer rows start from an untagged part and
+        // break only the standoff or lift rule.
+        if (noLayer) part = part with { Regions = [] };
         RegionStandoff[] standoff = reason == AttachmentSetRefusal.TooManyStandoffEntries
             ? Enumerable.Range(0, 128).Select(i => new RegionStandoff($"region{i}", 0)).ToArray()
             : lift ? [] : [new("belly", 0.25f), new("chest", 0.008f)];
-        AttachmentLayer? layer = AttachmentLayer.Armour;
-        Assert.Single(new AttachmentSetDefinition([part], layer, [], [], standoff).Parts);
+        AttachmentLayer? layer = noLayer ? null : AttachmentLayer.Armour;
+        Assert.Single((noLayer
+            ? new AttachmentSetDefinition([part with { Lift = null }], layer, [], [], [])
+            : new AttachmentSetDefinition([part], layer, [], [], standoff)).Parts);
 
         if (reason == AttachmentSetRefusal.StandoffRegionNameMalformedUtf16) region = "\uD800";
         switch (reason)
         {
-            case AttachmentSetRefusal.StandoffWithoutLayer:
-            case AttachmentSetRefusal.LiftWithoutLayer:
-                layer = null;
-                break;
             case AttachmentSetRefusal.StandoffRegionNameEmpty:
             case AttachmentSetRefusal.StandoffRegionNameMalformedUtf16:
             case AttachmentSetRefusal.StandoffRegionDuplicate:

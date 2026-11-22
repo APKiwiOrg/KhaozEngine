@@ -7,16 +7,19 @@ namespace KhaozEngine.Attachments;
 /// <summary>Checks a piece's regional standoff claim offline at the body's rest pose.</summary>
 public static class StandoffClaimCheck
 {
+    const double NearestDistanceToleranceMetres = 0.000001;
+
     /// <summary>
-    /// Measures each fixed piece vertex against its nearest point on the body's triangles, taking the region and
-    /// outward normal from that triangle. Height is the distance in metres, negative behind the triangle's plane.
+    /// Finds the nearest body triangle for each fixed piece vertex. The triangle supplies the region and the height,
+    /// which is the signed distance in metres from its plane along its outward normal.
     /// Body meshes follow the region map's part order. Piece meshes are already in the body's rest frame.
     /// For a piece with motion, supply one mesh per definition part in any order with its
     /// <see cref="CoverageClaimMesh.PartId"/> and a swinging mask for each part with motion.
     /// </summary>
     /// <remarks>
-    /// Equal distances choose the first triangle in body part and triangle order. Zero area triangles have no
-    /// back side. A body without triangles yields no measurements.
+    /// Triangles within one micrometre of the nearest distance compete by height. Equal heights choose the first
+    /// triangle in body part and triangle order. Zero area triangles contribute no normal height.
+    /// A body without triangles yields no measurements.
     /// </remarks>
     /// <exception cref="ArgumentException">A nonempty swinging mask has a different length than its mesh's positions.</exception>
     /// <exception cref="CoverageClaimDataException">The geometry or the claim breaks a rule.</exception>
@@ -41,6 +44,7 @@ public static class StandoffClaimCheck
 
         var counts = new int[declared.Length];
         var highest = new double[declared.Length];
+        var measurements = new (double DistanceSquared, double Height)[triangles.Length];
         foreach (CoverageClaimMesh mesh in pieceMeshes)
         {
             ReadOnlySpan<Vector3> positions = mesh.Positions.Span;
@@ -50,7 +54,7 @@ public static class StandoffClaimCheck
                 if (!swinging.IsEmpty && swinging[vertex])
                     continue;
 
-                (int region, double height) = MeasureNearest(new Point(positions[vertex]), triangles);
+                (int region, double height) = MeasureNearest(new Point(positions[vertex]), triangles, measurements);
                 if (counts[region] == 0 || height > highest[region])
                     highest[region] = height;
                 counts[region]++;
@@ -83,23 +87,31 @@ public static class StandoffClaimCheck
         return triangles.ToArray();
     }
 
-    static (int Region, double Height) MeasureNearest(Point vertex, ReadOnlySpan<BodyTriangle> triangles)
+    static (int Region, double Height) MeasureNearest(Point vertex, ReadOnlySpan<BodyTriangle> triangles,
+        Span<(double DistanceSquared, double Height)> measurements)
     {
         double nearestSquared = double.PositiveInfinity;
-        int region = 0;
-        bool behind = false;
-        foreach (ref readonly BodyTriangle triangle in triangles)
+        for (int triangle = 0; triangle < triangles.Length; triangle++)
         {
-            double distanceSquared = triangle.DistanceSquared(vertex, out bool behindTriangle);
-            if (distanceSquared >= nearestSquared)
+            measurements[triangle] = triangles[triangle].Measure(vertex);
+            nearestSquared = Math.Min(nearestSquared, measurements[triangle].DistanceSquared);
+        }
+
+        // Measure the tolerance from the true nearest distance to avoid ties chaining across multiple faces.
+        double distanceSlackSquared = NearestDistanceToleranceMetres
+            * (2 * Math.Sqrt(nearestSquared) + NearestDistanceToleranceMetres);
+        int region = 0;
+        double height = double.NegativeInfinity;
+        for (int triangle = 0; triangle < triangles.Length; triangle++)
+        {
+            (double distanceSquared, double candidateHeight) = measurements[triangle];
+            if (distanceSquared - nearestSquared > distanceSlackSquared || candidateHeight <= height)
                 continue;
 
-            nearestSquared = distanceSquared;
-            behind = behindTriangle;
-            region = triangle.Region;
+            height = candidateHeight;
+            region = triangles[triangle].Region;
         }
-        double height = Math.Sqrt(nearestSquared);
-        return (region, behind ? -height : height);
+        return (region, height);
     }
 
     readonly struct BodyTriangle
@@ -128,24 +140,21 @@ public static class StandoffClaimCheck
 
         internal int Region { get; }
 
-        internal double DistanceSquared(Point vertex, out bool behind)
+        internal (double DistanceSquared, double Height) Measure(Point vertex)
         {
             Point fromA = vertex - a;
             Point fromB = vertex - b;
             Point fromC = vertex - c;
-            double side = Point.Dot(fromA, normal);
-            behind = side < 0;
+            double height = normalLength > 0 ? Point.Dot(fromA, normal) / normalLength : 0;
 
             // The edge tests only see the projection into the triangle's plane. If it falls outside,
             // or the triangle has no plane, the closest point lies on one of the closed edge segments.
             if (normalLength > 0 && OnInnerSide(ab, fromA) && OnInnerSide(bc, fromB) && OnInnerSide(ca, fromC))
-            {
-                double distance = side / normalLength;
-                return distance * distance;
-            }
+                return (height * height, height);
 
-            return Math.Min(SegmentDistanceSquared(ab, fromA, fromB),
+            double distanceSquared = Math.Min(SegmentDistanceSquared(ab, fromA, fromB),
                 Math.Min(SegmentDistanceSquared(bc, fromB, fromC), SegmentDistanceSquared(ca, fromC, fromA)));
+            return (distanceSquared, height);
         }
 
         bool OnInnerSide(Point edge, Point offset) => Point.Dot(Point.Cross(edge, offset), normal) >= 0;

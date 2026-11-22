@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.Attachments;
@@ -56,13 +57,13 @@ public class StandoffClaimCheckTests
     }
 
     [Theory]
-    [InlineData(0.5f, 0.09375f, 0.15625)]
-    [InlineData(0.5f, -0.09375f, -0.15625)]
-    [InlineData(1.09375f, 0f, 0.15625)]
+    [InlineData(0.5f, 0.09375f, 0.09375)]
+    [InlineData(0.5f, -0.09375f, -0.09375)]
+    [InlineData(1.09375f, 0f, 0)]
     public void A_rigid_vertex_uses_the_nearest_body_triangle_even_at_an_edge_or_corner(float y, float z, double height)
     {
-        // The first body part sits a metre below the second. The nearest point on the second has x = 2
-        // and y clamped to [0, 1]. The offset lengths 0.125 and 0.09375 give a distance of 0.15625.
+        // The first body part sits a metre below the second. The nearest point is on the second body's
+        // edge or corner, whose plane faces +z, so height is z even outside the outline.
         Vector3[] lowerSquare = [new(1, 0, 0), new(2, 0, 0), new(2, 1, 0), new(1, 1, 0)];
         Vector3[] below = lowerSquare.Select(position => position - Vector3.UnitZ).ToArray();
         uint[] indices = [0, 1, 2, 0, 2, 3];
@@ -75,8 +76,33 @@ public class StandoffClaimCheckTests
         Assert.Equal(new StandoffClaimRegion("lower", height, 1, 0.25f), Assert.Single(report.Regions));
     }
 
+    [Theory]
+    [InlineData(0f, true)]
+    [InlineData(-0.00000025f, true)]
+    [InlineData(-0.000004f, false)]
+    public void The_largest_projection_wins_only_within_the_nearest_distance_tolerance(float ridgeOffset, bool higherWins)
+    {
+        // At zero offset the two faces share the edge along +y and both nearest points land on it.
+        // The upper face points along +z. The lower face points along +x and can be moved slightly farther away.
+        Vector3[] positions =
+        [
+            Vector3.Zero, Vector3.UnitY, -Vector3.UnitX,
+            new(ridgeOffset, 0, 0), new(ridgeOffset, 1, 0), new(ridgeOffset, 0, -1),
+        ];
+        BodyRegionMap body = new(Rig, ["upper", "lower"], [[new RegionRun(0, 1), new RegionRun(1, 1)]]);
+        CoverageClaimMesh bodyMesh = new(positions, new uint[] { 0, 1, 2, 4, 3, 5 });
+        CoverageClaimMesh pieceMesh = new(new[] { new Vector3(0.125f, 0.5f, 0.0625f) }, ReadOnlyMemory<uint>.Empty);
+
+        StandoffClaimReport report = StandoffClaimCheck.Verify([bodyMesh], body, Piece("upper"), [pieceMesh]);
+
+        string region = higherWins ? "lower" : "upper";
+        double height = higherWins ? 0.125 - ridgeOffset : 0.0625;
+        Assert.Equal(new StandoffClaimRegion(region, height, 1, null), Assert.Single(report.Regions));
+        Assert.Equal(region, Assert.Single(report.UndeclaredRegions));
+    }
+
     [Fact]
-    public void A_zero_area_triangle_contributes_its_segment_distance_without_a_back_side()
+    public void A_zero_area_triangle_has_no_normal_height()
     {
         Vector3[] positions = [new(0, 0, 0), new(0.5f, 0, 0), new(1, 0, 0)];
         BodyRegionMap body = new(Rig, ["upper"], [[new RegionRun(0, 1)]]);
@@ -85,7 +111,27 @@ public class StandoffClaimCheckTests
         StandoffClaimReport report = StandoffClaimCheck.Verify([new(positions, new uint[] { 0, 1, 2 })], body,
             Piece("upper"), [pieceMesh]);
 
-        Assert.Equal(new StandoffClaimRegion("upper", 0.0625, 1, null), Assert.Single(report.Regions));
+        Assert.Equal(new StandoffClaimRegion("upper", 0, 1, null), Assert.Single(report.Regions));
+        Assert.Empty(report.UndeclaredRegions);
+    }
+
+    [Fact]
+    public void Changing_collection_sync_roots_cannot_change_report_measurements_or_findings()
+    {
+        AttachmentSetDefinition piece = WithStandoff(Piece("upper"), new RegionStandoff("upper", 0.03125f));
+        CoverageClaimMesh mesh = new(
+            new Vector3[] { new(0.25f, 0.25f, 0.0625f), new(1.25f, 0.25f, 0.0625f) }, ReadOnlyMemory<uint>.Empty);
+        StandoffClaimReport report = StandoffClaimCheck.Verify(FlatBody, FlatMap, piece, [mesh]);
+
+        TryReplaceThroughSyncRoot(report.Regions, new StandoffClaimRegion("other", 0, 0, null));
+        TryReplaceThroughSyncRoot(report.UnderstatedRegions, "other");
+        TryReplaceThroughSyncRoot(report.UndeclaredRegions, "other");
+
+        Assert.Collection(report.Regions,
+            upper => Assert.Equal(new StandoffClaimRegion("upper", 0.0625, 1, 0.03125f), upper),
+            lower => Assert.Equal(new StandoffClaimRegion("lower", 0.0625, 1, null), lower));
+        Assert.Equal("upper", Assert.Single(report.UnderstatedRegions));
+        Assert.Equal("lower", Assert.Single(report.UndeclaredRegions));
     }
 
     [Fact]
@@ -210,6 +256,19 @@ public class StandoffClaimCheckTests
 
         Assert.Equal(CoverageClaimRefusal.RegionUnknown, error.Reason);
         Assert.Equal("middle", error.RegionName);
+    }
+
+    static void TryReplaceThroughSyncRoot(object items, object replacement)
+    {
+        try
+        {
+            if (items is ICollection collection && collection.SyncRoot is IList storage)
+                storage[0] = replacement;
+        }
+        catch (NotSupportedException)
+        {
+            // The collection can refuse to expose a sync root or refuse writes through it.
+        }
     }
 
     static AttachmentSetDefinition WithStandoff(AttachmentSetDefinition piece, params RegionStandoff[] standoff) =>

@@ -104,9 +104,54 @@ internal sealed class SkinnedAttachmentGlbFixture
         }
     }
 
+    internal void SetLiftAttributes(int primitive, Vector3[]? directions, float[]? bearings, bool strided = false)
+    {
+        JsonObject attributes = Primitives[primitive]!["attributes"]!.AsObject();
+        if (directions is null)
+            attributes.Remove("_LIFT_DIRECTION");
+        else
+        {
+            int accessor = Accessors.Count;
+            AddAccessor(directions.Length, "VEC3", 5126, false, strided);
+            attributes["_LIFT_DIRECTION"] = accessor;
+            for (int vertex = 0; vertex < directions.Length; vertex++)
+            {
+                Vector3 direction = directions[vertex];
+                SetElement(accessor, vertex, direction.X, direction.Y, direction.Z);
+            }
+        }
+        if (bearings is null)
+            attributes.Remove("_LIFT_BEARING");
+        else
+        {
+            int accessor = Accessors.Count;
+            AddAccessor(bearings.Length, "SCALAR", 5126, false, strided);
+            attributes["_LIFT_BEARING"] = accessor;
+            for (int vertex = 0; vertex < bearings.Length; vertex++)
+                SetElement(accessor, vertex, bearings[vertex]);
+        }
+    }
+
+    internal void SetPositions(int primitive, Vector3[] positions)
+    {
+        int accessor = Accessors.Count;
+        AddAccessor(positions.Length, "VEC3", 5126, false, false);
+        Primitives[primitive]!["attributes"]!["POSITION"] = accessor;
+        Vector3 min = positions[0], max = positions[0];
+        for (int vertex = 0; vertex < positions.Length; vertex++)
+        {
+            Vector3 position = positions[vertex];
+            SetElement(accessor, vertex, position.X, position.Y, position.Z);
+            min = Vector3.Min(min, position);
+            max = Vector3.Max(max, position);
+        }
+        Accessors[accessor]!["min"] = new JsonArray(min.X, min.Y, min.Z);
+        Accessors[accessor]!["max"] = new JsonArray(max.X, max.Y, max.Z);
+    }
+
     void AddAccessor(int count, string type, int componentType, bool normalized, bool strided)
     {
-        int components = type == "MAT4" ? 16 : type == "VEC3" ? 3 : 4;
+        int components = type == "MAT4" ? 16 : type == "VEC3" ? 3 : type == "SCALAR" ? 1 : 4;
         int size = components * ComponentSize(componentType);
         int stride = strided ? ((size + 3) & ~3) + 4 : size;
         int view = AddView(new byte[count * stride], strided ? stride : null);

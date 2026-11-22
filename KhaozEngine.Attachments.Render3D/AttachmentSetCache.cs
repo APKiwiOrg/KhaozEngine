@@ -50,14 +50,22 @@ public sealed partial class AttachmentSetCache : IDisposable
         if (cached is not null) return cached.View;
 
         var pending = new List<PendingMesh>();
+        Dictionary<AttachmentMeshRef, uint>? liftRequests = UncachedLiftRequests(definition);
+        Dictionary<MeshIdentity, LiftBasis>? stagedLift = null;
         foreach (AttachmentMeshRef mesh in definition.Meshes)
         {
             MeshIdentity meshIdentity = requested[mesh];
-            if (_meshes.ContainsKey(meshIdentity)) continue;
-            uint id = definition.Parts.First(part => part.Mesh == mesh).Id;
+            _meshes.TryGetValue(meshIdentity, out CachedMesh? existing);
+            uint liftPartId = 0;
+            bool needsLiftBasis = liftRequests?.TryGetValue(mesh, out liftPartId) == true;
+            if (existing is not null && !needsLiftBasis) continue;
+            uint id = needsLiftBasis ? liftPartId : definition.Parts.First(part => part.Mesh == mesh).Id;
             string context = $"{key}: attachment part {id}, mesh '{mesh.Key}'";
-            byte[] bytes = ReadVerified(mesh, context);
-            pending.Add(Decode(meshIdentity, bytes, context));
+            byte[] bytes = existing?.Bytes ?? ReadVerified(mesh, context);
+            if (needsLiftBasis)
+                (stagedLift ??= []).Add(meshIdentity, AttachmentGlb.LiftBasis(bytes, context));
+            if (existing is null)
+                pending.Add(Decode(meshIdentity, bytes, context, skinnedValidated: needsLiftBasis));
         }
 
         var staged = new Dictionary<MeshIdentity, CachedMesh>();
@@ -79,6 +87,8 @@ public sealed partial class AttachmentSetCache : IDisposable
             var loaded = new LoadedAttachmentSet(this, key, definition, expectedSha256, resources);
             foreach (KeyValuePair<MeshIdentity, CachedMesh> mesh in staged) _meshes.Add(mesh.Key, mesh.Value);
             _definitions.Add(identity, new CachedDefinition(definitionBytes, loaded));
+            if (stagedLift is not null)
+                foreach (KeyValuePair<MeshIdentity, LiftBasis> lift in stagedLift) _liftBases.Add(lift.Key, lift.Value);
             return loaded;
         }
         catch
@@ -142,10 +152,10 @@ public sealed partial class AttachmentSetCache : IDisposable
         return bytes;
     }
 
-    static PendingMesh Decode(MeshIdentity identity, byte[] bytes, string context)
+    static PendingMesh Decode(MeshIdentity identity, byte[] bytes, string context, bool skinnedValidated)
     {
-        if (identity.Skinned) AttachmentGlb.ValidateSkinnedEmbedded(bytes, context);
-        else AttachmentGlb.ValidateRigidEmbedded(bytes, context);
+        if (!identity.Skinned) AttachmentGlb.ValidateRigidEmbedded(bytes, context);
+        else if (!skinnedValidated) AttachmentGlb.ValidateSkinnedEmbedded(bytes, context);
         try
         {
             return identity.Skinned
@@ -192,6 +202,7 @@ public sealed partial class AttachmentSetCache : IDisposable
         _coverageLifetimes.Clear(); _coverage.Clear(); _coverageSources.Clear();
         Release(_meshes.Values);
         _meshes.Clear();
+        _liftBases.Clear();
         _definitions.Clear();
         _bodyMaps.Clear();
         _bodyColliders = null;

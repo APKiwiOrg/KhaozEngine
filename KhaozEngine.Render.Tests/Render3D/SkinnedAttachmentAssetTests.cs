@@ -44,6 +44,76 @@ public sealed class SkinnedAttachmentAssetTests
         Assert.Equal(0, harness.Scene.LiveSkinnedMeshCount);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Lift_requires_attributes_even_on_a_previously_uploaded_mesh(bool warm)
+    {
+        using var harness = new AttachmentAssetHarness();
+        var source = new AttachmentTestSource();
+        var fixture = new SkinnedAttachmentGlbFixture();
+        fixture.SetLiftAttributes(0, null, [0, .01f, .02f]);
+        AttachmentMeshRef mesh = source.Mesh("z-skinned.glb", fixture.Build());
+        fixture.SetLiftAttributes(0, [Vector3.UnitY, Vector3.UnitY, Vector3.UnitY], [0, .01f, .02f]);
+        AttachmentMeshRef valid = source.Mesh("a-skinned.glb", fixture.Build());
+        var validLift = Skin(2, valid) with { Regions = [new("upper", 1)], Lift = new(.005f) };
+        var unlifted = Skin(1, mesh) with { Regions = [new("upper", 1)] };
+        var lifted = unlifted with { Id = 3, Lift = new(.005f) };
+        string previous = Set(source, "previous.json", Skin(1, mesh));
+        string control = source.Add("unlifted.json", AttachmentSetJson.Write(
+            new AttachmentSetDefinition([unlifted, validLift, lifted with { Lift = null }], AttachmentLayer.Armour, [], [])));
+        string requested = source.Add("lifted.json", AttachmentSetJson.Write(
+            new AttachmentSetDefinition([unlifted, validLift, lifted], AttachmentLayer.Armour, [], [])));
+        using var cache = new AttachmentSetCache(harness.Scene, source);
+        LoadedAttachmentSet? existing = warm ? cache.Get("previous.json", previous) : null;
+        int buffers = harness.Factory.Buffers.Count, textures = harness.Factory.Textures.Count;
+        int liveSkinned = harness.Scene.LiveSkinnedMeshCount;
+
+        var error = Assert.Throws<AttachmentSkinnedGeometryDataException>(() => cache.Get("lifted.json", requested));
+
+        Assert.Equal(AttachmentSkinnedGeometryRefusal.LiftAttributeMissing, error.Reason);
+        Assert.Equal("_LIFT_DIRECTION", error.AttributeName);
+        Assert.Equal("lifted.json: attachment part 3, mesh 'z-skinned.glb'", error.SourceName);
+        Assert.Equal(buffers, harness.Factory.Buffers.Count);
+        Assert.Equal(textures, harness.Factory.Textures.Count);
+        Assert.Equal(liveSkinned, harness.Scene.LiveSkinnedMeshCount);
+        AssertCachedSnapshotHashes(cache.DefinitionSnapshotHashesForTests, warm ? [previous] : []);
+        AssertCachedSnapshotHashes(cache.MeshSnapshotHashesForTests, warm ? [mesh.Sha256] : []);
+        Assert.Null(cache.FindLiftBasis(valid));
+
+        Assert.Equal(3, cache.Get("unlifted.json", control).Definition.Parts.Count);
+        Assert.NotNull(cache.FindLiftBasis(valid));
+        if (warm) Assert.Same(existing, cache.Get("previous.json", previous));
+    }
+
+    [Fact]
+    public void Lift_basis_is_retained_for_a_mesh_first_loaded_by_a_set_without_lift()
+    {
+        using var harness = new AttachmentAssetHarness();
+        var source = new AttachmentTestSource();
+        var fixture = new SkinnedAttachmentGlbFixture();
+        fixture.SetLiftAttributes(0, [Vector3.UnitX, Vector3.UnitY, Vector3.UnitZ], [0, .01f, .02f]);
+        AttachmentMeshRef mesh = source.Mesh("part.glb", fixture.Build());
+        var part = Skin(1, mesh);
+        string ordinary = Set(source, "ordinary.json", part);
+        string lifted = source.Add("lift.json", AttachmentSetJson.Write(
+            new AttachmentSetDefinition([part with { Regions = [new("upper", 1)], Lift = new(.005f) }],
+                AttachmentLayer.Armour, [], [])));
+        using var cache = new AttachmentSetCache(harness.Scene, source);
+        cache.Get("ordinary.json", ordinary);
+        Assert.Null(cache.FindLiftBasis(mesh));
+        int liveSkinned = harness.Scene.LiveSkinnedMeshCount;
+
+        cache.Get("lift.json", lifted);
+
+        Assert.Equal(liveSkinned, harness.Scene.LiveSkinnedMeshCount);
+        LiftBasis basis = Assert.IsType<LiftBasis>(cache.FindLiftBasis(mesh));
+        Assert.Collection(basis.Vertices,
+            vertex => Assert.Equal(new LiftBasisVertex(Vector3.UnitX, 0, 0, 0), vertex),
+            vertex => Assert.Equal(new LiftBasisVertex(Vector3.UnitY, .01f, 0, 1), vertex),
+            vertex => Assert.Equal(new LiftBasisVertex(Vector3.UnitZ, .02f, 0, 2), vertex));
+    }
+
     [Fact]
     public void Shared_skinned_reference_is_read_and_uploaded_once_across_parts_and_sets()
     {

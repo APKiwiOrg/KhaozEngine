@@ -4,6 +4,60 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 24.7.0
+
+2026-11-23
+
+A minor with additive API in `KhaozEngine.Attachments`, `KhaozEngine.Attachments.Render3D`,
+`KhaozEngine.Render3D` and the TileWorld scene adapter. Worn skinned parts can lift clear of the layers beneath
+them when an outfit binds. Format 5 declares standoff and lift, custom GLB attributes describe each vertex's lift,
+displaced mesh views draw the result in every pass, and an offline check verifies standoff claims. Existing sets,
+outfits and draws are unchanged.
+
+**Standoff and lift.**
+
+- Format 5 adds optional root `standoff` and skinned part `lift`. Either addition requires a layer. The
+  `AttachmentSetDefinition` overload accepts `RegionStandoff(Region, Metres)` entries, and a skinned part can
+  set its init-only `Lift` to `PartLiftDefinition(ClearanceMetres)` alongside motion. `AttachmentSetJson.LiftFormatVersion`
+  is 5. The writer preserves the canonical bytes and semantic hashes of sets that use formats 1 to 4.
+- `AttachmentGlb.LiftBasis(glb, sourceName)` reads `_LIFT_DIRECTION` and `_LIFT_BEARING`. Its
+  `LiftBasisVertex` entries identify each vertex's material part and index in that part.
+- `OutfitLift.Resolve(coverage, meshes)` computes lift offline from the coverage snapshot and a `LiftingPartMesh`
+  per lifting part. It exposes height below, effective standoff and lifted rest positions. Each vertex clears the
+  highest visible standoff in its regions on strictly lower layers, accounting for lift already applied to those
+  layers. The bare-body fit is preserved where no lower standoff contributes.
+
+**Binding and displaced views.**
+
+- `AttachmentSetCache.Get` verifies a lifting part's basis before uploading any new meshes for the set.
+  `BindOutfit` uses displaced views for the visible material groups of a part whose vertices move. Equal source
+  handles, visible indices and displaced positions share a view. Frame submission keeps the existing draw and
+  motion paths.
+- `Scene3D.CreateSkinnedMeshView(source, indices, restPositions)` adds a vertex buffer and CPU rest copy to
+  the view and shares source materials and skinning data. Bounds retain a margin for the largest displacement
+  when the source grows. `IAttachmentDisplacedViewScene` extends `IAttachmentViewScene` with
+  `CreateSkinnedView(source, indices, restPositions)`. Both `Scene3DAttachmentScene` and
+  `Scene3DTileWorldScene` implement it.
+
+**Offline standoff check.**
+
+- `StandoffClaimCheck.Verify(bodyMeshes, body, piece, pieceMeshes)` measures fixed piece vertices in the
+  body's rest frame along the selected body triangles' outward normals. `StandoffClaimReport` lists the
+  regional maxima, declared standoffs, understated regions and positive heights in undeclared regions.
+
+**Refusals.**
+
+- `AttachmentSetRefusal` appends `StandoffWithoutLayer`, `LiftWithoutLayer`, `StandoffRegionNameEmpty`,
+  `StandoffRegionNameMalformedUtf16`, `StandoffRegionDuplicate`, `StandoffValueOutOfRange`,
+  `TooManyStandoffEntries` and `LiftClearanceOutOfRange`. Set argument and data exceptions carry
+  `StandoffIndex` for refused entries.
+- `AttachmentSkinnedGeometryRefusal` appends `LiftAttributeMissing`, `LiftAttributeShapeMismatch`,
+  `LiftDirectionInvalid`, `LiftBearingInvalid` and `CoincidentLiftDataMismatch`. A coincident mismatch
+  includes both flattened vertex indices.
+- `SkinnedMeshViewRefusal` appends `PositionCountMismatch` with `VertexCount` and `PositionCount`, and
+  `PositionNonFinite` with `VertexIndex`. `AttachmentBindingRefusal` appends `OutfitLiftUnsupported` with the
+  set's cache key in `SourceName`, `WornIndex` and `PartId` when a scene cannot create a needed displaced view.
+
 ## 24.6.0
 
 2026-11-23

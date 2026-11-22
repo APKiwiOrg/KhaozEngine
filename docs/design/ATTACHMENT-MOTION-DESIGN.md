@@ -315,7 +315,20 @@ The wearables limits are 32 wearers, at most 2 ms added CPU preparation, no mana
   per substep, twice when links are present, so 32 wearers cost roughly 0.8 ms a frame at 144 Hz.
 - GPU: no shader, pass or draw count changes. A chained part adds palette entries within the 128 joint limit.
 - Allocation is tested per call, as outfit draws are.
-- `KhaozEngine.Benchmarks` gains a swing mode at 32 wearers. Its timing runs on a hosted runner, outside default CI.
+
+`SwingCostDiagnostics` reports CPU preparation for 32 wearers with independent outfits and motion. It measures
+`WornMotion.Step` and `BoundOutfit.WriteDraws` for every worn set, excluding host animation and scene submission.
+After 120 warm frames per rate it reports the mean, p50, p95 and maximum frame cost in milliseconds, total managed
+bytes on the preparation thread and the runner environment in one JSON line. Each rate samples 600 frames at
+a simulated frame rate of 144 Hz or 60 Hz. Timing is report only and excluded from default CI.
+
+Run the full measurement on a GitHub-hosted runner after approval. Only that run supplies timing evidence.
+
+```sh
+KE_GPU_TESTS=0 dotnet test KhaozEngine.Render.Tests -c Release --filter 'Category=Diagnostic&FullyQualifiedName~SwingCostDiagnostics' --logger 'console;verbosity=detailed'
+```
+
+`KE_SWING_COST_SMOKE_FRAMES` sets both frame counts to a value from 1 through 119 for a shortened harness check.
 
 ## Byte loading
 

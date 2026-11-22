@@ -44,4 +44,29 @@ public sealed partial class MoveToRangePlanningTests
             Assert.Equal(call == 5 ? RangeMoveStatus.Blocked : RangeMoveStatus.Following,
                 Tick(mover, body, Target(31.5f), context).Status);
     }
+
+    [Fact]
+    public void FirstCallAdoptionKeepsSynchronousCooldownAndStall()
+    {
+        var navigation = Flat(6, 3, Tuning.CapsuleRadius);
+        using var context = new GroundMoveContext((_, _) => 0f);
+        using var pool = navigation.CreatePlanningWorkspaces(1);
+        var synchronous = new MoveToRange(navigation, null, Stall);
+        var sliced = new MoveToRange(navigation, Follow(pool, int.MaxValue), Stall);
+        MoveState body = At(0.5f);
+
+        for (int call = 1; call <= 16; call++)
+        {
+            ReachTarget target = call == 1 ? Target(2.75f) : Far;
+            RangeSteering expected = call == 16
+                ? new(Vector2.Zero, RangeMoveStatus.Blocked)
+                : new(Vector2.UnitX, RangeMoveStatus.Following);
+            AssertSteering(expected, Tick(synchronous, body, target, context));
+            AssertSteering(expected, Tick(sliced, body, target, context));
+            float[] route = call < 3 ? [1.5f, 2.5f] : [1.5f, 2.5f, 3.5f, 4.5f];
+            AssertRoute(synchronous, NavPathStatus.Complete, route);
+            AssertRoute(sliced, NavPathStatus.Complete, route);
+            Assert.False(sliced.PlanningPending);
+        }
+    }
 }

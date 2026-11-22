@@ -81,10 +81,9 @@ public sealed partial class MoveToRangePlanningTests
         HoldPending(raw, At(0.5f), Far, context);
         HoldPending(shortened, At(0.5f), Far, context);
         Assert.Equal(1, pool.Waits);
-        // A prewarmed raw 5x3-strip query of this extent has fewer than 1000 units.
-        // The second owner remains waiting even with a large quota until the first releases.
-        for (int call = 2; call <= 200 && raw.PlanningPending; call++)
-            Tick(raw, At(0.5f), Far, context);
+        for (int call = 2; call <= RawSlicesAtQuotaSix(); call++)
+            HoldPending(raw, At(0.5f), Far, context);
+        AssertSteering(new(Vector2.UnitX, RangeMoveStatus.Following), Tick(raw, At(0.5f), Far, context));
         AssertRoute(raw, NavPathStatus.Complete, [1.5f, 2.5f, 3.5f, 4.5f]);
         Assert.Null(raw.Straightener.LastStraightened);
         HoldPending(shortened, At(0.5f), Far, context);
@@ -92,13 +91,34 @@ public sealed partial class MoveToRangePlanningTests
         AssertRoute(shortened, NavPathStatus.Complete, [4.5f]);
         Assert.Same(shortened.ActivePathForTests, shortened.Straightener!.LastStraightened);
 
-        raw.Reset();
-        for (int call = 1; call <= 400; call++)
+        var end = Goal(new(4.5f, 0f, 1.5f));
+        NavPath next = raw.Straightener.FindPath(new(0.5f, 0f, 1.5f), end, Tuning.CapsuleRadius, PathQueryBudget.Default);
+        AssertBits(4.5f, Assert.Single(next.Waypoints).Position.X);
+    }
+
+    private static int RawSlicesAtQuotaSix()
+    {
+        int[] expansion = [4, 1, 6, 6, 6, 6, 6, 6, 6, 6];
+        int[] trace =
+        [
+            1, 2, 3, 2, // Profile start footprint, then its layer.
+            2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, // Snap, box, twelve candidates.
+            1, 4, 1, // Certificate, seed and progress.
+            .. expansion, .. expansion, .. expansion, .. expansion,
+            4, 1, // The target popped with no further neighbours.
+            1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 1, 1, 1, 1, // Reconstruct four waypoints.
+        ];
+        int slices = 1, remaining = 6;
+        foreach (int weight in trace)
         {
-            Tick(raw, At(0.5f), Far, context);
-            if (!raw.PlanningPending) break;
+            if (weight > remaining)
+            {
+                slices++;
+                remaining = 6;
+            }
+            remaining -= weight;
         }
-        AssertRoute(raw, NavPathStatus.Complete, [4.5f]);
+        return slices;
     }
 
     [Fact]

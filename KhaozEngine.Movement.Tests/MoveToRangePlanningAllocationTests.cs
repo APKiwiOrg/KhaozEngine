@@ -37,7 +37,7 @@ public sealed class MoveToRangePlanningAllocationTests(ITestOutputHelper output)
 
         output.WriteLine($"Leased and queued begin: {leased} and {queued} bytes");
         // Handles contain the profile endpoint cursor and, for straightening, the segment cursor.
-        Assert.InRange(leased, 1, straighten ? 2048 : 1024);
+        Assert.InRange(leased, 1, straighten ? 1448 : 800);
         Assert.Equal(leased, queued);
 
         owner.Advance(new(6));

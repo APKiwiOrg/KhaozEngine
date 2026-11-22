@@ -86,15 +86,16 @@ moves.
 
 | Setting | Unit and range | Meaning |
 | --- | --- | --- |
-| `stiffness` | per second, 0 or more | How fast a segment returns toward its rest direction relative to its parent. 0 is limp. |
+| `stiffness` | radians per second, 0 or more | The natural frequency of the spring that returns a segment toward its rest direction relative to its parent. 0 is limp. |
 | `damping` | per second, 0 or more | How fast velocity decays. Speed is multiplied by `exp(-damping * h)` each substep. |
 | `gravity` | multiple of world gravity, 0 to 10 | How strongly the chain falls. |
 | `trail` | 0 to 1 | How much of the wearer's own movement through the world the chain lags behind. 1 is full inertia. 0 carries the chain with the wearer, so only the body's animation swings it. |
 | `angleLimit` | radians, above 0 and at most pi | How far a segment may bend away from its rest direction relative to its parent. |
 | `radius` | metres, 0 or more | The chain's thickness against colliders. |
 
-Links name pairs of chains in one part. A link keeps the joints at the same position in both chains near their rest
-spacing.
+Links name pairs of chains in one part. A link keeps the movable joints at the same position in both chains, and both
+chains' tips, near their rest spacing through a spring of 10 radians per second. Tips are linked because the tip
+sets the last joint's turn, so an unlinked tip would let a hem splay.
 
 ## Colliders
 
@@ -121,19 +122,30 @@ space. Then it runs the substeps of decision 2. Time beyond `maxSteps * maxStep`
 
 1. **Trail.** Every particle and its previous position move by `(1 - trail)` of the wearer's rigid movement over the
    substep.
-2. **Integrate.** Time corrected Verlet. Velocity comes from the last two positions, scaled for a changed substep
-   length and damped, and gravity is added.
+2. **Predict.** Time corrected Verlet. Velocity comes from the last two positions, scaled by `h / hPrevious` for a
+   changed substep length and damped by `exp(-damping * h)`. Gravity's displacement `a * h^2 / 2` is added to the
+   prediction and subtracted from the stored previous sample, so a chain released from rest falls exactly as constant
+   acceleration predicts at any substep length.
 3. **Root to tip, per chain.** A joint's unswung rotation is its rest local rotation on its parent's final rotation,
-   the anchor's for the first joint, and its rest direction follows from that. The next particle is pulled toward
-   that direction by `1 - exp(-stiffness * h)`, its bend is clamped to `angleLimit`, its segment length is restored,
-   it is pushed out of every collider and its length is restored again. The joint's rotation is then the swing that
-   turns its rest direction onto the simulated one, applied to its unswung rotation, which keeps the animation's
-   twist.
-4. **Links.** Linked particle pairs move toward their rest spacing, then lengths and collisions are restored once
-   more.
+   the anchor's for the first joint, and its rest direction follows from that. A spring of natural frequency
+   `stiffness` pulls the next particle toward that direction. It is solved by the implicit midpoint rule with weight
+   `w = 2z / (1 + z)`, `z = (stiffness * h / 2)^2`, and the correction is written into both Verlet samples so it is
+   a velocity impulse, which keeps the motion the same across substep lengths and stable for any of them. Then the
+   bend is clamped to `angleLimit`, the particle is pushed out of every collider on the sphere of its segment length,
+   and the length is restored. The joint's rotation is the swing that turns its rest direction onto the simulated
+   one, applied to its unswung rotation, which keeps the animation's twist.
+4. **Links.** Every linked pair reads the same snapshot, and each particle takes the mean of its pairs' midpoint
+   corrections, so a particle in several links never takes a stiffer step and the update stays stable. Then a
+   second root to tip pass without the stiffness spring restores the bend limit, collisions and lengths.
 
-Segment lengths come from this frame's rest hang, so a scaled wearer keeps its proportions. After a step no particle
-lies inside a collider by more than 1 mm and no segment is stretched by more than 5 percent.
+The anchored first joint and segment lengths always hold. A collider outranks the bend limit, because a pass through
+looks worse than an extra bend. Contact solves the capsule locally as a sphere at the closest point of its axis, up to
+eight passes, in double precision. Segment lengths come from this frame's rest hang, so a scaled wearer keeps its
+proportions.
+
+Known limits: contact acts on joints and tips, so a long segment can cross a thin capsule between its ends, and the
+fitting step uses enough joints to avoid it. While a held chain blends back to the live one, the shown chain can
+overlap a capsule for at most the blend time, while the live chain already clears it.
 
 Each chain joint's result is kept relative to its anchor, and drawing composes it on the anchor's current world
 transform. A frame that draws without stepping therefore carries the chain with the body in its last shape and never
@@ -144,9 +156,10 @@ leaves it behind.
 - **Reset.** The first step, `Reset()`, a wearer that moved farther than the teleport distance in one frame, and a
   frame time longer than the longest gap all put every chain at its rest hang with no velocity, so a respawn or a
   teleport is calm.
-- **Hold.** A step at `MotionLevel.Held` runs no substeps. The chains blend from their last simulated shape to the
-  rest hang over the hold blend time and stay there. A later simulated step starts from the shape on screen with no
-  velocity, so neither switch pops.
+- **Hold.** A step at `MotionLevel.Held` runs no substeps. The chains blend from their last shown shape to the rest
+  hang over the hold blend time and stay there. A later simulated step starts the live chain from the held shape with
+  no velocity and blends the shown chain to it over the same time. Each blend continues from the last shown swing, so
+  an anchor turning through a half turn during a blend never switches arcs, and neither switch pops.
 - **Picking who swings.** `MotionLevels.Assign` sets the nearest wearers within a distance to simulated, up to a
   count, and the rest to held, writing into caller spans without allocating.
 
@@ -160,7 +173,8 @@ leaves it behind.
 | World gravity | (0, -9.81, 0) |
 
 These are motion options with defaults in the API, not in a file, because they describe the game's world and frame
-budget, not a piece.
+budget, not a piece. A substep is at most 1/30 s and a frame at most 64 substeps, because a presentation solver needs
+nothing coarser and the link update is proven stable within those bounds.
 
 ## Format 4 and the body collider file
 
@@ -292,8 +306,8 @@ The wearables limits are 32 wearers, at most 2 ms added CPU preparation, no mana
 1.3 ms added GPU time at 32 characters on a T4.
 
 - CPU, an estimate until measured: a cloak of five chains of five joints and four strap tails of three joints is
-  about 37 particles against about 12 colliders. A substep costs a few microseconds, so 32 wearers cost roughly
-  0.15 ms a frame at 144 Hz and 0.3 ms at 60 Hz.
+  about 37 particles against about 12 colliders. Each joint takes a few matrix products and a pass over the colliders
+  per substep, twice when links are present, so 32 wearers cost roughly 0.8 ms a frame at 144 Hz.
 - GPU: no shader, pass or draw count changes. A chained part adds palette entries within the 128 joint limit.
 - Allocation is tested per call, as outfit draws are.
 - `KhaozEngine.Benchmarks` gains a swing mode at 32 wearers. Its timing runs on a hosted runner, outside default CI.

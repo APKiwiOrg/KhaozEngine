@@ -102,6 +102,7 @@ sets the last joint's turn, so an unlinked tip would let a hem splay.
 A collider is a capsule bound to a host joint: two points and a radius, in the body's rest model space, the space a
 fitting step works in. A sphere is a capsule whose points are equal. At bind time each collider moves into its
 joint's frame through the host's inverse bind. Each frame that joint's palette matrix and the model pose it.
+The radius follows the largest axis scale at each of those two transforms.
 
 - A body declares its colliders once in a body collider file, bound to the body's `rig-v1` identity like a region
   map.
@@ -247,7 +248,7 @@ Its canonical bytes and SHA-256 follow the region map's rules.
 - `AttachmentSetCache.GetBodyColliders(key, expectedSha256, bodyRigIdentity)` returns `LoadedBodyColliders`.
 - `BoundOutfit.CreateMotion` and `BoundAttachmentSet.CreateMotion` take the body colliders, or none, and options, and
   return a `WornMotion`. With no body colliders the chains collide with worn set colliders only.
-- `WornMotion.Step(skeleton, palette, model, deltaSeconds, level)`, `Reset()`, and `Tune(partId, chain, settings)`
+- `WornMotion.Step(skeleton, palette, model, deltaSeconds, level)`, `Reset()`, and `Tune(wornIndex, partId, chain, settings)`
   for a live tuner.
 - Overloads of `BoundOutfit.WriteDraws` and `QueueOutline`, and of `BoundAttachmentSet.WriteDraws`, `Queue` and
   `QueueOutline`, that take the motion. A motion made for another outfit or set refuses with a typed reason.
@@ -259,8 +260,8 @@ Its canonical bytes and SHA-256 follow the region map's rules.
 
 ## Binding and drawing
 
-- **Binding.** `CreateMotion` resolves every chain against the garment skin and the host: chain joints by name in the
-  garment skin, anchors by name in the host skin, colliders by joint. It checks each chain's shape and binds and
+- **Binding.** `Bind` resolves garment chain joints and host anchors and checks each chain's shape and inverse
+  binds. `CreateMotion` combines the visible chains across worn sets, resolves colliders against the host skin and
   allocates every buffer the wearer needs.
 - **Frame order.** Animate the body, step the motion once, then write draws and outlines through the motion as often
   as needed. Draw calls only read the motion, so a draw and an outline always agree.
@@ -379,3 +380,13 @@ Each task records here any shape the code required that differs from this note, 
 - Worn set format. `AttachmentSetArgumentException` exposes `ActualCount` and `ExpectedCount` for collection
   limits, using the existing names on `AttachmentSetDataException`. A joint name with an unpaired escaped
   surrogate has no decoded `JointName`. The JSON refusal identifies it by path and input indices.
+
+- Wearer binding. `Bind` validates chains before creating submission scratch, because the ordinary draw methods
+  need the rest hang before a wearer creates motion. The cache already owns the uploads at this point.
+  `Tune(wornIndex, partId, chain, settings)` includes the worn position because different sets can reuse a part ID.
+  The bare set uses index zero. `Reset` exposes the rest hang immediately and lets the solver discard velocity on
+  its next valid step.
+- Body collider binding. An outfit compares the loaded collider rig with the region map's rig and uses the body
+  skin's captured inverse binds. A bare set has only its explicit host skin matrices, so the caller supplies its
+  rig identity to `GetBodyColliders`. A map-only bare set still draws rigid parts. Creating its motion with
+  colliders requires rebinding with a host mesh, since the map has no inverse binds.

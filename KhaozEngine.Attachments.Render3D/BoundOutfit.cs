@@ -10,8 +10,8 @@ namespace KhaozEngine.Attachments.Render3D;
 /// piece draws only what no higher layer covers and a covered rigid part draws nothing. Hidden triangles are cut
 /// through shared skinned mesh views, so every render pass draws the same triangles.
 /// </summary>
-/// <remarks>Everything is worked out and allocated when the outfit is bound. Frame calls only read, and valid calls
-/// allocate no managed memory. Use on the cache's owning render thread with no overlapping calls. Dispose the outfit
+/// <remarks>Binding computes the draw layout and allocates scratch. Valid draw calls allocate no managed memory.
+/// Use on the cache's owning render thread with no overlapping calls. Dispose the outfit
 /// before its cache and before the body's meshes unload, because its views draw from both.</remarks>
 public sealed class BoundOutfit : IDisposable
 {
@@ -22,10 +22,14 @@ public sealed class BoundOutfit : IDisposable
     readonly SkinnedMeshHandle[] _body;
     readonly bool[] _bodyVisible;
     readonly ViewKey[] _used;
+    readonly string _bodyRigIdentity;
+    readonly Skeleton? _hostSkeleton;
+    readonly ReadOnlyMemory<Matrix4x4> _hostInverseBind;
+    object? _motionIdentity;
     bool _disposed;
 
     internal BoundOutfit(AttachmentSetCache owner, OutfitViewCache views, BoundAttachmentSet[] worn, OutfitDraw[][] draws,
-        SkinnedMeshHandle[] body, bool[] bodyVisible, ViewKey[] used)
+        SkinnedMeshHandle[] body, bool[] bodyVisible, ViewKey[] used, LoadedBodyRegions bodyRegions)
     {
         _owner = owner;
         _views = views;
@@ -34,6 +38,29 @@ public sealed class BoundOutfit : IDisposable
         _body = body;
         _bodyVisible = bodyVisible;
         _used = used;
+        _bodyRigIdentity = bodyRegions.Map.RigIdentity;
+        _hostSkeleton = bodyRegions.HostSkeleton;
+        _hostInverseBind = bodyRegions.HostInverseBind;
+    }
+
+    internal object MotionIdentity => _motionIdentity ??= new object();
+
+    /// <summary>Create independent motion state for one wearer of this binding.</summary>
+    public WornMotion CreateMotion(LoadedBodyColliders? bodyColliders, ChainSimulationOptions? options = null)
+    {
+        ThrowIfDisposed();
+        Skeleton skeleton = _hostSkeleton ?? (_worn.Length > 0 ? _worn[0].Skeleton :
+            throw new InvalidOperationException("Creating motion requires a body skin or a worn set with a skeleton."));
+        ReadOnlySpan<Matrix4x4> inverseBind = _hostInverseBind.Span;
+        if (_hostSkeleton is null)
+            foreach (BoundAttachmentSet set in _worn)
+                if (ReferenceEquals(set.Skeleton, skeleton) && !set.HostInverseBind.IsEmpty)
+                {
+                    inverseBind = set.HostInverseBind;
+                    break;
+                }
+        return WornMotionBinding.Create(MotionIdentity, skeleton, inverseBind, _worn, _draws,
+            bodyColliders, _bodyRigIdentity, options);
     }
 
     /// <summary>The number of body material parts, the region map's part count.</summary>

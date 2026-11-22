@@ -56,6 +56,28 @@ internal sealed class SkinnedAttachmentGlbFixture
         Accessors[0]!["max"] = new JsonArray(1, 1, 0);
     }
 
+    /// <summary>A level two-joint chain on hip, in a skin order different from the hierarchy.</summary>
+    internal static SkinnedAttachmentGlbFixture Chained()
+    {
+        var fixture = new SkinnedAttachmentGlbFixture();
+        fixture.Nodes[0]!["name"] = "hip";
+        fixture.Nodes[0]!["translation"] = new JsonArray(0, 1, 0);
+        fixture.Nodes[0]!["children"] = new JsonArray(1, 2);
+        fixture.Nodes[1]!["name"] = "knee";
+        fixture.Nodes[1]!["translation"] = new JsonArray(0, 1, 0);
+        fixture.Nodes[2]!["name"] = "left0";
+        fixture.Nodes[2]!["translation"] = new JsonArray(.25f, 0, 0);
+        fixture.Nodes[2]!["children"] = new JsonArray(3);
+        fixture.Nodes[3]!["name"] = "left1";
+        fixture.Nodes[3]!["translation"] = new JsonArray(.5f, 0, 0);
+        fixture.SetSkinJoints(3, 1, 2, 0);
+        fixture.SetInverseBind(0, Matrix4x4.CreateTranslation(-.75f, -1, 0));
+        fixture.SetInverseBind(1, Matrix4x4.CreateTranslation(0, -2, 0));
+        fixture.SetInverseBind(2, Matrix4x4.CreateTranslation(-.25f, -1, 0));
+        fixture.SetInverseBind(3, Matrix4x4.CreateTranslation(0, -1, 0));
+        return fixture;
+    }
+
     void AddAccessor(int count, string type, int componentType, bool normalized, bool strided)
     {
         int components = type == "MAT4" ? 16 : type == "VEC3" ? 3 : 4;

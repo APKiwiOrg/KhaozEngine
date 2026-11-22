@@ -84,13 +84,16 @@ public sealed class AttachmentSetBinding
     internal IReadOnlyList<CoverageConfigurationPart> ConfigurationParts => _configurationParts;
     internal bool MatchesHostSkin(SkinnedHostCoverage host) => _hostInverseBind is null || host.MatchesHostSkin(_hostInverseBind);
 
+    internal ReadOnlySpan<Matrix4x4> HostInverseBind => _hostInverseBind;
+    internal AttachmentChainBinding? Motion(int part) => _parts[part].Skin?.Motion;
+
     public Skeleton Skeleton { get; }
     public int PartCount => _parts.Length;
 
     /// <summary>The garment palette capacity for a named part, or zero for a rigid part.</summary>
     public int SkinnedJointCount(uint partId) => Part(partId).Skin?.JointCount ?? 0;
 
-    /// <summary>Copy host joint model matrices into garment skin order without applying inverse binds.</summary>
+    /// <summary>Copy host joint matrices and chain rest frames into garment skin order without applying inverse binds.</summary>
     /// <remarks>Valid calls allocate no managed memory. The renderer applies the garment's inverse binds.</remarks>
     public void CopySkinnedPalette(Skeleton skeleton, ReadOnlySpan<Matrix4x4> hostPalette,
         uint partId, Span<Matrix4x4> destination)
@@ -116,9 +119,7 @@ public sealed class AttachmentSetBinding
             throw new AttachmentBindingArgumentException(AttachmentBindingRefusal.WorldOutputTooSmall,
                 $"Output capacity {destination.Length} must hold {PartCount} attachment parts.", nameof(destination))
             { ActualCapacity = destination.Length, RequiredCapacity = PartCount };
-        if (!ValidMatrix(model))
-            throw new AttachmentBindingArgumentException(AttachmentBindingRefusal.ModelTransformInvalid,
-                "The model matrix must be finite, affine and invertible.", nameof(model));
+        ValidateModel(model);
 
         Span<Matrix4x4> worlds = _worlds;
         for (int i = 0; i < _parts.Length; i++)
@@ -160,15 +161,25 @@ public sealed class AttachmentSetBinding
             $"Attachment part {partId} is not in this binding.", nameof(partId))
         { PartId = partId };
 
-    void ValidateFrame(Skeleton skeleton, ReadOnlySpan<Matrix4x4> palette)
+    void ValidateFrame(Skeleton skeleton, ReadOnlySpan<Matrix4x4> palette) =>
+        ValidateFrame(Skeleton, skeleton, palette);
+
+    internal static void ValidateFrame(Skeleton expected, Skeleton skeleton, ReadOnlySpan<Matrix4x4> palette)
     {
-        if (!ReferenceEquals(skeleton, Skeleton))
+        if (!ReferenceEquals(skeleton, expected))
             throw new AttachmentBindingArgumentException(AttachmentBindingRefusal.SkeletonMismatch,
                 "The attachment binding requires its exact skeleton instance.", nameof(skeleton));
-        if (palette.Length != Skeleton.BoneCount)
+        if (palette.Length != expected.BoneCount)
             throw new AttachmentBindingArgumentException(AttachmentBindingRefusal.HostPaletteLengthMismatch,
-                $"Palette length {palette.Length} must equal skin bone count {Skeleton.BoneCount}.", nameof(palette))
-            { ActualCount = palette.Length, RequiredCount = Skeleton.BoneCount };
+                $"Palette length {palette.Length} must equal skin bone count {expected.BoneCount}.", nameof(palette))
+            { ActualCount = palette.Length, RequiredCount = expected.BoneCount };
+    }
+
+    internal static void ValidateModel(in Matrix4x4 model)
+    {
+        if (!ValidMatrix(model))
+            throw new AttachmentBindingArgumentException(AttachmentBindingRefusal.ModelTransformInvalid,
+                "The model matrix must be finite, affine and invertible.", nameof(model));
     }
 
     internal static bool ValidMatrix(in Matrix4x4 matrix) => Finite(matrix)

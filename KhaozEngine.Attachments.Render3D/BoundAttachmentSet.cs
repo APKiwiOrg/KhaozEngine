@@ -20,7 +20,12 @@ public sealed class BoundAttachmentSet
     readonly uint _revisionLow, _revisionHigh;
     readonly int _drawCount;
     readonly int _skinnedPartCount;
+    object? _motionIdentity;
+
+    internal object MotionIdentity => _motionIdentity ??= new object();
     internal AttachmentSetCache Owner => _owner;
+    internal ReadOnlySpan<Matrix4x4> HostInverseBind => _binding.HostInverseBind;
+    internal AttachmentChainBinding? PartMotion(int part) => _binding.Motion(part);
     /// <summary>The cache key the set was loaded under, so an outfit refusal can name the piece.</summary>
     internal string SourceName { get; }
     internal AttachmentSetDefinition Definition => _definition;
@@ -63,6 +68,14 @@ public sealed class BoundAttachmentSet
     public int DrawCount
     {
         get { _owner.ThrowIfDisposed(); return _drawCount; }
+    }
+
+    /// <summary>Create independent motion state for one wearer of this binding.</summary>
+    public WornMotion CreateMotion(LoadedBodyColliders? bodyColliders, ChainSimulationOptions? options = null)
+    {
+        _owner.ThrowIfDisposed();
+        return WornMotionBinding.Create(MotionIdentity, _binding.Skeleton, _binding.HostInverseBind,
+            [this], null, bodyColliders, null, options);
     }
 
     /// <summary>Write borrowed descriptors in canonical part-ID and material order after validating the whole pose.</summary>

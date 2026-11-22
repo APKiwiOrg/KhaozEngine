@@ -177,14 +177,22 @@ public class OutfitLiftTests
     }
 
     [Theory]
-    [InlineData(true, null, 0.007f, 0.012f)]
-    [InlineData(false, null, 0.007f, 0.005f)]
-    [InlineData(true, 0.012f, 0.011f, 0.016f)]
-    public void A_hem_ramps_one_triangle_across_material_parts_at_bitwise_coincident_positions(
-        bool coincident, float? backHeight, float seamLift, float backStandoff)
+    [InlineData("same", null, 0.007f, 0.012f)]
+    [InlineData("negative zero", null, 0.007f, 0.012f)]
+    [InlineData("apart", null, 0.007f, 0.005f)]
+    [InlineData("same", 0.012f, 0.011f, 0.016f)]
+    public void A_hem_ramps_one_triangle_across_material_parts_at_coincident_positions(
+        string seamKind, float? backHeight, float seamLift, float backStandoff)
     {
         LiftMaterialMesh inside = Triangle(Vector3.Zero);
-        Vector3 seam = coincident ? Vector3.Zero : new(BitConverter.Int32BitsToSingle(int.MinValue), 0, 0);
+        // Negative zero is the same point as zero and must weld with it, or the seam would crack.
+        bool coincident = seamKind != "apart";
+        Vector3 seam = seamKind switch
+        {
+            "negative zero" => new(BitConverter.Int32BitsToSingle(int.MinValue), 0, 0),
+            "apart" => new(1e-6f, 0, 0),
+            _ => Vector3.Zero,
+        };
         // The two baked bearings at the seam can differ within the GLB policy's tolerance.
         LiftMaterialMesh outside = new(new Vector3[] { seam, new(1, 1, 0), new(2, 0, 0), new(2, 1, 0) },
             new uint[] { 0, 1, 2, 1, 3, 2 }, new[] { Vector3.UnitZ, Vector3.UnitZ, Vector3.UnitZ, Vector3.UnitZ },

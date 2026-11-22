@@ -113,9 +113,14 @@ public static partial class AttachmentGlb
             && value.TryGetInt32(out int actual) && actual == expected;
 
         static (uint X, uint Y, uint Z) PositionBits(ReadOnlySpan<byte> position) => position.IsEmpty ? default
-            : (BinaryPrimitives.ReadUInt32LittleEndian(position),
-                BinaryPrimitives.ReadUInt32LittleEndian(position[4..]),
-                BinaryPrimitives.ReadUInt32LittleEndian(position[8..]));
+            : (CoordinateBits(position), CoordinateBits(position[4..]), CoordinateBits(position[8..]));
+
+        // Negative zero is the same point as zero, so it keys the same weld and a seam on a zero plane never cracks.
+        static uint CoordinateBits(ReadOnlySpan<byte> coordinate)
+        {
+            uint bits = BinaryPrimitives.ReadUInt32LittleEndian(coordinate);
+            return bits == 0x8000_0000u ? 0u : bits;
+        }
     }
 
     static AttachmentSkinnedGeometryDataException LiftRefusal(AttachmentSkinnedGeometryRefusal reason,

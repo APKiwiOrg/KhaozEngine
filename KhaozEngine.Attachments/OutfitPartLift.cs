@@ -107,8 +107,10 @@ internal static class OutfitPartLift
 
     readonly record struct PositionBits(int X, int Y, int Z)
     {
-        internal PositionBits(Vector3 position) : this(BitConverter.SingleToInt32Bits(position.X),
-            BitConverter.SingleToInt32Bits(position.Y), BitConverter.SingleToInt32Bits(position.Z)) { }
+        internal PositionBits(Vector3 position) : this(Bits(position.X), Bits(position.Y), Bits(position.Z)) { }
+
+        // Negative zero is the same point as zero, so it joins the same weld, as the GLB policy keys it.
+        static int Bits(float coordinate) => BitConverter.SingleToInt32Bits(coordinate == 0f ? 0f : coordinate);
     }
 
     struct WeldedVertex(Vector3 position, Vector3 direction, float bearing)

@@ -93,8 +93,8 @@ An outfit is resolved against a body's region map as it is for hiding. Then, in 
 2. For a worn set `k`, the **height below** at `r` is the largest **effective standoff** at `r` among the sets that
    contribute there from layers strictly below `k`'s. With none, nothing needs clearing at `r`.
 3. A vertex of a lifting part takes the regions of every triangle that uses it or any vertex of the same part at the
-   same position. Coincident vertices from split normals or material seams therefore always move together. Its
-   height below is the largest over those regions.
+   same position, negative zero counting as zero. Coincident vertices from split normals or material seams therefore
+   always move together. Its height below is the largest over those regions.
 4. The vertex lifts by `max(0, heightBelow + clearance - bearing)` along its lift direction, and not at all when no
    region it touches has a height below.
 5. A set's **effective standoff** at `r` is its declared standoff there plus the largest lift any vertex of its parts
@@ -176,9 +176,10 @@ A lifting part's GLB carries two custom attributes on every primitive, one eleme
 
 The skinned attachment policy refuses a lifting part when a primitive lacks either attribute, uses another
 accessor type or component encoding, normalizes it, or has an element count different from `POSITION`.
-Directions must be finite and within 0.001 of unit length. Bearings must be finite and nonnegative. Vertices with
-bitwise equal positions across the mesh must carry direction and bearing values within 0.0001 in each component,
-because they move as one and different data would open a crack. A part without lift ignores these attributes.
+Directions must be finite and within 0.001 of unit length. Bearings must be finite and nonnegative. Vertices at
+equal positions across the mesh, compared bit for bit with negative zero read as zero, must carry direction and
+bearing values within 0.0001 in each component, because they move as one and different data would open a crack.
+A part without lift ignores these attributes.
 
 The renderer groups a part's vertices by material in first use order when it uploads them, and region runs follow
 that grouping. `AttachmentGlb.LiftBasis` returns an immutable `LiftBasis` in flattened mesh, primitive and vertex

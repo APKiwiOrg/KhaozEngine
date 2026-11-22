@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using System.Text.Json.Nodes;
 using KhaozEngine.Attachments;
@@ -64,11 +65,18 @@ public sealed class LiftBasisTests
     }
 
     [Theory]
-    [InlineData(Direction)]
-    [InlineData(Bearing)]
-    public void Coincident_vertices_across_materials_identify_both_flattened_indices(string attribute)
+    [InlineData(Direction, false)]
+    [InlineData(Bearing, false)]
+    [InlineData(Bearing, true)]
+    public void Coincident_vertices_across_materials_identify_both_flattened_indices(string attribute, bool negativeZero)
     {
         var fixture = SplitFixture();
+        if (negativeZero)
+        {
+            // Negative zero names the same point as zero, so the copy of (1, 0, 0) written as (1, -0, -0) is coincident.
+            float minusZero = BitConverter.Int32BitsToSingle(int.MinValue);
+            fixture.SetPositions(1, [Vector3.Zero, new(1, minusZero, minusZero), Vector3.UnitY]);
+        }
         Assert.Equal(6, AttachmentGlb.LiftBasis(fixture.Build(), Source).Vertices.Count);
 
         int accessor = fixture.Primitives[1]!["attributes"]![attribute]!.GetValue<int>();

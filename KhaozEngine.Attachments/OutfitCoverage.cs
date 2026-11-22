@@ -85,6 +85,8 @@ public sealed class OutfitCoverage
             : throw new ArgumentException($"worn[{wornIndex}] has no skinned part {partId}.", nameof(partId));
     }
 
+    internal ReadOnlySpan<(int Region, float Metres)> StandoffFor(int wornIndex) => At(wornIndex).Standoff;
+
     Worn At(int wornIndex)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(wornIndex);
@@ -97,12 +99,14 @@ public sealed class OutfitCoverage
         // A rigid part of a set with no layer maps to -1, which no region index uses.
         internal const int NoRegion = -1;
 
-        Worn(AttachmentLayer? layer, RegionSet covers, Dictionary<uint, int> rigidRegions, Dictionary<uint, IReadOnlyList<RegionRun>> skinnedRegions)
+        Worn(AttachmentLayer? layer, RegionSet covers, Dictionary<uint, int> rigidRegions,
+            Dictionary<uint, IReadOnlyList<RegionRun>> skinnedRegions, (int Region, float Metres)[] standoff)
         {
             Layer = layer;
             Covers = covers;
             RigidRegions = rigidRegions;
             SkinnedRegions = skinnedRegions;
+            Standoff = standoff;
         }
 
         internal AttachmentLayer? Layer { get; }
@@ -110,12 +114,20 @@ public sealed class OutfitCoverage
         internal RegionSet Hidden { get; set; }
         internal Dictionary<uint, int> RigidRegions { get; }
         internal Dictionary<uint, IReadOnlyList<RegionRun>> SkinnedRegions { get; }
+        internal (int Region, float Metres)[] Standoff { get; }
 
         internal static Worn Resolve(BodyRegionMap body, AttachmentSetDefinition set, int wornIndex)
         {
             RegionSet covers = RegionSet.Empty;
             foreach (string name in set.Covers)
                 covers = covers.With(Region(body, name, wornIndex, null, null));
+
+            (int Region, float Metres)[] standoff = set.Standoff.Count == 0 ? [] : new (int, float)[set.Standoff.Count];
+            for (int index = 0; index < standoff.Length; index++)
+            {
+                RegionStandoff entry = set.Standoff[index];
+                standoff[index] = (Region(body, entry.Region, wornIndex, null, null, "standoff"), entry.Metres);
+            }
 
             var rigidRegions = new Dictionary<uint, int>();
             var skinnedRegions = new Dictionary<uint, IReadOnlyList<RegionRun>>();
@@ -132,14 +144,14 @@ public sealed class OutfitCoverage
                     runs[runIndex] = new RegionRun(Region(body, named[runIndex].Region, wornIndex, part.Id, runIndex), named[runIndex].TriangleCount);
                 skinnedRegions.Add(part.Id, Array.AsReadOnly(runs));
             }
-            return new Worn(set.Layer, covers, rigidRegions, skinnedRegions);
+            return new Worn(set.Layer, covers, rigidRegions, skinnedRegions, standoff);
         }
 
-        static int Region(BodyRegionMap body, string name, int wornIndex, uint? partId, int? runIndex)
+        static int Region(BodyRegionMap body, string name, int wornIndex, uint? partId, int? runIndex, string field = "covers")
         {
             if (body.TryRegion(name, out int index))
                 return index;
-            string where = partId is null ? "covers" : runIndex is null ? $"part {partId}" : $"part {partId} run {runIndex}";
+            string where = partId is null ? field : runIndex is null ? $"part {partId}" : $"part {partId} run {runIndex}";
             throw new OutfitDataException(OutfitRefusal.RegionUnknown, $"worn[{wornIndex}] {where}: the body has no region '{name}'.")
             { WornIndex = wornIndex, PartId = partId, RunIndex = runIndex, RegionName = name };
         }

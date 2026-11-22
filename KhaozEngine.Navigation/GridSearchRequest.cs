@@ -16,6 +16,9 @@ public sealed partial class GridPathPlanner
         internal int LeaseSlot { get; set; } = -1;
         internal LinkedListNode<GridSearchRequest>? WaitNode { get; set; }
 
+        /// <summary>Reports whether the stepper holds the staged result array before publication.</summary>
+        internal bool HasStagedResultArrayForTests => _stepper.HasStagedResultArrayForTests;
+
         /// <summary>Predicts the next paid operation while this request holds a lease.
         /// Done means no work is due, including a pending request that will publish with zero work.</summary>
         internal SearchPhase NextPhaseForTests

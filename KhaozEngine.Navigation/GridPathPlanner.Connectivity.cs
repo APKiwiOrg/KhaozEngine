@@ -57,7 +57,12 @@ public sealed partial class GridPathPlanner
         return label >= 0 && label != startComponent;
     }
 
+    // Separate returns let the ARM64 JIT branch directly on the comparison in the synchronous sweep.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static bool RejectsCertificate(double progress, double startProgress)
-        => !double.IsFinite(progress) || progress < startProgress;
+    {
+        if (!double.IsFinite(progress)) return true;
+        if (progress < startProgress) return true;
+        return false;
+    }
 }

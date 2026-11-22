@@ -325,8 +325,8 @@ A* implementation over a `NavSpace`.
 
 A query snaps both endpoints onto a passable cell (within `PathQueryBudget.SnapRadius`, else
 `NavPath.Unreachable`), tries a same-layer line-of-sight shortcut, then searches eight-connected grid exits and
-accepted links. A legacy snap whose ring reaches `int.MaxValue` on either cell axis returns `NavPath.Unreachable`.
-Snapping also stops before entering a ring whose cell coordinates cannot be represented as integers. Diagonals
+accepted links. A legacy snap returns `NavPath.Unreachable` before testing a ring's candidates if its cell
+coordinates cannot be represented as integers or its inclusive right or bottom bound is `int.MaxValue`. Diagonals
 require both companion cells. Stair costs the greater of its spatial metric span and one source cell, rounded
 upward when needed to cover that span. Hop costs `hopCostCells`
 source cells and Drop costs world XZ octile displacement plus positive physical descent in metres. Expansion is

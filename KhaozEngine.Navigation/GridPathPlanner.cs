@@ -187,12 +187,14 @@ public sealed partial class GridPathPlanner : IIncrementalRegionPathPlanner
 
     /// <summary>
     /// Finds the passable cell nearest <paramref name="worldXz"/> in <paramref name="grid"/> for an
-    /// agent of <paramref name="agentRadius"/>. Searches Chebyshev rings centered on the cell
+    /// agent of <paramref name="agentRadius"/>. Legacy snapping searches Chebyshev rings centered on the cell
     /// containing <paramref name="worldXz"/>, from ring 0 up to
     /// <c>ceil(snapRadius / grid.CellSize)</c>. The first ring with any passable cell wins, and within
     /// that ring the cell minimizing squared distance from <paramref name="worldXz"/> to its center
     /// wins (ties keep whichever is found first, scanning z low to high then x low to high within the
-    /// ring). Returns the winning cell's world-space center, or null when no passable cell was found
+    /// ring). If a ring's coordinates cannot be represented as integers, or its inclusive right or
+    /// bottom bound is <see cref="int.MaxValue"/>, the legacy snap returns null before testing its
+    /// candidates. Returns the winning cell's world-space center, or null when no passable cell was found
     /// in range. <paramref name="snappedToOwnCell"/> reports whether the winning cell is the one
     /// <paramref name="worldXz"/> itself falls in.
     /// </summary>

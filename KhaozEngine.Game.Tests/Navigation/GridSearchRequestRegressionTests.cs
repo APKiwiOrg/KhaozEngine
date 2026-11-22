@@ -87,6 +87,29 @@ public partial class GridSearchRequestEqualityTests
     }
 
     [Fact]
+    public void ResultArrayIsAllocatedOnlyAtTheAllocateCut()
+    {
+        var planner = Incremental(Corridor(1));
+        PathQueryBudget budget = Budget(1);
+        using var pool = planner.CreateWorkspaces(1, budget);
+        using var request = Assert.IsType<GridPathPlanner.GridSearchRequest>(
+            planner.BeginPath(Start, End(1), 0f, budget, pool));
+
+        // The one-cell route spends 20 units through its only Decode.
+        request.Advance(new PathWorkBudget(20));
+        Assert.Equal(20, request.WorkSpent);
+        Assert.Equal(Phase.Allocate, request.NextPhaseForTests);
+        Assert.False(request.HasStagedResultArrayForTests);
+        Assert.Null(request.Result);
+
+        request.Advance(new PathWorkBudget(2));
+        Assert.Equal(22, request.WorkSpent);
+        Assert.Equal(Phase.Copy, request.NextPhaseForTests);
+        Assert.True(request.HasStagedResultArrayForTests);
+        Assert.Null(request.Result);
+    }
+
+    [Fact]
     public void SingleLegacyLayerCanRefuseBeforeAnySnapWork()
     {
         var planner = Incremental(Corridor());
@@ -141,5 +164,19 @@ public partial class GridSearchRequestEqualityTests
         var afterRequest = query.Planner.WorkForTests;
         Assert.Equal((searches, certificates),
             (afterRequest.Searches - afterSync.Searches, afterRequest.Certificates - afterSync.Certificates));
+    }
+
+    [Fact]
+    public void CertificateAtTheExactComparisonCapRefusesWithoutSearchInBothDrivers()
+    {
+        RegionQuery query = Assert.Single(AdditionalTimingQueries(), row => row.Name == "certificate-near-comparison-cap");
+        var planner = Incremental(query.Planner);
+        Assert.Equal(NavPathStatus.Unreachable, planner.FindPath(query.Start, query.Goal, 0f, query.Budget).Status);
+        Assert.Equal((0, 1), query.Planner.WorkForTests);
+
+        using var pool = planner.CreateWorkspaces(1, query.Budget);
+        using var request = planner.BeginPath(query.Start, query.Goal, 0f, query.Budget, pool);
+        Assert.Equal(NavPathStatus.Unreachable, Finish(request, 64).Status);
+        Assert.Equal((0, 2), query.Planner.WorkForTests);
     }
 }

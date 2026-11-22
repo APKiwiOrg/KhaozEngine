@@ -63,6 +63,7 @@ public sealed partial class GridPathPlanner
 
         internal SearchPhase Phase { get; private set; }
         internal NavPath? Result { get; private set; }
+        internal bool HasStagedResultArrayForTests => _resultArray is not null;
 
         internal void RunSlice(int quota, ref int spent)
         {

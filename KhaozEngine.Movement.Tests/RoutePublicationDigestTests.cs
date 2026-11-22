@@ -12,8 +12,8 @@ public sealed class RoutePublicationDigestTests
 {
     [Theory]
     [InlineData(0, "6E4C8E09AA583E91/DE4E57320ED16394")]
-    [InlineData(1, "6E4C8E09AA583E91/C06A9DF8068DB617")]
-    [InlineData(2, "6E4C8E09AA583E91/068B5E557E5D0EE1")]
+    [InlineData(1, "6E4C8E09AA583E91/4154257B72CFF48D")]
+    [InlineData(2, "6E4C8E09AA583E91/63344C3C8E203F78")]
     public void StraightenedRequestsPublishIdenticalRouteBitsAndCalls(int schedule, string expected)
     {
         var fixtures = RouteCalibrationFixture.StraighteningRows()
@@ -41,8 +41,8 @@ public sealed partial class MoveToRangePlanningTests
 {
     [Theory]
     [InlineData(int.MaxValue, "65135DF7E8BB2CEE/AD2ACA7747985764")]
-    [InlineData(64, "65135DF7E8BB2CEE/EDCAA17D2D4C3E66")]
-    [InlineData(17, "65135DF7E8BB2CEE/4A50DAED6A5A40FD")]
+    [InlineData(64, "65135DF7E8BB2CEE/8BC5D0A5D7A8B157")]
+    [InlineData(17, "65135DF7E8BB2CEE/3569B61E08B31163")]
     public void WalkingMoverAdoptsEveryRouteOnTheSameCall(int quota, string expected)
     {
         var navigation = Flat(10, 3, Tuning.CapsuleRadius);
@@ -53,7 +53,8 @@ public sealed partial class MoveToRangePlanningTests
         MoveState body = At(0.5f);
         NavPath? previous = null;
         bool arrived = false;
-        for (int call = 1; call <= 256; call++)
+        // At quota 17 the route takes 284 slices, an adoption call, and 16 movement steps.
+        for (int call = 1; call <= 301; call++)
         {
             var steering = Tick(mover, body, Target(8.75f), context);
             if (mover.ActivePathForTests is { } route && !ReferenceEquals(previous, route))

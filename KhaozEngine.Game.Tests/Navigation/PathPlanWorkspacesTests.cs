@@ -214,8 +214,8 @@ public class PathPlanWorkspacesTests
     }
 
     [Theory]
+    [InlineData(12)]
     [InlineData(8)]
-    [InlineData(6)]
     public void ThrowingPredicateCancelsAndReleasesExactlyOnce(int firstQuota)
     {
         var planner = Incremental(Corridor());
@@ -232,12 +232,12 @@ public class PathPlanWorkspacesTests
         using var next = Begin(planner, pool);
         using var later = Begin(planner, pool);
 
-        // Both schedules reject x=13 before the cut. The six-unit cut leaves x=14 for the throwing advance.
+        // Both schedules reject x=13 before the cut. The eight-unit cut leaves x=14 for the throwing advance.
         owner.Advance(new PathWorkBudget(firstQuota));
         Assert.Equal(firstQuota, owner.WorkSpent);
-        Assert.Equal(firstQuota == 8 ? new[] { 14.5f } : Array.Empty<float>(), visits);
+        Assert.Equal(firstQuota == 12 ? new[] { 14.5f } : Array.Empty<float>(), visits);
         Assert.Same(failure, Assert.Throws<InvalidOperationException>(() => owner.Advance(new PathWorkBudget(int.MaxValue))));
-        Assert.Equal(8, owner.WorkSpent);
+        Assert.Equal(12, owner.WorkSpent);
         Assert.Equal(new[] { 14.5f, 15.5f }, visits);
         Assert.Equal(PathPlanState.Cancelled, owner.State);
         owner.Cancel();

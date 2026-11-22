@@ -33,7 +33,7 @@ public sealed class RouteCalibrationPhaseWorkTests
     }
 
     [Fact]
-    public void ProjectedFootprintWindowSpendsTwoUnitsPerPrepositionedRow()
+    public void ProjectedFootprintWindowSpendsThreeUnitsPerPrepositionedRow()
     {
         var rows = RouteCalibrationPhases.ProjectedRows();
         var work = new PathWorkByKind();
@@ -44,12 +44,12 @@ public sealed class RouteCalibrationPhaseWorkTests
             long prior = cursor.WorkSpent;
             Assert.Equal(NavSegmentOperation.FootprintRow, cursor.NextOperation);
             cursor.AdvanceForTests(1, work);
-            Assert.Equal(2, cursor.WorkSpent - prior);
+            Assert.Equal(3, cursor.WorkSpent - prior);
             Assert.Equal(NavSegmentOperation.FootprintColumn, cursor.NextOperation);
         }
 
-        Assert.Equal(258, work[PathWorkKind.FootprintRow]);
-        Assert.Equal(258, work.Total);
+        Assert.Equal(387, work[PathWorkKind.FootprintRow]);
+        Assert.Equal(387, work.Total);
         Assert.Equal(129, CalibrationWork.Operations(work, PathWorkKind.FootprintRow));
     }
 
@@ -60,11 +60,11 @@ public sealed class RouteCalibrationPhaseWorkTests
         var shortWork = Measure(prepared, RouteCalibrationPhases.ShortCrossingBudget);
         var longWork = Measure(prepared, RouteCalibrationPhases.LongCrossingBudget);
 
-        Assert.Equal(384, longWork[PathWorkKind.CellCrossing] - shortWork[PathWorkKind.CellCrossing]);
-        Assert.Equal(384, shortWork[PathWorkKind.CellCrossing]);
-        Assert.Equal(768, longWork[PathWorkKind.CellCrossing]);
-        Assert.Equal(384, shortWork.Total);
-        Assert.Equal(768, longWork.Total);
+        Assert.Equal(768, longWork[PathWorkKind.CellCrossing] - shortWork[PathWorkKind.CellCrossing]);
+        Assert.Equal(768, shortWork[PathWorkKind.CellCrossing]);
+        Assert.Equal(1536, longWork[PathWorkKind.CellCrossing]);
+        Assert.Equal(768, shortWork.Total);
+        Assert.Equal(1536, longWork.Total);
         Assert.Equal(128, CalibrationWork.Operations(shortWork, PathWorkKind.CellCrossing));
         Assert.Equal(256, CalibrationWork.Operations(longWork, PathWorkKind.CellCrossing));
 

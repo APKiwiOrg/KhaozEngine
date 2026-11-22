@@ -28,8 +28,8 @@ public sealed partial class MoveToRangePlanningTests
         var selected = cause == "capsule" ? rawPool : pool;
         if (cause == "capsule") incremental = grid;
         var mover = cause == "capsule"
-            ? new MoveToRange(grid, navigation.Space, (_, _) => true, Follow(selected, 6))
-            : new MoveToRange(navigation, Follow(selected, 6));
+            ? new MoveToRange(grid, navigation.Space, (_, _) => true, Follow(selected, 7))
+            : new MoveToRange(navigation, Follow(selected, 7));
         MoveState body = At(0.5f);
         HoldPending(mover, body, Far, context);
         var feet = new Vector3(0.5f, 0f, 1.5f);
@@ -93,9 +93,9 @@ public sealed partial class MoveToRangePlanningTests
         var replacement = Flat(6, 3, Tuning.CapsuleRadius);
         using var pool = navigation.CreatePlanningWorkspaces(1);
         using var context = new GroundMoveContext((_, _) => 0f);
-        var mover = new MoveToRange(navigation, Follow(pool, 6));
+        var mover = new MoveToRange(navigation, Follow(pool, 7));
         HoldPending(mover, At(0.5f), Far, context);
-        Assert.Throws<ArgumentException>(() => new MoveToRange(replacement, Follow(pool, 6)));
+        Assert.Throws<ArgumentException>(() => new MoveToRange(replacement, Follow(pool, 7)));
         for (int call = 0; call < 100; call++)
             AssertSteering(new(Vector2.Zero, RangeMoveStatus.Suspended),
                 Tick(mover, At(0.5f) with { Grounded = false }, Far, context));
@@ -114,7 +114,7 @@ public sealed partial class MoveToRangePlanningTests
         var navigation = Flat(6, 3, Tuning.CapsuleRadius);
         PathQueryBudget limit = new() { MaxExpandedNodes = 4, SnapRadius = 1f };
         using var pool = navigation.CreatePlanningWorkspaces(1, limit);
-        PathPlanningConfig planning = new(new(6), pool);
+        PathPlanningConfig planning = new(new(7), pool);
         var fit = new PathFollowConfig { Planning = planning, Budget = limit };
         _ = new MoveToRange(navigation, fit, Straight);
         PathQueryBudget over = snap ? limit with { SnapRadius = 1.25f } : limit with { MaxExpandedNodes = 5 };
@@ -132,7 +132,7 @@ public sealed partial class MoveToRangePlanningTests
         var grid = new GridPathPlanner(space);
         var physicalGrid = new GridPathPlanner(Flat(3, 1, Tuning.CapsuleRadius).Space);
         using var pool = ((IIncrementalRegionPathPlanner)physicalGrid).CreateWorkspaces(1, PathQueryBudget.Default);
-        Assert.Throws<ArgumentException>("config", () => new PathFollower(grid, Follow(pool, 6), space));
+        Assert.Throws<ArgumentException>("config", () => new PathFollower(grid, Follow(pool, 7), space));
     }
 
     [Fact]
@@ -140,9 +140,9 @@ public sealed partial class MoveToRangePlanningTests
     {
         var navigation = Flat(6, 3, Tuning.CapsuleRadius, (x, _) => x == 1 ? 1u : 0u);
         using var pool = navigation.CreatePlanningWorkspaces(1);
-        Assert.Throws<ArgumentOutOfRangeException>(() => new PathPlanningConfig(new(5), pool));
-        Assert.Throws<ArgumentNullException>(() => new PathPlanningConfig(new(6), null!));
-        var config = Follow(pool, 6);
+        Assert.Throws<ArgumentOutOfRangeException>(() => new PathPlanningConfig(new(6), pool));
+        Assert.Throws<ArgumentNullException>(() => new PathPlanningConfig(new(7), null!));
+        var config = Follow(pool, 7);
         Assert.Throws<ArgumentException>(() => new GroundPursuit(navigation, config));
         Assert.Throws<ArgumentException>(() => new MoveToRange(navigation.Planner, navigation.Space,
             navigation.AllowsSegment, config, Straight));

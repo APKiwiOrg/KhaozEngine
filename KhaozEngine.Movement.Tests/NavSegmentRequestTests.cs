@@ -124,7 +124,7 @@ public sealed class NavSegmentRequestTests
                 int quota = schedule == 0 ? quanta[call % quanta.Length] : schedule;
                 long before = request.WorkSpent;
                 request.Advance(quota);
-                Assert.InRange(request.WorkSpent - before, 1, Math.Max(quota, 6));
+                Assert.InRange(request.WorkSpent - before, 1, Math.Max(quota, 7));
             }
             Assert.Equal(expected, request.Result);
             Assert.Equal(expectedCells, work.CandidateCells);

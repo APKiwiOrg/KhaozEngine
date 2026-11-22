@@ -54,7 +54,7 @@ public sealed class MoveToRangePlanningAllocationTests(ITestOutputHelper output)
         NavSpace otherSpace = Flat(3, 1, 0.25f).Space;
         var planner = new GridPathPlanner(space);
         using var pool = ((IIncrementalRegionPathPlanner)planner).CreateWorkspaces(1, PathQueryBudget.Default);
-        var follow = new PathFollowConfig { Planning = new(new(6), pool) };
+        var follow = new PathFollowConfig { Planning = new(new(7), pool) };
         // A window this long makes the stall buffer far larger than everything else a refused construction allocates.
         var options = new RouteApproachOptions { Stall = new RouteStallOptions(65_535, 0.1f) };
         bool refused = false;

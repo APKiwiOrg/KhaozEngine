@@ -28,7 +28,7 @@ public partial class GridSearchRequestEqualityTests
         AssertTrace(query, NavPath.Unreachable,
         [
             (Phase.Snap, 2), (Phase.MemberBox, 2),
-            (Phase.Member, 2), (Phase.Member, 2), (Phase.Member, 2), (Phase.Member, 2),
+            (Phase.Member, 4), (Phase.Member, 4), (Phase.Member, 4), (Phase.Member, 4),
             (Phase.CertificateLabel, 1), (Phase.CertificateLabel, 1),
             (Phase.CertificateProgress, 1), (Phase.CertificateProgress, 1), // Start against both members.
             (Phase.CertificateProgress, 1), (Phase.CertificateProgress, 1), // Other component node.
@@ -41,12 +41,12 @@ public partial class GridSearchRequestEqualityTests
         AssertTrace(EqualPriceLinks(), VerticalLanding(NavWaypointKind.Hop),
         [
             (Phase.Layer, 2), (Phase.Layer, 2), (Phase.Snap, 2),
-            (Phase.MemberBox, 2), (Phase.MemberBox, 2), (Phase.Member, 2), (Phase.Member, 2),
+            (Phase.MemberBox, 2), (Phase.MemberBox, 2), (Phase.Member, 4), (Phase.Member, 4),
             (Phase.CertificateLabel, 1), (Phase.Seed, 4), (Phase.SearchProgress, 1),
             (Phase.Pop, 4), (Phase.SearchProgress, 1),
             (Phase.Neighbor, 6), (Phase.Neighbor, 6), (Phase.Neighbor, 6), (Phase.Neighbor, 6),
             (Phase.Neighbor, 6), (Phase.Neighbor, 6), (Phase.Neighbor, 6), (Phase.Neighbor, 6),
-            (Phase.Link, 6), (Phase.Link, 6),
+            (Phase.Link, 3), (Phase.Link, 3),
             (Phase.Pop, 4), (Phase.SearchProgress, 1),
             (Phase.Parent, 1), (Phase.Parent, 1), (Phase.Reverse, 1),
             (Phase.Decode, 2), (Phase.Decode, 2), (Phase.Allocate, 2), (Phase.Copy, 1), (Phase.Copy, 1),
@@ -63,7 +63,7 @@ public partial class GridSearchRequestEqualityTests
             End(1), Budget(1) with { SnapRadius = -2f }, NavPathStatus.Complete);
         AssertTrace(query, new NavPath(NavPathStatus.Complete, [new NavWaypoint(new(0.5f, 0.5f), 0)]),
         [
-            (Phase.Snap, 2), (Phase.MemberBox, 2), (Phase.Member, 2), (Phase.CertificateLabel, 1),
+            (Phase.Snap, 2), (Phase.MemberBox, 2), (Phase.Member, 4), (Phase.CertificateLabel, 1),
             (Phase.Seed, 4), (Phase.SearchProgress, 1), (Phase.Pop, 4), (Phase.SearchProgress, 1),
             (Phase.Parent, 1), (Phase.Decode, 2), (Phase.Allocate, 2), (Phase.Copy, 1),
         ]);
@@ -74,13 +74,13 @@ public partial class GridSearchRequestEqualityTests
     {
         AssertTrace(StaleEntry(), StalePartial(),
         [
-            (Phase.Snap, 2), (Phase.MemberBox, 2), (Phase.Member, 2), (Phase.Member, 2),
+            (Phase.Snap, 2), (Phase.MemberBox, 2), (Phase.Member, 4), (Phase.Member, 4),
             (Phase.CertificateLabel, 1), (Phase.CertificateProgress, 1), (Phase.CertificateProgress, 1),
             (Phase.Seed, 4), (Phase.SearchProgress, 1),
             (Phase.Pop, 4), (Phase.SearchProgress, 1),
             (Phase.Neighbor, 6), (Phase.Neighbor, 6), (Phase.Neighbor, 6), (Phase.Neighbor, 6),
             (Phase.Neighbor, 6), (Phase.Neighbor, 6), (Phase.Neighbor, 6), (Phase.Neighbor, 6),
-            (Phase.Link, 6), (Phase.Link, 6),
+            (Phase.Link, 3), (Phase.Link, 3),
             (Phase.Pop, 4), (Phase.SearchProgress, 1),
             (Phase.Neighbor, 6), (Phase.Neighbor, 6), (Phase.Neighbor, 6), (Phase.Neighbor, 6),
             (Phase.Neighbor, 6), (Phase.Neighbor, 6), (Phase.Neighbor, 6), (Phase.Neighbor, 6),
@@ -96,7 +96,7 @@ public partial class GridSearchRequestEqualityTests
         var query = new RegionQuery("expansion-cap", Corridor(3), Start, End(3), Budget(2), NavPathStatus.Partial);
         AssertTrace(query, new NavPath(NavPathStatus.Partial, [new NavWaypoint(new(1.5f, 0.5f), 0)]),
         [
-            (Phase.Snap, 2), (Phase.MemberBox, 2), (Phase.Member, 2), (Phase.Member, 2),
+            (Phase.Snap, 2), (Phase.MemberBox, 2), (Phase.Member, 4), (Phase.Member, 4),
             (Phase.CertificateLabel, 1), (Phase.Seed, 4), (Phase.SearchProgress, 1),
             (Phase.Pop, 4), (Phase.SearchProgress, 1),
             (Phase.Neighbor, 6), (Phase.Neighbor, 6), (Phase.Neighbor, 6), (Phase.Neighbor, 6),

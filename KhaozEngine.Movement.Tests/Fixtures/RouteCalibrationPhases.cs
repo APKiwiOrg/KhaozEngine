@@ -11,15 +11,15 @@ namespace KhaozEngine.Tests.Movement;
 /// <summary>Positions production cursors at the operations sampled by the phase rows.</summary>
 internal static class RouteCalibrationPhases
 {
-    internal const int ShortCrossingBudget = 384;
-    internal const int LongCrossingBudget = 768;
+    internal const int ShortCrossingBudget = 768;
+    internal const int LongCrossingBudget = 1536;
 
     internal static readonly ReconstructionSlice[] Reconstruction =
     [
-        new(Phase.Parent, Phase.Reverse, 108563, 2049),
-        new(Phase.Reverse, Phase.Decode, 110612, 1024),
-        new(Phase.Decode, Phase.Allocate, 111636, 4096),
-        new(Phase.Copy, Phase.Done, 115734, 2048),
+        new(Phase.Parent, Phase.Reverse, 108567, 2049),
+        new(Phase.Reverse, Phase.Decode, 110616, 1024),
+        new(Phase.Decode, Phase.Allocate, 111640, 4096),
+        new(Phase.Copy, Phase.Done, 115738, 2048),
     ];
 
     internal readonly record struct ReconstructionSlice(Phase Phase, Phase Next, int PrefixUnits, int Units)

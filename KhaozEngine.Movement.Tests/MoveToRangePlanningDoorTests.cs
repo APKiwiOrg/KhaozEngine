@@ -55,7 +55,7 @@ public sealed partial class MoveToRangePlanningTests
         var space = Flat(3, 1, Tuning.CapsuleRadius).Space;
         var planner = new GridPathPlanner(space);
         using var pool = ((IIncrementalRegionPathPlanner)planner).CreateWorkspaces(1, PathQueryBudget.Default);
-        var follow = Follow(pool, 6);
+        var follow = Follow(pool, 7);
         _ = new MoveToRange(planner, space, (_, _) => true, follow);
 
         Assert.Throws<ArgumentException>("follow", () => new MoveToRange(planner, space, (_, _) => true, follow, Straight));

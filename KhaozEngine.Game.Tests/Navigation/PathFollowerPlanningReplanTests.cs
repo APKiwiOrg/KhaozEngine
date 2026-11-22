@@ -14,7 +14,7 @@ public sealed partial class PathFollowerPlanningTests
     {
         var planner = Corridor(3);
         using var pool = Incremental(planner).CreateWorkspaces(1, Budget(2));
-        var follower = Follower(planner, pool, 6);
+        var follower = Follower(planner, pool, 7);
         for (int call = 1; call <= 24; call++)
             AssertPartialAt(follower, call, 24);
 
@@ -23,9 +23,10 @@ public sealed partial class PathFollowerPlanningTests
         Assert.Equal(PathFollowState.WaitingForPath, follower.Tick(terminal, empty, 0f, 0.25f).State);
         Assert.False(follower.PlanningPending);
 
-        // Snap, member box, two negative membership tests. Three operations fit first, one next.
+        // Snap, member box, two negative membership tests. The snap and box fit first, then one candidate per call.
         Waiting(follower, follower.Tick(terminal, empty, 0f, 0.25f));
         Waiting(follower, follower.Tick(terminal, empty, 0f, 0.5f));
+        Waiting(follower, follower.Tick(terminal, empty, 0f, 0f));
         Assert.Equal(PathFollowState.Unreachable, follower.Tick(terminal, empty, 0f, 0.5f).State);
         Assert.False(follower.PlanningPending);
         Assert.Null(follower.ActivePath);
@@ -39,7 +40,7 @@ public sealed partial class PathFollowerPlanningTests
     {
         var planner = Corridor(3);
         using var pool = Incremental(planner).CreateWorkspaces(1, Budget(2));
-        var follower = Follower(planner, pool, 6);
+        var follower = Follower(planner, pool, 7);
         for (int call = 1; call <= 24; call++)
             AssertPartialAt(follower, call, 24);
 
@@ -53,10 +54,10 @@ public sealed partial class PathFollowerPlanningTests
     {
         var planner = Corridor(3);
         using var pool = Incremental(planner).CreateWorkspaces(1, Budget(2));
-        var follower = Follower(planner, pool, 6);
+        var follower = Follower(planner, pool, 7);
         var near = End(2);
         // A two-node complete result pays for the start's neighbours but none at the goal.
-        int publish = Slices(6, [2, 2, 2, 2, 2, 1, 4, 1, 4, 1, 6, 6, 6, 6, 6, 6, 6, 6,
+        int publish = Slices(7, [2, 2, 4, 4, 4, 1, 4, 1, 4, 1, 6, 6, 6, 6, 6, 6, 6, 6,
             4, 1, 1, 1, 1, 2, 2, 1]) + 1;
         for (int call = 1; call < publish; call++)
             Waiting(follower, follower.Tick(Start, near, 0f, 0f));
@@ -75,7 +76,7 @@ public sealed partial class PathFollowerPlanningTests
         var follower = new PathFollower(planner, new PathFollowConfig
         {
             Budget = Budget(2),
-            Planning = new(new(6), pool),
+            Planning = new(new(7), pool),
             CorridorTolerance = 0.01f,
         });
         for (int call = 1; call <= 23; call++)

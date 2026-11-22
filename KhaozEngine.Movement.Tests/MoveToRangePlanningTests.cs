@@ -74,14 +74,14 @@ public sealed partial class MoveToRangePlanningTests
         var navigation = Flat(6, 3, Tuning.CapsuleRadius);
         using var pool = navigation.CreatePlanningWorkspaces(1);
         using var context = new GroundMoveContext((_, _) => 0f);
-        var raw = new MoveToRange(navigation, Follow(pool, 6), Straight);
+        var raw = new MoveToRange(navigation, Follow(pool, 7), Straight);
         var shortened = new MoveToRange(navigation, Follow(pool, int.MaxValue), Straight);
         raw.Straightener!.FallBackOnce();
 
         HoldPending(raw, At(0.5f), Far, context);
         HoldPending(shortened, At(0.5f), Far, context);
         Assert.Equal(1, pool.Waits);
-        for (int call = 2; call <= RawSlicesAtQuotaSix(); call++)
+        for (int call = 2; call <= RawSlicesAtQuotaSeven(); call++)
             HoldPending(raw, At(0.5f), Far, context);
         AssertSteering(new(Vector2.UnitX, RangeMoveStatus.Following), Tick(raw, At(0.5f), Far, context));
         AssertRoute(raw, NavPathStatus.Complete, [1.5f, 2.5f, 3.5f, 4.5f]);
@@ -96,25 +96,25 @@ public sealed partial class MoveToRangePlanningTests
         AssertBits(4.5f, Assert.Single(next.Waypoints).Position.X);
     }
 
-    private static int RawSlicesAtQuotaSix()
+    private static int RawSlicesAtQuotaSeven()
     {
         int[] expansion = [4, 1, 6, 6, 6, 6, 6, 6, 6, 6];
         int[] trace =
         [
-            1, 2, 3, 2, // Profile start footprint, then its layer.
-            2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, // Snap, box, twelve candidates.
+            3, 3, 7, 5, // Profile start footprint, then its layer.
+            2, 2, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, // Snap, box, twelve candidates.
             1, 4, 1, // Certificate, seed and progress.
             .. expansion, .. expansion, .. expansion, .. expansion,
             4, 1, // The target popped with no further neighbours.
             1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 1, 1, 1, 1, // Reconstruct four waypoints.
         ];
-        int slices = 1, remaining = 6;
+        int slices = 1, remaining = 7;
         foreach (int weight in trace)
         {
             if (weight > remaining)
             {
                 slices++;
-                remaining = 6;
+                remaining = 7;
             }
             remaining -= weight;
         }
@@ -127,7 +127,7 @@ public sealed partial class MoveToRangePlanningTests
         var navigation = Flat(32, 3, Tuning.CapsuleRadius);
         using var context = new GroundMoveContext((_, _) => 0f);
         using var pool = navigation.CreatePlanningWorkspaces(1);
-        var mover = new MoveToRange(navigation, Follow(pool, 6), Stall);
+        var mover = new MoveToRange(navigation, Follow(pool, 7), Stall);
         for (int call = 1; call <= 30; call++)
             HoldPending(mover, At(0.5f), Target(29.5f), context);
         mover.Reset();
@@ -167,7 +167,7 @@ public sealed partial class MoveToRangePlanningTests
         using var arrival = new ArrivalPreviewDiagnostics();
 
         // Snap, member box, two candidate cells, label, seed, first pop and its eight
-        // edges, terminal pop, then one waypoint. With quota 32 the slices spend 31, 30 and 19.
+        // edges, terminal pop, then one waypoint. With quota 32 the slices spend 29, 30 and 25.
         for (int call = 1; call <= 3; call++)
         {
             AssertSteering(new(Vector2.Zero, RangeMoveStatus.WaitingForPath), Step(body));

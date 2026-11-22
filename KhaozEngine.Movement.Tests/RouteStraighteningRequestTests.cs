@@ -195,7 +195,7 @@ public sealed partial class RouteStraighteningRequestTests
         Assert.Equal(0, waiter.WorkSpent);
 
         Assert.Same(sentinel, Assert.Throws<InvalidOperationException>(() => owner.Advance(new(int.MaxValue))));
-        Assert.Equal(12, owner.WorkSpent); // Start: 1 + 2 + 3 + 2. Snap and member box: 2 + 2.
+        Assert.Equal(22, owner.WorkSpent); // Start: 3 + 3 + 7 + 5. Snap and member box: 2 + 2.
         Assert.Equal(PathPlanState.Cancelled, owner.State);
         Assert.Null(owner.Result);
         AssertBits(Path(NavPathStatus.Complete, new NavWaypoint(new(0.5f, 0.5f), 0)), Finish(waiter, [6]));
@@ -249,7 +249,7 @@ public sealed partial class RouteStraighteningRequestTests
             int quota = schedule[i % schedule.Length];
             long before = request.WorkSpent;
             request.Advance(new(quota));
-            Assert.InRange(request.WorkSpent - before, 1, Math.Max(quota, 6));
+            Assert.InRange(request.WorkSpent - before, 1, Math.Max(quota, 7));
         }
 
         return Assert.IsType<NavPath>(request.Result);

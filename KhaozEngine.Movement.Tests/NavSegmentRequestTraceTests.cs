@@ -19,21 +19,21 @@ public sealed class NavSegmentRequestTraceTests
         // Each endpoint scans its own 2 by 2 box. The sweep visits two rows of ten candidates.
         (NavSegmentOperation, int)[] trace =
         [
-            (EndpointStart, 1), (FootprintRow, 2), (FootprintColumn, 3), (FootprintColumn, 3),
-            (FootprintRow, 2), (FootprintColumn, 3), (FootprintColumn, 3), (EndpointLayer, 2),
-            (EndpointStart, 1), (FootprintRow, 2), (FootprintColumn, 3), (FootprintColumn, 3),
-            (FootprintRow, 2), (FootprintColumn, 3), (FootprintColumn, 3), (EndpointLayer, 2),
-            (SegmentStart, 1),
-            (FootprintRow, 2), (FootprintColumn, 3), (FootprintColumn, 3), (FootprintColumn, 3),
-            (FootprintColumn, 3), (FootprintColumn, 3), (FootprintColumn, 3), (FootprintColumn, 3),
-            (FootprintColumn, 3), (FootprintColumn, 3), (FootprintColumn, 3),
-            (FootprintRow, 2), (FootprintColumn, 3), (FootprintColumn, 3), (FootprintColumn, 3),
-            (FootprintColumn, 3), (FootprintColumn, 3), (FootprintColumn, 3), (FootprintColumn, 3),
-            (FootprintColumn, 3), (FootprintColumn, 3), (FootprintColumn, 3),
-            (CellCrossing, 3), (CellCrossing, 3), (CellCrossing, 3), (CellCrossing, 3),
-            (CellCrossing, 3), (CellCrossing, 3), (CellCrossing, 3), (CellCrossing, 3),
+            (EndpointStart, 3), (FootprintRow, 3), (FootprintColumn, 7), (FootprintColumn, 7),
+            (FootprintRow, 3), (FootprintColumn, 7), (FootprintColumn, 7), (EndpointLayer, 5),
+            (EndpointStart, 3), (FootprintRow, 3), (FootprintColumn, 7), (FootprintColumn, 7),
+            (FootprintRow, 3), (FootprintColumn, 7), (FootprintColumn, 7), (EndpointLayer, 5),
+            (SegmentStart, 3),
+            (FootprintRow, 3), (FootprintColumn, 7), (FootprintColumn, 7), (FootprintColumn, 7),
+            (FootprintColumn, 7), (FootprintColumn, 7), (FootprintColumn, 7), (FootprintColumn, 7),
+            (FootprintColumn, 7), (FootprintColumn, 7), (FootprintColumn, 7),
+            (FootprintRow, 3), (FootprintColumn, 7), (FootprintColumn, 7), (FootprintColumn, 7),
+            (FootprintColumn, 7), (FootprintColumn, 7), (FootprintColumn, 7), (FootprintColumn, 7),
+            (FootprintColumn, 7), (FootprintColumn, 7), (FootprintColumn, 7),
+            (CellCrossing, 6), (CellCrossing, 6), (CellCrossing, 6), (CellCrossing, 6),
+            (CellCrossing, 6), (CellCrossing, 6), (CellCrossing, 6), (CellCrossing, 6),
         ];
-        AssertEveryCut(navigation, from, to, trace, accepted: true, cells: 28, total: 127);
+        AssertEveryCut(navigation, from, to, trace, accepted: true, cells: 28, total: 281);
     }
 
     [Fact]
@@ -44,8 +44,8 @@ public sealed class NavSegmentRequestTraceTests
         Vector3 from = new(1.5f, 0f, 2.5f), to = new(4.5f, 0f, 2.5f);
         // The first endpoint touches the excluded cell on its right edge. It never probes the second row or layer.
         (NavSegmentOperation, int)[] trace =
-            [(EndpointStart, 1), (FootprintRow, 2), (FootprintColumn, 3), (FootprintColumn, 3)];
-        AssertEveryCut(navigation, from, to, trace, accepted: false, cells: 2, total: 9);
+            [(EndpointStart, 3), (FootprintRow, 3), (FootprintColumn, 7), (FootprintColumn, 7)];
+        AssertEveryCut(navigation, from, to, trace, accepted: false, cells: 2, total: 20);
     }
 
     [Theory]
@@ -56,14 +56,14 @@ public sealed class NavSegmentRequestTraceTests
         var navigation = SegmentAdmissionFixture.Flat(5, 5, 0f);
         Vector3 invalid = new(float.NaN, 0f, 1.5f), valid = new(2.5f, 0f, 1.5f);
         if (invalidFrom)
-            AssertEveryCut(navigation, invalid, valid, [(EndpointStart, 1)], accepted: false, cells: 0, total: 1);
+            AssertEveryCut(navigation, invalid, valid, [(EndpointStart, 3)], accepted: false, cells: 0, total: 3);
         else
-            AssertEveryCut(navigation, valid, invalid, [.. PointEndpoint, (EndpointStart, 1)], accepted: false, cells: 1, total: 9);
+            AssertEveryCut(navigation, valid, invalid, [.. PointEndpoint, (EndpointStart, 3)], accepted: false, cells: 1, total: 21);
     }
 
     [Theory]
-    [InlineData(2, 11, 50)]
-    [InlineData(3, 17, 70)]
+    [InlineData(2, 11, 111)]
+    [InlineData(3, 17, 156)]
     public void SweepVisitsLowerRowFirstAndStopsAtTheMarkedColumn(int markedRow, int cells, int total)
     {
         var navigation = SegmentAdmissionFixture.Flat(8, 6, 0.5f, (x, z) => x == 3 && z == markedRow ? 1u : 0u)
@@ -71,11 +71,11 @@ public sealed class NavSegmentRequestTraceTests
         Vector3 from = new(1.5f, 0f, 2.5f), to = new(5.5f, 0f, 2.5f);
         // Each endpoint has four candidates. The sweep's Z=2 row visits X=1 through 6 unless X=3
         // is marked. With the mark in Z=3, all six Z=2 candidates pass before that row starts.
-        (NavSegmentOperation, int)[] halfCellEndpoint = [.. ScanRow(2), .. ScanRow(2), (EndpointLayer, 2)];
+        (NavSegmentOperation, int)[] halfCellEndpoint = [.. ScanRow(2), .. ScanRow(2), (EndpointLayer, 5)];
         (NavSegmentOperation, int)[] trace =
         [
-            (EndpointStart, 1), .. halfCellEndpoint, (EndpointStart, 1), .. halfCellEndpoint,
-            (SegmentStart, 1), .. (markedRow == 3 ? ScanRow(6) : []), .. ScanRow(3),
+            (EndpointStart, 3), .. halfCellEndpoint, (EndpointStart, 3), .. halfCellEndpoint,
+            (SegmentStart, 3), .. (markedRow == 3 ? ScanRow(6) : []), .. ScanRow(3),
         ];
         AssertEveryCut(navigation, from, to, trace, accepted: false, cells, total);
     }
@@ -95,15 +95,15 @@ public sealed class NavSegmentRequestTraceTests
             allowsEdge: (_, _, _, _) => false);
         Vector3 from = new(1.5f, tieAtFrom ? 0.25f : 0.5f, 2.5f);
         Vector3 to = new(2.5f, tieAtFrom ? 0.5f : 0.25f, 2.5f);
-        (NavSegmentOperation, int)[] endpoint = [.. PointEndpoint, (EndpointLayer, 2)];
+        (NavSegmentOperation, int)[] endpoint = [.. PointEndpoint, (EndpointLayer, 5)];
         AssertEveryCut(navigation, from, to,
-            [.. endpoint, .. endpoint, (SegmentStart, 1), .. ScanRow(2), (CellCrossing, 3)],
-            accepted: true, cells: 4, total: 32);
+            [.. endpoint, .. endpoint, (SegmentStart, 3), .. ScanRow(2), (CellCrossing, 6)],
+            accepted: true, cells: 4, total: 72);
     }
 
     [Theory]
-    [InlineData(false, 74)]
-    [InlineData(true, 65)]
+    [InlineData(false, 162)]
+    [InlineData(true, 144)]
     public void NonTiedCrossingUsesTheEarlierBoundaryThenStopsOnTheRefusedEdge(bool refuseSecond, int total)
     {
         // With origins (0, 8), X=2 is at 1/6 and Z=10 is at 1/4. The alternate first exit never exists.
@@ -115,17 +115,17 @@ public sealed class NavSegmentRequestTraceTests
                 !refuseSecond && (x, z, nx, nz) is (2, 1, 2, 2) or (2, 2, 3, 2) or (3, 2, 3, 3) or (3, 3, 4, 3));
         Vector3 from = new(1.5f, 0f, 9.5f), to = new(4.5f, 0f, 11.5f);
         (NavSegmentOperation, int)[] remainingCrossings = refuseSecond ? [] :
-            [(CellCrossing, 3), (CellCrossing, 3), (CellCrossing, 3)];
+            [(CellCrossing, 6), (CellCrossing, 6), (CellCrossing, 6)];
         AssertEveryCut(navigation, from, to,
             [
-                .. PointEndpoint, .. PointEndpoint, (SegmentStart, 1), .. ScanRow(4), .. ScanRow(4), .. ScanRow(4),
-                (CellCrossing, 3), (CellCrossing, 3), .. remainingCrossings,
+                .. PointEndpoint, .. PointEndpoint, (SegmentStart, 3), .. ScanRow(4), .. ScanRow(4), .. ScanRow(4),
+                (CellCrossing, 6), (CellCrossing, 6), .. remainingCrossings,
             ], accepted: !refuseSecond, cells: 14, total);
     }
 
     [Theory]
-    [InlineData(false, 74)]
-    [InlineData(true, 65)]
+    [InlineData(false, 162)]
+    [InlineData(true, 144)]
     public void PositiveXNegativeZCrossingTakesTheEarlierXExit(bool refuseSecond, int total)
     {
         var tuning = MoveTuning.Default with { CapsuleRadius = 0f };
@@ -137,11 +137,11 @@ public sealed class NavSegmentRequestTraceTests
                 !refuseSecond && (x, z, nx, nz) is (2, 3, 2, 2) or (2, 2, 3, 2) or (3, 2, 3, 1) or (3, 1, 4, 1));
         Vector3 from = new(1.5f, 0f, 11.5f), to = new(4.5f, 0f, 9.5f);
         (NavSegmentOperation, int)[] remainingCrossings = refuseSecond ? [] :
-            [(CellCrossing, 3), (CellCrossing, 3), (CellCrossing, 3)];
+            [(CellCrossing, 6), (CellCrossing, 6), (CellCrossing, 6)];
         AssertEveryCut(navigation, from, to,
             [
-                .. PointEndpoint, .. PointEndpoint, (SegmentStart, 1), .. ScanRow(4), .. ScanRow(4), .. ScanRow(4),
-                (CellCrossing, 3), (CellCrossing, 3), .. remainingCrossings,
+                .. PointEndpoint, .. PointEndpoint, (SegmentStart, 3), .. ScanRow(4), .. ScanRow(4), .. ScanRow(4),
+                (CellCrossing, 6), (CellCrossing, 6), .. remainingCrossings,
             ], accepted: !refuseSecond, cells: 14, total);
     }
 
@@ -150,7 +150,7 @@ public sealed class NavSegmentRequestTraceTests
     {
         var navigation = SegmentAdmissionFixture.Flat(5, 5, 0.5f);
         Vector3 from = new(4.5f, 0f, 2.5f), to = new(2.5f, 0f, 2.5f);
-        AssertEveryCut(navigation, from, to, [(EndpointStart, 1)], accepted: false, cells: 0, total: 1);
+        AssertEveryCut(navigation, from, to, [(EndpointStart, 3)], accepted: false, cells: 0, total: 3);
     }
 
     [Fact]
@@ -163,21 +163,21 @@ public sealed class NavSegmentRequestTraceTests
         Vector3 from = new(2.5f, 0f, 2.5f), to = new(3.5f, 4f, 2.5f);
         (NavSegmentOperation, int)[] trace =
         [
-            (EndpointStart, 1), (FootprintRow, 2), (FootprintColumn, 3), (EndpointLayer, 2), (EndpointLayer, 2),
-            (EndpointStart, 1), (FootprintRow, 2), (FootprintColumn, 3), (EndpointLayer, 2), (EndpointLayer, 2),
-            (SegmentStart, 1), (FootprintRow, 2), (FootprintColumn, 3), (FootprintColumn, 3), (CellCrossing, 3),
+            (EndpointStart, 3), (FootprintRow, 3), (FootprintColumn, 7), (EndpointLayer, 5), (EndpointLayer, 5),
+            (EndpointStart, 3), (FootprintRow, 3), (FootprintColumn, 7), (EndpointLayer, 5), (EndpointLayer, 5),
+            (SegmentStart, 3), (FootprintRow, 3), (FootprintColumn, 7), (FootprintColumn, 7), (CellCrossing, 6),
         ];
-        AssertEveryCut(navigation, from, to, trace, accepted: true, cells: 4, total: 32);
+        AssertEveryCut(navigation, from, to, trace, accepted: true, cells: 4, total: 72);
     }
 
     static readonly (NavSegmentOperation, int)[] PointEndpoint =
-        [(EndpointStart, 1), (FootprintRow, 2), (FootprintColumn, 3), (EndpointLayer, 2)];
+        [(EndpointStart, 3), (FootprintRow, 3), (FootprintColumn, 7), (EndpointLayer, 5)];
 
     static (NavSegmentOperation, int)[] ScanRow(int columns)
     {
         var row = new (NavSegmentOperation, int)[columns + 1];
-        row[0] = (FootprintRow, 2);
-        Array.Fill(row, (FootprintColumn, 3), 1, columns);
+        row[0] = (FootprintRow, 3);
+        Array.Fill(row, (FootprintColumn, 7), 1, columns);
         return row;
     }
 

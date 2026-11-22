@@ -83,7 +83,7 @@ public partial class GridSearchRequestEqualityTests
         using var request = planner.BeginPath(query.Start, query.Goal, 0f, budget, pool);
         EqualBits(StalePartial(), Finish(request, 1));
         // The corresponding exhausted route charges four more units for the stale pop.
-        Assert.Equal(145, request.WorkSpent);
+        Assert.Equal(143, request.WorkSpent);
     }
 
     [Fact]
@@ -95,15 +95,15 @@ public partial class GridSearchRequestEqualityTests
         using var request = Assert.IsType<GridPathPlanner.GridSearchRequest>(
             planner.BeginPath(Start, End(1), 0f, budget, pool));
 
-        // The one-cell route spends 20 units through its only Decode.
-        request.Advance(new PathWorkBudget(20));
-        Assert.Equal(20, request.WorkSpent);
+        // The one-cell route spends 22 units through its only Decode.
+        request.Advance(new PathWorkBudget(22));
+        Assert.Equal(22, request.WorkSpent);
         Assert.Equal(Phase.Allocate, request.NextPhaseForTests);
         Assert.False(request.HasStagedResultArrayForTests);
         Assert.Null(request.Result);
 
         request.Advance(new PathWorkBudget(2));
-        Assert.Equal(22, request.WorkSpent);
+        Assert.Equal(24, request.WorkSpent);
         Assert.Equal(Phase.Copy, request.NextPhaseForTests);
         Assert.True(request.HasStagedResultArrayForTests);
         Assert.Null(request.Result);

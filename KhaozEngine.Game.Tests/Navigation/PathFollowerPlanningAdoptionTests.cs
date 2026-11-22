@@ -14,7 +14,7 @@ public sealed partial class PathFollowerPlanningTests
     {
         var planner = Corridor(3);
         using var pool = Incremental(planner).CreateWorkspaces(1, Budget(2));
-        var follower = Follower(planner, pool, 6);
+        var follower = Follower(planner, pool, 7);
         var destination = End(3);
         for (int call = 1; call <= 23; call++)
             Waiting(follower, follower.Tick(Start, destination, 0f, 0f));
@@ -28,13 +28,13 @@ public sealed partial class PathFollowerPlanningTests
     }
 
     [Theory]
-    [InlineData(true, 15)]
-    [InlineData(false, 2)]
+    [InlineData(true, 16)]
+    [InlineData(false, 3)]
     public void DelayedCompleteOrRefusedResultRetriesFromAChangedStartCell(bool complete, int finalSlice)
     {
         var planner = Corridor(3);
         using var pool = Incremental(planner).CreateWorkspaces(1, Budget(2));
-        var follower = Follower(planner, pool, 6);
+        var follower = Follower(planner, pool, 7);
         var destination = complete ? End(2) : new NavGoalRegion(End(3).Anchor, 0f, _ => false);
         // The two-node Complete spends one expansion's neighbours. A refused region stops after
         // snap, member box and two rejected candidates. Neither route has another slice at adoption.
@@ -84,8 +84,8 @@ public sealed partial class PathFollowerPlanningTests
     {
         var planner = Corridor(3);
         using var pool = Incremental(planner).CreateWorkspaces(1, Budget(2));
-        var leased = Follower(planner, pool, 6);
-        var queued = Follower(planner, pool, 6);
+        var leased = Follower(planner, pool, 7);
+        var queued = Follower(planner, pool, 7);
         var goal = End(3);
         Waiting(leased, leased.Tick(Start, goal, 0f, 0f));
         Waiting(queued, queued.Tick(Start, goal, 0f, 0f));
@@ -107,7 +107,7 @@ public sealed partial class PathFollowerPlanningTests
     {
         var planner = Corridor(3);
         using var pool = Incremental(planner).CreateWorkspaces(1, Budget(2));
-        var follower = Follower(planner, pool, 6);
+        var follower = Follower(planner, pool, 7);
 
         var hold = follower.Tick(Start, End(3), 0f, 0f);
         Waiting(follower, hold);

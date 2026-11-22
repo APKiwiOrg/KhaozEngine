@@ -29,9 +29,9 @@ public sealed partial class RouteStraighteningRequestTests
 
         (Segment Start, Search Search, int Units)[] prefix =
         [
-            (Segment.EndpointStart, Search.Done, 1), (Segment.FootprintRow, Search.Done, 2),
-            (Segment.FootprintColumn, Search.Done, 3), (Segment.EndpointLayer, Search.Done, 2),
-            (Segment.Done, Search.Snap, 2), (Segment.Done, Search.MemberBox, 2), (Segment.Done, Search.Member, 2),
+            (Segment.EndpointStart, Search.Done, 3), (Segment.FootprintRow, Search.Done, 3),
+            (Segment.FootprintColumn, Search.Done, 7), (Segment.EndpointLayer, Search.Done, 5),
+            (Segment.Done, Search.Snap, 2), (Segment.Done, Search.MemberBox, 2), (Segment.Done, Search.Member, 4),
         ];
         (Segment Start, Search Search, int Units)[] search = member
             ?
@@ -71,7 +71,7 @@ public sealed partial class RouteStraighteningRequestTests
                 if (trace[cut + 1].Start == Segment.Done) Assert.Equal(trace[cut + 1].Search, request.NextPhaseForTests);
             }
         }
-        Assert.Equal(member ? 31 : 14, spent);
+        Assert.Equal(member ? 43 : 26, spent);
 
         using var measured = Assert.IsType<RouteStraighteningRequest>(planner.BeginPath(start, goal, 0f, Budget, pool));
         var work = new PathWorkByKind();
@@ -93,16 +93,16 @@ public sealed partial class RouteStraighteningRequestTests
         GroundNavigation navigation = Flat(13, 7, 0.5f);
         NavPath raw = Path(NavPathStatus.Complete, Waypoint(2.5f), Waypoint(9.5f));
         NavPath expected = Path(NavPathStatus.Complete, Waypoint(9.5f));
-        Paid[] guard = [.. Endpoint(2, 2), .. Endpoint(2, 2), Cell(Segment.SegmentStart, 1),
-            .. Row(10), .. Row(10), .. Enumerable.Repeat(Cell(Segment.CellCrossing, 3), 8)];
+        Paid[] guard = [.. Endpoint(2, 2), .. Endpoint(2, 2), Cell(Segment.SegmentStart, 3),
+            .. Row(10), .. Row(10), .. Enumerable.Repeat(Cell(Segment.CellCrossing, 6), 8)];
         Paid[] trace =
         [
-            Step(Straight.ValidateFeet, 2), Step(Straight.ValidateFeet, 2), Step(Straight.Candidate, 3),
-            .. guard, Step(Straight.SideOffsets, 2), .. guard, .. guard,
-            Step(Straight.KeepAnchor, 2), Step(Straight.Allocate, 2), Step(Straight.Copy, 1),
+            Step(Straight.ValidateFeet, 5), Step(Straight.ValidateFeet, 5), Step(Straight.Candidate, 7),
+            .. guard, Step(Straight.SideOffsets, 5), .. guard, .. guard,
+            Step(Straight.KeepAnchor, 5), Step(Straight.Allocate, 2), Step(Straight.Copy, 1),
         ];
         Vector3 end = Start with { X = 9.5f };
-        AssertStraighteningCuts(navigation, raw, expected, trace, total: 395, cells: 84,
+        AssertStraighteningCuts(navigation, raw, expected, trace, total: 873, cells: 84,
             expectedGuards: [(Start, end), (Start with { Z = 2.999f }, end with { Z = 2.999f }),
                 (Start with { Z = 2.001f }, end with { Z = 2.001f })]);
     }
@@ -114,15 +114,15 @@ public sealed partial class RouteStraighteningRequestTests
         NavPath raw = Path(NavPathStatus.Complete, Waypoint(2.5f), Waypoint(6.5f));
         Paid[] trace =
         [
-            Step(Straight.ValidateFeet, 2), Step(Straight.ValidateFeet, 2), Step(Straight.Candidate, 3),
-            .. Endpoint(1), .. Endpoint(1), Cell(Segment.SegmentStart, 1), .. Row(6),
-            .. Enumerable.Repeat(Cell(Segment.CellCrossing, 3), 5),
-            Step(Straight.SideOffsets, 2),
-            .. Endpoint(1, 1), .. Endpoint(1, 1), Cell(Segment.SegmentStart, 1), .. Row(6), .. Row(3),
-            Step(Straight.KeepAnchor, 2), Step(Straight.KeepAnchor, 2),
+            Step(Straight.ValidateFeet, 5), Step(Straight.ValidateFeet, 5), Step(Straight.Candidate, 7),
+            .. Endpoint(1), .. Endpoint(1), Cell(Segment.SegmentStart, 3), .. Row(6),
+            .. Enumerable.Repeat(Cell(Segment.CellCrossing, 6), 5),
+            Step(Straight.SideOffsets, 5),
+            .. Endpoint(1, 1), .. Endpoint(1, 1), Cell(Segment.SegmentStart, 3), .. Row(6), .. Row(3),
+            Step(Straight.KeepAnchor, 5), Step(Straight.KeepAnchor, 5),
         ];
         Vector3 end = Start with { X = 6.5f };
-        AssertStraighteningCuts(marked, raw, raw, trace, total: 123, cells: 21,
+        AssertStraighteningCuts(marked, raw, raw, trace, total: 274, cells: 21,
             expectedGuards: [(Start, end), (Start with { Z = 2.999f }, end with { Z = 2.999f })]);
     }
 
@@ -133,17 +133,17 @@ public sealed partial class RouteStraighteningRequestTests
         NavPath raw = Path(NavPathStatus.Complete, Waypoint(2.5f), Waypoint(6.5f));
         Paid[] trace =
         [
-            Step(Straight.ValidateFeet, 2), Step(Straight.ValidateFeet, 2), Step(Straight.Candidate, 3),
-            .. Endpoint(1), .. Endpoint(1), Cell(Segment.SegmentStart, 1), .. Row(6),
-            .. Enumerable.Repeat(Cell(Segment.CellCrossing, 3), 5),
-            Step(Straight.SideOffsets, 2),
-            .. Endpoint(1, 1), .. Endpoint(1, 1), Cell(Segment.SegmentStart, 1), .. Row(6), .. Row(6),
-            .. Enumerable.Repeat(Cell(Segment.CellCrossing, 3), 5),
-            .. Endpoint(1, 1), .. Endpoint(1, 1), Cell(Segment.SegmentStart, 1), .. Row(3),
-            Step(Straight.KeepAnchor, 2), Step(Straight.KeepAnchor, 2),
+            Step(Straight.ValidateFeet, 5), Step(Straight.ValidateFeet, 5), Step(Straight.Candidate, 7),
+            .. Endpoint(1), .. Endpoint(1), Cell(Segment.SegmentStart, 3), .. Row(6),
+            .. Enumerable.Repeat(Cell(Segment.CellCrossing, 6), 5),
+            Step(Straight.SideOffsets, 5),
+            .. Endpoint(1, 1), .. Endpoint(1, 1), Cell(Segment.SegmentStart, 3), .. Row(6), .. Row(6),
+            .. Enumerable.Repeat(Cell(Segment.CellCrossing, 6), 5),
+            .. Endpoint(1, 1), .. Endpoint(1, 1), Cell(Segment.SegmentStart, 3), .. Row(3),
+            Step(Straight.KeepAnchor, 5), Step(Straight.KeepAnchor, 5),
         ];
         Vector3 end = Start with { X = 6.5f };
-        AssertStraighteningCuts(marked, raw, raw, trace, total: 185, cells: 31,
+        AssertStraighteningCuts(marked, raw, raw, trace, total: 408, cells: 31,
             expectedGuards: [(Start, end), (Start with { Z = 2.999f }, end with { Z = 2.999f }),
                 (Start with { Z = 2.001f }, end with { Z = 2.001f })]);
     }
@@ -155,11 +155,11 @@ public sealed partial class RouteStraighteningRequestTests
         NavPath raw = Path(NavPathStatus.Complete, Waypoint(2.5f), Waypoint(6.5f));
         Paid[] trace =
         [
-            Step(Straight.ValidateFeet, 2), Step(Straight.ValidateFeet, 2), Step(Straight.Candidate, 3),
-            .. Endpoint(1), .. Endpoint(1), Cell(Segment.SegmentStart, 1), .. Row(3),
-            Step(Straight.KeepAnchor, 2), Step(Straight.KeepAnchor, 2),
+            Step(Straight.ValidateFeet, 5), Step(Straight.ValidateFeet, 5), Step(Straight.Candidate, 7),
+            .. Endpoint(1), .. Endpoint(1), Cell(Segment.SegmentStart, 3), .. Row(3),
+            Step(Straight.KeepAnchor, 5), Step(Straight.KeepAnchor, 5),
         ];
-        AssertStraighteningCuts(marked, raw, raw, trace, total: 39, cells: 5,
+        AssertStraighteningCuts(marked, raw, raw, trace, total: 90, cells: 5,
             expectedGuards: [(Start, new(6.5f, 0f, 2.5f))]);
     }
 
@@ -176,9 +176,9 @@ public sealed partial class RouteStraighteningRequestTests
         NavPath raw = Path(NavPathStatus.Complete, Waypoint(2.5f), Waypoint(4.5f, layer, kind));
         AssertStraighteningCuts(navigation, raw, raw,
             [
-                Step(Straight.ValidateFeet, 2), Step(Straight.ValidateFeet, 2), Step(Straight.Candidate, 3),
-                Step(Straight.KeepAnchor, 2), Step(Straight.KeepAnchor, 2),
-            ], total: 11, cells: 0, expectedGuards: []);
+                Step(Straight.ValidateFeet, 5), Step(Straight.ValidateFeet, 5), Step(Straight.Candidate, 7),
+                Step(Straight.KeepAnchor, 5), Step(Straight.KeepAnchor, 5),
+            ], total: 27, cells: 0, expectedGuards: []);
     }
 
     [Theory]
@@ -191,9 +191,9 @@ public sealed partial class RouteStraighteningRequestTests
             Waypoint(2.5f, hop ? 0 : 1, hop ? NavWaypointKind.Hop : NavWaypointKind.Walk), Waypoint(3.5f));
         AssertStraighteningCuts(navigation, raw, raw,
             [
-                Step(Straight.ValidateFeet, 2), Step(Straight.ValidateFeet, 2), Step(Straight.Candidate, 3),
-                Step(Straight.KeepAnchor, 2), Step(Straight.KeepAnchor, 2),
-            ], total: 11, cells: 0, expectedGuards: []);
+                Step(Straight.ValidateFeet, 5), Step(Straight.ValidateFeet, 5), Step(Straight.Candidate, 7),
+                Step(Straight.KeepAnchor, 5), Step(Straight.KeepAnchor, 5),
+            ], total: 27, cells: 0, expectedGuards: []);
     }
 
     [Fact]
@@ -202,8 +202,8 @@ public sealed partial class RouteStraighteningRequestTests
         GroundNavigation navigation = Flat(9, 6, 0.25f);
         NavPath raw = Path(NavPathStatus.Partial, Waypoint(2.5f), Waypoint(3.5f), Waypoint(4.5f, layer: 3));
         AssertStraighteningCuts(navigation, raw, raw,
-            [Step(Straight.ValidateFeet, 2), Step(Straight.ValidateFeet, 2), Step(Straight.ValidateFeet, 2)],
-            total: 6, cells: 0, expectedGuards: []);
+            [Step(Straight.ValidateFeet, 5), Step(Straight.ValidateFeet, 5), Step(Straight.ValidateFeet, 5)],
+            total: 15, cells: 0, expectedGuards: []);
     }
 
     [Fact]
@@ -242,7 +242,7 @@ public sealed partial class RouteStraighteningRequestTests
         AssertBits(Path(NavPathStatus.Complete, Waypoint(3.5f)), Assert.IsType<NavPath>(owner.Result));
         Assert.Same(owner.Result, straightener.LastStraightened);
         waiter.Advance(new(1));
-        Assert.Equal(1, waiter.WorkSpent);
+        Assert.Equal(3, waiter.WorkSpent);
     }
 
     static void AssertStraighteningCuts(GroundNavigation navigation, NavPath raw, NavPath expected,
@@ -342,8 +342,8 @@ public sealed partial class RouteStraighteningRequestTests
     static Paid Cell(Segment operation, int units) => new(Straight.Segment, operation, units);
 
     static Paid[] Row(int columns)
-        => [Cell(Segment.FootprintRow, 2), .. Enumerable.Repeat(Cell(Segment.FootprintColumn, 3), columns)];
+        => [Cell(Segment.FootprintRow, 3), .. Enumerable.Repeat(Cell(Segment.FootprintColumn, 7), columns)];
 
     static Paid[] Endpoint(params int[] rows)
-        => [Cell(Segment.EndpointStart, 1), .. rows.SelectMany(Row), Cell(Segment.EndpointLayer, 2)];
+        => [Cell(Segment.EndpointStart, 3), .. rows.SelectMany(Row), Cell(Segment.EndpointLayer, 5)];
 }

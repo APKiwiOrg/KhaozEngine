@@ -13,15 +13,15 @@ public sealed partial class PathFollowerPlanningTests
     // ExpansionCapHasALiteralTrace: snap, region, certificate, seed, two expansions and one waypoint.
     static readonly int[] PartialTrace =
     [
-        2, 2, 2, 2, 1, 4, 1, 4, 1,
+        2, 2, 4, 4, 1, 4, 1, 4, 1,
         6, 6, 6, 6, 6, 6, 6, 6,
         4, 1, 6, 6, 6, 6, 6, 6, 6, 6,
         1, 1, 1, 2, 2, 1,
     ];
 
     [Theory]
-    [InlineData(6)]
     [InlineData(7)]
+    [InlineData(8)]
     [InlineData(31)]
     [InlineData(128)]
     public void PublishCallDependsOnlyOnInputsQuotasAndPool(int quota)
@@ -51,7 +51,7 @@ public sealed partial class PathFollowerPlanningTests
     {
         var planner = Corridor(3);
         using var pool = Incremental(planner).CreateWorkspaces(1, Budget(2));
-        var follower = Follower(planner, pool, 6);
+        var follower = Follower(planner, pool, 7);
         for (int call = 1; call <= 23; call++)
             Waiting(follower, follower.Tick(Start, End(3), 0f, 1f));
         // The final slice released the lease, even though the follower has yet to adopt.
@@ -69,7 +69,7 @@ public sealed partial class PathFollowerPlanningTests
     {
         var planner = Corridor(3);
         using var pool = Incremental(planner).CreateWorkspaces(1, Budget(2));
-        var follower = Follower(planner, pool, 6);
+        var follower = Follower(planner, pool, 7);
         var member = End(3);
         Vector3 drift = new(x, y, z);
         for (int call = 1; call <= 23; call++)
@@ -95,9 +95,9 @@ public sealed partial class PathFollowerPlanningTests
         var space = new NavSpace([Grid(3, 1, (_, _) => true), Grid(3, 1, (_, _) => true, 4f)]);
         var planner = new GridPathPlanner(space);
         using var pool = Incremental(planner).CreateWorkspaces(1, Budget(2));
-        var follower = Follower(planner, pool, 6, space);
+        var follower = Follower(planner, pool, 7, space);
         // The second layer adds two layer probes, a member box and two candidate cells.
-        int slices = Slices(6, [2, 2, 2, 2, 2, .. PartialTrace]);
+        int slices = Slices(7, [2, 2, 2, 4, 4, .. PartialTrace]);
         var goal = End(3);
         for (int call = 1; call <= slices; call++)
             Waiting(follower, follower.Tick(Start, goal, 0f, 0f));
@@ -121,7 +121,7 @@ public sealed partial class PathFollowerPlanningTests
     {
         var planner = Corridor(3);
         using var pool = Incremental(planner).CreateWorkspaces(1, Budget(2));
-        var owner = Follower(planner, pool, 6);
+        var owner = Follower(planner, pool, 7);
         Waiting(owner, owner.Tick(Start, End(3), 0f, 0f));
         using var waiter = Incremental(planner).BeginPath(Start, End(3), 0f, Budget(2), pool);
         waiter.Advance(new(128));
@@ -152,7 +152,7 @@ public sealed partial class PathFollowerPlanningTests
         var incremental = Incremental(planner);
         using var pool = incremental.CreateWorkspaces(1, Budget(2));
         using var owner = incremental.BeginPath(Start, End(3), 0f, Budget(2), pool);
-        var follower = Follower(planner, pool, 6);
+        var follower = Follower(planner, pool, 7);
         Waiting(follower, follower.Tick(Start, End(3), 0f, 0f));
         using var next = incremental.BeginPath(Start, End(3), 0f, Budget(2), pool);
 

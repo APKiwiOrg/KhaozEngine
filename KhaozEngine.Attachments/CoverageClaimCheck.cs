@@ -26,35 +26,12 @@ public static class CoverageClaimCheck
     public static CoverageClaimReport Verify(IReadOnlyList<CoverageClaimMesh> bodyMeshes, BodyRegionMap body, AttachmentSetDefinition piece,
         IReadOnlyList<CoverageClaimMesh> pieceMeshes, float maxDistanceMetres)
     {
-        ArgumentNullException.ThrowIfNull(bodyMeshes);
-        ArgumentNullException.ThrowIfNull(body);
-        ArgumentNullException.ThrowIfNull(piece);
-        ArgumentNullException.ThrowIfNull(pieceMeshes);
+        CoverageClaimValidation.CheckArguments(bodyMeshes, body, piece, pieceMeshes);
         if (!float.IsFinite(maxDistanceMetres) || maxDistanceMetres <= 0)
             throw new ArgumentOutOfRangeException(nameof(maxDistanceMetres), maxDistanceMetres, "The distance must be finite and greater than zero.");
 
-        if (bodyMeshes.Count != body.Parts.Count)
-            throw new CoverageClaimDataException(CoverageClaimRefusal.BodyMeshCountMismatch,
-                $"The region map has {body.Parts.Count} parts, not {bodyMeshes.Count} body meshes.")
-            { ExpectedMeshCount = body.Parts.Count, ActualMeshCount = bodyMeshes.Count };
-        for (int part = 0; part < bodyMeshes.Count; part++)
-        {
-            CoverageClaimMesh mesh = bodyMeshes[part];
-            mesh.ValidateSwingingMask(nameof(bodyMeshes), part);
-            CheckMesh(CoverageClaimMeshKind.Body, part, mesh);
-            int triangles = mesh.Indices.Length / 3;
-            int expected = body.TriangleCount(part);
-            if (triangles != expected)
-                throw new CoverageClaimDataException(CoverageClaimRefusal.BodyTriangleCountMismatch,
-                    $"Body mesh {part} has {triangles} triangles, not the region map part's {expected}.")
-                { MeshKind = CoverageClaimMeshKind.Body, MeshIndex = part, ExpectedTriangleCount = expected, ActualTriangleCount = triangles };
-        }
-
-        RegionSet claimed = RegionSet.Empty;
-        foreach (string name in piece.Covers)
-            claimed = claimed.With(body.TryRegion(name, out int region)
-                ? region
-                : throw new CoverageClaimDataException(CoverageClaimRefusal.RegionUnknown, $"The body has no region '{name}'.") { RegionName = name });
+        CoverageClaimValidation.CheckBody(bodyMeshes, body);
+        RegionSet claimed = CoverageClaimValidation.CheckCoveredRegions(body, piece);
 
         CoverageClaimSwingEvidence.Validate(piece, pieceMeshes);
         PieceTriangle[] targets = PieceTriangles(pieceMeshes, out int ignoredSwingingTriangleCount);
@@ -155,9 +132,7 @@ public static class CoverageClaimCheck
         ignoredSwingingTriangleCount = 0;
         for (int part = 0; part < pieceMeshes.Count; part++)
         {
-            CoverageClaimMesh mesh = pieceMeshes[part];
-            mesh.ValidateSwingingMask(nameof(pieceMeshes), part);
-            CheckMesh(CoverageClaimMeshKind.Piece, part, mesh);
+            CoverageClaimMesh mesh = CoverageClaimValidation.CheckPieceMesh(pieceMeshes, part);
             ReadOnlySpan<Vector3> positions = mesh.Positions.Span;
             ReadOnlySpan<uint> indices = mesh.Indices.Span;
             ReadOnlySpan<bool> swinging = mesh.Swinging.Span;
@@ -178,26 +153,6 @@ public static class CoverageClaimCheck
             }
         }
         return triangles.ToArray();
-    }
-
-    static void CheckMesh(CoverageClaimMeshKind kind, int meshIndex, CoverageClaimMesh mesh)
-    {
-        ReadOnlySpan<Vector3> positions = mesh.Positions.Span;
-        ReadOnlySpan<uint> indices = mesh.Indices.Span;
-        if (indices.Length % 3 != 0)
-            throw new CoverageClaimDataException(CoverageClaimRefusal.IndexCountNotTriangles, $"{kind} mesh {meshIndex}: {indices.Length} indices is not a whole number of triangles.")
-            { MeshKind = kind, MeshIndex = meshIndex, IndexCount = indices.Length };
-        for (int position = 0; position < indices.Length; position++)
-            if (indices[position] >= (uint)positions.Length)
-                throw new CoverageClaimDataException(CoverageClaimRefusal.IndexOutOfRange, $"{kind} mesh {meshIndex}: index {position} names vertex {indices[position]} of {positions.Length}.")
-                { MeshKind = kind, MeshIndex = meshIndex, IndexPosition = position, VertexIndex = indices[position], VertexCount = positions.Length };
-        for (int vertex = 0; vertex < positions.Length; vertex++)
-        {
-            Vector3 value = positions[vertex];
-            if (!float.IsFinite(value.X) || !float.IsFinite(value.Y) || !float.IsFinite(value.Z))
-                throw new CoverageClaimDataException(CoverageClaimRefusal.PositionNotFinite, $"{kind} mesh {meshIndex}: vertex {vertex} is not finite.")
-                { MeshKind = kind, MeshIndex = meshIndex, VertexIndex = (uint)vertex };
-        }
     }
 
     readonly record struct PieceTriangle(Point A, Point B, Point C, Point Normal);

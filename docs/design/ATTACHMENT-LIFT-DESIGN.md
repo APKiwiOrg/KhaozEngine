@@ -238,9 +238,10 @@ SkinnedMeshHandle lifted = scene.CreateSkinnedMeshView(source, indices, restPosi
 
 `StandoffClaimCheck.Verify(bodyMeshes, body, piece, pieceMeshes)` takes the meshes `CoverageClaimCheck` takes, in the
 body's rest frame, and validates them by the same rules with the same refusals. For each fixed vertex of the piece
-it finds the closest point on the body, and takes that body triangle's region and the vertex's height along the
-triangle's outward normal. The report gives, for each region, the highest vertex and the declared standoff, and
-names:
+it finds the closest point on the body and takes that body triangle's region and the vertex's height, its signed
+distance from the triangle's plane along the outward normal. Where several triangles are equally close, as along a
+ridge, it takes the one the vertex stands highest above. The report gives, for each region, the highest vertex and the
+declared standoff, and names:
 
 - **understated** regions, where a vertex stands higher than the declared standoff,
 - **undeclared** regions, where the piece stands but declares no standoff, so a part above would not clear it there.

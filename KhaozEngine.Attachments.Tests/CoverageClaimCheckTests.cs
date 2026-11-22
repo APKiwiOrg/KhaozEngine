@@ -1,26 +1,15 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using System.Text;
 using KhaozEngine.Attachments;
 using Xunit;
+using static KhaozEngine.Tests.Attachments.CoverageClaimFixtures;
 
 namespace KhaozEngine.Tests.Attachments;
 
 public class CoverageClaimCheckTests
 {
-    const string Rig = "rig-v1:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-    const string Hash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     const float Limit = 0.05f;
-
-    // A flat body in the z = 0 plane facing +z: "upper" is the square x 0 to 1, "lower" the square x 1 to 2, two
-    // triangles each. The map lists upper first, the reverse of ordinal order, so report order is the map's.
-    static readonly Vector3[] FlatPositions =
-        [new(0, 0, 0), new(1, 0, 0), new(2, 0, 0), new(0, 1, 0), new(1, 1, 0), new(2, 1, 0)];
-    static readonly uint[] FlatIndices = [0, 1, 4, 0, 4, 3, 1, 2, 5, 1, 5, 4];
-    static readonly BodyRegionMap FlatMap = new(Rig, ["upper", "lower"], [[new RegionRun(0, 2), new RegionRun(1, 2)]]);
-    static readonly CoverageClaimMesh[] FlatBody = [new(FlatPositions, FlatIndices)];
 
     [Theory]
     [InlineData(null, 0u)]
@@ -315,15 +304,7 @@ public class CoverageClaimCheckTests
     }
 
     [Theory]
-    [InlineData("a second body mesh", CoverageClaimRefusal.BodyMeshCountMismatch)]
-    [InlineData("a body triangle short", CoverageClaimRefusal.BodyTriangleCountMismatch)]
-    [InlineData("a covered region the body lacks", CoverageClaimRefusal.RegionUnknown)]
-    [InlineData("a body index count off three", CoverageClaimRefusal.IndexCountNotTriangles)]
-    [InlineData("a piece index count off three", CoverageClaimRefusal.IndexCountNotTriangles)]
-    [InlineData("a body index past its positions", CoverageClaimRefusal.IndexOutOfRange)]
-    [InlineData("a piece index past its positions", CoverageClaimRefusal.IndexOutOfRange)]
-    [InlineData("a body position not a number", CoverageClaimRefusal.PositionNotFinite)]
-    [InlineData("a piece position infinite", CoverageClaimRefusal.PositionNotFinite)]
+    [MemberData(nameof(InvalidGeometry), MemberType = typeof(CoverageClaimFixtures))]
     public void Verify_refuses_input_that_breaks_a_rule(string rule, CoverageClaimRefusal reason)
     {
         Assert.True(Check(null).Honest);
@@ -368,54 +349,9 @@ public class CoverageClaimCheckTests
         }
     }
 
-    // The passing flat body check, with exactly one rule broken when rule is not null.
     static CoverageClaimReport Check(string? rule)
     {
-        Vector3[] bodyPositions = (Vector3[])FlatPositions.Clone();
-        uint[] bodyIndices = (uint[])FlatIndices.Clone();
-        CoverageClaimMesh plate = PlateOverUpper(0.01f);
-        Vector3[] piecePositions = plate.Positions.ToArray();
-        uint[] pieceIndices = plate.Indices.ToArray();
-        AttachmentSetDefinition piece = Piece("upper");
-        int bodyMeshes = 1;
-        switch (rule)
-        {
-            case "a second body mesh": bodyMeshes = 2; break;
-            case "a body triangle short": bodyIndices = bodyIndices[..9]; break;
-            case "a covered region the body lacks": piece = Piece("upper", "middle"); break;
-            case "a body index count off three": bodyIndices = bodyIndices[..11]; break;
-            case "a piece index count off three": pieceIndices = pieceIndices[..5]; break;
-            case "a body index past its positions": bodyIndices[4] = 99; break;
-            case "a piece index past its positions": pieceIndices[4] = 99; break;
-            case "a body position not a number": bodyPositions[2] = new(float.NaN, 0, 0); break;
-            case "a piece position infinite": piecePositions[2] = new(0, float.PositiveInfinity, 0); break;
-        }
-        CoverageClaimMesh body = new(bodyPositions, bodyIndices);
-        return CoverageClaimCheck.Verify(Enumerable.Repeat(body, bodyMeshes).ToArray(), FlatMap, piece, [new(piecePositions, pieceIndices)], Limit);
-    }
-
-    // A plate over the upper square only, wide enough to cover its edges, at the given height above the skin. Its
-    // triangles face away from the skin unless facingTheSkin, the way a garment's inner surface is wound.
-    static CoverageClaimMesh PlateOverUpper(float height, bool facingTheSkin = false, float right = 1)
-    {
-        Vector3[] positions = [new(-1, -1, height), new(right, -1, height), new(right, 2, height), new(-1, 2, height)];
-        uint[] indices = facingTheSkin ? [0, 2, 1, 0, 3, 2] : [0, 1, 2, 0, 2, 3];
-        return new(positions, indices);
-    }
-
-    static AttachmentSetDefinition Piece(params string[] covers) =>
-        new([new RigidAttachmentPartDefinition(1, new("parts/rigid.glb", Hash), "root", Matrix4x4.Identity) { Region = covers[0] }],
-            AttachmentLayer.Armour, covers);
-
-    static AttachmentSetDefinition ChainedPiece()
-    {
-        string json = $$"""
-            {"formatVersion":4,"layer":"garment","covers":["upper"],"parts":[
-              {"id":12,"kind":"skinned","mesh":{"key":"parts/chain.glb","sha256":"{{Hash}}"},"regions":[["upper",2]],
-               "motion":{"kind":"chains","chains":[{{AttachmentFixtures.Chain0Json}}],"links":[]} },
-              {"id":3,"kind":"rigid","mesh":{"key":"parts/fixed.glb","sha256":"{{Hash}}"},
-               "joint":"root","local":{{AttachmentFixtures.Identity}},"region":"lower"}]}
-            """;
-        return AttachmentSetJson.Parse(Encoding.UTF8.GetBytes(json), "piece.json");
+        var (bodyMeshes, piece, pieceMeshes) = GeometryInputs(rule);
+        return CoverageClaimCheck.Verify(bodyMeshes, FlatMap, piece, pieceMeshes, Limit);
     }
 }

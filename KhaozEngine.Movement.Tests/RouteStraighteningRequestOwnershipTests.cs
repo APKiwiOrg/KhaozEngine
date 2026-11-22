@@ -42,6 +42,35 @@ public sealed partial class RouteStraighteningRequestTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public void BeginHookCannotCancelBeforeLeaseAssignment(bool hasOwner)
+    {
+        var navigation = Flat(9, 6, 0.25f);
+        var goal = Goal(Start with { X = 4.5f });
+        IGridRequestAdapter profile = (IGridRequestAdapter)navigation.Planner;
+        var adapter = new TestRequestAdapter(profile.RequestGrid, (owner, admission) => new TestAdaptedRequest(admission, owner));
+        using var pool = new GridPlanningWorkspaces(adapter, 1, Budget);
+        using var owner = hasOwner ? Begin() : null;
+
+        adapter.Create = (owner, admission) => new CancellingBeginRequest(admission, owner);
+        Assert.Throws<InvalidOperationException>(() =>
+        {
+            using var rejected = Begin();
+        });
+        Assert.Equal(0, pool.Waits);
+
+        owner?.Cancel();
+        adapter.Create = (owner, admission) => new TestAdaptedRequest(admission, owner);
+        using var next = Begin();
+        next.Advance(new(1));
+        Assert.True(next.WorkSpent > 0);
+        Assert.Equal(0, pool.Waits);
+
+        PathPlanRequest Begin() => pool.BeginAdapted(adapter, Start, goal, navigation.AgentRadius, Budget);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void ProfilePoolRefusesRawBeginThatWouldBypassStartAdmission(bool throughPlanner)
     {
         var navigation = Flat(9, 6, 0.25f);
@@ -127,6 +156,12 @@ public sealed partial class RouteStraighteningRequestTests
         GridPathPlanner IGridRequestAdapter.RequestGrid => grid;
 
         GridSearchRequest IGridRequestAdapter.CreateRequest(RequestAdmission admission) => Create(this, admission);
+    }
+
+    sealed class CancellingBeginRequest(RequestAdmission admission, IGridRequestAdapter adapter)
+        : GridSearchRequest(admission, adapter)
+    {
+        private protected override void OnBegin() => CancelPending();
     }
 
     sealed class TestAdaptedRequest(RequestAdmission admission, IGridRequestAdapter adapter)

@@ -3,9 +3,12 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
+using System.Numerics;
 using System.Runtime;
 using System.Runtime.CompilerServices;
+using KhaozEngine.Locomotion;
 using KhaozEngine.Movement;
+using KhaozEngine.Navigation;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -41,6 +44,66 @@ public sealed class RouteStraighteningSynchronousTimingTests(ITestOutputHelper o
             using var work = new NavFootprintDiagnostics();
             Assert.Equal(result, rows[name].Run());
             Assert.Equal(cells, work.CandidateCells);
+        }
+    }
+
+    [Fact]
+    public void RowsUseTheIntendedEndpointsAndPublishTheIntendedRoutes()
+    {
+        var rows = StraighteningTimingRow.Create().ToDictionary(row => row.Name);
+        Vector3 start = new(1.5f, 0f, 2.5f), end = new(6.5f, 0f, 2.5f);
+        Vector3 mediumStart = new(8.5f, 0f, 8.5f), mediumEnd = new(39.5f, 0f, 8.5f);
+        Vector3 largeStart = new(32.5f, 0f, 32.5f), largeEnd = new(159.5f, 0f, 32.5f);
+        Vector3 stairFrom = new(2.5f, 0f, 2.5f), stairTo = new(3.5f, 4f, 2.5f);
+        NavWaypoint middle = new(new(3.5f, 2.5f), 0), midSmall = new(new(4f, 2.5f), 0);
+        NavWaypoint last = new(new(6.5f, 2.5f), 0), badLayer = last with { Layer = 3 };
+        NavWaypoint hop = last with { Kind = NavWaypointKind.Hop };
+        NavWaypoint lower = new(new(2.5f, 2.5f), 0), upper = new(new(3.5f, 2.5f), 1);
+        NavWaypoint mediumMid = new(new(24f, 8.5f), 0), mediumLast = new(new(39.5f, 8.5f), 0);
+        NavWaypoint largeMid = new(new(96f, 32.5f), 0), largeLast = new(new(159.5f, 32.5f), 0);
+
+        Segment("segment-small", start, end, 0.25f, true);
+        Segment("segment-medium", mediumStart, mediumEnd, 4f, true);
+        Segment("segment-large", largeStart, largeEnd, 24f, true);
+        Segment("segment-side-refusal", start, end, 0.25f, true);
+        Segment("segment-refused-endpoint", Vector3.Zero, end, 0.25f, false);
+        var stair = Segment("segment-stair", stairFrom, stairTo, 0f, true);
+        Assert.Equal(new NavLink(0, 2, 2, 1, 3, 2), Assert.Single(stair.Navigation.Graph.Links));
+        var withoutLink = SegmentAdmissionFixture.Build(stair.Navigation.Footprint,
+            MoveTuning.Default with { CapsuleRadius = 0f }, 4f);
+        Assert.False(withoutLink.AllowsSegment(stairFrom, stairTo));
+
+        Route("straighten-small", start, end, [midSmall, last], [last]);
+        Route("straighten-medium", mediumStart, mediumEnd, [mediumMid, mediumLast], [mediumLast]);
+        Route("straighten-large", largeStart, largeEnd, [largeMid, largeLast], [largeLast]);
+        Route("straighten-side-refusal", start, end, [midSmall, last], [midSmall, last]);
+        Route("straighten-unreachable", start, end, [], [], NavPathStatus.Unreachable);
+        Route("straighten-single", start, end, [last], [last]);
+        Route("straighten-malformed", start, end, [middle, badLayer], [middle, badLayer]);
+        Route("straighten-special", start, end, [middle, hop], [middle, hop]);
+        Route("straighten-layer", stairFrom, stairTo, [lower, upper], [lower, upper]);
+
+        StraighteningTimingRow.SegmentInput Segment(string name, Vector3 from, Vector3 to, float radius, bool expected)
+        {
+            var input = Assert.IsType<StraighteningTimingRow.SegmentInput>(rows[name].Segment);
+            Assert.Equal(from, input.From);
+            Assert.Equal(to, input.To);
+            Assert.Equal(radius, input.Navigation.AgentRadius);
+            Assert.Equal(expected, input.Navigation.AllowsSegment(input.From, input.To));
+            return input;
+        }
+
+        void Route(string name, Vector3 from, Vector3 to, NavWaypoint[] raw, NavWaypoint[] expected,
+            NavPathStatus status = NavPathStatus.Complete)
+        {
+            var input = Assert.IsType<StraighteningTimingRow.RouteInput>(rows[name].RouteQuery);
+            Assert.Equal(from, input.Start);
+            Assert.Equal(to, input.Goal.Anchor);
+            Assert.Equal(status, input.Raw.Status);
+            Assert.Equal<NavWaypoint>(raw, input.Raw.Waypoints);
+            NavPath actual = input.FindPath();
+            Assert.Equal(status, actual.Status);
+            Assert.Equal<NavWaypoint>(expected, actual.Waypoints);
         }
     }
 

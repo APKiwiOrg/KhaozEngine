@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using KhaozEngine.Locomotion;
 using KhaozEngine.Movement;
 using KhaozEngine.Navigation;
 using Xunit;
@@ -110,6 +111,61 @@ public sealed partial class RouteStraighteningRequestTests
         Vector3 end = Start with { X = 6.5f };
         AssertStraighteningCuts(marked, raw, raw, trace, total: 123, cells: 21,
             expectedGuards: [(Start, end), (Start with { Z = 2.999f }, end with { Z = 2.999f })]);
+    }
+
+    [Fact]
+    public void MinusSideRefusalKeepsTheNextRawEdgeAfterTheOtherGuardsPass()
+    {
+        GroundNavigation marked = Flat(9, 6, 0.25f, (x, z) => x == 3 && z == 1 ? 1u : 0u).ExcludingAreas(1u);
+        NavPath raw = Path(NavPathStatus.Complete, Waypoint(2.5f), Waypoint(6.5f));
+        Paid[] trace =
+        [
+            Step(Straight.ValidateFeet, 2), Step(Straight.ValidateFeet, 2), Step(Straight.Candidate, 3),
+            .. Endpoint(1), .. Endpoint(1), Cell(Segment.SegmentStart, 1), .. Row(6),
+            .. Enumerable.Repeat(Cell(Segment.CellCrossing, 3), 5),
+            Step(Straight.SideOffsets, 2),
+            .. Endpoint(1, 1), .. Endpoint(1, 1), Cell(Segment.SegmentStart, 1), .. Row(6), .. Row(6),
+            .. Enumerable.Repeat(Cell(Segment.CellCrossing, 3), 5),
+            .. Endpoint(1, 1), .. Endpoint(1, 1), Cell(Segment.SegmentStart, 1), .. Row(3),
+            Step(Straight.KeepAnchor, 2), Step(Straight.KeepAnchor, 2),
+        ];
+        Vector3 end = Start with { X = 6.5f };
+        AssertStraighteningCuts(marked, raw, raw, trace, total: 185, cells: 31,
+            expectedGuards: [(Start, end), (Start with { Z = 2.999f }, end with { Z = 2.999f }),
+                (Start with { Z = 2.001f }, end with { Z = 2.001f })]);
+    }
+
+    [Fact]
+    public void CentreRefusalKeepsTheNextRawEdgeWithoutComputingSideOffsets()
+    {
+        GroundNavigation marked = Flat(9, 6, 0.25f, (x, z) => x == 3 && z == 2 ? 1u : 0u).ExcludingAreas(1u);
+        NavPath raw = Path(NavPathStatus.Complete, Waypoint(2.5f), Waypoint(6.5f));
+        Paid[] trace =
+        [
+            Step(Straight.ValidateFeet, 2), Step(Straight.ValidateFeet, 2), Step(Straight.Candidate, 3),
+            .. Endpoint(1), .. Endpoint(1), Cell(Segment.SegmentStart, 1), .. Row(3),
+            Step(Straight.KeepAnchor, 2), Step(Straight.KeepAnchor, 2),
+        ];
+        AssertStraighteningCuts(marked, raw, raw, trace, total: 39, cells: 5,
+            expectedGuards: [(Start, new(6.5f, 0f, 2.5f))]);
+    }
+
+    [Theory]
+    [InlineData(NavWaypointKind.Hop, 0)]
+    [InlineData(NavWaypointKind.Walk, 1)]
+    public void CandidateTransitionKeepsItsPredecessorBeforeTestingAnyGuard(NavWaypointKind kind, int layer)
+    {
+        var tuning = MoveTuning.Default with { CapsuleRadius = 0f };
+        var columns = NavAreaFootprintRowsTests.Columns(NavAreaFootprintRowsTests.Options());
+        var footprint = new NavAreaFootprint(columns, columns.Options, tuning, default, surfaceReach: 2d);
+        GroundNavigation navigation = Build(footprint, tuning, 4f,
+            [new NavLink(0, 2, 2, layer, 4, 2) { Kind = kind == NavWaypointKind.Hop ? NavLinkKind.Hop : NavLinkKind.Stair }]);
+        NavPath raw = Path(NavPathStatus.Complete, Waypoint(2.5f), Waypoint(4.5f, layer, kind));
+        AssertStraighteningCuts(navigation, raw, raw,
+            [
+                Step(Straight.ValidateFeet, 2), Step(Straight.ValidateFeet, 2), Step(Straight.Candidate, 3),
+                Step(Straight.KeepAnchor, 2), Step(Straight.KeepAnchor, 2),
+            ], total: 11, cells: 0, expectedGuards: []);
     }
 
     [Theory]

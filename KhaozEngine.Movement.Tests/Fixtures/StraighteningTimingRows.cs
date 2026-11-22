@@ -11,6 +11,19 @@ namespace KhaozEngine.Tests.Movement;
 /// <summary>Fixed synchronous workloads portable to a build without route requests.</summary>
 internal readonly record struct StraighteningTimingRow(string Name, Func<int> Run, bool Large)
 {
+    internal SegmentInput? Segment { get; private init; }
+
+    internal RouteInput? RouteQuery { get; private init; }
+
+    internal sealed record SegmentInput(GroundNavigation Navigation, Vector3 From, Vector3 To);
+
+    internal sealed record RouteInput(RouteStraightener Planner, GroundNavigation Navigation, Vector3 Start,
+        NavGoalRegion Goal, NavPath Raw)
+    {
+        internal NavPath FindPath()
+            => Planner.FindPath(Start, Goal, Navigation.AgentRadius, PathQueryBudget.Default);
+    }
+
     internal static IEnumerable<StraighteningTimingRow> Create()
     {
         foreach (var (name, navigation, from, to, large) in new[]
@@ -22,14 +35,16 @@ internal readonly record struct StraighteningTimingRow(string Name, Func<int> Ru
                 new Vector3(1.5f, 0f, 2.5f), new Vector3(6.5f, 0f, 2.5f), false),
         })
         {
-            yield return new($"segment-{name}", () => navigation.AllowsSegment(from, to) ? 1 : 0, large);
+            yield return new($"segment-{name}", () => navigation.AllowsSegment(from, to) ? 1 : 0, large)
+                { Segment = new(navigation, from, to) };
             yield return Route($"straighten-{name}", navigation, from, to,
                 [Waypoint((from + to) * 0.5f), Waypoint(to)], large);
         }
 
         GroundNavigation flat = Flat(9, 6, 0.25f);
         Vector3 start = new(1.5f, 0f, 2.5f), end = new(6.5f, 0f, 2.5f);
-        yield return new("segment-refused-endpoint", () => flat.AllowsSegment(default, end) ? 1 : 0, false);
+        yield return new("segment-refused-endpoint", () => flat.AllowsSegment(default, end) ? 1 : 0, false)
+            { Segment = new(flat, default, end) };
         yield return Route("straighten-unreachable", flat, start, end, [], false, NavPathStatus.Unreachable);
         yield return Route("straighten-single", flat, start, end, [Waypoint(end)], false);
         yield return Route("straighten-malformed", flat, start, end,
@@ -42,7 +57,8 @@ internal readonly record struct StraighteningTimingRow(string Name, Func<int> Ru
         var footprint = new NavAreaFootprint(columns, columns.Options, tuning, default, surfaceReach: 2d);
         GroundNavigation layers = Build(footprint, tuning, 4f, [new NavLink(0, 2, 2, 1, 3, 2)]);
         Vector3 stairFrom = new(2.5f, 0f, 2.5f), stairTo = new(3.5f, 4f, 2.5f);
-        yield return new("segment-stair", () => layers.AllowsSegment(stairFrom, stairTo) ? 1 : 0, false);
+        yield return new("segment-stair", () => layers.AllowsSegment(stairFrom, stairTo) ? 1 : 0, false)
+            { Segment = new(layers, stairFrom, stairTo) };
         yield return Route("straighten-layer", layers, stairFrom, stairTo,
             [Waypoint(stairFrom), Waypoint(stairTo, layer: 1)], false);
     }
@@ -53,7 +69,8 @@ internal readonly record struct StraighteningTimingRow(string Name, Func<int> Ru
         var raw = new NavPath(status, waypoints);
         var planner = new RouteStraightener(new FixedPath(raw), navigation.Space, navigation.AllowsSegment);
         NavGoalRegion goal = Goal(goalFeet);
-        return new(name, () => planner.FindPath(start, goal, navigation.AgentRadius, PathQueryBudget.Default).Waypoints.Count, large);
+        return new(name, () => planner.FindPath(start, goal, navigation.AgentRadius, PathQueryBudget.Default).Waypoints.Count, large)
+            { RouteQuery = new(planner, navigation, start, goal, raw) };
     }
 
     static NavWaypoint Waypoint(Vector3 feet, int layer = 0) => new(new Vector2(feet.X, feet.Z), layer);

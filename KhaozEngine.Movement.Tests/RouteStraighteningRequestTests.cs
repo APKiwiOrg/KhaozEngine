@@ -30,6 +30,56 @@ public sealed partial class RouteStraighteningRequestTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public void ProfileRefusesAForeignStraightenerBeforeCreatingWorkOrConsumingFallback(bool begin)
+    {
+        GroundNavigation source = MarkedFloor();
+        GroundNavigation view = source.ExcludingAreas(1u);
+        var foreign = new RouteStraightener(view);
+        Vector3 end = new(6.5f, 0f, 2.5f);
+        AssertBits(Path(NavPathStatus.Complete, Waypoint(2.5f), Waypoint(3.5f), Waypoint(4.5f), Waypoint(6.5f)),
+            foreign.FindPath(Start, Goal(end), view.AgentRadius, Budget));
+
+        // A route away from the mark can shorten. Arm fallback with that route already published.
+        Vector3 safeStart = new(1.5f, 0f, 1.5f), safeEnd = new(3.5f, 0f, 1.5f);
+        var safeGoal = Goal(safeEnd);
+        NavPath previous = foreign.FindPath(safeStart, safeGoal, view.AgentRadius, Budget);
+        Assert.Single(previous.Waypoints);
+        Assert.Same(previous, foreign.LastStraightened);
+        foreign.FallBackOnce();
+        if (begin)
+        {
+            using var rawPool = source.CreatePlanningWorkspaces(1, Budget);
+            var grid = Assert.IsType<GridPathPlanner.GridPlanningWorkspaces>(rawPool).Planner;
+            using var pool = grid.CreateRequestWorkspaces(foreign, 1, Budget);
+            Assert.Throws<ArgumentException>("straightener", () =>
+                source.BeginPlanningPath(Start, Goal(end), source.AgentRadius, Budget, pool, foreign));
+            Assert.Equal(0, pool.Waits);
+        }
+        else
+        {
+            Assert.Throws<ArgumentException>("straightener", () => source.CreatePlanningWorkspaces(1, Budget, foreign));
+        }
+
+        Assert.Same(previous, foreign.LastStraightened);
+        AssertBits(Path(NavPathStatus.Complete, new NavWaypoint(new(2.5f, 1.5f), 0), new NavWaypoint(new(3.5f, 1.5f), 0)),
+            foreign.FindPath(safeStart, safeGoal, view.AgentRadius, Budget));
+        Assert.Null(foreign.LastStraightened);
+    }
+
+    [Fact]
+    public void ProfileRefusesADelegateOnlyStraightener()
+    {
+        GroundNavigation source = MarkedFloor();
+        var straightener = new RouteStraightener(source.Planner, source.Space, source.AllowsSegment);
+        using var pool = source.CreatePlanningWorkspaces(1, Budget);
+        Assert.Throws<ArgumentException>("straightener", () => source.CreatePlanningWorkspaces(1, Budget, straightener));
+        Assert.Throws<ArgumentException>("straightener", () => source.BeginPlanningPath(
+            Start, Goal(Start), source.AgentRadius, Budget, pool, straightener));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void AreaExcludingViewKeepsItsSynchronousRoute(bool blocked)
     {
         GroundNavigation view = (blocked ? MarkedFloor() : Flat(9, 6, 0.25f)).ExcludingAreas(1u);
@@ -167,6 +217,15 @@ public sealed partial class RouteStraighteningRequestTests
         AssertBits(Path(NavPathStatus.Complete, Waypoint(2.5f), Waypoint(3.5f), Waypoint(4.5f)), Finish(request, [1]));
         Assert.True(request.StartsFrom(Start with { X = 1.75f }));
         Assert.False(request.StartsFrom(Start with { Y = 0.75f }));
+    }
+
+    [Fact]
+    public void ProfileRequestRejectsAnotherProfilesGridPool()
+    {
+        GroundNavigation navigation = Flat(9, 6, 0.25f);
+        using var pool = Assert.IsType<GridPathPlanner.GridPlanningWorkspaces>(MarkedFloor().CreatePlanningWorkspaces(1, Budget));
+        Assert.Throws<ArgumentException>("pool", () => new GroundNavigation.ProfilePathRequest(
+            navigation, pool, Start, Goal(Start), navigation.AgentRadius, Budget));
     }
 
     static GroundNavigation MarkedFloor() => Flat(9, 6, 0.25f, (x, z) => x == 3 && z == 3 ? 1u : 0u);

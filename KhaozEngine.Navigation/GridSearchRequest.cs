@@ -1,24 +1,36 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using RequestAdmission = KhaozEngine.Navigation.GridPathPlanner.GridSearchRequest.GridPlanningWorkspaces.RequestAdmission;
 
 namespace KhaozEngine.Navigation;
 
 public sealed partial class GridPathPlanner
 {
     /// <summary>Frozen raw region query. Only an advance by an owner holding a lease starts or resumes the stepper.</summary>
-    internal class GridSearchRequest(GridPlanningWorkspaces pool, Vector3 start, NavGoalRegion goal,
-        float radius, PathQueryBudget queryBudget) : PathPlanRequest
+    internal partial class GridSearchRequest : PathPlanRequest
     {
+        readonly RequestAdmission _admission;
+        readonly IGridRequestAdapter? _adapter;
         RequestStepper _stepper;
         bool _started;
+        RequestScratch? _leasedScratch;
+        int _leaseSlot = -1;
+        LinkedListNode<GridSearchRequest>? _waitNode;
 
-        internal int LeaseSlot { get; set; } = -1;
-        internal LinkedListNode<GridSearchRequest>? WaitNode { get; set; }
+        internal GridSearchRequest(RequestAdmission admission)
+            => _admission = admission ?? throw new ArgumentNullException(nameof(admission));
 
-        /// <summary>Accepts only an unattached pending handle bound to the same pool.</summary>
-        internal bool CanJoin(GridPlanningWorkspaces workspaces)
-            => ReferenceEquals(pool, workspaces) && State == PathPlanState.Pending && LeaseSlot < 0 && WaitNode is null;
+        private protected GridSearchRequest(RequestAdmission admission, IGridRequestAdapter adapter) : this(admission)
+            => _adapter = adapter;
+
+        GridPlanningWorkspaces Pool => _admission.Pool;
+
+        /// <summary>Whether the pool has granted this request a slot.</summary>
+        private protected bool HasLease => _leaseSlot >= 0;
+
+        /// <summary>Applies begin effects only after the pool has checked the adapter and query admission.</summary>
+        private protected virtual void OnBegin() { }
 
         /// <summary>Reports whether the stepper holds the staged result array before publication.</summary>
         internal bool HasStagedResultArrayForTests => _stepper.HasStagedResultArrayForTests;
@@ -29,30 +41,30 @@ public sealed partial class GridPathPlanner
         {
             get
             {
-                if (State != PathPlanState.Pending || LeaseSlot < 0) return SearchPhase.Done;
+                if (State != PathPlanState.Pending || !HasLease) return SearchPhase.Done;
                 if (_started) return _stepper.Phase;
 
-                GridPathPlanner planner = pool.Planner;
+                GridPathPlanner planner = Pool.Planner;
                 if (planner._space.Layers.Count > 1) return SearchPhase.Layer;
-                return planner._traversal is null && SnapRingLimit(planner._space.Layers[0], queryBudget.SnapRadius) < 0
+                return planner._traversal is null && SnapRingLimit(planner._space.Layers[0], _admission.Budget.SnapRadius) < 0
                     ? SearchPhase.Done : SearchPhase.Snap;
             }
         }
 
         /// <summary>The query feet supplied to both the raw search and its profile stages.</summary>
-        private protected Vector3 Start => start;
+        private protected Vector3 Start => _admission.Start;
 
         /// <summary>The raw search's selected start layer, available once it returns a nonempty route.</summary>
         private protected int StartLayer => _stepper.StartLayer;
 
         /// <summary>The scratch remains owned until the final result has been published or the request is cancelled.</summary>
-        private protected RequestScratch Scratch => pool.ScratchAt(LeaseSlot);
+        private protected RequestScratch Scratch => _leasedScratch!;
 
         public override bool StartsFrom(Vector3 feet)
         {
-            if (SameBits(start.X, feet.X) && SameBits(start.Y, feet.Y) && SameBits(start.Z, feet.Z)) return true;
-            var planner = pool.Planner;
-            return AdmitsStartChange(feet) && Resolve(planner, start) is { } original && Resolve(planner, feet) == original;
+            if (SameBits(Start.X, feet.X) && SameBits(Start.Y, feet.Y) && SameBits(Start.Z, feet.Z)) return true;
+            var planner = Pool.Planner;
+            return AdmitsStartChange(feet) && Resolve(planner, Start) is { } original && Resolve(planner, feet) == original;
         }
 
         /// <summary>Checks profile start admission before comparing two different feet against the grid start.</summary>
@@ -62,8 +74,8 @@ public sealed partial class GridPathPlanner
         {
             int layer = planner._space.LayerAt(feet);
             NavGrid grid = planner._space.Layers[layer];
-            Vector2? snap = planner.SnapToPassable(layer, grid, new Vector2(feet.X, feet.Z), radius,
-                queryBudget.SnapRadius, out _);
+            Vector2? snap = planner.SnapToPassable(layer, grid, new Vector2(feet.X, feet.Z), _admission.Radius,
+                _admission.Budget.SnapRadius, out _);
             if (snap is not Vector2 position) return null;
             (int x, int z) = grid.CellOf(position.X, position.Y);
             return (layer, x, z);
@@ -72,13 +84,13 @@ public sealed partial class GridPathPlanner
         static bool SameBits(float first, float second)
             => BitConverter.SingleToInt32Bits(first) == BitConverter.SingleToInt32Bits(second);
 
-        private protected override void EnterCall() => pool.Enter();
+        private protected sealed override void EnterCall() => Pool.Enter();
 
-        private protected override void ExitCall() => pool.Exit();
+        private protected sealed override void ExitCall() => Pool.Exit();
 
-        private protected override void AdvanceCore(PathWorkBudget budget)
+        private protected sealed override void AdvanceCore(PathWorkBudget budget)
         {
-            if (LeaseSlot < 0) return;
+            if (!HasLease) return;
             try
             {
                 int spent = 0;
@@ -107,7 +119,7 @@ public sealed partial class GridPathPlanner
         {
             if (!_started)
             {
-                _stepper = new RequestStepper(pool.Planner, Scratch, start, goal, radius, queryBudget);
+                _stepper = new RequestStepper(Pool.Planner, Scratch, Start, _admission.Goal, _admission.Radius, _admission.Budget);
                 _started = true;
             }
 
@@ -115,13 +127,11 @@ public sealed partial class GridPathPlanner
             return _stepper.Result;
         }
 
-        /// <summary>Cancels under the pool's existing disposal guard.</summary>
-        internal void CancelFromPool() => CancelPending();
-
-        private protected override void Release()
+        private protected sealed override void Release()
         {
-            pool.Release(this);
-            LeaseSlot = -1;
+            Pool.Release(this);
+            _leaseSlot = -1;
+            _leasedScratch = null;
             _stepper = default;
             ClearProfileStages();
         }

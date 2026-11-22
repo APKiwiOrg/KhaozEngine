@@ -5,6 +5,7 @@ using KhaozEngine.Locomotion;
 using KhaozEngine.Movement;
 using KhaozEngine.Navigation;
 using Xunit;
+using GridPlanningWorkspaces = KhaozEngine.Navigation.GridPathPlanner.GridSearchRequest.GridPlanningWorkspaces;
 using static KhaozEngine.Tests.Movement.SegmentAdmissionFixture;
 
 namespace KhaozEngine.Tests.Movement;
@@ -48,9 +49,7 @@ public sealed partial class RouteStraighteningRequestTests
         foreign.FallBackOnce();
         if (begin)
         {
-            using var rawPool = source.CreatePlanningWorkspaces(1, Budget);
-            var grid = Assert.IsType<GridPathPlanner.GridPlanningWorkspaces>(rawPool).Planner;
-            using var pool = grid.CreateRequestWorkspaces(foreign, 1, Budget);
+            using var pool = source.CreatePlanningWorkspaces(1, Budget);
             Assert.Throws<ArgumentException>("straightener", () =>
                 source.BeginPlanningPath(Start, Goal(end), source.AgentRadius, Budget, pool, foreign));
             Assert.Equal(0, pool.Waits);
@@ -223,9 +222,9 @@ public sealed partial class RouteStraighteningRequestTests
     public void ProfileRequestRejectsAnotherProfilesGridPool()
     {
         GroundNavigation navigation = Flat(9, 6, 0.25f);
-        using var pool = Assert.IsType<GridPathPlanner.GridPlanningWorkspaces>(MarkedFloor().CreatePlanningWorkspaces(1, Budget));
-        Assert.Throws<ArgumentException>("pool", () => new GroundNavigation.ProfilePathRequest(
-            navigation, pool, Start, Goal(Start), navigation.AgentRadius, Budget));
+        using var pool = Assert.IsType<GridPlanningWorkspaces>(MarkedFloor().CreatePlanningWorkspaces(1, Budget));
+        Assert.Throws<ArgumentException>("workspaces", () => pool.BeginAdapted((IGridRequestAdapter)navigation.Planner,
+            Start, Goal(Start), navigation.AgentRadius, Budget));
     }
 
     static GroundNavigation MarkedFloor() => Flat(9, 6, 0.25f, (x, z) => x == 3 && z == 3 ? 1u : 0u);

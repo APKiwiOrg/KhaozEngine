@@ -1,20 +1,22 @@
 using System;
 using System.Numerics;
 using KhaozEngine.Navigation;
-using static KhaozEngine.Navigation.GridPathPlanner;
+using GridPlanningWorkspaces = KhaozEngine.Navigation.GridPathPlanner.GridSearchRequest.GridPlanningWorkspaces;
+using GridSearchRequest = KhaozEngine.Navigation.GridPathPlanner.GridSearchRequest;
+using RequestAdmission = KhaozEngine.Navigation.GridPathPlanner.GridSearchRequest.GridPlanningWorkspaces.RequestAdmission;
 
 namespace KhaozEngine.Movement;
 
 public sealed partial class GroundNavigation
 {
-    /// <summary>Area excluding views plan synchronously because a traversal constraint can scan a footprint
-    /// within one grid search operation.</summary>
+    /// <summary>Query-time footprint exclusions require synchronous planning, even with an unconstrained grid.
+    /// A view's traversal constraint can scan a footprint within one grid search operation.</summary>
     internal bool SupportsRequests => ((ProfilePlanner)Planner).SupportsRequests;
 
     /// <summary>Prewarms all buffers for the profile's incremental planner. Area excluding views plan
     /// synchronously, as their grid search constraint can scan an entire footprint in one operation.</summary>
     /// <exception cref="ArgumentException">The supplied straightener is bound to a different profile or has no profile.</exception>
-    /// <exception cref="NotSupportedException">This is an area excluding view.</exception>
+    /// <exception cref="NotSupportedException">This profile requires synchronous planning.</exception>
     internal PathPlanWorkspaces CreatePlanningWorkspaces(int count, PathQueryBudget largestBudget,
         RouteStraightener? straightener = null)
         => ((ProfilePlanner)Planner).CreateWorkspaces(count, largestBudget, straightener);
@@ -23,7 +25,7 @@ public sealed partial class GroundNavigation
     /// Area excluding views require synchronous planning to keep whole-footprint constraints outside the quota.</summary>
     /// <exception cref="ArgumentException">The straightener belongs to another profile or has no profile,
     /// or the pool does not belong to the straightener.</exception>
-    /// <exception cref="NotSupportedException">This is an area excluding view.</exception>
+    /// <exception cref="NotSupportedException">This profile requires synchronous planning.</exception>
     internal PathPlanRequest BeginPlanningPath(Vector3 start, NavGoalRegion goal, float radius, PathQueryBudget budget,
         PathPlanWorkspaces workspaces, RouteStraightener straightener)
     {
@@ -31,9 +33,30 @@ public sealed partial class GroundNavigation
         return ((ProfilePlanner)Planner).BeginPath(start, goal, radius, budget, workspaces, straightener);
     }
 
-    private sealed partial class ProfilePlanner
+    /// <summary>Gets the grid behind this profile's request adapters.</summary>
+    internal GridPathPlanner RequestGrid => ((IGridRequestAdapter)Planner).RequestGrid;
+
+    private sealed partial class ProfilePlanner : IGridRequestAdapter
     {
-        internal bool SupportsRequests => planner.SupportsRequests;
+        internal bool SupportsRequests => !navigation._footprint.HasAreaExclusions && planner.SupportsRequests;
+
+        GridPathPlanner IGridRequestAdapter.RequestGrid
+        {
+            get
+            {
+                RequireRequestSupport();
+                return planner;
+            }
+        }
+
+        GridSearchRequest IGridRequestAdapter.CreateRequest(RequestAdmission admission)
+            => new ProfilePathRequest(navigation, admission);
+
+        void RequireRequestSupport()
+        {
+            if (!SupportsRequests)
+                throw new NotSupportedException("This ground navigation profile requires synchronous planning.");
+        }
 
         bool IIncrementalRegionPathPlanner.SupportsRequests => SupportsRequests;
 
@@ -43,7 +66,7 @@ public sealed partial class GroundNavigation
         internal PathPlanWorkspaces CreateWorkspaces(int count, PathQueryBudget largestBudget, RouteStraightener? straightener = null)
         {
             RequireStraightenerProfile(straightener);
-            return planner.CreateRequestWorkspaces((object?)straightener ?? this, count, largestBudget);
+            return new GridPlanningWorkspaces((IGridRequestAdapter?)straightener ?? this, count, largestBudget);
         }
 
         void RequireStraightenerProfile(RouteStraightener? straightener)
@@ -51,8 +74,6 @@ public sealed partial class GroundNavigation
             if (straightener is not null && !straightener.UsesNavigation(navigation))
                 throw new ArgumentException("The straightener must be bound to this ground navigation profile.", nameof(straightener));
         }
-
-        internal bool OwnsRequestPool(GridPlanningWorkspaces pool, object owner) => pool.IsOwnedBy(planner, owner);
 
         PathPlanRequest IIncrementalRegionPathPlanner.BeginPath(Vector3 start, NavGoalRegion goal, float agentRadius,
             PathQueryBudget budget, PathPlanWorkspaces workspaces)
@@ -62,13 +83,9 @@ public sealed partial class GroundNavigation
             PathPlanWorkspaces workspaces, RouteStraightener? straightener = null)
         {
             RequireStraightenerProfile(straightener);
-            planner.RequireRequestSupport();
-            ArgumentNullException.ThrowIfNull(goal);
-            ValidateRadius(agentRadius);
-            return planner.BeginRequest((object?)straightener ?? this, start, goal, agentRadius, budget, workspaces,
-                pool => straightener is null
-                    ? new ProfilePathRequest(navigation, pool, start, goal, agentRadius, budget)
-                    : new RouteStraighteningRequest(straightener, pool, start, goal, agentRadius, budget));
+            RequireRequestSupport();
+            return GridPlanningWorkspaces.Require(workspaces)
+                .BeginAdapted((IGridRequestAdapter?)straightener ?? this, start, goal, agentRadius, budget);
         }
     }
 
@@ -77,34 +94,26 @@ public sealed partial class GroundNavigation
     {
         NavEndpointRequest _endpoint;
 
-        internal ProfilePathRequest(GroundNavigation navigation, GridPlanningWorkspaces pool, Vector3 start,
-            NavGoalRegion goal, float radius, PathQueryBudget budget)
-            : this(navigation, pool, start, goal, radius, budget, navigation.Planner)
+        internal ProfilePathRequest(GroundNavigation navigation, RequestAdmission admission)
+            : this(navigation, admission, (IGridRequestAdapter)navigation.Planner)
         {
         }
 
-        private protected ProfilePathRequest(RouteStraightener straightener, GridPlanningWorkspaces pool, Vector3 start,
-            NavGoalRegion goal, float radius, PathQueryBudget budget)
-            : this(straightener.RequestNavigation(), pool, start, goal, radius, budget, straightener)
+        private protected ProfilePathRequest(RouteStraightener straightener, RequestAdmission admission)
+            : this(straightener.RequestNavigation(), admission, straightener)
         {
         }
 
-        private ProfilePathRequest(GroundNavigation navigation, GridPlanningWorkspaces pool, Vector3 start,
-            NavGoalRegion goal, float radius, PathQueryBudget budget, object owner) : base(pool, start, goal, radius, budget)
+        private ProfilePathRequest(GroundNavigation navigation, RequestAdmission admission, IGridRequestAdapter adapter)
+            : base(admission, adapter)
         {
-            var profile = (ProfilePlanner)navigation.Planner;
-            if (!profile.SupportsRequests)
-                throw new NotSupportedException("This ground navigation profile requires synchronous planning.");
-            if (!profile.OwnsRequestPool(pool, owner))
-                throw new ArgumentException("The workspace pool belongs to another planner.", nameof(pool));
-
             Navigation = navigation;
-            _endpoint = new NavEndpointRequest(navigation, start);
+            _endpoint = new NavEndpointRequest(navigation, Start);
         }
 
         GroundNavigation Navigation { get; }
 
-        internal NavSegmentOperation NextStartOperationForTests => State == PathPlanState.Pending && LeaseSlot >= 0
+        internal NavSegmentOperation NextStartOperationForTests => State == PathPlanState.Pending && HasLease
             ? _endpoint.NextOperation : NavSegmentOperation.Done;
 
         private protected override bool AdmitsStartChange(Vector3 feet)

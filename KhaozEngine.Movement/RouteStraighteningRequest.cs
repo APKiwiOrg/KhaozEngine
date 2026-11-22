@@ -1,6 +1,5 @@
-using System.Numerics;
 using KhaozEngine.Navigation;
-using static KhaozEngine.Navigation.GridPathPlanner;
+using RequestAdmission = KhaozEngine.Navigation.GridPathPlanner.GridSearchRequest.GridPlanningWorkspaces.RequestAdmission;
 
 namespace KhaozEngine.Movement;
 
@@ -9,17 +8,15 @@ namespace KhaozEngine.Movement;
 internal sealed class RouteStraighteningRequest : GroundNavigation.ProfilePathRequest
 {
     readonly RouteStraightener _straightener;
-    readonly bool _fallBack;
+    bool _fallBack;
     RouteStraighteningCursor _cursor;
     bool _straightening;
 
-    internal RouteStraighteningRequest(RouteStraightener straightener, GridPlanningWorkspaces pool,
-        Vector3 start, NavGoalRegion goal, float radius, PathQueryBudget budget)
-        : base(straightener, pool, start, goal, radius, budget)
-    {
-        _straightener = straightener;
-        _fallBack = straightener.BeginStraightening();
-    }
+    internal RouteStraighteningRequest(RouteStraightener straightener, RequestAdmission admission)
+        : base(straightener, admission)
+        => _straightener = straightener;
+
+    private protected override void OnBegin() => _fallBack = _straightener.BeginStraightening();
 
     internal RouteStraighteningOperation NextOperationForTests => _cursor.NextOperation;
 

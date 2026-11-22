@@ -1,6 +1,9 @@
 using System;
 using KhaozEngine.Navigation;
 using Xunit;
+using GridPlanningWorkspaces = KhaozEngine.Navigation.GridPathPlanner.GridSearchRequest.GridPlanningWorkspaces;
+using GridSearchRequest = KhaozEngine.Navigation.GridPathPlanner.GridSearchRequest;
+using RequestAdmission = KhaozEngine.Navigation.GridPathPlanner.GridSearchRequest.GridPlanningWorkspaces.RequestAdmission;
 using static KhaozEngine.Tests.Navigation.GridSearchRequestFixtures;
 
 namespace KhaozEngine.Tests.Navigation;
@@ -21,7 +24,7 @@ public sealed class ConstrainedGridRequestTests
         Assert.Throws<NotSupportedException>(() => constrained.CreateWorkspaces(1, PathQueryBudget.Default));
         Assert.Throws<NotSupportedException>(() => constrained.BeginPath(Start, End(1), 0f, PathQueryBudget.Default, pool));
         Assert.Throws<NotSupportedException>(() =>
-            new GridPathPlanner.GridPlanningWorkspaces(constrainedPlanner, constrainedPlanner, 1, PathQueryBudget.Default));
+            new GridPlanningWorkspaces(constrainedPlanner, 1, PathQueryBudget.Default));
     }
 
     [Fact]
@@ -29,15 +32,30 @@ public sealed class ConstrainedGridRequestTests
     {
         var planner = new GridPathPlanner(NavSpace.Single(DisconnectedPlannerFixture.Grid(1, 1, (_, _) => true)));
         PathQueryBudget budget = PathQueryBudget.Default;
-        using var first = Assert.IsType<GridPathPlanner.GridPlanningWorkspaces>(planner.CreateRequestWorkspaces(planner, 1, budget));
-        using var second = Assert.IsType<GridPathPlanner.GridPlanningWorkspaces>(planner.CreateRequestWorkspaces(planner, 1, budget));
-        using var foreign = new GridPathPlanner.GridSearchRequest(first, Start, End(1), 0f, budget);
+        var adapter = new RequestAdapter(planner);
+        using var first = new GridPlanningWorkspaces(adapter, 1, budget);
+        using var second = new GridPlanningWorkspaces(adapter, 1, budget);
+        using var foreign = adapter.CreateRequest(RequestAdmission.Admit(first, Start, End(1), 0f, budget));
+        adapter.Foreign = foreign;
 
-        Assert.Throws<ArgumentException>("createRequest", () => second.Begin(Start, End(1), 0f, budget, _ => foreign));
+        Assert.Throws<ArgumentException>("adapter", () => second.BeginAdapted(adapter, Start, End(1), 0f, budget));
 
-        using var next = second.Begin(Start, End(1), 0f, budget, null);
+        adapter.Foreign = null;
+        using var next = second.BeginAdapted(adapter, Start, End(1), 0f, budget);
         next.Advance(new(1));
         Assert.True(next.WorkSpent > 0);
         Assert.Equal(0, second.Waits);
     }
+
+    sealed class RequestAdapter(GridPathPlanner planner) : IGridRequestAdapter
+    {
+        internal GridSearchRequest? Foreign { get; set; }
+
+        GridPathPlanner IGridRequestAdapter.RequestGrid => planner;
+
+        public GridSearchRequest CreateRequest(RequestAdmission admission) => Foreign ?? new AdaptedRequest(admission, this);
+    }
+
+    sealed class AdaptedRequest(RequestAdmission admission, IGridRequestAdapter adapter)
+        : GridSearchRequest(admission, adapter);
 }

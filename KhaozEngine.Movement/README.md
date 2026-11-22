@@ -35,12 +35,15 @@ and can continue without rebuilding the query or allocating a scan buffer.
 A ground profile can also plan an internal region request. One prewarmed workspace covers sliced start
 admission, grid search and optional straightening. The straightener validates raw waypoints, keeps
 required anchors and checks the centre, positive and negative side lines in order. It must be bound
-to the exact profile that creates its workspace and begins the request. Begin clears `LastStraightened`
-and captures `FallBackOnce`. Completion records the published shortcut or clears `LastStraightened`
-if the route is unchanged. A spent quota keeps the route private until the final operation.
-Area excluding views plan synchronously because
-their grid traversal constraint can scan a footprint inside one search operation. They do not offer
-profile or straightened requests.
+to the exact profile that creates its workspace and begins the request. Each pool belongs to the exact
+profile planner or straightener that created it. A successful begin clears `LastStraightened` and captures
+`FallBackOnce` after the pool validates the query and request owner. Completion records the published
+shortcut or clears `LastStraightened` if the route is unchanged. A spent quota keeps the route private
+until the final operation.
+
+A footprint with query-time area exclusions requires synchronous planning, including when combined with
+an unconstrained grid. An area excluding view adds a traversal constraint that can scan a footprint
+inside one search operation. The graph already enforces the area filter specified when the profile was baked.
 
 For an ability that refuses an area the actor may otherwise enter, pass
 `navigation.ExcludingAreas(wetSurfaceBit)` to `GroundPursuit`. The mask uses the game's captured `uint` area

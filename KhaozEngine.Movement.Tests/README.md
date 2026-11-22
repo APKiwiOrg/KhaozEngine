@@ -22,8 +22,8 @@ Segment admission tests compare the synchronous guard and sliced requests agains
 on the exact-footprint corpus. Literal traces pin the work and result visibility at each operation
 boundary, including endpoint tie order, the first footprint row and the first directed crossing.
 Route tests pin bitwise equality across quota schedules, the three guard lines and their early stops,
-profile ownership, the shared lease through publication and the synchronous-only policy for area excluding
-views. The synchronous segment and straightening diagnostics have a separate untimed sampling-window
+profile ownership, query admission limits, the shared lease through publication and the synchronous-only
+policy for footprints with query-time area exclusions. The synchronous segment and straightening diagnostics have a separate untimed sampling-window
 check. Ordinary tests verify workload sizes, query endpoints, route positions, layer and waypoint kind,
 and the Stair workload's dependency on its directed link.
 

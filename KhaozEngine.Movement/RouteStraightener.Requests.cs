@@ -1,10 +1,12 @@
 using System;
 using System.Numerics;
 using KhaozEngine.Navigation;
+using GridSearchRequest = KhaozEngine.Navigation.GridPathPlanner.GridSearchRequest;
+using RequestAdmission = KhaozEngine.Navigation.GridPathPlanner.GridSearchRequest.GridPlanningWorkspaces.RequestAdmission;
 
 namespace KhaozEngine.Movement;
 
-internal sealed partial class RouteStraightener
+internal sealed partial class RouteStraightener : IGridRequestAdapter
 {
     private readonly GroundNavigation? _navigation;
 
@@ -16,6 +18,11 @@ internal sealed partial class RouteStraightener
     /// <summary>True when the profile can account for every operation. Area excluding views plan synchronously
     /// because their grid traversal constraint can scan a footprint in one search operation.</summary>
     internal bool SupportsRequests => _navigation?.SupportsRequests == true;
+
+    GridPathPlanner IGridRequestAdapter.RequestGrid => RequestNavigation().RequestGrid;
+
+    GridSearchRequest IGridRequestAdapter.CreateRequest(RequestAdmission admission)
+        => new RouteStraighteningRequest(this, admission);
 
     bool IIncrementalRegionPathPlanner.SupportsRequests => SupportsRequests;
 

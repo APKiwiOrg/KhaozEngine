@@ -49,6 +49,9 @@ internal sealed class NavAreaFootprint
 
     internal NavAreaFootprint ExcludingAreas(uint excludedAreas) => new(this, excludedAreas);
 
+    /// <summary>Whether a view adds exclusions to the filter already enforced by the baked graph.</summary>
+    internal bool HasAreaExclusions => _excludedAreas != 0;
+
     /// <summary>The captured columns this footprint reads. Profiles of one capture share the instance.</summary>
     internal PhysicsNavColumns Columns => _columns;
 

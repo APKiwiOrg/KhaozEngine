@@ -4,6 +4,8 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Numerics;
+using System.Runtime;
+using System.Runtime.CompilerServices;
 using KhaozEngine.Navigation;
 using Xunit;
 using Xunit.Abstractions;
@@ -12,8 +14,12 @@ using static KhaozEngine.Tests.Navigation.GridSearchRequestFixtures;
 
 namespace KhaozEngine.Tests.Navigation;
 
+[Collection("AllocSensitive")]
 public sealed class GridSearchSynchronousTimingTests(ITestOutputHelper output)
 {
+    const long SmallHeapBudget = 16 * 1024 * 1024;
+    const long LargeHeapBudget = 16 * 1024 * 1024;
+
     [Fact]
     public void RowsTakeTheExpectedPlannerDoor()
     {
@@ -71,9 +77,34 @@ public sealed class GridSearchSynchronousTimingTests(ITestOutputHelper output)
         if (Environment.GetEnvironmentVariable("KE_GRID_SEARCH_TIMING") != "1") return;
 
         output.WriteLine($"stopwatch_frequency={Stopwatch.Frequency}");
-        Report("harness-control", () => NavPath.Unreachable, large: false);
+        ReportRows<TimedClock>();
+    }
+
+    [Fact]
+    [Trait("Category", "Diagnostic")]
+    internal void ChecksWarmedSynchronousSamplingWindows()
+    {
+        if (Environment.GetEnvironmentVariable("KE_GRID_SEARCH_WINDOWS") != "1") return;
+
+        ReportRows<UntimedClock>();
+    }
+
+    void ReportRows<TClock>() where TClock : struct, ISampleClock
+    {
+        var invalidWindows = new List<string>();
+        ReportWindow("harness-control", static () => NavPath.Unreachable, large: false);
         foreach (TimingRow row in Rows())
-            Report(row.Name, row.Run, row.Large);
+            ReportWindow(row.Name, row.Run, row.Large);
+
+        if (!TClock.IsTimed)
+            Assert.True(invalidWindows.Count == 0,
+                $"Expected a held no-GC region and zero collections for every row. Invalid windows: {string.Join(", ", invalidWindows)}");
+
+        void ReportWindow(string name, Func<NavPath> run, bool large)
+        {
+            if (!Report<TClock>(name, run, large) && !TClock.IsTimed)
+                invalidWindows.Add(name);
+        }
     }
 
     static IEnumerable<TimingRow> Rows()
@@ -110,7 +141,7 @@ public sealed class GridSearchSynchronousTimingTests(ITestOutputHelper output)
             () => query.Planner.FindPath(query.Start, query.Goal, 0f, query.Budget),
             query.Status, query.Searches, query.Certificates, query.Waypoints, large);
 
-    void Report(string name, Func<NavPath> run, bool large)
+    bool Report<TClock>(string name, Func<NavPath> run, bool large) where TClock : struct, ISampleClock
     {
         int batch = large ? 1 : 128;
         int warmCalls = large ? 16 : 512;
@@ -118,25 +149,91 @@ public sealed class GridSearchSynchronousTimingTests(ITestOutputHelper output)
         for (int warm = 1; warm < warmCalls; warm++) warmResult = run();
 
         var samples = new long[large ? 63 : 151];
-        int gen0 = GC.CollectionCount(0), gen1 = GC.CollectionCount(1), gen2 = GC.CollectionCount(2);
-        for (int i = 0; i < samples.Length; i++)
+        CompactHeaps();
+        GC.WaitForPendingFinalizers();
+        CompactHeaps();
+        bool started = GC.TryStartNoGCRegion(SmallHeapBudget + LargeHeapBudget, LargeHeapBudget,
+            disallowFullBlockingGC: true);
+        bool held = false;
+        int gen0, gen1, gen2;
+        long windowBytes, threadBytes;
+        try
         {
-            long start = Stopwatch.GetTimestamp();
-            for (int call = 0; call < batch; call++) GC.KeepAlive(run());
-            samples[i] = Stopwatch.GetTimestamp() - start;
+            gen0 = GC.CollectionCount(0);
+            gen1 = GC.CollectionCount(1);
+            gen2 = GC.CollectionCount(2);
+            windowBytes = GC.GetTotalAllocatedBytes(precise: true);
+            threadBytes = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < samples.Length; i++)
+            {
+                long start = TClock.GetTimestamp();
+                for (int call = 0; call < batch; call++) GC.KeepAlive(run());
+                samples[i] = TClock.GetTimestamp() - start;
+            }
+            held = started && GCSettings.LatencyMode == GCLatencyMode.NoGCRegion;
+            gen0 = GC.CollectionCount(0) - gen0;
+            gen1 = GC.CollectionCount(1) - gen1;
+            gen2 = GC.CollectionCount(2) - gen2;
+            windowBytes = GC.GetTotalAllocatedBytes(precise: true) - windowBytes;
+            threadBytes = GC.GetAllocatedBytesForCurrentThread() - threadBytes;
         }
-        gen0 = GC.CollectionCount(0) - gen0;
-        gen1 = GC.CollectionCount(1) - gen1;
-        gen2 = GC.CollectionCount(2) - gen2;
-        string rawTicks = string.Join(",", samples);
-        Array.Sort(samples);
-        double nanosecondsPerTickPerQuery = 1e9 / Stopwatch.Frequency / batch;
-        double median = samples[samples.Length / 2] * nanosecondsPerTickPerQuery;
-        double p95 = samples[(int)Math.Ceiling(samples.Length * 0.95) - 1] * nanosecondsPerTickPerQuery;
+        finally
+        {
+            if (started)
+            {
+                try { GC.EndNoGCRegion(); }
+                catch (InvalidOperationException) { held = false; }
+            }
+        }
+
+        string? rawTicks = null;
+        string timingFields = "";
+        if (TClock.IsTimed)
+        {
+            rawTicks = string.Join(",", samples);
+            Array.Sort(samples);
+            double nanosecondsPerTickPerQuery = 1e9 / Stopwatch.Frequency / batch;
+            double median = samples[samples.Length / 2] * nanosecondsPerTickPerQuery;
+            double p95 = samples[(int)Math.Ceiling(samples.Length * 0.95) - 1] * nanosecondsPerTickPerQuery;
+            timingFields = string.Create(CultureInfo.InvariantCulture, $"median_ns={median:F3} p95_ns={p95:F3} ");
+        }
         output.WriteLine(string.Create(CultureInfo.InvariantCulture,
             $"name={name} status={warmResult.Status} waypoints={warmResult.Waypoints.Count} batch={batch} " +
-            $"median_ns={median:F3} p95_ns={p95:F3} gc={gen0},{gen1},{gen2}"));
-        output.WriteLine($"name={name} raw_batch_ticks={rawTicks}");
+            $"{timingFields}gc={gen0},{gen1},{gen2} nogc={(held ? "held" : "lost")} " +
+            $"window_bytes={windowBytes} thread_bytes={threadBytes}"));
+        if (rawTicks is not null)
+            output.WriteLine($"name={name} raw_batch_ticks={rawTicks}");
+
+        return held && gen0 == 0 && gen1 == 0 && gen2 == 0;
+    }
+
+    static void CompactHeaps()
+    {
+        GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+    }
+
+    // Value-type clocks share the sample loop without a mode branch between the timestamp reads.
+    interface ISampleClock
+    {
+        static abstract bool IsTimed { get; }
+        static abstract long GetTimestamp();
+    }
+
+    readonly struct TimedClock : ISampleClock
+    {
+        static bool ISampleClock.IsTimed => true;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static long ISampleClock.GetTimestamp() => Stopwatch.GetTimestamp();
+    }
+
+    readonly struct UntimedClock : ISampleClock
+    {
+        static bool ISampleClock.IsTimed => false;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static long ISampleClock.GetTimestamp() => 0;
     }
 
     /// <summary>A warmed timing input and the route door the ordinary counter test verifies.</summary>

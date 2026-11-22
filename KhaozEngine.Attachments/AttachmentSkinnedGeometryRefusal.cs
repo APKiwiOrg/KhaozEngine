@@ -53,4 +53,19 @@ public enum AttachmentSkinnedGeometryRefusal
 
     /// <summary>Refuses a vertex with no positive skin weight.</summary>
     WeightsAllZero,
+
+    /// <summary>A primitive lacks the lift attribute named by AttributeName and JsonPath.</summary>
+    LiftAttributeMissing,
+
+    /// <summary>The lift attribute named by AttributeName and JsonPath has the wrong accessor shape, encoding or count.</summary>
+    LiftAttributeShapeMismatch,
+
+    /// <summary>The direction at VertexIndex in the primitive named by JsonPath is non-finite or outside unit length tolerance.</summary>
+    LiftDirectionInvalid,
+
+    /// <summary>The bearing at VertexIndex in the primitive named by JsonPath is non-finite or negative.</summary>
+    LiftBearingInvalid,
+
+    /// <summary>Vertices at flattened indices VertexIndex and OtherVertexIndex share position bits but disagree on lift data.</summary>
+    CoincidentLiftDataMismatch,
 }

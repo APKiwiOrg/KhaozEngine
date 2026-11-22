@@ -174,16 +174,16 @@ A lifting part's GLB carries two custom attributes on every primitive, one eleme
 | `_LIFT_DIRECTION` | VEC3, FLOAT | The skin's outward unit normal under the vertex, in the body's rest space. |
 | `_LIFT_BEARING` | SCALAR, FLOAT | How far the part's underside stands off the skin under the vertex, in metres. |
 
-The skinned attachment policy refuses a lifting part when a primitive lacks either attribute, stores it with another
-type or element count, has a direction that is not finite or not unit length within 0.001, or has a bearing that is
-not finite or is negative. Vertices of one part at the same position must carry the same direction and bearing
-within 0.0001, because they move as one and different data would open a crack. A part that does not lift may carry
-the attributes, and they are ignored.
+The skinned attachment policy refuses a lifting part when a primitive lacks either attribute, uses another
+accessor type or component encoding, normalizes it, or has an element count different from `POSITION`.
+Directions must be finite and within 0.001 of unit length. Bearings must be finite and nonnegative. Vertices with
+bitwise equal positions across the mesh must carry direction and bearing values within 0.0001 in each component,
+because they move as one and different data would open a crack. A part without lift ignores these attributes.
 
 The renderer groups a part's vertices by material in first use order when it uploads them, and region runs follow
-that grouping. `AttachmentGlb.LiftBasis` reads the attributes in flattened mesh, primitive and vertex order, as
-`SwingingVertices` reads its mask, and names each vertex's material part and its index there, so a tool lines the
-data up with the upload by the same rule. The renderer reads the attributes in upload order.
+that grouping. `AttachmentGlb.LiftBasis` returns an immutable `LiftBasis` in flattened mesh, primitive and vertex
+order, as `SwingingVertices` reads its mask. Each entry names its zero-based `MaterialPart` and `IndexInPart`
+so an offline tool or a bind can line it up with the upload. Primitives without a source material share a part.
 
 ## Displaced mesh views
 
@@ -214,7 +214,9 @@ SkinnedMeshHandle lifted = scene.CreateSkinnedMeshView(source, indices, restPosi
   draws exactly as before.
 - A lift over a scene without the capability refuses with `AttachmentBindingRefusal.OutfitLiftUnsupported`, naming
   the worn set and the part. An outfit that lifts nothing binds over any view scene.
-- The cache reads a part's lift attributes from its verified bytes the first time a bind needs them, and keeps them.
+- `AttachmentSetCache.Get` reads a lifting part's basis from its verified bytes before any scene upload, including
+  when an earlier set already uploaded the mesh without lift. The cache retains the basis by mesh identity only
+  after the set loads successfully.
 - Draws, outlines, motion and every draw overload are unchanged. An outfit draw names a handle, and a lifted part's
   handle is its displaced view.
 - Binding allocates. `WriteDraws`, `Queue`, `QueueOutline` and `WornMotion.Step` allocate nothing once warm.
@@ -271,9 +273,10 @@ Each new reason is appended to its enum and carries the identifiers that locate 
 
 - `AttachmentSetRefusal`: a standoff or a lift without a layer, a standoff region name that is empty, malformed or
   repeated, a standoff value out of range, too many standoff entries, and a clearance out of range.
-- `AttachmentSkinnedGeometryRefusal`: a lift attribute missing from a primitive, a lift attribute with the wrong
-  type or count, a lift direction that is not finite or not unit length, a bearing that is not finite or negative,
-  and coincident vertices with different lift data.
+- `AttachmentSkinnedGeometryRefusal`: `LiftAttributeMissing`, `LiftAttributeShapeMismatch`,
+  `LiftDirectionInvalid`, `LiftBearingInvalid` and `CoincidentLiftDataMismatch` carry the attribute name and its
+  JSON path in the primitive. Invalid values also carry the primitive-local `VertexIndex`. A coincident mismatch
+  carries the later and earlier flattened indices as `VertexIndex` and `OtherVertexIndex`.
 - `SkinnedMeshViewRefusal`: a position count that does not match the source, and a position that is not finite.
 - `AttachmentBindingRefusal`: a lift over a scene that cannot create displaced views.
 

@@ -68,8 +68,11 @@ public sealed class AttachmentSkinnedGeometryDataException : MalformedDataExcept
     /// <summary>The weight count involved in the refusal, when applicable.</summary>
     public int? WeightCount { get; init; }
 
-    /// <summary>The vertex index involved in the refusal, when applicable.</summary>
+    /// <summary>The vertex index in the primitive, or the later flattened index for a coincident lift mismatch.</summary>
     public int? VertexIndex { get; init; }
+
+    /// <summary>The earlier flattened vertex index for a coincident lift mismatch.</summary>
+    public int? OtherVertexIndex { get; init; }
 
     /// <summary>The lane involved in the refusal, when applicable.</summary>
     public int? Lane { get; init; }
@@ -99,6 +102,7 @@ public sealed class AttachmentSkinnedGeometryDataException : MalformedDataExcept
         PositionCount = PositionCount,
         WeightCount = WeightCount,
         VertexIndex = VertexIndex,
+        OtherVertexIndex = OtherVertexIndex,
         Lane = Lane,
         Index = Index,
         Weight = Weight,

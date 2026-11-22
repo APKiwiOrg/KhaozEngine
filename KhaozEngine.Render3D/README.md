@@ -2599,8 +2599,13 @@ through every skinned API, because every skinned pass draws an entry's whole ind
 a filtered one. The index buffer takes the narrowest format that fits. `IsSkinnedMeshView` tells a view from a loaded
 mesh. The design is in [Attachment regions and layers](../docs/design/ATTACHMENT-REGIONS-AND-LAYERS-DESIGN.md).
 
+`CreateSkinnedMeshView(source, indices, restPositions)` creates a displaced view with one finite rest position
+per source vertex. It owns its vertex buffer and CPU rest vertices, copies the source's other vertex attributes
+and shares its materials, alpha cutoff, inverse binds, rest pose and skeleton. Its bounds add the largest vertex
+displacement on every side of the source bounds and keep that margin when the source bounds grow.
+
 `UnloadSkinnedMesh(view)` keeps the view drawable until the frame ends, because queued draws resolve their handle
-when the frame is prepared. The next `Begin` frees its slot and retires its index buffer. A source refuses to unload
+when the frame is prepared. The next `Begin` frees its slot and retires its owned buffers. A source refuses to unload
 while a view of it lives. A view already unloaded this frame is released with its source, and its draws this frame
 are dropped with the source's own. Views count toward the live skinned mesh slots. A refused release changes nothing
 it owns, so the same call succeeds once the view is gone. `UnloadSharedSkinnedMesh` keeps its key and
@@ -2610,11 +2615,11 @@ handle freed elsewhere throws as it always did, after the key is forgotten or th
 
 A view is the renderer's way to hide part of a skinned mesh without a shader mask. A mask would touch every skinned
 shader variant and the CPU skinning path, and a pass that missed it would shadow or outline triangles the colour
-pass hides. A view needs no shader, pipeline or draw call change. It uses its source's bounds, including any
+pass hides. A view uses the existing shaders, pipelines and draws. Its bounds follow those of its source, including any
 expansion for [swinging attachment chains](../KhaozEngine.Attachments.Render3D/README.md#hanging-chains-and-wearer-motion).
-A CPU skinned view deforms every source vertex, the same cost as drawing
-the source. A shadow, caustic, interior cut or sampler replacement rebinds each view to its source's rebuilt sets,
-and `Dispose` frees each view's index buffer and never a shared resource twice. The attachment arm's
+CPU skinning deforms every vertex in the view's rest geometry, the same skinning cost as drawing the source.
+A shadow, caustic, interior cut or sampler replacement rebinds each view to its source's rebuilt sets, and
+`Dispose` frees each view's owned buffers. The attachment arm's
 [outfits](../KhaozEngine.Attachments.Render3D/README.md#outfits) build their hidden triangles from views, and build
 them when an outfit changes, never per frame.
 
@@ -2631,6 +2636,8 @@ creates nothing.
 | `IndexCountNotTriangles` | A count that is not a multiple of three | `IndexCount` |
 | `IndexOutOfRange` | An index past the source's vertices | `IndexPosition`, `VertexCount` |
 | `SourceHasLiveViews` | `UnloadSkinnedMesh(source)` while a view of it lives | `LiveViews` |
+| `PositionCountMismatch` | The displaced view has the wrong number of rest positions | `VertexCount`, `PositionCount` |
+| `PositionNonFinite` | A rest position has a non-finite component | `VertexIndex` |
 
 ## Post-chain and water-frame refusals
 

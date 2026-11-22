@@ -323,9 +323,12 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>Whether the owner freed this handle, the same one thing <see cref="FakeTexture"/> records and
         /// for the same reason: it is what pins the frame a retired buffer is actually destroyed on.</summary>
-        internal bool Disposed { get; private set; }
+        internal bool Disposed => DisposeCalls != 0;
 
-        public void Dispose() => Disposed = true;
+        /// <summary>Buffer destruction attempts, for ownership and retirement assertions.</summary>
+        internal int DisposeCalls { get; private set; }
+
+        public void Dispose() => DisposeCalls++;
     }
 
     internal sealed class FakeTexture : IGpuTexture

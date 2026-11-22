@@ -13,7 +13,7 @@ namespace KhaozEngine.Tests.Render3D;
 
 /// <summary>A skinned mesh view draws part of a loaded skinned mesh in every pass, is refused with a typed reason
 /// when its input is bad, holds its source while it lives and outlives its own unload until the frame ends.</summary>
-public sealed class SkinnedMeshViewTests
+public sealed partial class SkinnedMeshViewTests
 {
     // Triangles 0 and 2 of Strip().
     static readonly uint[] AlternateTriangles = [0, 1, 2, 2, 3, 4];
@@ -49,13 +49,17 @@ public sealed class SkinnedMeshViewTests
         Assert.Equal(Counts(sourceDraws), Counts(viewDraws));
     }
 
-    [Fact]
-    public void A_view_follows_its_source_through_a_material_set_replacement()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_view_follows_its_source_through_a_material_set_replacement(bool displaced)
     {
         using var rig = new ViewRig(gpuSkinning: true);
         Scene3D.TextureHandle albedo = rig.Scene.LoadTexture([255, 255, 255, 255], 1, 1);
         SkinnedMeshHandle source = rig.Scene.LoadSkinnedMesh(Strip(), albedo);
-        SkinnedMeshHandle view = rig.Scene.CreateSkinnedMeshView(source, AlternateTriangles);
+        SkinnedMeshHandle view = displaced
+            ? rig.Scene.CreateSkinnedMeshView(source, AlternateTriangles, LiftedPositions())
+            : rig.Scene.CreateSkinnedMeshView(source, AlternateTriangles);
         var before = rig.Scene.SkinnedMaterialSetsForTests(source);
         Assert.Equal(before, rig.Scene.SkinnedMaterialSetsForTests(view));
 
@@ -70,19 +74,31 @@ public sealed class SkinnedMeshViewTests
     }
 
     [Theory]
-    [InlineData("empty")]
-    [InlineData("index past the vertex count")]
-    [InlineData("count not a multiple of three")]
-    [InlineData("view of a view")]
-    [InlineData("source with coverage evidence")]
-    [InlineData("stale source handle")]
-    public void A_bad_view_is_refused(string fault)
+    [InlineData("empty", false)]
+    [InlineData("empty", true)]
+    [InlineData("index past the vertex count", false)]
+    [InlineData("index past the vertex count", true)]
+    [InlineData("count not a multiple of three", false)]
+    [InlineData("count not a multiple of three", true)]
+    [InlineData("view of a view", false)]
+    [InlineData("view of a view", true)]
+    [InlineData("source with coverage evidence", false)]
+    [InlineData("source with coverage evidence", true)]
+    [InlineData("stale source handle", false)]
+    [InlineData("stale source handle", true)]
+    public void A_bad_view_is_refused(string fault, bool displaced)
     {
         using var coverage = fault == "source with coverage evidence" ? new CoverageBindingFixture() : null;
         using var rig = coverage is null ? new ViewRig(gpuSkinning: true) : null;
         Scene3D scene = coverage?.Scene ?? rig!.Scene;
         uint[] valid = [0, 1, 2];
-        SkinnedMeshHandle control = scene.LoadSkinnedMesh(Strip());
+        SkinnedGltfMesh mesh = coverage?.Meshes[0] ?? Strip();
+        SkinnedMeshHandle control = scene.LoadSkinnedMesh(coverage is null ? mesh :
+            new SkinnedGltfMesh(mesh.Vertices, mesh.Indices32, mesh.InverseBind, mesh.RestPose, mesh.Skeleton));
+        Vector3[] positions = mesh.Vertices.Select(vertex => vertex.Position).ToArray();
+        SkinnedMeshHandle Create(SkinnedMeshHandle handle, uint[] list) => displaced
+            ? scene.CreateSkinnedMeshView(handle, list, positions)
+            : scene.CreateSkinnedMeshView(handle, list);
         SkinnedMeshHandle source = control;
         uint[] indices = valid;
         uint[] controlIndices = valid;
@@ -96,7 +112,7 @@ public sealed class SkinnedMeshViewTests
                 reason = SkinnedMeshViewRefusal.IndexOutOfRange;
                 break;
             case "count not a multiple of three": indices = [0, 1, 2, 3]; reason = SkinnedMeshViewRefusal.IndexCountNotTriangles; break;
-            case "view of a view": source = scene.CreateSkinnedMeshView(control, valid); reason = SkinnedMeshViewRefusal.SourceIsView; break;
+            case "view of a view": source = Create(control, valid); reason = SkinnedMeshViewRefusal.SourceIsView; break;
             case "source with coverage evidence": source = coverage!.Hosts[0]; reason = SkinnedMeshViewRefusal.SourceHasCoverage; break;
             case "stale source handle":
                 source = scene.LoadSkinnedMesh(Strip());
@@ -107,7 +123,9 @@ public sealed class SkinnedMeshViewTests
         }
         int live = scene.LiveSkinnedMeshCount;
 
-        var refusal = Assert.Throws<SkinnedMeshViewArgumentException>(() => scene.CreateSkinnedMeshView(source, indices));
+        FakeGpuResourceFactory factory = coverage?.Factory ?? rig!.Factory;
+        int buffers = factory.Buffers.Count;
+        var refusal = Assert.Throws<SkinnedMeshViewArgumentException>(() => Create(source, indices));
 
         Assert.Equal(reason, refusal.Reason);
         Assert.Equal(source.Index, refusal.SourceIndex);
@@ -116,9 +134,10 @@ public sealed class SkinnedMeshViewTests
         Assert.Equal(reason == SkinnedMeshViewRefusal.IndexOutOfRange ? 2 : null, refusal.IndexPosition);
         Assert.Equal(reason == SkinnedMeshViewRefusal.IndexOutOfRange ? 6 : null, refusal.VertexCount);
         Assert.Equal(live, scene.LiveSkinnedMeshCount);
+        Assert.Empty(factory.Buffers.Skip(buffers));
         // The control differs only in the broken rule: a live, plain, loaded source and in-range indices, the last
         // vertex included.
-        Assert.True(scene.IsSkinnedMeshView(scene.CreateSkinnedMeshView(control, controlIndices)));
+        Assert.True(scene.IsSkinnedMeshView(Create(control, controlIndices)));
         Assert.Equal(live + 1, scene.LiveSkinnedMeshCount);
     }
 
@@ -235,7 +254,8 @@ public sealed class SkinnedMeshViewTests
         readonly FakeGpuDevice _device = new();
         readonly IGpuTexture _targetTexture;
         readonly IGpuFramebuffer _target;
-        FakeGpuResourceFactory Factory => (FakeGpuResourceFactory)_device.Factory;
+        internal FakeGpuDevice Device => _device;
+        internal FakeGpuResourceFactory Factory => (FakeGpuResourceFactory)_device.Factory;
 
         internal ViewRig(bool gpuSkinning)
         {
@@ -251,11 +271,14 @@ public sealed class SkinnedMeshViewTests
         internal Scene3D Scene { get; }
         internal Matrix4x4[] Pose { get; } = [Matrix4x4.Identity];
 
-        internal SkinnedMeshHandle LoadStrip(out FakeBuffer indices)
+        internal SkinnedMeshHandle LoadStrip(out FakeBuffer indices) => LoadStrip(out indices, out _);
+
+        internal SkinnedMeshHandle LoadStrip(out FakeBuffer indices, out FakeBuffer vertices)
         {
             int before = Factory.Buffers.Count;
             SkinnedMeshHandle handle = Scene.LoadSkinnedMesh(Strip());
             indices = NewIndexBuffer(before);
+            vertices = NewVertexBuffer(before);
             return handle;
         }
 
@@ -267,20 +290,39 @@ public sealed class SkinnedMeshViewTests
             return view;
         }
 
+        internal SkinnedMeshHandle CreateDisplacedView(SkinnedMeshHandle source, Vector3[] positions,
+            out FakeBuffer indices, out FakeBuffer vertices)
+        {
+            int before = Factory.Buffers.Count;
+            SkinnedMeshHandle view = Scene.CreateSkinnedMeshView(source, AlternateTriangles, positions);
+            indices = NewIndexBuffer(before);
+            vertices = NewVertexBuffer(before);
+            return view;
+        }
+
         FakeBuffer NewIndexBuffer(int before) =>
             Assert.Single(Factory.Buffers.Skip(before), buffer => buffer.Usage.HasFlag(GpuBufferUsage.IndexBuffer));
 
+        FakeBuffer NewVertexBuffer(int before) =>
+            Assert.Single(Factory.Buffers.Skip(before), buffer => buffer.Usage.HasFlag(GpuBufferUsage.VertexBuffer));
+
         internal IReadOnlyList<RecordingGpuCommandList.IndexedDraw> RenderFrame(Action<Scene3D> submit)
+        {
+            using RecordingGpuCommandList recording = RecordFrame(submit);
+            return recording.IndexedDraws.ToArray();
+        }
+
+        internal RecordingGpuCommandList RecordFrame(Action<Scene3D> submit, bool capturePayloads = false)
         {
             Scene.Begin();
             Scene.AddLight(new Vector3(0f, 1f, 1f), Color.White, 10f, 1f, LightShadow.Dynamic);
             submit(Scene);
-            using var recording = new RecordingGpuCommandList(new NullGpuCommandList());
+            var recording = new RecordingGpuCommandList(new NullGpuCommandList()) { CapturePayloads = capturePayloads };
             Scene.PrepareFrame();
             recording.Begin();
             Scene.RenderInternal(recording, 32, 24, _target);
             recording.End();
-            return recording.IndexedDraws.ToArray();
+            return recording;
         }
 
         public void Dispose()

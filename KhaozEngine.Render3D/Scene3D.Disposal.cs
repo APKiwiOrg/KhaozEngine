@@ -66,7 +66,11 @@ namespace KhaozEngine.Render3D
                     Release("meshShadowCutoutSet", () => mesh.ShadowCutoutSet?.Dispose());
                 }
             foreach (var m in _skinnedMeshes)
-                if (m is { IsView: true } view) Release("viewIb", view.Ib.Dispose);   // shares the rest with its source
+                if (m is { IsView: true } view)
+                {
+                    Release("viewIb", view.Ib.Dispose);
+                    if (view.OwnedViewVertexBuffer is { } buffer) Release("viewVb", buffer.Dispose);
+                }
                 else if (m is { } e)
                 {
                     Release("eVb", e.Vb.Dispose);
@@ -75,7 +79,7 @@ namespace KhaozEngine.Render3D
                     shadowReceiversReleased &= Release("eSkinnedMaterialSet", () => e.SkinnedMaterialSet?.Dispose());
                     Release("eOutlineMaterialSet", () => e.OutlineMaterialSet?.Dispose());
                 }
-            _pendingSkinnedViewReleases.Clear();   // their index buffers went with the entries above
+            _pendingSkinnedViewReleases.Clear();   // their owned buffers went with the entries above
             _skinnedLiveViews.Clear();
             foreach (var set in _texBillboardSets) Release("texturedBillboardSet", () => set?.Dispose());
             _texBillboardSets.Clear();

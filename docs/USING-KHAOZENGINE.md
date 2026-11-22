@@ -4460,10 +4460,12 @@ scene.Draw(gun, sockets["socket_nose"] * shipWorld, Color.White);
   only. metallicRoughness passes through unchanged since the shader reads roughness from `.g`, and normal stays
   tangent-space RGB). Upload them with `scene.LoadSurfaceMaps(maps)` → `SurfaceMaps`, or skip a step with the
   one-call overloads `scene.LoadMesh(mesh, maps)` / `scene.LoadSkinnedMesh(mesh, maps)` (both taking a
-  `GltfMaterialMaps`), whose mesh owns its map references and releases them when it unloads. Embedded GLB images
-  and external image files are both read. A material with no textures, or a missing/undecodable image, yields an
+  `GltfMaterialMaps`), whose mesh owns its map references and releases them when it unloads. Path overloads read
+  embedded GLB images and external image files. A material with no textures, or a missing/undecodable image, yields an
   all-absent bundle (`maps.IsEmpty`) and falls back to the renderer defaults, never a throw. The default
   explicit-`SurfaceMaps` path is unchanged, so this is purely a convenience on top.
+  For a GLB snapshot, use `LoadSkinnedWithMaterial(glb, identity)` and
+  [read the clips from the same bytes](#under-the-hood-the-pieces-characteravatar-composes).
 - Shared material textures: every image the glTF loader reads carries `DecodedImage.Identity`, `file:` plus the
   absolute path for an external image URI (resolved against its glb's folder) or `sha256:` plus the hex SHA-256 of
   the encoded bytes for an embedded one. The loader decodes each identity once while any loaded part list still
@@ -6850,14 +6852,16 @@ clips* (idle/walk/run/jump, plus swim/tread in water) and crossfade them off a c
 through the skinned loader (which now also reads the joint hierarchy) and read its clips:
 
 ```csharp
-// Skinned-ingest a rigged + animated glb (rig + animation channels preserved; NOT the flatten-prop path).
-var (mesh, maps) = GltfLoader.LoadSkinnedWithMaterial("player.glb");
+// Read the rigged and animated body once, then import mesh, maps and clips from that snapshot.
+const string identity = "body.glb";
+byte[] glb = File.ReadAllBytes(identity);
+var (mesh, maps) = GltfLoader.LoadSkinnedWithMaterial(glb, identity);
 SkinnedMeshHandle handle = scene.LoadSkinnedMesh(mesh, maps);
 Skeleton skeleton = mesh.Skeleton!;                       // the joint hierarchy LoadSkinned now attaches
 
 // Read every clip and map the ones you want to locomotion states (clip names are whatever your asset uses).
 var byName = new Dictionary<string, AnimationClip>();
-foreach (AnimationClip c in GltfLoader.LoadAnimations("player.glb")) byName[c.Name] = c;
+foreach (AnimationClip c in GltfLoader.LoadAnimations(glb, identity)) byName[c.Name] = c;
 var clips = new Dictionary<LocomotionState, AnimationClip>
 {
     [LocomotionState.Idle] = byName["Idle"],
@@ -6872,6 +6876,11 @@ var clips = new Dictionary<LocomotionState, AnimationClip>
 // AnimatedCharacter (KhaozEngine.Game / Game.Render3D) wraps the skeleton + clips + player + state machine.
 var character = new AnimatedCharacter(skeleton, clips, new LocomotionThresholds(0.1f, 9f), crossfade: 0.15f);
 ```
+
+Use `LoadSkinnedWithMaterial(path)` and `LoadAnimations(path)` for assets with external images.
+The byte overloads accept images in the GLB buffer or in data URIs. An external image anywhere in
+the GLB, including an unused one, raises `GltfImportDataException` with
+`ExternalImageInByteImport`, the supplied identity and the image index.
 
 For headless asset checks, `PoseProbe` samples the same local tracks and composes every skeleton node without a
 mesh or graphics device:

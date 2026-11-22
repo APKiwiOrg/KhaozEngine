@@ -20,4 +20,7 @@ public enum GltfImportRefusal
 
     /// <summary>Refuses a vertex influence outside the imported skin joint count.</summary>
     SkinJointIndexOutsideRange,
+
+    /// <summary>Refuses an image URI that names a resource outside the binary glTF bytes.</summary>
+    ExternalImageInByteImport,
 }

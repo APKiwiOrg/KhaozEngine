@@ -3,7 +3,8 @@ using System.Numerics;
 namespace KhaozEngine.Render3D
 {
     /// <summary>The optional textures auto-read from a glTF material by <see cref="GltfLoader.LoadWithMaterial(string)"/> /
-    /// <see cref="GltfLoader.LoadSkinnedWithMaterial"/>, each decoded to raw RGBA8 (the loader has no GPU device, so
+    /// <see cref="GltfLoader.LoadSkinnedWithMaterial(string)"/> or its byte overload, each decoded to raw RGBA8
+    /// (the loader has no GPU device, so
     /// it never creates a <see cref="Scene3D.TextureHandle"/>; the upload stays in <see cref="Scene3D"/>). Any map a
     /// material doesn't reference - or whose image is missing/external-unresolved/undecodable - is left
     /// <c>null</c> (absent, never a throw), so a material with no textures yields an all-null

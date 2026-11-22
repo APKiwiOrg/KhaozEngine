@@ -15,17 +15,23 @@ namespace KhaozEngine.Render3D
 
         // A GLB in memory, read in place when it is array-backed and copied once otherwise. Each read opens a fresh
         // read-only stream, so the validation fallback can re-read it.
-        static ModelRoot LoadModel(ReadOnlyMemory<byte> glb, string identity)
+        static ModelRoot LoadModel(ReadOnlyMemory<byte> glb, string identity, bool requireEmbeddedImages = false)
         {
             GltfDecodeAdmission.EnterModelDecode();
             ArraySegment<byte> bytes = MemoryMarshal.TryGetArray(glb, out ArraySegment<byte> segment)
                 ? segment : new ArraySegment<byte>(glb.ToArray());
             return LoadModel(identity, settings =>
             {
+                if (requireEmbeddedImages)
+                {
+                    settings ??= new ReadSettings();
+                    settings.JsonPreprocessor = json => GltfByteImagePolicy.Validate(json, identity);
+                }
                 using var stream = new MemoryStream(bytes.Array!, bytes.Offset, bytes.Count, writable: false);
                 try { return ModelRoot.ReadGLB(stream, settings); }
                 catch (Exception ex) when (ex is IOException or ArgumentException or FormatException
-                    or JsonException or InvalidOperationException)
+                    or JsonException or InvalidOperationException
+                    || (requireEmbeddedImages && ex is NotSupportedException or NotImplementedException))
                 {
                     // These failures describe the supplied bytes. Keep this catch around the reader only,
                     // so failures in our mesh builders are not mistaken for malformed input.

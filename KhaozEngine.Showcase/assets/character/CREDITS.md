@@ -17,5 +17,7 @@ Produced offline by the reference consumer's `scripts/bake-character.py`, which 
 with the Universal Animation Library onto the shared rig and exports one glb containing the body plus
 exactly five clips named `Idle` / `Walk` / `Run` / `Jump` / `Fall` (in-place; the engine drives world
 position, there is no root motion). Textures are 1024. It is ingested through the engine's SKINNED
-path (`GltfLoader.LoadSkinnedWithMaterial` + `GltfLoader.LoadAnimations`) so the rig and animation
+path (`GltfLoader.LoadSkinnedWithMaterial(path)` + `GltfLoader.LoadAnimations(path)`) so the rig and animation
 channels are preserved (it is NOT flattened like the props).
+Both loaders also accept one GLB snapshot as bytes, with buffer or data URI images.
+Any external image URI in that snapshot is a [typed import refusal](../../../KhaozEngine.Render3D/README.md#mesh-import-and-prop-refusals).

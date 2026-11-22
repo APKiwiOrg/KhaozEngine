@@ -2593,16 +2593,18 @@ before palette, queue or motion publication.
 
 ## Skinned mesh views
 
-`CreateSkinnedMeshView(source, indices)` returns a handle that draws `indices` over a loaded skinned mesh's vertices
+`CreateSkinnedMeshView(source, indices)` returns a plain view that draws `indices` over a loaded skinned mesh's vertices
 with its materials, alpha cutoff, bounds and inverse binds. It draws, outlines and casts cascade and point shadows
 through every skinned API, because every skinned pass draws an entry's whole index buffer and a view is an entry with
 a filtered one. The index buffer takes the narrowest format that fits. `IsSkinnedMeshView` tells a view from a loaded
 mesh. The design is in [Attachment regions and layers](../docs/design/ATTACHMENT-REGIONS-AND-LAYERS-DESIGN.md).
 
 `CreateSkinnedMeshView(source, indices, restPositions)` creates a displaced view with one finite rest position
-per source vertex. It owns its vertex buffer and CPU rest vertices, copies the source's other vertex attributes
-and shares its materials, alpha cutoff, inverse binds, rest pose and skeleton. Its bounds add the largest vertex
-displacement on every side of the source bounds and keep that margin when the source bounds grow.
+per source vertex. It owns its index buffer, vertex buffer and CPU rest copy, keeps the source's other vertex
+attributes and shares its materials, alpha cutoff, inverse binds, rest pose and skeleton. It accepts the full
+index list or a subset. All skinned passes use the displaced geometry. Its bounds add the largest vertex
+displacement on every side of the source bounds and keep that margin when the source bounds grow. See
+[Attachment lift](../docs/design/ATTACHMENT-LIFT-DESIGN.md#displaced-mesh-views) for the rationale.
 
 `UnloadSkinnedMesh(view)` keeps the view drawable until the frame ends, because queued draws resolve their handle
 when the frame is prepared. The next `Begin` frees its slot and retires its owned buffers. A source refuses to unload
@@ -2615,13 +2617,14 @@ handle freed elsewhere throws as it always did, after the key is forgotten or th
 
 A view is the renderer's way to hide part of a skinned mesh without a shader mask. A mask would touch every skinned
 shader variant and the CPU skinning path, and a pass that missed it would shadow or outline triangles the colour
-pass hides. A view uses the existing shaders, pipelines and draws. Its bounds follow those of its source, including any
-expansion for [swinging attachment chains](../KhaozEngine.Attachments.Render3D/README.md#hanging-chains-and-wearer-motion).
+pass hides. Both kinds of view use the existing shaders, pipelines and draws. Source bounds growth, including expansion for
+[swinging attachment chains](../KhaozEngine.Attachments.Render3D/README.md#hanging-chains-and-wearer-motion),
+propagates to both kinds of view.
 CPU skinning deforms every vertex in the view's rest geometry, the same skinning cost as drawing the source.
 A shadow, caustic, interior cut or sampler replacement rebinds each view to its source's rebuilt sets, and
 `Dispose` frees each view's owned buffers. The attachment arm's
-[outfits](../KhaozEngine.Attachments.Render3D/README.md#outfits) build their hidden triangles from views, and build
-them when an outfit changes, never per frame.
+[outfits](../KhaozEngine.Attachments.Render3D/README.md#outfits) use views to hide triangles and draw lifted parts.
+They acquire views when an outfit binds.
 
 `SkinnedMeshViewArgumentException` derives from `ArgumentException`, which skinned unload threw for a bad handle
 before, and carries `SkinnedMeshViewRefusal` with the source's `SourceIndex` and `SourceGeneration`. A refused call

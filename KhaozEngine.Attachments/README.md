@@ -1,8 +1,8 @@
 # KhaozEngine.Attachments
 
-GPU-free definitions and chain simulation for attachments. Rigid parts attach to named joints.
-Skinned parts use the host body's pose and can declare their own swinging chains. Reference this package
-explicitly from headless publishers or consumers. Its only engine dependency is the dependency-free
+GPU-free attachment definitions, outfit resolution and chain simulation. Rigid parts attach to named joints.
+Skinned parts follow the host body's pose and can lift over lower layers or carry swinging chains. Reference
+this package explicitly from headless publishers or consumers. Its only engine dependency is the dependency-free
 Primitives package, which supplies `MalformedDataException`. It is not included in Foundation or Server.
 
 `AttachmentSetDefinition` copies parts, orders them by positive stable ID and exposes read-only
@@ -25,13 +25,13 @@ and deconstruction are unchanged. A set without a layer refuses parts that carry
 The set owns its region data. `Covers` holds unique names in ordinal order, and a skinned part's runs are copied
 with adjacent runs of one region merged, so two sets that tag every triangle alike and cover the same regions in
 any listing order share their canonical bytes and `SemanticSha256`. Equality of skinned parts compares region runs
-and authored motion by value. Region names need well-formed UTF-16 and keep their ordinal identity. A name is only a name
-in the set: whether the body has that region is checked when an [outfit is resolved](#outfit-coverage) against the
-body's [region map](#body-region-maps).
+and authored motion and lift by value. Region names need well-formed UTF-16 and keep their ordinal
+identity. The [outfit resolver](#outfit-coverage) checks those names against the body's
+[region map](#body-region-maps).
 
 ## Attachment set JSON
 
-`AttachmentSetJson.Parse(utf8, sourceName)` accepts formats 1, 2, 3 and 4. Format 1 contains only rigid parts
+`AttachmentSetJson.Parse(utf8, sourceName)` accepts formats 1 through 5. Format 1 contains only rigid parts
 and has no `kind` member:
 
 ```json
@@ -173,7 +173,10 @@ layer. Formats 1 to 4 refuse these members as unknown, and rigid parts refuse `l
 
 Use `new AttachmentSetDefinition(parts, layer, covers, colliders, standoff)` with `RegionStandoff` entries to
 declare standoff. The set owns the entries and exposes them in ordinal region name order. Set the skinned part's
-`Lift` to a `PartLiftDefinition` to declare lift. `AttachmentSetJson.LiftFormatVersion` is 5.
+`Lift` to a `PartLiftDefinition(ClearanceMetres)` to declare lift. `AttachmentSetDefinition.MaxStandoffEntries`
+is 128. `AttachmentSetJson.LiftFormatVersion` is 5. Publish format 5 after every reader has moved to 24.7.0
+or later. A 24.5.x or 24.6.x reader raises `JsonPropertyUnknown` for root `standoff` when present, even as an
+empty array, and `FormatVersionUnsupported` for version 5 otherwise.
 
 ### Canonical set bytes
 
@@ -374,13 +377,38 @@ The rule, with the reason for each part:
 the set has no rigid or skinned part for throws `ArgumentException`. A null body, list or worn set throws
 `ArgumentNullException`.
 
-Every region name a worn set uses is resolved here: its covered regions, each rigid part's region and each skinned
-run's region. A name the body does not declare throws `OutfitDataException`, derived from `MalformedDataException`,
-with an `OutfitRefusal Reason`.
+The resolver checks covered regions, rigid part regions, skinned run regions and standoff regions against the
+body's region map. A name the body does not declare throws `OutfitDataException`, derived from
+`MalformedDataException`, with an `OutfitRefusal Reason`.
 
 | Reason | What it refuses | Other identifiers |
 |---|---|---|
-| `RegionUnknown` | a covered region, rigid part region or skinned run region the body does not declare. | `WornIndex`, `PartId` (null for a covered region), `RunIndex` (skinned runs only), `RegionName` |
+| `RegionUnknown` | a covered region, rigid part region, skinned run region or standoff region the body does not declare. | `WornIndex`, `PartId` (null for covered and standoff regions), `RunIndex` (skinned runs only), `RegionName` |
+
+## Outfit lift
+
+`OutfitLift.Resolve(coverage, meshes)` uses the body regions and worn set snapshot captured by
+`OutfitCoverage.Resolve`. Supply one `LiftingPartMesh(WornIndex, PartId, Materials)` for each skinned part
+with `Lift`. Supply one `LiftMaterialMesh(Positions, Indices, Directions, Bearings)` per material group in
+upload order. Indices are local to that group. Directions and bearings line up with its rest positions.
+A missing, extra, duplicate or wrong-shaped mesh is refused with `ArgumentException`.
+
+`AttachmentGlb.LiftBasis(glb, sourceName)` validates a skinned GLB and reads its `_LIFT_DIRECTION` and
+`_LIFT_BEARING` attributes. Every primitive supplies an unnormalized FLOAT VEC3 direction and FLOAT SCALAR
+bearing for each position. The direction is the skin's outward normal in body rest space and must be finite
+and within 0.001 of unit length. The bearing is a finite, nonnegative distance in metres to the part's
+underside. At bitwise identical positions, treating both signed zeros as zero, the direction components and
+bearing must agree within 0.0001, including across primitive and material splits. `LiftBasis.Vertices` is an
+immutable list in flattened mesh, primitive and vertex order. Each `LiftBasisVertex` carries `MaterialPart`
+and `IndexInPart` in upload order, with materials grouped by first use.
+
+`HeightBelow(wornIndex, region)` is the highest effective standoff among visible sets on strictly lower
+layers, or null when there is no contributor. `EffectiveStandoff(wornIndex, region)` is the visible set's
+declared standoff plus its greatest lift in that region, or null when it does not contribute. Region indices
+refer to the body map. Each vertex uses the highest height below of all regions that touch its position.
+`LiftedPositions(wornIndex, partId)` returns rest positions in upload order by material, or null when the
+part has no moved vertex. `HasLift` is true when any part moved. Resolve at bind or run the same calculation
+offline for fitted poses. See the [lift rule](../docs/design/ATTACHMENT-LIFT-DESIGN.md#the-rule).
 
 ## Coverage claim check
 
@@ -453,7 +481,7 @@ The refusals below throw `CoverageClaimDataException`, derived from `MalformedDa
 |---|---|---|
 | `BodyMeshCountMismatch` | a body mesh count other than the map's part count. | `ExpectedMeshCount`, `ActualMeshCount` |
 | `BodyTriangleCountMismatch` | a body mesh whose triangle count differs from its map part's. | `MeshKind`, `MeshIndex`, `ExpectedTriangleCount`, `ActualTriangleCount` |
-| `RegionUnknown` | a covered region the body's map does not declare. | `RegionName` |
+| `RegionUnknown` | a covered region, or a standoff region in the standoff check, that the body's map does not declare. | `RegionName` |
 | `IndexCountNotTriangles` | a mesh whose index count is not a multiple of three. | `MeshKind`, `MeshIndex`, `IndexCount` |
 | `IndexOutOfRange` | an index past the mesh's positions. | `MeshKind`, `MeshIndex`, `IndexPosition`, `VertexIndex`, `VertexCount` |
 | `PositionNotFinite` | a position with a NaN or infinite component. | `MeshKind`, `MeshIndex`, `VertexIndex` |
@@ -465,6 +493,21 @@ The refusals below throw `CoverageClaimDataException`, derived from `MalformedDa
 
 The check has its own refusal family rather than `OutfitDataException`, because it resolves no worn list, so the
 outfit refusal's `WornIndex` would have nothing to name.
+
+## Standoff claim check
+
+`StandoffClaimCheck.Verify(bodyMeshes, body, piece, pieceMeshes)` checks declared standoffs offline in the
+body's rest frame. Use the [coverage claim check](#coverage-claim-check) geometry, part IDs and per-vertex
+swing masks. It measures each fixed vertex against the nearest body triangle, using the signed distance
+along the triangle's outward normal. Triangles within 1 micrometre of the nearest distance compete by
+height. Equal heights choose the first triangle in body part and triangle order. A degenerate triangle has
+zero normal height, and a body without triangles yields no measurements.
+
+`StandoffClaimReport.Regions` lists measured regions in body map order as `StandoffClaimRegion` values with
+`Name`, `HighestHeightMetres`, `VertexCount` and nullable `DeclaredStandoffMetres`. `UnderstatedRegions` lists
+measurements above their declaration. `UndeclaredRegions` lists positive heights where the set declares no
+standoff. The check validates covered and standoff region names and uses the same `CoverageClaimDataException`
+refusals for invalid region names or mesh data as the coverage check.
 
 ## Chain simulation
 
@@ -715,6 +758,11 @@ Messages are developer prose and are not a contract.
 | `JointIndexOutsideSkin` | a vertex joint index beyond the skin joint count. | `JsonPath`, `VertexIndex`, `Lane`, `Index`, `JointCount` |
 | `WeightInvalid` | a non-finite or negative skin influence weight. | `JsonPath`, `VertexIndex`, `Lane`, `Weight` |
 | `WeightsAllZero` | a vertex with no positive skin weight. | `JsonPath`, `VertexIndex` |
+| `LiftAttributeMissing` | a lifting primitive missing a lift attribute. | `JsonPath`, `AttributeName` |
+| `LiftAttributeShapeMismatch` | a lift accessor with the wrong shape, encoding, normalization or count. | `JsonPath`, `AttributeName` |
+| `LiftDirectionInvalid` | a non-finite lift direction or a length outside unit tolerance. | `JsonPath`, `AttributeName`, `VertexIndex` in the primitive |
+| `LiftBearingInvalid` | a non-finite or negative lift bearing. | `JsonPath`, `AttributeName`, `VertexIndex` in the primitive |
+| `CoincidentLiftDataMismatch` | equal positions with different lift data outside tolerance. | `JsonPath`, `AttributeName`, later `VertexIndex` and earlier `OtherVertexIndex` in flattened order |
 
 ### RigIdentity
 

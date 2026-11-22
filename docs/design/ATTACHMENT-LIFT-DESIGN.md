@@ -1,7 +1,7 @@
 # Attachment lift: worn parts over lower layers
 
-Planned under [#1880](https://github.com/APKiwiOrg/KhaozEngine/issues/1880) for the next minor release. This note
-describes the system to be built and keeps the decisions and the reasons for them.
+Implemented for 24.7.0 under [#1880](https://github.com/APKiwiOrg/KhaozEngine/issues/1880). The
+[consumer guide](../USING-KHAOZENGINE.md#worn-parts-over-lower-layers) covers fitting, publishing and binding.
 
 A worn skinned part is fitted to the bare body. It sits a small distance outside the skin and copies the skin's
 weights, so it follows the body in every pose. Worn over a garment that stands off the skin, the same part lies
@@ -109,8 +109,9 @@ clears it.
 Lift ends at a garment's hem in a ramp one triangle wide on the side away from the garment, the part rising over
 the hem as a strap does.
 
-`OutfitLift` in `KhaozEngine.Attachments` runs the rule without a renderer, and `LiftedPositions` applies it to a
-part's rest positions, so a pose check or a fitting tool lifts exported poses exactly as the game draws them.
+`OutfitLift.Resolve` in `KhaozEngine.Attachments` runs the rule without a renderer. Its result exposes each
+part's lifted rest positions through `LiftedPositions`, so a pose check or a fitting tool can use the same
+positions as the game.
 
 ### Example
 
@@ -229,20 +230,20 @@ SkinnedMeshHandle lifted = scene.CreateSkinnedMeshView(source, indices, restPosi
   body keeps its place while its root on the body rises. Chain joints, rest hangs and colliders are unchanged, and
   the swing turns the lifted vertices with their joints.
 - A chained part's culling reach grows by its largest lift, through the displaced view's bounds.
-- A standoff claim rests only on fixed triangles. `StandoffClaimCheck` ignores vertices weighted to chain joints, as
-  `CoverageClaimCheck` does, because a swinging hem holds no height. A chained garment under armour therefore lifts
-  the armour by the height of its fixed panels.
+- A standoff claim rests only on fixed vertices. `StandoffClaimCheck` ignores vertices weighted to chain joints
+  because a swinging hem holds no height. `CoverageClaimCheck` uses the same mask to skip whole triangles with a
+  swinging vertex. A chained garment under armour therefore lifts the armour by the height of its fixed panels.
 - Chains on a higher layer collide with the body's colliders and with worn set colliders, never with a garment's
   standoff. A garment that must push a cloak's panels out declares worn set colliders, as format 4 allows.
 
 ## Standoff claim check
 
 `StandoffClaimCheck.Verify(bodyMeshes, body, piece, pieceMeshes)` takes the meshes `CoverageClaimCheck` takes, in the
-body's rest frame, and validates them by the same rules with the same refusals. For each fixed vertex of the piece
-it finds the closest point on the body and takes that body triangle's region and the vertex's height, its signed
-distance from the triangle's plane along the outward normal. Where several triangles are equally close, as along a
-ridge, it takes the one the vertex stands highest above. The report gives, for each region, the highest vertex and the
-declared standoff, and names:
+body's rest frame, and validates them by the same rules with the same refusals. For each fixed vertex it finds
+the nearest body triangle. The triangle supplies a region and a signed height measured from its plane along the
+outward normal. At a ridge, triangles within one micrometre of the nearest distance compete by height so the
+reported region belongs to the surface the piece stands highest over. The report gives each measured region's
+maximum height and declared standoff, and names:
 
 - **understated** regions, where a vertex stands higher than the declared standoff,
 - **undeclared** regions, where the piece stands but declares no standoff, so a part above would not clear it there.

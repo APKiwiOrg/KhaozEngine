@@ -24,10 +24,11 @@ and the passes issue one indexed draw from that record:
 | Point shadow | `PointShadowRenderer.DrawGpuSkinnedCaster` | `PointShadowRenderer.DrawCpuSkinnedCaster` |
 | Target outline | `TargetOutlineRenderer` queue draw over the rest buffer | the same queue draw over the deformed stream |
 
-Dissolve variants use the same records. A view is therefore a second entry that shares the source's vertex buffer
-and material sets and owns a filtered index buffer. Every pass draws exactly the view's triangles with no shader,
-pipeline or draw call change. A shader mask would have touched every skinned shader variant and the CPU skinning
-path. Range draws would have touched every pass's draw call and broken the one draw per record shape.
+Dissolve variants use the same records. A plain view is a second entry that shares the source's vertex buffer
+and material sets and owns a filtered index buffer. A [displaced view](ATTACHMENT-LIFT-DESIGN.md#displaced-mesh-views)
+also owns a vertex buffer and a CPU rest copy. Every pass draws the view's geometry through the existing shaders,
+pipelines and draw calls. A shader mask would have touched every skinned shader variant and the CPU skinning path.
+Range draws would have touched every pass's draw call and broken the one draw per record shape.
 
 ### 2. A region set is a 128 bit value
 
@@ -54,8 +55,8 @@ Queued skinned draws name a handle. `PrepareSkinnedDraws`, the outline pass and 
 handle through `_skinnedSlots.IsValid` when the frame is prepared, after the caller has queued everything. An
 outfit change in the middle of a frame would otherwise drop draws already queued through the old view. So
 `UnloadSkinnedMesh(view)` keeps the view's slot live until the next frame boundary (`Begin` or `BeginFrame`), where
-the slot is freed and the index buffer goes to the scene's retire queue. The retire queue then destroys it behind a
-fence like every other unload, so no extra GPU wait is added.
+the slot is freed and its owned buffers go to the scene's retire queue. The queue destroys those buffers behind
+a fence, as on every other unload, with no extra GPU wait.
 
 ### 7. The capability is a minor, 24.4.0
 
@@ -72,10 +73,12 @@ bool isView = scene.IsSkinnedMeshView(view);
 scene.UnloadSkinnedMesh(view);   // released at the next frame boundary
 ```
 
-A view draws `indices` over the source's vertices with the source's materials, alpha cutoff, bounds and inverse
+A plain view draws `indices` over the source's vertices with the source's materials, alpha cutoff, bounds and inverse
 binds. It is drawn, outlined and shadowed through every existing skinned API exactly like a loaded mesh. The index
 buffer uses the narrowest format that fits, as a loaded skinned mesh does. Bounds stay the source's rest bounds,
-which is conservative for culling and costs nothing to compute.
+which is conservative for culling and costs nothing to compute. The
+[displaced overload](ATTACHMENT-LIFT-DESIGN.md#displaced-mesh-views) accepts rest positions, keeps its own vertex
+buffer and CPU rest copy and grows its bounds to contain its displacement.
 
 `CreateSkinnedMeshView` refuses with `SkinnedMeshViewArgumentException`, an `ArgumentException`, carrying
 `SkinnedMeshViewRefusal` and the source handle's index and generation:
@@ -115,7 +118,7 @@ Unload rules:
   keeps the release behaviour it had before views existed: it marks itself disposed, then releases each lease, and
   whatever a lease's own release does when a view is live is that scene's behaviour. `Scene3DAttachmentScene` and
   `Scene3DTileWorldScene` hand out the renderer's own leases, so a cache over either refuses up front.
-- `Dispose` frees every view's index buffer and never a shared resource twice.
+- `Dispose` frees each view's owned buffers. Shared resources remain the source's to free.
 
 `IsSkinnedMeshView` is true while the handle names a live view, including one unloaded during the current frame.
 Views occupy skinned slots, so they count toward `LiveSkinnedMeshCount`.
@@ -125,15 +128,15 @@ Views occupy skinned slots, so they count toward `LiveSkinnedMeshCount`.
 | Table | What it holds | What it does for a view |
 | --- | --- | --- |
 | `_skinnedSlots` | Slot generations | The view has its own slot and generation, so stale detection works unchanged. |
-| `_skinnedMeshes` | `SkinnedMeshEntry` per slot | Shares `Vb`, the three material sets, the cutoff, inverse binds and bounds. Owns `Ib`, `IndexCount` and `IndexFormat`. `ViewOf` names the source slot. `Source` is a mesh over the source's vertices with the view's indices and no coverage. |
-| `_skinnedCpuVerts` | Rest vertices for CPU skinning and CPU motion | The source's array. A CPU skinned view deforms every source vertex, the same cost as drawing the source. |
+| `_skinnedMeshes` | `SkinnedMeshEntry` per slot | Shares the three material sets, cutoff and inverse binds. Owns `Ib`, `IndexCount` and `IndexFormat`. A plain view shares `Vb` and bounds. A displaced view owns `Vb` and adds a displacement margin to the source's bounds. `ViewOf` names the source slot. `Source` holds the view's geometry without coverage. |
+| `_skinnedCpuVerts` | Rest vertices for CPU skinning and CPU motion | The source's array for a plain view and the view's own array for a displaced view. CPU skinning deforms every vertex in the array. |
 | `_skinnedMeshMaterials` | Owned textures and parameter buffers per handle | Nothing is recorded for a view, so its release is a no-op. The source owns them. |
 | Live view counts | Live views per source slot | Raised on create, lowered on unload. Gates source unload. |
 | Pending view releases | Views unloaded this frame | Freed at the next frame boundary, or at once when their source unloads. |
 | `CollectLiveMaterialSets` | Receivers rebuilt by a shadow, caustic, interior cut or sampler replacement | Skips views. Their sets belong to the source, and collecting a set twice would rebuild it twice. |
 | `CommitMaterialSets` | Rebinds every entry's sets | Each view takes its source's replacement sets after every source is rebuilt. |
-| `Dispose` | Releases every entry | A view releases only its index buffer. |
-| `_retired` | Deferred GPU destruction | Receives the view's index buffer at release. |
+| `Dispose` | Releases every entry | A plain view releases its index buffer. A displaced view also releases its vertex buffer. |
+| `_retired` | Deferred GPU destruction | Receives the view's owned buffers at release. |
 | `_coverageHosts` | Annotated hosts | A coverage source is refused, and a view's `Source` has no coverage, so `CreateHostCoverage` refuses a view as unannotated. |
 | Motion history | Previous model and palette per `MotionKey` | Unchanged. A view drawn under the source's key has the same bone count. |
 | `_sharedSkinnedMeshes` | Shared asset handles by key | Views are never shared assets. Releasing a shared source with live views refuses and keeps its key. |

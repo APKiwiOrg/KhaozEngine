@@ -181,8 +181,10 @@ nothing coarser and the link update is proven stable within those bounds.
 ## Format 4 and the body collider file
 
 `AttachmentSetJson.MotionFormatVersion` is 4. Format 4 is format 3 with two optional members: `motion` on a skinned
-part and `colliders` at the root. `Write` emits format 4 only for a set that has either, so every format 1, 2 and 3
-definition keeps its bytes and `SemanticSha256`. A set with motion or colliders needs a layer.
+part and `colliders` at the root. `Write` chooses the lowest format that expresses the set, so these additions
+alone write format 4 and formats 1 to 3 keep their bytes and `SemanticSha256`. A set with motion or colliders
+needs a layer. A part with chains can also [lift over lower layers](ATTACHMENT-LIFT-DESIGN.md#chained-parts) in
+format 5.
 
 ```json
 {
@@ -277,7 +279,7 @@ Its canonical bytes and SHA-256 follow the region map's rules.
 - **Culling.** A skinned draw is culled by its mesh's rest bounds sphere times 1.5, and a swung tip can leave that
   sphere. Loading a set grows each chained mesh's bounds to contain a sphere at each chain's first joint in mesh rest
   space. The radius sums the rest segments, the tip segment and the farthest weighted vertex from its chain joint.
-  This growth covers the chain's swing around the anchor.
+  This growth covers the chain's swing around the anchor. A displaced view also keeps its margin for lift.
   An anchor animated far from rest by translation or scale can take the whole chain outside the culling bounds.
   Ordinary skinned meshes share this limit
   ([#1492](https://github.com/APKiwiOrg/KhaozEngine/issues/1492) and

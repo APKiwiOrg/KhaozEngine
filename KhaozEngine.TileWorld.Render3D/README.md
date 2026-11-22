@@ -616,7 +616,9 @@ Equipment loaded through another scene is refused. Custom tile-world adapters ca
 
 It also implements `IAttachmentDisplacedViewScene`, which extends `IAttachmentViewScene`. Both kinds of skinned
 mesh view forward to the same delegate, so an [outfit](../KhaozEngine.Attachments.Render3D/README.md#outfits) can
-hide covered triangles and lift parts when bound through this wrapper.
+hide covered triangles and lift parts when bound through this wrapper. Create them through the two
+`CreateSkinnedView` overloads and release either through `ReleaseSkinnedView`. The wrapped scene owns
+retirement at the next frame boundary.
 
 `Scene3DTileWorldScene` also implements the optional `IAttachmentCoverageScene` capability from
 `KhaozEngine.Attachments.Render3D`. `UploadAttachment(parts)` delegates transactional upload to

@@ -77,8 +77,10 @@ reuse after a different set warmed the cache. The cache copies source memory and
 `(key, hash, kind)` upload across its parts and sets. A failure releases newly acquired resources and
 preserves earlier cached assets. Skinned material groups retain their skin-order joint names, inverse
 binds and rest poses as immutable metadata. At the first successful chained bind, the cache also
-captures the parent nodes and local rest transforms from the verified GLB bytes. Loading allocates
-no frame palettes.
+captures the parent nodes and local rest transforms from the verified GLB bytes. For a lifting part,
+`Get` validates and reads its GLB lift basis before uploading any new mesh for the set, including when a
+previous set already uploaded those bytes without lift. The basis is retained by mesh identity after
+the set loads successfully. Loading allocates no frame palettes.
 
 GLB preflight propagates `AttachmentGlbContainerDataException`, `AttachmentAccessorDataException`,
 `AttachmentHierarchyDataException`, `AttachmentRigidGeometryDataException` and
@@ -209,7 +211,7 @@ For the version-21 set-level rename and its rationale, see the
 ## Outfits
 
 An outfit is a body and the sets worn on it, drawn with the outfit rule applied. A set with a layer (set
-formats 3 and 4) hides the body regions it covers, and the same regions of every set in a lower layer. The body
+formats 3 through 5) hides the body regions it covers, and the same regions of every set in a lower layer. The body
 draws only its uncovered triangles, a lower piece draws only what no higher piece covers, and a rigid part
 whose region is covered draws nothing. A set with no layer (formats 1 and 2) covers nothing, nothing hides
 it, and it draws exactly as `BoundAttachmentSet.WriteDraws` draws it. The rule itself is
@@ -234,7 +236,7 @@ order. The caller supplies the body's `rig-v1:` identity, because it is computed
 and cannot be recovered from uploaded meshes. The body's handles stay the caller's.
 
 `BindOutfit` works everything out when the outfit changes and nothing per frame. It checks every worn set,
-resolves the rule, and then builds each view it needs. A refused view releases the ones built before it.
+resolves coverage and lift, and then builds each view it needs. A refused view releases the ones built before it.
 `TryBodyMesh` returns the body part's own handle when nothing covers it, a view of its uncovered triangles
 when something does, and false when every triangle is covered, so a pass never draws an empty view.
 `WriteDraws` and `QueueOutline` take a worn index into the list given to `BindOutfit` and keep the set's
@@ -245,24 +247,28 @@ allocate no managed memory.
 A skinned part's region runs cover its triangles in the mesh's material order, then each material group's
 triangle order. Each material group is its own skinned handle, so a run that crosses from one group into the
 next splits at the boundary, and each handle gets its own view of its visible triangles. `BindOutfit` reads
-each tagged mesh's index lists when it binds, borrowed from the renderer for the shipped adapters, so a cache
-that never binds an outfit keeps no extra copy. A custom scene's lease cannot lend them, so the geometry of its
-meshes is decoded again from the verified bytes the cache keeps, with no material map, once per bind.
+each tagged mesh's index lists and the rest vertices it needs for lift. The shipped adapters lend the renderer's
+geometry. For a custom scene's lease, the cache decodes geometry from verified bytes once per mesh identity per
+bind, skipping material maps.
 
 Hidden triangles are cut through skinned mesh views (see the
 [regions and layers design](../docs/design/ATTACHMENT-REGIONS-AND-LAYERS-DESIGN.md#skinned-mesh-views)).
-A view shares its source's vertices and materials and owns a filtered index buffer, so the colour, motion,
-shadow and outline passes all draw the same triangles. This needs the optional `IAttachmentViewScene`
+A plain view shares its source's vertices and materials and owns a filtered index buffer, so the colour,
+motion, shadow and outline passes all draw the same triangles. This needs the optional `IAttachmentViewScene`
 capability beside `IAttachmentScene`. `Scene3DAttachmentScene` and `Scene3DTileWorldScene` supply it.
 `BindOutfit` over any other scene refuses with `OutfitViewsUnsupported`. A view is never made over a
 coverage host, because coverage tables index the host's own triangles, so binding an outfit that partly
 covers a body uploaded with host coverage evidence refuses with `SkinnedMeshViewArgumentException` and
 `SkinnedMeshViewRefusal.SourceHasCoverage`.
 
-For a skinned part that lifts over a lower layer's standoff, `BindOutfit` applies the
-[lift rule](../docs/design/ATTACHMENT-LIFT-DESIGN.md#the-rule) and gives each visible material group a
-view with its lifted rest positions. That needs `IAttachmentDisplacedViewScene`, which both shipped
-adapters implement. A scene with plain views can bind any outfit that needs no displaced view.
+For a skinned part that has a vertex move under the [lift rule](../docs/design/ATTACHMENT-LIFT-DESIGN.md#the-rule),
+`BindOutfit` gives each visible material group a view of its visible triangles with its lifted rest positions.
+The view owns a vertex buffer and a CPU rest copy. Both shipped adapters implement
+`IAttachmentDisplacedViewScene`, which extends `IAttachmentViewScene` with
+`CreateSkinnedView(source, indices, restPositions)` and uses the inherited `ReleaseSkinnedView`.
+A scene with plain views can bind any outfit that needs no displaced view. If a view needs displacement,
+`OutfitLiftUnsupported` is raised before acquiring any views. Lift is applied at bind, and a lifting part
+can also [swing](#hanging-chains-and-wearer-motion).
 
 Views are shared by source handle, visible indices and any displaced rest positions.
 A view is counted by user and released once, when the last
@@ -279,7 +285,7 @@ refusal. A refused view is forgotten and never handed to another outfit.
 
 ## Hanging chains and wearer motion
 
-Bind a format 4 skinned part with chains through `loaded.Bind(map, hostMesh)`. The first chain
+Bind a skinned part with chains through `loaded.Bind(map, hostMesh)`. The first chain
 joint's garment parent must name a host skin joint, the anchor. Each later chain joint must be a
 direct child of the preceding one. Chain joints belong to the garment skin and have names distinct
 from the host's skin joints. Each chain joint's inverse bind must match the inverse of its rest
@@ -420,7 +426,7 @@ developer prose. Rigid frame errors carry `PoseCompositionFailed` with the origi
 | `GarmentPaletteOutputTooSmall` | output shorter than the garment joint count | `PartId`, `ActualCapacity`, `RequiredCapacity`, `ParamName` |
 | `BodyRegionMapMismatch` | a body region map for another rig, another part count or other part triangle counts | `SourceName` and `ExpectedRigIdentity` with `ActualRigIdentity`, or `ExpectedPartCount` with `ActualPartCount`, or `BodyPartIndex` with `ExpectedTriangleCount` and `ActualTriangleCount` |
 | `PartRegionTagsMismatch` | a skinned part whose region runs do not sum to its mesh's triangles | `SourceName`, `PartId`, `MeshKey`, `ExpectedTriangleCount`, `ActualTriangleCount` |
-| `OutfitRegionUnknown` | a worn set naming a region the body's region map does not declare | `SourceName`, `WornIndex`, `PartId`, `RunIndex`, `RegionName`, `InnerException` |
+| `OutfitRegionUnknown` | a worn set naming a region the body's region map does not declare, including in its standoffs | `SourceName`, `WornIndex`, `PartId` for a part region, `RunIndex` for a skinned run, `RegionName`, `InnerException` |
 | `OutfitViewsUnsupported` | an outfit over a scene that is not an `IAttachmentViewScene` | none |
 | `OutfitLiftUnsupported` | a worn part needs a displaced view and the scene lacks `IAttachmentDisplacedViewScene` | `SourceName`, `WornIndex`, `PartId` |
 | `ChainJointMissing` | a declared chain joint absent from the garment skin | `PartId`, `MeshKey`, `ChainIndex`, `JointName` |

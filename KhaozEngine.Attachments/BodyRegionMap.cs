@@ -15,8 +15,6 @@ public readonly record struct RegionRun(int Region, int TriangleCount);
 /// </summary>
 public sealed class BodyRegionMap
 {
-    const string RigPrefix = "rig-v1:";
-
     readonly Dictionary<string, int> regionIndices;
     readonly int[] triangleCounts;
 
@@ -26,8 +24,7 @@ public sealed class BodyRegionMap
         ArgumentNullException.ThrowIfNull(rigIdentity);
         ArgumentNullException.ThrowIfNull(regions);
         ArgumentNullException.ThrowIfNull(parts);
-        if (!rigIdentity.StartsWith(RigPrefix, StringComparison.Ordinal)
-            || !AttachmentSetDefinition.ValidHash(rigIdentity[RigPrefix.Length..]))
+        if (!Attachments.RigIdentity.IsValid(rigIdentity))
             throw new BodyRegionMapDataException(BodyRegionMapRefusal.RigIdentityInvalid, "rig must be a complete lowercase rig-v1 identity.")
             { RigIdentity = rigIdentity };
 

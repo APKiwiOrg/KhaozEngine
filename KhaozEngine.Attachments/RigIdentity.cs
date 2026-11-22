@@ -7,6 +7,11 @@ namespace KhaozEngine.Attachments;
 
 internal static class RigIdentity
 {
+    internal const string Prefix = "rig-v1:";
+
+    internal static bool IsValid(string identity) => identity.StartsWith(Prefix, StringComparison.Ordinal)
+        && AttachmentSetDefinition.ValidHash(identity[Prefix.Length..]);
+
     internal static string Compute(JsonElement root, ReadOnlyMemory<byte> binary)
     {
         JsonElement buffers = AttachmentGlbAccessors.Required(root, "buffers", "rig");

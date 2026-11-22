@@ -220,6 +220,40 @@ triangle count. `Parse` builds the map through that constructor, so a constructo
 | `TriangleCountMismatch` | runs that do not add up to the part's declared triangle count. | `PartIndex`, `DeclaredTriangleCount`, `ActualTriangleCount` |
 | `TriangleCountOverflow` | a part whose runs add up past Int32 at some run, from the constructor or from `Parse` through it. | `PartIndex`, `RunIndex`, `ActualTriangleCount` |
 
+## Body colliders
+
+`BodyCollidersJson.Parse(utf8, sourceName)` reads format 1:
+
+```json
+{"formatVersion":1,"rig":"rig-v1:<sha256>","colliders":[{"joint":"upper","start":[0,1,0],"end":[0,2,0],"radius":0.125}]}
+```
+
+`rig` is the body's complete [rig identity](#body-rig-identity). A `ColliderDefinition` names a host joint and
+describes a capsule in the body's rest model space, in metres. Equal endpoints describe a sphere. Each point
+has three finite coordinates, the radius is finite and positive, and the joint name uses well-formed UTF-16.
+`new BodyColliderSet(rigIdentity, colliders)` applies the same content rules and copies zero to 32 colliders.
+
+`Colliders` is read-only and orders the capsules by ordinal joint name, then the start X, Y and Z, the end X, Y
+and Z, and the radius. `BodyCollidersJson.Write(set)` emits UTF-8 with the member order shown above, without
+whitespace or a trailing newline. It writes signed zero as `0`. `Sha256` is the lowercase SHA-256 of those bytes.
+Changing the order of the input list keeps the same bytes and hash.
+
+Refusals throw `BodyCollidersDataException`, derived from `MalformedDataException`, with a `BodyCollidersRefusal
+Reason` and `SourceName` from `Parse`. A collider index refers to the input order. An escaped lone surrogate in a
+joint name has an index and path, with no decoded `JointName`.
+
+| Reason | What it refuses | Other identifiers |
+|---|---|---|
+| `FormatVersionUnsupported` | a format other than 1. | `JsonPath`, `FormatVersion` when Int32 |
+| `JsonPropertyUnknown`, `JsonPropertyDuplicate`, `JsonPropertyMissing` | an unknown, repeated or absent member. | `JsonPath`, `PropertyName`, `ColliderIndex` within a collider |
+| `JsonValueShapeInvalid` | a value of the wrong JSON shape, such as a point with the wrong number of coordinates. | `JsonPath`, `ColliderIndex` within a collider |
+| `JsonMalformed` | malformed JSON or invalid UTF-8. | No additional identifiers |
+| `RigIdentityInvalid` | a rig that is not `rig-v1:` and a lowercase SHA-256. | `JsonPath`, `RigIdentity` |
+| `JointNameEmpty`, `JointNameMalformedUtf16` | a blank or malformed joint name. | `JsonPath`, `ColliderIndex`, `JointName` when available |
+| `PointInvalid` | a nonfinite coordinate. | `JsonPath`, `ColliderIndex`, `JointName` |
+| `RadiusInvalid` | a nonfinite or nonpositive radius. | `JsonPath`, `ColliderIndex`, `JointName` |
+| `TooManyColliders` | more than 32 colliders. | `JsonPath`, `ColliderCount` |
+
 ## Outfit coverage
 
 `OutfitCoverage.Resolve(body, worn)` works out what an outfit hides on one body from the body's region map and

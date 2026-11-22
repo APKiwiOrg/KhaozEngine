@@ -1,0 +1,87 @@
+using System;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
+using System.Numerics;
+using System.Security.Cryptography;
+
+namespace KhaozEngine.Attachments;
+
+/// <summary>An immutable set of rest-space capsule colliders for one body rig.</summary>
+public sealed class BodyColliderSet
+{
+    /// <summary>The maximum number of colliders in one body file.</summary>
+    public const int MaxColliders = 32;
+
+    /// <summary>Admit a set, refusing with <see cref="BodyCollidersDataException"/> when a content rule is broken.</summary>
+    public BodyColliderSet(string rigIdentity, IEnumerable<ColliderDefinition> colliders)
+    {
+        ArgumentNullException.ThrowIfNull(rigIdentity);
+        ArgumentNullException.ThrowIfNull(colliders);
+        if (!Attachments.RigIdentity.IsValid(rigIdentity))
+            throw new BodyCollidersDataException(BodyCollidersRefusal.RigIdentityInvalid, "rig must be a complete lowercase rig-v1 identity.")
+            { JsonPath = "$.rig", RigIdentity = rigIdentity };
+
+        if (colliders.TryGetNonEnumeratedCount(out int count)) ValidateCount(count);
+        ColliderDefinition[] owned = colliders.ToArray();
+        ValidateCount(owned.Length);
+        for (int index = 0; index < owned.Length; index++)
+            ValidateCollider(owned[index], index);
+
+        Array.Sort(owned, Compare);
+        RigIdentity = rigIdentity;
+        Colliders = ImmutableArray.CreateRange(owned);
+        Sha256 = Convert.ToHexStringLower(SHA256.HashData(BodyCollidersJson.Write(this)));
+    }
+
+    /// <summary>The complete <c>rig-v1:</c> identity of the body.</summary>
+    public string RigIdentity { get; }
+
+    /// <summary>Colliders in canonical order by ordinal joint name, start, end and radius.</summary>
+    public IReadOnlyList<ColliderDefinition> Colliders { get; }
+
+    /// <summary>The lowercase SHA-256 of the canonical bytes <see cref="BodyCollidersJson.Write"/> produces.</summary>
+    public string Sha256 { get; }
+
+    internal static void ValidateCount(int count)
+    {
+        if (count > MaxColliders)
+            throw new BodyCollidersDataException(BodyCollidersRefusal.TooManyColliders, $"A body carries at most {MaxColliders} colliders.")
+            { JsonPath = "$.colliders", ColliderCount = count };
+    }
+
+    static void ValidateCollider(ColliderDefinition collider, int index)
+    {
+        if (collider.FindFault() is not { } fault) return;
+        (BodyCollidersRefusal reason, string field, string message) = fault switch
+        {
+            ColliderDefinition.Fault.JointNameEmpty => (BodyCollidersRefusal.JointNameEmpty, "joint", "a joint name is required."),
+            ColliderDefinition.Fault.JointNameMalformedUtf16 => (BodyCollidersRefusal.JointNameMalformedUtf16, "joint", "a joint name must contain well-formed UTF-16."),
+            ColliderDefinition.Fault.StartInvalid => (BodyCollidersRefusal.PointInvalid, "start", "the start point must be finite."),
+            ColliderDefinition.Fault.EndInvalid => (BodyCollidersRefusal.PointInvalid, "end", "the end point must be finite."),
+            ColliderDefinition.Fault.RadiusInvalid => (BodyCollidersRefusal.RadiusInvalid, "radius", "the radius must be finite and positive."),
+            _ => throw new ArgumentOutOfRangeException(nameof(fault)),
+        };
+        string path = $"$.colliders[{index}].{field}";
+        throw new BodyCollidersDataException(reason, $"{path}: {message}")
+        { JsonPath = path, ColliderIndex = index, JointName = collider.Joint };
+    }
+
+    static int Compare(ColliderDefinition left, ColliderDefinition right)
+    {
+        int joint = StringComparer.Ordinal.Compare(left.Joint, right.Joint);
+        if (joint != 0) return joint;
+        int start = ComparePoint(left.Start, right.Start);
+        if (start != 0) return start;
+        int end = ComparePoint(left.End, right.End);
+        return end != 0 ? end : left.Radius.CompareTo(right.Radius);
+    }
+
+    static int ComparePoint(Vector3 left, Vector3 right)
+    {
+        int x = left.X.CompareTo(right.X);
+        if (x != 0) return x;
+        int y = left.Y.CompareTo(right.Y);
+        return y != 0 ? y : left.Z.CompareTo(right.Z);
+    }
+}

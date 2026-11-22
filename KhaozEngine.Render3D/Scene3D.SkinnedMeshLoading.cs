@@ -170,11 +170,13 @@ public sealed partial class Scene3D
         public readonly Matrix4x4[] InverseBind;
         public readonly SkinnedGltfMesh Source;
         public MeshBounds Bounds;
-        // The source slot a view draws over, or -1 for a loaded mesh. A view shares the source's vertex buffer and
-        // material sets and owns only its index buffer (Scene3D.SkinnedMeshViews.cs).
+        // The source slot a view draws over, or -1 for a loaded mesh.
         public readonly int ViewOf;
+        // Displaced views own Vb even when their displacement is zero.
+        public readonly double? ViewDisplacement;
 
         public bool IsView => ViewOf >= 0;
+        public IGpuBuffer? OwnedViewVertexBuffer => ViewDisplacement.HasValue ? Vb : null;
 
         public SkinnedMeshEntry(
             IGpuBuffer vb,
@@ -187,7 +189,8 @@ public sealed partial class Scene3D
             float alphaCutoff,
             SkinnedGltfMesh source,
             in MeshBounds bounds,
-            int viewOf = -1)
+            int viewOf = -1,
+            double? viewDisplacement = null)
         {
             Vb = vb;
             Ib = ib;
@@ -201,10 +204,12 @@ public sealed partial class Scene3D
             InverseBind = source.InverseBind;
             Bounds = bounds;
             ViewOf = viewOf;
+            ViewDisplacement = viewDisplacement;
         }
 
         /// <summary>This view over the source's current material sets, after a replacement rebuilt them.</summary>
         public SkinnedMeshEntry WithSourceSets(SkinnedMeshEntry source) => new(Vb, Ib, IndexCount, IndexFormat,
-            source.MaterialSet, source.SkinnedMaterialSet, source.OutlineMaterialSet, AlphaCutoff, Source, in Bounds, ViewOf);
+            source.MaterialSet, source.SkinnedMaterialSet, source.OutlineMaterialSet, AlphaCutoff, Source, in Bounds,
+            ViewOf, ViewDisplacement);
     }
 }

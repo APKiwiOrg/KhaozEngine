@@ -29,10 +29,18 @@ public sealed class SkinnedMeshViewArgumentException : ArgumentException
     /// <see cref="SkinnedMeshViewRefusal.IndexOutOfRange"/>.</summary>
     public int? IndexPosition { get; init; }
 
-    /// <summary>The source's vertex count, for <see cref="SkinnedMeshViewRefusal.IndexOutOfRange"/>.</summary>
+    /// <summary>The source's vertex count, for <see cref="SkinnedMeshViewRefusal.IndexOutOfRange"/> or
+    /// <see cref="SkinnedMeshViewRefusal.PositionCountMismatch"/>.</summary>
     public int? VertexCount { get; init; }
 
     /// <summary>How many views of the source still live, for <see cref="SkinnedMeshViewRefusal.SourceHasLiveViews"/>.
     /// </summary>
     public int? LiveViews { get; init; }
+
+    /// <summary>The supplied rest position count, for <see cref="SkinnedMeshViewRefusal.PositionCountMismatch"/>.</summary>
+    public int? PositionCount { get; init; }
+
+    /// <summary>The index of the first non-finite rest position, for
+    /// <see cref="SkinnedMeshViewRefusal.PositionNonFinite"/>.</summary>
+    public int? VertexIndex { get; init; }
 }

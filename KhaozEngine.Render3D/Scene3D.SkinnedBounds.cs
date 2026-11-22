@@ -21,7 +21,7 @@ public sealed partial class Scene3D
         if (!_skinnedLiveViews.ContainsKey(source.Index) && _pendingSkinnedViewReleases.Count == 0) return;
         foreach (SkinnedMeshEntry? view in _skinnedMeshes)
             if (view is { IsView: true } && view.ViewOf == source.Index)
-                view.Bounds = entry.Bounds;
+                view.Bounds = BoundsWithSkinnedViewDisplacement(in entry.Bounds, view.ViewDisplacement);
     }
 
     SkinnedMeshEntry SkinnedBoundsSource(SkinnedMeshHandle source) =>

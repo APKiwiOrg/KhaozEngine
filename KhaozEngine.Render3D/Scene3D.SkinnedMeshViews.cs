@@ -9,14 +9,14 @@ namespace KhaozEngine.Render3D;
 /// <para>
 /// Every skinned pass (colour, motion, cascade and point shadows, target outlines, dissolve) draws an entry's whole
 /// index buffer from the draw record it copies at preparation. A view is a second entry that shares the source's
-/// vertex buffer, material sets, cutoff, bounds and inverse binds and owns a filtered index buffer, so each pass
-/// draws exactly the view's triangles with no shader, pipeline or draw call change. Hiding part of a body under a
-/// garment is the use: the hidden set is fixed when an outfit changes, so nothing is computed per frame.
+/// material sets, cutoff and inverse binds and owns a filtered index buffer. A plain view shares the source's
+/// vertices and bounds. A displaced view owns its vertices and grows the source bounds by its displacement.
+/// Each pass draws the view's geometry with the existing shader, pipeline and draw call.
 /// </para>
 /// <para>
 /// A view is released one frame late. Queued draws name a handle and resolve it only when the frame is prepared, so
 /// an outfit change in the middle of a frame must not drop the draws already queued through the old view. The view's
-/// slot therefore stays live until the next frame boundary, and its index buffer then rides the retire queue like
+/// slot therefore stays live until the next frame boundary, and its owned buffers then ride the retire queue like
 /// every other unload. Design: docs/design/ATTACHMENT-REGIONS-AND-LAYERS-DESIGN.md.
 /// </para>
 /// </summary>
@@ -38,6 +38,17 @@ public sealed partial class Scene3D
     /// drawable until the frame ends, then frees its index buffer.</para></summary>
     public SkinnedMeshHandle CreateSkinnedMeshView(SkinnedMeshHandle source, ReadOnlySpan<uint> indices)
     {
+        SkinnedMeshEntry entry = ValidateSkinnedViewSource(source, indices);
+        SkinnedGltfMesh mesh = entry.Source;
+        // The view's own mesh shares the source's vertex, bind and pose arrays and carries no coverage, so the
+        // coverage paths treat a view as an unannotated mesh and never as a host.
+        var viewMesh = new SkinnedGltfMesh(mesh.Vertices, indices.ToArray(), mesh.InverseBind, mesh.RestPose, mesh.Skeleton);
+        IGpuBuffer indexBuffer = CreateIndexBuffer(viewMesh.Indices32, viewMesh.IndexFormat);
+        return StoreSkinnedView(source, entry, viewMesh, entry.Vb, indexBuffer, in entry.Bounds);
+    }
+
+    SkinnedMeshEntry ValidateSkinnedViewSource(SkinnedMeshHandle source, ReadOnlySpan<uint> indices)
+    {
         ObjectDisposedException.ThrowIf(_disposalComplete, this);
         if (!_skinnedSlots.IsValid(source.Index, source.Generation) || _skinnedMeshes[source.Index] is not { } entry)
             throw ViewRefusal(SkinnedMeshViewRefusal.SourceNotLive, source,
@@ -55,8 +66,7 @@ public sealed partial class Scene3D
             throw new SkinnedMeshViewArgumentException(SkinnedMeshViewRefusal.IndexCountNotTriangles,
                 "A skinned mesh view's index count must be whole triangles.", nameof(indices))
             { SourceIndex = source.Index, SourceGeneration = source.Generation, IndexCount = indices.Length };
-        SkinnedGltfMesh mesh = entry.Source;
-        int vertexCount = mesh.Vertices.Length;
+        int vertexCount = entry.Source.Vertices.Length;
         for (int i = 0; i < indices.Length; i++)
         {
             if (indices[i] < (uint)vertexCount) continue;
@@ -65,14 +75,16 @@ public sealed partial class Scene3D
             { SourceIndex = source.Index, SourceGeneration = source.Generation, IndexPosition = i, VertexCount = vertexCount };
         }
 
-        // The view's own mesh shares the source's vertex, bind and pose arrays and carries no coverage, so the
-        // coverage paths treat a view as an unannotated mesh and never as a host.
-        var viewMesh = new SkinnedGltfMesh(mesh.Vertices, indices.ToArray(), mesh.InverseBind, mesh.RestPose, mesh.Skeleton);
-        IGpuBuffer indexBuffer = CreateIndexBuffer(viewMesh.Indices32, viewMesh.IndexFormat);
-        var view = new SkinnedMeshEntry(entry.Vb, indexBuffer, viewMesh.Indices32.Length, viewMesh.IndexFormat,
+        return entry;
+    }
+
+    SkinnedMeshHandle StoreSkinnedView(SkinnedMeshHandle source, SkinnedMeshEntry entry, SkinnedGltfMesh viewMesh,
+        IGpuBuffer vertexBuffer, IGpuBuffer indexBuffer, in MeshBounds bounds, double? viewDisplacement = null)
+    {
+        var view = new SkinnedMeshEntry(vertexBuffer, indexBuffer, viewMesh.Indices32.Length, viewMesh.IndexFormat,
             entry.MaterialSet, entry.SkinnedMaterialSet, entry.OutlineMaterialSet, entry.AlphaCutoff, viewMesh,
-            in entry.Bounds, viewOf: source.Index);
-        SkinnedMeshHandle handle = StoreSkinnedEntry(view, _skinnedCpuVerts[source.Index]!);
+            in bounds, viewOf: source.Index, viewDisplacement: viewDisplacement);
+        SkinnedMeshHandle handle = StoreSkinnedEntry(view, viewMesh.Vertices);
         _skinnedLiveViews[source.Index] = _skinnedLiveViews.GetValueOrDefault(source.Index) + 1;
         return handle;
     }
@@ -141,11 +153,12 @@ public sealed partial class Scene3D
         _pendingSkinnedViewReleases.Clear();
     }
 
-    // A view owns only its index buffer. The vertex buffer and material sets stay with the source.
+    // Material sets stay with the source. Only a displaced view owns its vertex buffer.
     void ReleaseSkinnedView(SkinnedMeshHandle view)
     {
+        SkinnedMeshEntry entry = _skinnedMeshes[view.Index]!;
         _skinnedSlots.Free(view.Index, view.Generation);
-        _retired.Retire(_skinnedMeshes[view.Index]!.Ib);
+        _retired.Retire(entry.OwnedViewVertexBuffer, entry.Ib, null);
         _skinnedMeshes[view.Index] = null;
         _skinnedCpuVerts[view.Index] = null;
     }

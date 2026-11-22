@@ -214,7 +214,8 @@ SkinnedMeshHandle lifted = scene.CreateSkinnedMeshView(source, indices, restPosi
   indices and positions, so outfits and wearers that lift a part alike share one view. A part with no moving vertex
   draws exactly as before.
 - A lift over a scene without the capability refuses with `AttachmentBindingRefusal.OutfitLiftUnsupported`, naming
-  the worn set and the part. An outfit that lifts nothing binds over any view scene.
+  the worn set's cache key in `SourceName`, its `WornIndex` and the `PartId`. Binding checks the capability before
+  acquiring any views. An outfit that needs no displaced view binds over any view scene.
 - `AttachmentSetCache.Get` reads a lifting part's basis from its verified bytes before any scene upload, including
   when an earlier set already uploaded the mesh without lift. The cache retains the basis by mesh identity only
   after the set loads successfully.
@@ -334,3 +335,6 @@ Each task records here any shape the code required that differs from this note, 
   vertices takes the first vertex's direction and bearing in upload order, which the GLB policy keeps equal to the
   others within its tolerance. A standoff region the body lacks refuses as `OutfitRefusal.RegionUnknown` when the
   coverage resolves.
+- Outfit binding. The custom lease path uses `GltfLoader.LoadSkinnedPartGeometry` in place of the index-only
+  helper, so one decode provides both index lists and rest vertices in material order without decoding maps.
+  Scene3D leases read the retained upload through `SourceIndices` and `SourceVertices`.

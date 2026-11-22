@@ -36,9 +36,9 @@
     <InternalsVisibleTo Include="Coverage.Verify" />
     <InternalsVisibleTo Include="KhaozEngine.MapDoc.Render3D" />
     <!-- Attachment leases and caches refuse a release up front while a mesh view is
-         live (Scene3D.RefuseSourcesWithLiveViews). An outfit reads a cached mesh's index lists when it binds, borrowed
-         from the renderer (Scene3D.SkinnedSourceIndices) or decoded without material maps for a custom scene's
-         lease (GltfLoader.LoadSkinnedPartIndices). A chained bind reads the garment skeleton from retained bytes
+         live (Scene3D.RefuseSourcesWithLiveViews). An outfit reads a cached mesh's index lists and any rest
+         positions it needs for lift, borrowed from the renderer or decoded without material maps for a custom scene's
+         lease (GltfLoader.LoadSkinnedPartGeometry). A chained bind reads the garment skeleton from retained bytes
          without decoding geometry or material maps (GltfLoader.LoadAttachmentSkeleton). -->
     <InternalsVisibleTo Include="KhaozEngine.Attachments.Render3D" />
     <InternalsVisibleTo Include="Renderer.Perf.Tooling.Tests" />

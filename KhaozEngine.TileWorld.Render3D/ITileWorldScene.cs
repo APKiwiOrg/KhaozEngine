@@ -275,7 +275,7 @@ public interface ITileWorldScene
 
 /// <summary>The shipped <see cref="ITileWorldScene"/>: every member forwards straight to a <see cref="Scene3D"/>
 /// and its prop-renderer extension, so the seam costs one virtual call and adds no behaviour of its own.</summary>
-public sealed class Scene3DTileWorldScene : ITileWorldScene, IAttachmentCoverageScene, IAttachmentViewScene,
+public sealed class Scene3DTileWorldScene : ITileWorldScene, IAttachmentCoverageScene, IAttachmentDisplacedViewScene,
     ITileWorldWaterTriangleOpticsScene
 {
     readonly Scene3D _scene;
@@ -303,6 +303,10 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene, IAttachmentCoverage
     /// <inheritdoc />
     public SkinnedMeshHandle CreateSkinnedView(SkinnedMeshHandle source, ReadOnlySpan<uint> indices) =>
         _attachments.CreateSkinnedView(source, indices);
+
+    /// <inheritdoc/>
+    public SkinnedMeshHandle CreateSkinnedView(SkinnedMeshHandle source, ReadOnlySpan<uint> indices, ReadOnlySpan<Vector3> restPositions) =>
+        _attachments.CreateSkinnedView(source, indices, restPositions);
 
     /// <inheritdoc />
     public void ReleaseSkinnedView(SkinnedMeshHandle view) => _attachments.ReleaseSkinnedView(view);

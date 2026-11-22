@@ -259,8 +259,13 @@ coverage host, because coverage tables index the host's own triangles, so bindin
 covers a body uploaded with host coverage evidence refuses with `SkinnedMeshViewArgumentException` and
 `SkinnedMeshViewRefusal.SourceHasCoverage`.
 
-Views are shared. Two outfits that hide the same triangles of one mesh draw through one view, keyed by the
-source handle and the exact triangles it keeps. A view is counted by user and released once, when the last
+For a skinned part that lifts over a lower layer's standoff, `BindOutfit` applies the
+[lift rule](../docs/design/ATTACHMENT-LIFT-DESIGN.md#the-rule) and gives each visible material group a
+view with its lifted rest positions. That needs `IAttachmentDisplacedViewScene`, which both shipped
+adapters implement. A scene with plain views can bind any outfit that needs no displaced view.
+
+Views are shared by source handle, visible indices and any displaced rest positions.
+A view is counted by user and released once, when the last
 outfit using it is disposed. The renderer owns frame lifetime: a released view keeps drawing until the frame
 ends and is freed at the next frame boundary, so an outfit can change in the middle of a frame.
 
@@ -417,6 +422,7 @@ developer prose. Rigid frame errors carry `PoseCompositionFailed` with the origi
 | `PartRegionTagsMismatch` | a skinned part whose region runs do not sum to its mesh's triangles | `SourceName`, `PartId`, `MeshKey`, `ExpectedTriangleCount`, `ActualTriangleCount` |
 | `OutfitRegionUnknown` | a worn set naming a region the body's region map does not declare | `SourceName`, `WornIndex`, `PartId`, `RunIndex`, `RegionName`, `InnerException` |
 | `OutfitViewsUnsupported` | an outfit over a scene that is not an `IAttachmentViewScene` | none |
+| `OutfitLiftUnsupported` | a worn part needs a displaced view and the scene lacks `IAttachmentDisplacedViewScene` | `SourceName`, `WornIndex`, `PartId` |
 | `ChainJointMissing` | a declared chain joint absent from the garment skin | `PartId`, `MeshKey`, `ChainIndex`, `JointName` |
 | `ChainJointIsHostJoint` | a chain joint whose name resolves to a host skin joint | `PartId`, `MeshKey`, `ChainIndex`, `JointName` |
 | `ChainNotParentLine` | a chain joint that is not a direct child of its predecessor | `PartId`, `MeshKey`, `ChainIndex`, `JointName` |

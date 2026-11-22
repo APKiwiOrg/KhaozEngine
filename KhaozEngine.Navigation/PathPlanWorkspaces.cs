@@ -10,9 +10,12 @@ namespace KhaozEngine.Navigation;
 /// <para>A pool belongs to its creating profile and serves that profile and its bound route straighteners.
 /// A follower or mover constructor rejects a pool from another profile. Keep it alive while its owners use it,
 /// and reset each owner before discarding it. Dispose the pool last.</para>
-/// <para>Serialize construction of owners, ticks, resets, pool reads and disposal for each shared pool.
-/// An overlapping call, including a region predicate that calls back into the pool, throws
-/// <see cref="InvalidOperationException"/>. A pool can move to another thread between calls.</para>
+/// <para>Serialize construction of owners, ticks, resets, pool reads and disposal for each shared pool, and
+/// keep region predicates pure. The pool detects only a call that overlaps another call into the pool itself,
+/// such as a region predicate that reads the pool while a request advances, or a second thread that enters
+/// the pool at the same moment. That call throws <see cref="InvalidOperationException"/>, and so does an
+/// owner's reset when its cancellation overlaps. Owner ticks that overlap outside the pool go undetected,
+/// so serialization stays the caller's duty. A pool can move to another thread between calls.</para>
 /// <para>Each follower or mover holds at most one request. Use one workspace per sharing owner to avoid
 /// waiting. In a smaller pool, new requests queue in order and spend no work until granted a workspace.
 /// Completion or reset passes the workspace immediately to the oldest waiter, which can spend its quota on

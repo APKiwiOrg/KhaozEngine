@@ -110,9 +110,12 @@ The measurements came from one busy development machine on 2026-11-22 (Apple M2 
 tiered compilation off). Rescaling the measured operation costs gives 5.7 to 6.7 ns per unit for the
 common kinds under the calibrated table, about 6 ns. Parent and Copy are about 4.3 and 4.4 ns per unit
 at weight 1. Search in the constrained unreachable fixture was about 2.7 ns per unit against 6.7 ns
-for the open-ground expansion fixture. The model therefore transfers poorly to some searches. The
-99th percentile advance cost per unit for footprint-heavy requests was about 1.2 to 1.45 times the
-median depending on quota. The measurements supply no elapsed-time bound.
+for the open-ground expansion fixture. The model therefore transfers poorly to some searches. For
+the footprint-heavy requests at quotas of 1,024, 4,096 and 16,384 units, measured under the weights
+in force before calibration, the 99th percentile advance cost per unit was about 1.2 to 1.45 times
+the median. Advances were not measured again under the calibrated table. Quotas of 64 and 256 were
+left out of every estimate because the clock reads are a visible share of so short an advance. The
+measurements supply no elapsed-time bound.
 
 FootprintSetup, shared by EndpointStart and SegmentStart, and the straightening feet, candidate and
 offset charges were set by scaling their related segment charges and rounding up. Straightening
@@ -132,7 +135,7 @@ The shipped table takes the same or fewer calls at all three estimated time budg
 request shapes. At 0.3 ms it projects 5, 15 and 6 calls for the median, largest and unreachable
 requests. The minimum-spread table projects 5, 16 and 7. The shipped table keeps the expansion bundle
 weights and keeps the largest operation at 7 units instead of 12. A smaller largest operation lowers
-the quota floor exposed by `PathPlanningConfig.MinimumQuotaUnits` and the worst first-operation excess
-for quotas below that floor. Those tradeoffs carry more weight than reducing the spread of the two
-rare reconstruction steps. See the [consumer guide](../USING-KHAOZENGINE.md#planning-routes-across-calls)
+the quota floor exposed by `PathPlanningConfig.MinimumQuotaUnits` and the quota a call can leave unused
+when its next operation does not fit, at most 6 units instead of 11. Those tradeoffs carry more weight
+than reducing the spread of the two rare reconstruction steps. See the [consumer guide](../USING-KHAOZENGINE.md#planning-routes-across-calls)
 for measuring quotas on deployment hardware.

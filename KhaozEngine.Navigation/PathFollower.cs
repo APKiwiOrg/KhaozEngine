@@ -315,8 +315,10 @@ public sealed partial class PathFollower
         => TickCore(position, goal, agentRadius, dt, region: null);
 
     /// <summary>Clears all stored path state, including an active Drop (path, index, cooldown, plan origin and goal, height
-    /// included), as if this follower had just been constructed. Any internal region request is released first. The next tick plans fresh
+    /// included), as if this follower had just been constructed. Any pending region request is cancelled first. The next tick plans fresh
     /// with no cooldown wait.</summary>
+    /// <exception cref="InvalidOperationException">Cancelling a pending request overlaps another call into its
+    /// workspace pool.</exception>
     public void Reset()
     {
         CancelPlanning();

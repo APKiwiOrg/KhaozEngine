@@ -193,7 +193,10 @@ public sealed partial class MoveToRange
         return Counted(body, new RangeSteering(command, RangeMoveStatus.Following));
     }
 
-    /// <summary>Clears the route, shape snapshot, replan cooldown, stall window and latched block.</summary>
+    /// <summary>Clears the route, shape snapshot, replan cooldown, stall window and latched block, and cancels a
+    /// pending planning request.</summary>
+    /// <exception cref="InvalidOperationException">Cancelling a pending request overlaps another call into its
+    /// workspace pool.</exception>
     public void Reset()
     {
         _follower.Reset();

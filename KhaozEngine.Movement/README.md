@@ -51,8 +51,10 @@ One lease covers start admission, search and optional straightening. The result 
 planning on the same inputs. While `PlanningPending` is true, a planning wait returns
 `WaitingForPath` at zero motion, drops the old route and leaves the stall window untouched, including
 in supported Drop preparation. An exhausted Partial route still counts its cooldown wait toward stall.
-Suspension pauses work. Reaching range or changing target shape, range or capsule cancels a pending
-request.
+Suspension pauses work and reports `Suspended` with `PlanningPending` still true. A route that
+completes on a later slice is adopted on the next tick only if the feet still resolve to the start it
+was planned from. Otherwise the mover plans again from the current feet. Reaching range or changing
+target shape, range or capsule cancels a pending request.
 
 Use synchronous planning for custom planners, profiles with query-time area exclusions and
 `GroundPursuit`. The area check can scan an entire footprint within a search operation, so those

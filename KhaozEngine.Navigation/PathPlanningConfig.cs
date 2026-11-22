@@ -26,6 +26,8 @@ public sealed class PathPlanningConfig
     }
 
     /// <summary>The smallest accepted quota in work units. It covers the largest indivisible operation.</summary>
+    /// <remarks>Work units and this minimum can change between engine versions. Read it at run time, and check a
+    /// stored or tuned quota against it after an upgrade.</remarks>
     public static int MinimumQuotaUnits => PathWorkWeights.Largest;
 
     /// <summary>

@@ -18,6 +18,9 @@ namespace KhaozEngine.Navigation;
 /// <para>Elapsed time varies with the machine, compilation tier, cache and heap state, interruptions, open set
 /// size, column depth and the cost of a caller's region predicate. A quota also leaves first-use and JIT time
 /// unbounded. This value owns no resources and can be copied between threads.</para>
+/// <para>The quota covers the sliced planning work only. Each owner tick also tests goal membership, steers, and
+/// revalidates the start of a finished route before adopting it, which can resolve the start footprint again.
+/// Measure the whole owner tick when sizing a simulation budget.</para>
 /// </remarks>
 public readonly struct PathWorkBudget
 {

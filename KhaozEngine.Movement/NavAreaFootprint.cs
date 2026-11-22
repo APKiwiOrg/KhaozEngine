@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using KhaozEngine.Locomotion;
 
 namespace KhaozEngine.Movement;
@@ -58,6 +59,7 @@ internal sealed class NavAreaFootprint
     internal NavAreaFilter Areas => _areas;
     internal uint ExcludedAreas => _excludedAreas;
     internal double SurfaceReach => _surfaceReach;
+    internal double Radius => _radius;
 
     /// <summary>One delegate over <see cref="Accepts"/>, built once so traversal proofs do not allocate it per call.</summary>
     internal Func<Vector3, bool> AcceptsPredicate { get; }
@@ -72,25 +74,17 @@ internal sealed class NavAreaFootprint
 
     private bool AcceptsSegment(Vector3 from, Vector3 to, bool onlyExclusions)
     {
-        if (!Finite(from) || !Finite(to)) return false;
-        double minX = Math.Min(from.X, to.X) - _radius, maxX = Math.Max(from.X, to.X) + _radius;
-        double minZ = Math.Min(from.Z, to.Z) - _radius, maxZ = Math.Max(from.Z, to.Z) + _radius;
-        if (minX < _options.MinX || minZ < _options.MinZ || maxX >= _options.MaxX || maxZ >= _options.MaxZ)
-            return false;
-        int x0 = Cell(minX, _options.MinX), x1 = Cell(maxX, _options.MinX);
-        int z0 = Cell(minZ, _options.MinZ), z1 = Cell(maxZ, _options.MinZ);
-        double lowY = Math.Min(from.Y, to.Y), highY = Math.Max(from.Y, to.Y);
+        if (!TryBounds(from, to, out int x0, out int x1, out int z0, out int z1)) return false;
+        HeightRange(from, to, out double lowY, out double highY);
         var rows = new NavFootprintRows(from, to, _options, _radius, x0, x1, z0, z1);
         NavFootprintDiagnostics? diagnostics = NavFootprintDiagnostics.Current;
         for (int z = z0; z <= z1; z++)
         {
-            double bottom = _options.MinZ + z * (double)_options.CellSize;
+            double bottom = RowBottom(z);
             (int first, int last) = rows.At(bottom, x0, x1);
             for (int x = first; x <= last; x++)
             {
-                double left = _options.MinX + x * (double)_options.CellSize;
-                if (!NavFootprintGeometry.Touches(from, to, left, bottom, _options.CellSize, _radius)) continue;
-                if (!AcceptsColumn(x, z, lowY, highY, onlyExclusions))
+                if (RefusesCell(from, to, x, z, bottom, lowY, highY, onlyExclusions))
                 {
                     diagnostics?.CountRow(first, x);
                     return false;
@@ -99,6 +93,48 @@ internal sealed class NavAreaFootprint
             diagnostics?.CountRow(first, last);
         }
         return true;
+    }
+
+    /// <summary>Rejects nonfinite endpoints and bounds outside the half-open capture before enumerating cells.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal bool TryBounds(Vector3 from, Vector3 to, out int x0, out int x1, out int z0, out int z1)
+    {
+        if (Finite(from) && Finite(to))
+        {
+            double minX = Math.Min(from.X, to.X) - _radius, maxX = Math.Max(from.X, to.X) + _radius;
+            double minZ = Math.Min(from.Z, to.Z) - _radius, maxZ = Math.Max(from.Z, to.Z) + _radius;
+            if (!(minX < _options.MinX || minZ < _options.MinZ || maxX >= _options.MaxX || maxZ >= _options.MaxZ))
+            {
+                x0 = CellIndex(minX, _options.MinX);
+                x1 = CellIndex(maxX, _options.MinX);
+                z0 = Cell(minZ, _options.MinZ);
+                z1 = Cell(maxZ, _options.MinZ);
+                return true;
+            }
+        }
+        x0 = x1 = z0 = z1 = default;
+        return false;
+    }
+
+    /// <summary>Column support is selected against the complete height range of the swept segment.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void HeightRange(Vector3 from, Vector3 to, out double low, out double high)
+    {
+        low = Math.Min(from.Y, to.Y);
+        high = Math.Max(from.Y, to.Y);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal double RowBottom(int z) => _options.MinZ + z * (double)_options.CellSize;
+
+    /// <summary>Untouched cells pass. Touched cells apply the full column rule and can stop the scan.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal bool RefusesCell(Vector3 from, Vector3 to, int x, int z, double bottom,
+        double lowY, double highY, bool onlyExclusions)
+    {
+        double left = _options.MinX + x * (double)_options.CellSize;
+        return NavFootprintGeometry.Touches(from, to, left, bottom, _options.CellSize, _radius) &&
+            !AcceptsColumn(x, z, lowY, highY, onlyExclusions);
     }
 
     private bool AcceptsColumn(int x, int z, double lowY, double highY, bool onlyExclusions)
@@ -124,7 +160,12 @@ internal sealed class NavAreaFootprint
         return matched;
     }
 
-    private int Cell(double value, float origin) => (int)Math.Floor((value - origin) / _options.CellSize);
+    // Preserve the synchronous caller's two out-of-line Z conversions and inline X conversions.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private int Cell(double value, float origin) => CellIndex(value, origin);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private int CellIndex(double value, float origin) => (int)Math.Floor((value - origin) / _options.CellSize);
 
     private static bool Finite(Vector3 value)
         => float.IsFinite(value.X) && float.IsFinite(value.Y) && float.IsFinite(value.Z);

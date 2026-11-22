@@ -5,6 +5,7 @@ using KhaozEngine.Movement;
 using KhaozEngine.Navigation;
 using Xunit;
 using static KhaozEngine.Tests.Movement.NavAreaFootprintRowsTests;
+using FloatUlp = KhaozEngine.Movement.FloatSteps.FloatUlp;
 
 namespace KhaozEngine.Tests.Movement;
 
@@ -47,6 +48,21 @@ public sealed class NavSegmentRequestTests
     }
 
     [Theory]
+    [InlineData(0, false)]
+    [InlineData(1, false)]
+    [InlineData(-1, true)]
+    public void RowProjectionPreservesExactAndAdjacentFloatCornerTangency(int zStep, bool expected)
+    {
+        float Step(float z) => zStep > 0 ? FloatUlp.Up(z) : zStep < 0 ? FloatUlp.Down(z) : z;
+        var columns = Columns(Options(), (7, 7));
+        var tuning = MoveTuning.Default with { CapsuleRadius = 1.25f };
+        Vector3 from = new(3.75f, 0f, Step(2.25f)), to = new(13.75f, 0f, Step(9.75f));
+        var navigation = SegmentAdmissionFixture.Build(Footprint(columns, tuning).ExcludingAreas(UpperArea), tuning);
+        Assert.Equal(expected, Rectangle(columns, tuning, from, to, UpperArea));
+        AssertSchedules(navigation, from, to, expected);
+    }
+
+    [Theory]
     [InlineData(0f, 0f, true)]
     [InlineData(4f, 4f, false)]
     [InlineData(0f, 4f, false)]
@@ -69,10 +85,10 @@ public sealed class NavSegmentRequestTests
     {
         var tuning = MoveTuning.Default with { CapsuleRadius = 0f };
         var columns = Columns(Options());
-        var link = new NavLink(0, 2, 2, 1, 3, 2) { Kind = kind };
+        var link = new NavLink(1, 3, 2, 0, 2, 2) { Kind = kind };
         var footprint = new NavAreaFootprint(columns, columns.Options, tuning, default, surfaceReach: 2d);
         GroundNavigation navigation = SegmentAdmissionFixture.Build(footprint, tuning, 4f, [link]);
-        Vector3 from = new(2.5f, 0f, 2.5f), to = new(3.5f, 4f, 2.5f);
+        Vector3 from = new(3.5f, 4f, 2.5f), to = new(2.5f, 0f, 2.5f);
         AssertSchedules(navigation, from, to, expected);
         AssertSchedules(navigation, to, from, false);
     }

@@ -82,18 +82,16 @@ public sealed partial class GroundNavigation
         int x = from.X, z = from.Z;
         double dx = (double)toFeet.X - fromFeet.X, dz = (double)toFeet.Z - fromFeet.Z;
         int sx = Math.Sign(dx), sz = Math.Sign(dz);
-        double nextX = x == to.X ? double.PositiveInfinity : Crossing(fromFeet.X, dx, grid.OriginX, grid.CellSize, x, sx);
-        double nextZ = z == to.Z ? double.PositiveInfinity : Crossing(fromFeet.Z, dz, grid.OriginZ, grid.CellSize, z, sz);
-        double strideX = sx == 0 ? double.PositiveInfinity : grid.CellSize / Math.Abs(dx);
-        double strideZ = sz == 0 ? double.PositiveInfinity : grid.CellSize / Math.Abs(dz);
+        double nextX = SameCell(x, to.X) ? double.PositiveInfinity : Crossing(fromFeet.X, dx, grid.OriginX, grid.CellSize, x, sx);
+        double nextZ = SameCell(z, to.Z) ? double.PositiveInfinity : Crossing(fromFeet.Z, dz, grid.OriginZ, grid.CellSize, z, sz);
+        double strideX = CrossingStride(grid, dx, sx);
+        double strideZ = CrossingStride(grid, dz, sz);
         while (x != to.X || z != to.Z)
         {
-            int nx = x, nz = z;
-            if (nextX <= nextZ) nx += sx;
-            if (nextZ <= nextX) nz += sz;
+            NextCrossing(x, z, sx, sz, nextX, nextZ, out int nx, out int nz);
             if (!Graph.CanWalk(from.Layer, x, z, from.Layer, nx, nz)) return false;
-            if (nx != x) nextX = nx == to.X ? double.PositiveInfinity : nextX + strideX;
-            if (nz != z) nextZ = nz == to.Z ? double.PositiveInfinity : nextZ + strideZ;
+            if (!SameCell(nx, x)) nextX = AfterCrossing(nx, to.X, nextX, strideX);
+            if (!SameCell(nz, z)) nextZ = AfterCrossing(nz, to.Z, nextZ, strideZ);
             x = nx;
             z = nz;
         }
@@ -106,28 +104,12 @@ public sealed partial class GroundNavigation
         if (!_footprint.Accepts(feet)) return false;
         double best = double.PositiveInfinity;
         for (int layer = 0; layer < Space.Layers.Count; layer++)
-        {
-            NavGrid grid = Space.Layers[layer];
-            (int x, int z) = grid.CellOf(feet.X, feet.Z);
-            float? height = grid.RestingHeightAt(x, z);
-            if (height is not float y) continue;
-            double distance = Math.Abs((double)feet.Y - y);
-            if (distance >= best) continue;
-            best = distance;
-            node = new Node(layer, x, z);
-        }
-        // Accommodate an in-progress grounded step without accepting an unrelated vertical band.
-        return best <= Math.Max(_tuning.Step, GroundTraversalProbe.ArrivalTolerance) &&
-            Graph.IsNodePassable(node.Layer, node.X, node.Z);
+            ProbeEndpointLayer(feet, layer, ref best, ref node);
+        return AcceptsEndpoint(best, node);
     }
-
-    private static double Crossing(float start, double delta, float origin, float size, int cell, int direction)
-        => direction == 0 ? double.PositiveInfinity :
-            (origin + (cell + (direction > 0 ? 1d : 0d)) * size - start) / delta;
 
     private readonly record struct ProfileTuning(float Radius, float HalfHeight, float Slope, float Step);
     private readonly record struct SwimFractions(float Enter, float Exit, float Submersion);
-    private readonly record struct Node(int Layer, int X, int Z);
 
     private sealed class ProfilePlanner(GroundNavigation navigation, GridPathPlanner planner) : IRegionPathPlanner
     {

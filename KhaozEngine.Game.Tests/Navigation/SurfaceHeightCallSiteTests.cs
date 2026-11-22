@@ -16,7 +16,8 @@ public class SurfaceHeightCallSiteTests
     {
         string[] expected =
         {
-            "KhaozEngine.Movement/GroundNavigation.cs:Resolve:RestingHeightAt",
+            // Synchronous and sliced endpoint admission share the same physical resting-height probe.
+            "KhaozEngine.Movement/GroundNavigation.SegmentRules.cs:ProbeEndpointLayer:RestingHeightAt",
             // Drop candidate heights, cost and endpoints all use certified physical feet anchors.
             "KhaozEngine.Movement/ContactDropCandidates.cs:Enumerate:RestingHeightAt",
             "KhaozEngine.Movement/ContactDropCandidates.cs:Enumerate:RestingHeightAt",

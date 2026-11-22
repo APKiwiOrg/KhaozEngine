@@ -374,6 +374,9 @@ with the final paid operation. A query that needs no paid operation publishes on
 lease. Stamp wrap clears fixed blocks and adds work according to the leased
 workspace's generation. The planner's buffers never grow during an advance. Publishing a nonempty result
 allocates its path storage, and caller predicates may allocate their own storage.
+The internal work table also defines the charges for Movement's segment admission cursor. Its
+endpoint layer, footprint row, footprint column and directed edge checks each spend a fixed
+number of work units. A column's surface count affects execution time without changing its charge.
 
 These are the legacy point-query rules. The original `GridPathPlanner(NavSpace space, float hopCostCells =
 4f)` constructor keeps radius-aware clearance, endpoint ring snapping, line-of-sight shortcuts,

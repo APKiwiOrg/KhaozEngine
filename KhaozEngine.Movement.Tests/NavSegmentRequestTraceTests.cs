@@ -1,6 +1,8 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Locomotion;
 using KhaozEngine.Movement;
+using KhaozEngine.Navigation;
 using Xunit;
 using static KhaozEngine.Movement.NavSegmentOperation;
 
@@ -11,20 +13,26 @@ public sealed class NavSegmentRequestTraceTests
     [Fact]
     public void EveryCutInEndpointRowsColumnsAndDirectedCrossings()
     {
-        var navigation = SegmentAdmissionFixture.Flat(7, 5, 0.5f);
-        Vector3 from = new(1.5f, 0f, 2.5f), to = new(3.5f, 0f, 2.5f);
-        // Each endpoint scans its own 2 by 2 box. The sweep visits two rows of four candidates.
+        var navigation = SegmentAdmissionFixture.Flat(13, 5, 0.5f);
+        Vector3 from = new(1.5f, 0f, 2.5f), to = new(9.5f, 0f, 2.5f);
+        // Each endpoint scans its own 2 by 2 box. The sweep visits two rows of ten candidates.
         (NavSegmentOperation, int)[] trace =
         [
             (EndpointStart, 1), (FootprintRow, 2), (FootprintColumn, 3), (FootprintColumn, 3),
             (FootprintRow, 2), (FootprintColumn, 3), (FootprintColumn, 3), (EndpointLayer, 2),
             (EndpointStart, 1), (FootprintRow, 2), (FootprintColumn, 3), (FootprintColumn, 3),
             (FootprintRow, 2), (FootprintColumn, 3), (FootprintColumn, 3), (EndpointLayer, 2),
-            (SegmentStart, 1), (FootprintRow, 2), (FootprintColumn, 3), (FootprintColumn, 3),
-            (FootprintColumn, 3), (FootprintColumn, 3), (FootprintRow, 2), (FootprintColumn, 3),
-            (FootprintColumn, 3), (FootprintColumn, 3), (FootprintColumn, 3), (CellCrossing, 3), (CellCrossing, 3),
+            (SegmentStart, 1),
+            (FootprintRow, 2), (FootprintColumn, 3), (FootprintColumn, 3), (FootprintColumn, 3),
+            (FootprintColumn, 3), (FootprintColumn, 3), (FootprintColumn, 3), (FootprintColumn, 3),
+            (FootprintColumn, 3), (FootprintColumn, 3), (FootprintColumn, 3),
+            (FootprintRow, 2), (FootprintColumn, 3), (FootprintColumn, 3), (FootprintColumn, 3),
+            (FootprintColumn, 3), (FootprintColumn, 3), (FootprintColumn, 3), (FootprintColumn, 3),
+            (FootprintColumn, 3), (FootprintColumn, 3), (FootprintColumn, 3),
+            (CellCrossing, 3), (CellCrossing, 3), (CellCrossing, 3), (CellCrossing, 3),
+            (CellCrossing, 3), (CellCrossing, 3), (CellCrossing, 3), (CellCrossing, 3),
         ];
-        AssertEveryCut(navigation, from, to, trace, accepted: true, cells: 16, total: 73);
+        AssertEveryCut(navigation, from, to, trace, accepted: true, cells: 28, total: 127);
     }
 
     [Fact]
@@ -45,6 +53,31 @@ public sealed class NavSegmentRequestTraceTests
         var navigation = SegmentAdmissionFixture.Flat(5, 5, 0f);
         Vector3 from = new(float.NaN, 0f, 1.5f), to = new(2.5f, 0f, 1.5f);
         AssertEveryCut(navigation, from, to, [(EndpointStart, 1)], accepted: false, cells: 0, total: 1);
+    }
+
+    [Fact]
+    public void CaptureMaximumTangencyRefusesBeforeAnyRow()
+    {
+        var navigation = SegmentAdmissionFixture.Flat(5, 5, 0.5f);
+        Vector3 from = new(4.5f, 0f, 2.5f), to = new(2.5f, 0f, 2.5f);
+        AssertEveryCut(navigation, from, to, [(EndpointStart, 1)], accepted: false, cells: 0, total: 1);
+    }
+
+    [Fact]
+    public void StairFollowsBothLayerProbesAndTheWholeSweep()
+    {
+        var tuning = MoveTuning.Default with { CapsuleRadius = 0f };
+        var columns = NavAreaFootprintRowsTests.Columns(NavAreaFootprintRowsTests.Options());
+        var footprint = new NavAreaFootprint(columns, columns.Options, tuning, default, surfaceReach: 2d);
+        var navigation = SegmentAdmissionFixture.Build(footprint, tuning, 4f, [new NavLink(0, 2, 2, 1, 3, 2)]);
+        Vector3 from = new(2.5f, 0f, 2.5f), to = new(3.5f, 4f, 2.5f);
+        (NavSegmentOperation, int)[] trace =
+        [
+            (EndpointStart, 1), (FootprintRow, 2), (FootprintColumn, 3), (EndpointLayer, 2), (EndpointLayer, 2),
+            (EndpointStart, 1), (FootprintRow, 2), (FootprintColumn, 3), (EndpointLayer, 2), (EndpointLayer, 2),
+            (SegmentStart, 1), (FootprintRow, 2), (FootprintColumn, 3), (FootprintColumn, 3), (CellCrossing, 3),
+        ];
+        AssertEveryCut(navigation, from, to, trace, accepted: true, cells: 4, total: 32);
     }
 
     static void AssertEveryCut(GroundNavigation navigation, Vector3 from, Vector3 to,

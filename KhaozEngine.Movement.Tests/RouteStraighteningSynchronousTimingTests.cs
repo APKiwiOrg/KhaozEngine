@@ -135,11 +135,11 @@ public sealed class RouteStraighteningSynchronousTimingTests(ITestOutputHelper o
             double p95 = samples[(int)Math.Ceiling(samples.Length * 0.95) - 1] * nanosecondsPerTickPerQuery;
             timingFields = string.Create(CultureInfo.InvariantCulture, $"median_ns={median:F3} p95_ns={p95:F3} ");
         }
+        string rawFields = rawTicks is null ? "" : $" raw_batch_ticks={rawTicks}";
         output.WriteLine(string.Create(CultureInfo.InvariantCulture,
             $"name={name} result={warmResult} batch={batch} " +
             $"{timingFields}gc={gen0},{gen1},{gen2} nogc={(held ? "held" : "lost")} " +
-            $"window_bytes={windowBytes} thread_bytes={threadBytes}" +
-            (rawTicks is null ? "" : $" raw_batch_ticks={rawTicks}")));
+            $"window_bytes={windowBytes} thread_bytes={threadBytes}{rawFields}"));
 
         return held && gen0 == 0 && gen1 == 0 && gen2 == 0;
     }

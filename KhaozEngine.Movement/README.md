@@ -25,6 +25,13 @@ so a drop-enabled profile can choose a longer walking detour. It also checks ret
 that ignore that option. `RouteStraightener` drops only guarded walking shortcuts. Actual-to-route entry and every
 kept segment use the supplied supported-walk guard.
 
+The internal `NavSegmentRequest` can also resolve one supported-walk segment in slices. It admits both
+endpoint footprints and their layers in order, visits the swept footprint row by row, then checks directed
+graph crossings. It shares the capture, height and crossing rules with `GroundNavigation.AllowsSegment`.
+An advance charges whole operations and the decision becomes visible after the final required check.
+The charge of one column includes all of its captured surfaces. A paused request keeps only its cursors
+and can continue without rebuilding the query or allocating a scan buffer.
+
 For an ability that refuses an area the actor may otherwise enter, pass
 `navigation.ExcludingAreas(wetSurfaceBit)` to `GroundPursuit`. The mask uses the game's captured `uint` area
 bits. This immutable view shares the baked graph and captured columns, including those loaded from a bake,

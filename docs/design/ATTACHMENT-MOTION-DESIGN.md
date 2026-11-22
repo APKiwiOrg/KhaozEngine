@@ -1,8 +1,8 @@
 # Attachment motion: hanging parts that swing
 
-Status: planned for 24.5.0 under [#1879](https://github.com/APKiwiOrg/KhaozEngine/issues/1879), with byte loading of
-a skinned body and its clips under [#1876](https://github.com/APKiwiOrg/KhaozEngine/issues/1876). This note keeps the
-decisions and the reasons for them. Each task records the shapes the code corrects in the last section.
+Implemented for 24.5.0 under [#1879](https://github.com/APKiwiOrg/KhaozEngine/issues/1879), with byte loading of
+a skinned body and its clips under [#1876](https://github.com/APKiwiOrg/KhaozEngine/issues/1876). The
+[consumer guide](../USING-KHAOZENGINE.md#hanging-parts-that-swing) covers setup and frame submission.
 
 A worn skinned part may carry joints of its own beyond the body's. They form chains, each hanging from a body joint:
 a cloak's panels, a skirt's strips, a strap tail, a braid, a pouch. A motion stage moves those joints every frame

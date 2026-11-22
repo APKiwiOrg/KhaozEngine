@@ -209,7 +209,7 @@ For the version-21 set-level rename and its rationale, see the
 ## Outfits
 
 An outfit is a body and the sets worn on it, drawn with the outfit rule applied. A set with a layer (set
-format 3) hides the body regions it covers, and the same regions of every set in a lower layer. The body
+formats 3 and 4) hides the body regions it covers, and the same regions of every set in a lower layer. The body
 draws only its uncovered triangles, a lower piece draws only what no higher piece covers, and a rigid part
 whose region is covered draws nothing. A set with no layer (formats 1 and 2) covers nothing, nothing hides
 it, and it draws exactly as `BoundAttachmentSet.WriteDraws` draws it. The rule itself is
@@ -305,8 +305,9 @@ latest shape and follows its current anchor. Overloads without motion draw the r
 
 `Step` uses the binding's exact skeleton and full host skin palette. It validates the model and
 the joint matrices it reads for anchors and capsules. Each draw validates the matrices it reads.
-Valid steps and draws allocate nothing once warm. `MotionLevel.Held` blends toward rest. `Reset()` restores the rest hang
-immediately and clears velocity on the next valid step. `Tune(wornIndex, partId, chain, settings)`
+Valid steps and draws allocate nothing once warm. Use `MotionLevels.Assign` to select simulated wearers
+by distance and count and pass each level to `Step`. `MotionLevel.Held` blends toward rest. `Reset()`
+restores the rest hang immediately and clears velocity on the next valid step. `Tune(wornIndex, partId, chain, settings)`
 changes settings on the next substep. Worn and chain indices are zero-based and a bare set uses
 worn index zero. A fully hidden part has no tunable chains. Wearers can share a binding and have
 independent motions. Each motion belongs to its originating set or outfit and owns no disposable

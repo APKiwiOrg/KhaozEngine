@@ -1,7 +1,7 @@
 # KhaozEngine.Attachments
 
-GPU-free definitions and chain simulation for attachments. Rigid parts attach to named joints,
-while skinned parts declare garment meshes that use the host body's pose. Reference this package
+GPU-free definitions and chain simulation for attachments. Rigid parts attach to named joints.
+Skinned parts use the host body's pose and can declare their own swinging chains. Reference this package
 explicitly from headless publishers or consumers. Its only engine dependency is the dependency-free
 Primitives package, which supplies `MalformedDataException`. It is not included in Foundation or Server.
 

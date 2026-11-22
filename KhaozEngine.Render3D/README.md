@@ -2610,8 +2610,9 @@ handle freed elsewhere throws as it always did, after the key is forgotten or th
 
 A view is the renderer's way to hide part of a skinned mesh without a shader mask. A mask would touch every skinned
 shader variant and the CPU skinning path, and a pass that missed it would shadow or outline triangles the colour
-pass hides. A view needs no shader, pipeline or draw call change. Its bounds stay the source's rest bounds, which is
-conservative for culling and costs nothing. A CPU skinned view deforms every source vertex, the same cost as drawing
+pass hides. A view needs no shader, pipeline or draw call change. It uses its source's bounds, including any
+expansion for [swinging attachment chains](../KhaozEngine.Attachments.Render3D/README.md#hanging-chains-and-wearer-motion).
+A CPU skinned view deforms every source vertex, the same cost as drawing
 the source. A shadow, caustic, interior cut or sampler replacement rebinds each view to its source's rebuilt sets,
 and `Dispose` frees each view's index buffer and never a shared resource twice. The attachment arm's
 [outfits](../KhaozEngine.Attachments.Render3D/README.md#outfits) build their hidden triangles from views, and build

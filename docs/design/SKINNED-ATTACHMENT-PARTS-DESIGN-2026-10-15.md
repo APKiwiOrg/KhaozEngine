@@ -83,17 +83,18 @@ Loads and uploads are transactional. A failed later part preserves earlier cache
 
 Mixed sets use `loaded.Bind(map, hostMesh)`. The host mesh must carry the exact mapped skeleton.
 The map alone has no inverse binds, so rest-pose inversion cannot prove garment compatibility.
-Each garment joint resolves ordinally against host skin bones, including reordered subsets.
-A named node outside the skin does not qualify. Every inverse-bind element must be finite and
+Each garment joint outside a declared chain resolves ordinally against host skin bones, including reordered
+subsets. A named node outside the skin does not qualify. Each host-matched inverse-bind element must be finite and
 match its actual host counterpart within inclusive absolute tolerance `1e-4` across all 16 elements.
 Binding precomputes garment-to-host indices once. Rigid-only `loaded.Bind(map)` remains valid and
-refuses sets containing garments explicitly.
+refuses sets containing garments explicitly. [Attachment motion](ATTACHMENT-MOTION-DESIGN.md#chains)
+defines how a garment's own chain joints bind.
 
 ## Submission, ownership and rendering parity
 
 A bound view allocates its worlds, descriptors and one frame palette per skinned part at binding.
-Every material group of that garment borrows the same palette. Each frame copies host joint model
-matrices into garment skin order. They are not skin matrices with inverse binds already applied.
+Every material group of that garment borrows the same palette. Each frame writes joint model matrices
+into garment skin order, using the host pose for matched joints and a rest or simulated pose for chain joints.
 Scene3D applies garment inverse binds and records current and previous palettes for motion history.
 
 Each material group emits one `Scene3D.Draw` or `Scene3D.DrawSkinned`. The template replaces mesh,

@@ -538,6 +538,8 @@ embedded rigid and skinned GLB preflight. `AttachmentGlb.ComputeRigIdentity` pro
 fit evidence from raw accessor bytes and canonical rest frames, excluding animation and appearance.
 Body region maps, the outfit rule and the coverage claim check live here too. The check takes plain
 positions, indices and optional vertex masks, so a tool can explain or check an outfit offline.
+Body collider data and the chain solver also live here. The solver takes world-space transforms
+and capsules through `System.Numerics`, so a tool can simulate a worn set from exported poses.
 JSON uses `System.Text.Json` and hashing uses SHA-256 from the BCL. No renderer or particular
 skeleton type appears in its API. Publishers reference it directly. Foundation and Server do not
 gain an attachment dependency.
@@ -548,7 +550,8 @@ The renderer's existing dependency allowlist and ECS-free closure remain unchang
 
 `KhaozEngine.Attachments.Render3D` references only Attachments and Render3D. It resolves contract
 joints to skin-bone indices, composes rigid transforms and binds garment palettes against an explicit
-host mesh's inverse binds. Both kinds use the body's current joint model palette.
+host mesh's inverse binds. Both kinds use the body's current joint model palette. A chained part
+also uses its own rest or simulated joint frames. The arm binds colliders and owns per wearer motion.
 Game3D carries this arm. `RendererArms_ReferenceOnlyTheirOwnerAndRender3D` pins its two edges
 alongside the Render3D.Ecs arm, and the umbrella membership lock includes it. Foundation and Server
 remain unchanged. Render3D's material-part memory importer reuses its existing glTF decoding.
@@ -567,8 +570,9 @@ keeping a copy. For the renderer's own leases it borrows the lists Scene3D alrea
 `Scene3D.SkinnedSourceIndices`. A custom scene's lease cannot lend them, so the cache decodes the mesh's geometry
 again from its verified bytes through `GltfLoader.LoadSkinnedPartIndices`, which skips every material map.
 A chained bind reads the garment hierarchy and rest locals from those bytes through
-`GltfLoader.LoadAttachmentSkeleton`, which skips geometry decoding and material maps. These members remain
-internal, so the public renderer surface and `IAttachmentScene` stay unchanged.
+`GltfLoader.LoadAttachmentSkeleton`, which skips geometry decoding and material maps. The shipped upload
+lease also uses an internal Scene3D seam to grow a chained mesh's bounds and propagate them to its views.
+These integration members are internal.
 
 ## Render3D ECS arm: the renderer carries no Ecs edge
 

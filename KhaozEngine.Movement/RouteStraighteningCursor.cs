@@ -89,6 +89,31 @@ internal struct RouteStraighteningCursor
         }
     }
 
+    internal void RunSliceForTests(int quota, ref int spent, PathWorkByKind work)
+    {
+        while (NextOperation is var operation && operation != RouteStraighteningOperation.Done)
+        {
+            int weight = NextWeight();
+            if (spent != 0 && weight > quota - spent) return;
+            PathWorkKind kind = WorkKind(operation);
+            Step();
+            spent += weight;
+            work.Add(kind, weight);
+        }
+    }
+
+    PathWorkKind WorkKind(RouteStraighteningOperation operation) => operation switch
+    {
+        RouteStraighteningOperation.ValidateFeet => PathWorkKind.ValidateFeet,
+        RouteStraighteningOperation.Candidate => PathWorkKind.Candidate,
+        RouteStraighteningOperation.Segment => NavSegmentRequest.WorkKind(_segment.NextOperation),
+        RouteStraighteningOperation.SideOffsets => PathWorkKind.SideOffsets,
+        RouteStraighteningOperation.KeepAnchor => PathWorkKind.KeepAnchor,
+        RouteStraighteningOperation.Allocate => PathWorkKind.StraighteningAllocate,
+        RouteStraighteningOperation.Copy => PathWorkKind.StraighteningCopy,
+        _ => throw new InvalidOperationException("A finished straightener has no next operation."),
+    };
+
     int NextWeight() => NextOperation switch
     {
         RouteStraighteningOperation.ValidateFeet or RouteStraighteningOperation.KeepAnchor => PathWorkWeights.StraighteningFeet,

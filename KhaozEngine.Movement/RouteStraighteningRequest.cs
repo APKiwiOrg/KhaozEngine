@@ -38,5 +38,21 @@ internal sealed class RouteStraighteningRequest : GroundNavigation.ProfilePathRe
         return result;
     }
 
+    private protected override NavPath? RunMeasuredSlice(int quota, ref int spent, PathWorkByKind work)
+    {
+        if (!_straightening)
+        {
+            if (base.RunMeasuredSlice(quota, ref spent, work) is not { } raw) return null;
+            _cursor = new RouteStraighteningCursor(_straightener, Start, StartLayer, raw, _fallBack, Scratch.Waypoints);
+            _straightening = true;
+        }
+
+        _cursor.RunSliceForTests(quota, ref spent, work);
+        if (_cursor.Result is not { } result) return null;
+        // Only the paid allocation creates a changed route. An unchanged result may be published directly.
+        _straightener.RecordStraightened(_cursor.HasStagedArray ? result : null);
+        return result;
+    }
+
     private protected override void ClearProfileStages() => _cursor = default;
 }

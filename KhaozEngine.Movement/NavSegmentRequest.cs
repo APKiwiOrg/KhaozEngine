@@ -73,6 +73,32 @@ internal struct NavSegmentRequest(GroundNavigation navigation, Vector3 from, Vec
         }
     }
 
+    internal void AdvanceForTests(int quota, PathWorkByKind work)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(quota, 1);
+        int spent = 0;
+        try
+        {
+            while (NextOperation is var operation && operation != NavSegmentOperation.Done)
+            {
+                int weight = WeightOf(operation);
+                if (spent != 0 && weight > quota - spent) return;
+                Step();
+                spent += weight;
+                work.Add(WorkKind(operation), weight);
+            }
+        }
+        catch
+        {
+            _stage = Stage.Done;
+            throw;
+        }
+        finally
+        {
+            WorkSpent += spent;
+        }
+    }
+
     /// <summary>The fixed charge for an admission operation, shared with profile start resolution.</summary>
     internal static int WeightOf(NavSegmentOperation operation) => operation switch
     {
@@ -83,6 +109,10 @@ internal struct NavSegmentRequest(GroundNavigation navigation, Vector3 from, Vec
         NavSegmentOperation.CellCrossing => PathWorkWeights.CellCrossing,
         _ => throw new InvalidOperationException("A finished segment has no next operation."),
     };
+
+    // The two enums have the same order for this contiguous group of segment operations.
+    internal static PathWorkKind WorkKind(NavSegmentOperation operation)
+        => (PathWorkKind)((int)PathWorkKind.EndpointStart + (int)operation);
 
     /// <summary>Runs one operation after the owner admits its charge.</summary>
     internal void Step()

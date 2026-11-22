@@ -72,6 +72,16 @@ public sealed partial class RouteStraighteningRequestTests
             }
         }
         Assert.Equal(member ? 31 : 14, spent);
+
+        using var measured = Assert.IsType<RouteStraighteningRequest>(planner.BeginPath(start, goal, 0f, Budget, pool));
+        var work = new PathWorkByKind();
+        measured.AdvanceForTests(new(int.MaxValue), work);
+        AssertBits(expected, Assert.IsType<NavPath>(measured.Result));
+        Assert.Equal(spent, measured.WorkSpent);
+        Assert.Equal(measured.WorkSpent, work.Total);
+        foreach (var kind in trace.GroupBy(step => step.Start == Segment.Done
+            ? (PathWorkKind)step.Search : SegmentWorkKind(step.Start)))
+            Assert.Equal(kind.Sum(step => step.Units), work[kind.Key]);
     }
 
     [Fact]
@@ -292,7 +302,32 @@ public sealed partial class RouteStraighteningRequestTests
         }
         Assert.Equal(total, prefix);
         if (expectedGuards is not null) Assert.Equal(expectedGuards, slicedGuards);
+
+        var measured = new RouteStraighteningCursor(slicedStraightener, Start, 0, raw, fallBack: false, scratch);
+        var work = new PathWorkByKind();
+        int measuredSpent = 0;
+        measured.RunSliceForTests(int.MaxValue, ref measuredSpent, work);
+        AssertBits(expected, Assert.IsType<NavPath>(measured.Result));
+        Assert.Equal(total, measuredSpent);
+        Assert.Equal(measuredSpent, work.Total);
+        foreach (var kind in trace.GroupBy(TraceWorkKind))
+            Assert.Equal(kind.Sum(step => step.Units), work[kind.Key]);
     }
+
+    static PathWorkKind TraceWorkKind(Paid step) => step.Operation switch
+    {
+        Straight.ValidateFeet => PathWorkKind.ValidateFeet,
+        Straight.Candidate => PathWorkKind.Candidate,
+        Straight.Segment => SegmentWorkKind(step.Segment),
+        Straight.SideOffsets => PathWorkKind.SideOffsets,
+        Straight.KeepAnchor => PathWorkKind.KeepAnchor,
+        Straight.Allocate => PathWorkKind.StraighteningAllocate,
+        Straight.Copy => PathWorkKind.StraighteningCopy,
+        _ => throw new System.ArgumentOutOfRangeException(nameof(step)),
+    };
+
+    static PathWorkKind SegmentWorkKind(Segment step)
+        => (PathWorkKind)((int)PathWorkKind.EndpointStart + (int)step);
 
     readonly record struct Paid(Straight Operation, Segment Segment, int Units);
 

@@ -153,5 +153,19 @@ public sealed partial class GroundNavigation
 
             return _endpoint.Result is null ? NavPath.Unreachable : base.RunSlice(quota, ref spent);
         }
+
+        private protected override NavPath? RunMeasuredSlice(int quota, ref int spent, PathWorkByKind work)
+        {
+            while (_endpoint.NextOperation is var operation && operation != NavSegmentOperation.Done)
+            {
+                int weight = NavSegmentRequest.WeightOf(operation);
+                if (spent != 0 && weight > quota - spent) return null;
+                _endpoint.Step();
+                spent += weight;
+                work.Add(NavSegmentRequest.WorkKind(operation), weight);
+            }
+
+            return _endpoint.Result is null ? NavPath.Unreachable : base.RunMeasuredSlice(quota, ref spent, work);
+        }
     }
 }

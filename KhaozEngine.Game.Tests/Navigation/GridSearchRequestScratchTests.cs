@@ -217,6 +217,23 @@ public class GridSearchRequestScratchTests
         Assert.Equal(8, wrapAdvances - ordinaryAdvances);
         Assert.Equal(16, retry.WorkSpent - ordinary.WorkSpent);
 
+        using var measuredPool = grid.CreateWorkspacesForTests(1, PathQueryBudget.Default, int.MaxValue);
+        var baseline = MeasureWrap(ordinaryPool);
+        var wrapped = MeasureWrap(measuredPool);
+        Assert.Equal(0, baseline[PathWorkKind.Wrap]);
+        Assert.Equal(16, wrapped[PathWorkKind.Wrap]);
+        Assert.Equal(16, wrapped.Total - baseline.Total);
+
+        PathWorkByKind MeasureWrap(PathPlanWorkspaces measured)
+        {
+            using var request = NewRequest(planner, measured, goal);
+            var work = new PathWorkByKind();
+            request.AdvanceForTests(new(int.MaxValue), work);
+            EqualBits(expected, Assert.IsType<NavPath>(request.Result));
+            Assert.Equal(request.WorkSpent, work.Total);
+            return work;
+        }
+
         (int Advances, int Blocks) Drive(GridPathPlanner.GridSearchRequest request)
         {
             int advances = 0, blocks = 0;

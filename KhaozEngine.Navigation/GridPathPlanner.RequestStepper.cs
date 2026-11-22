@@ -81,6 +81,23 @@ public sealed partial class GridPathPlanner
             }
         }
 
+        internal void RunMeasuredSlice(int quota, ref int spent, PathWorkByKind work)
+        {
+            while (Phase is var phase && phase != SearchPhase.Done)
+            {
+                int weight = PathWorkWeights.For(phase);
+                if (spent != 0 && weight > quota - spent) return;
+                // Comparisons within one reduction share a weight and keep their exact running minimum.
+                int operations = phase is SearchPhase.CertificateProgress or SearchPhase.SearchProgress
+                    ? Math.Min(_goal.MemberCount - _progressIndex, Math.Max(1, (quota - spent) / weight))
+                    : 1;
+                Step(operations);
+                int units = operations * weight;
+                spent += units;
+                work.Add((PathWorkKind)phase, units);
+            }
+        }
+
         void Step(int operations)
         {
             switch (Phase)

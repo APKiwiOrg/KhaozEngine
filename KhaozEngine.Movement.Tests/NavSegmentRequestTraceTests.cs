@@ -88,7 +88,7 @@ public sealed class NavSegmentRequestTraceTests
         var columns = SegmentAdmissionFixture.Flat(5, 5, 0f).Footprint.Columns;
         var footprint = new NavAreaFootprint(columns, columns.Options, tuning, default, surfaceReach: 1d);
         // Only the lower endpoint of the tie has the directed Stair. A winning higher layer
-        // instead sees no ordinary exit. Both endpoint positions are exactly 0.25 m from the two layers.
+        // instead sees no ordinary exit. The tied endpoint is exactly 0.25 m from the two layers.
         NavLink stair = tieAtFrom ? new(0, 1, 2, 1, 2, 2) : new(1, 1, 2, 0, 2, 2);
         var navigation = SegmentAdmissionFixture.Build(footprint, tuning, 0.5f, [stair],
             allowsEdge: (_, _, _, _) => false);
@@ -103,10 +103,13 @@ public sealed class NavSegmentRequestTraceTests
     [Fact]
     public void NonTiedCrossingUsesTheEarlierBoundaryThenStopsOnTheRefusedEdge()
     {
-        // X first at 1/6, Z second at 1/4. The first exit is present and the second is absent.
-        var navigation = SegmentAdmissionFixture.Flat(6, 6, 0f,
+        // With origins (0, 8), X=2 is at 1/6 and Z=10 is at 1/4. Only the first exit exists.
+        var tuning = MoveTuning.Default with { CapsuleRadius = 0f };
+        var columns = NavAreaFootprintRowsTests.Columns(NavAreaFootprintRowsTests.Options(0f, 8f));
+        var footprint = new NavAreaFootprint(columns, columns.Options, tuning, default);
+        var navigation = SegmentAdmissionFixture.Build(footprint, tuning,
             allowsEdge: (x, z, nx, nz) => (x, z, nx, nz) == (1, 1, 2, 1));
-        Vector3 from = new(1.5f, 0f, 1.5f), to = new(4.5f, 0f, 3.5f);
+        Vector3 from = new(1.5f, 0f, 9.5f), to = new(4.5f, 0f, 11.5f);
         AssertEveryCut(navigation, from, to,
             [
                 .. PointEndpoint, .. PointEndpoint, (SegmentStart, 1), .. ScanRow(4), .. ScanRow(4), .. ScanRow(4),

@@ -252,6 +252,7 @@ public sealed partial class RouteStraighteningRequestTests
 
         List<NavWaypoint> scratch = new(raw.Waypoints.Count);
         int prefix = 0;
+        var slicedGuards = new List<(Vector3 From, Vector3 To)>();
         foreach (var (operation, segment, units) in trace)
         {
             using var diagnostic = new NavFootprintDiagnostics();
@@ -260,7 +261,13 @@ public sealed partial class RouteStraighteningRequestTests
             if (prefix != 0) cursor.RunSlice(prefix, ref spent);
             Assert.Equal(prefix, spent);
             Assert.Equal(operation, cursor.NextOperation);
-            if (operation == Straight.Segment) Assert.Equal(segment, cursor.NextSegmentOperation);
+            if (operation == Straight.Segment)
+            {
+                Assert.Equal(segment, cursor.NextSegmentOperation);
+                if (segment == Segment.EndpointStart && cursor.CurrentGuardForTests is { } guard &&
+                    (slicedGuards.Count == 0 || slicedGuards[^1] != guard))
+                    slicedGuards.Add(guard);
+            }
             Assert.Null(cursor.Result);
 
             spent = 0;
@@ -283,6 +290,7 @@ public sealed partial class RouteStraighteningRequestTests
             Assert.Equal(cells, diagnostic.CandidateCells);
         }
         Assert.Equal(total, prefix);
+        if (expectedGuards is not null) Assert.Equal(expectedGuards, slicedGuards);
     }
 
     readonly record struct Paid(Straight Operation, Segment Segment, int Units);

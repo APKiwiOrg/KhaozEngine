@@ -10,7 +10,7 @@ internal static class GltfByteImagePolicy
     internal static void Validate(ReadOnlyMemory<byte> glb, string identity)
     {
         ReadOnlyMemory<byte> json = FindJsonChunk(glb);
-        if (json.IsEmpty) return; // Let the model reader diagnose unrecognized or truncated containers.
+        if (json.IsEmpty) return; // Not a recognisable GLB container: the model reader diagnoses it.
 
         // JSON tokenization alone can leave string bytes undecoded. Validate the entire original chunk.
         if (!Utf8.IsValid(json.Span))
@@ -41,6 +41,9 @@ internal static class GltfByteImagePolicy
         }
     }
 
+    // Bytes that are not a recognisable GLB 2 container go to the model reader, which diagnoses them. Inside a
+    // recognised container every chunk framing fault refuses here, because the reader accepts some of them, such as a
+    // partial chunk header at the end of the declared length, and the image policy would then be skipped.
     static ReadOnlyMemory<byte> FindJsonChunk(ReadOnlyMemory<byte> glb)
     {
         const int fileHeaderSize = 12;
@@ -56,23 +59,26 @@ internal static class GltfByteImagePolicy
         uint declaredLength = BinaryPrimitives.ReadUInt32LittleEndian(header[8..]);
         if (declaredLength < fileHeaderSize || declaredLength > glb.Length) return default;
 
-        // Leave unknown chunks and bytes beyond the declared GLB length to the model reader.
+        // Bytes beyond the declared GLB length are left to the model reader.
         ReadOnlyMemory<byte> chunks = glb[fileHeaderSize..(int)declaredLength];
         ReadOnlyMemory<byte> json = default;
         while (!chunks.IsEmpty)
         {
-            if (chunks.Length < chunkHeaderSize) return default;
+            if (chunks.Length < chunkHeaderSize)
+                throw new InvalidOperationException("The GLB ends inside a chunk header.");
             uint chunkLength = BinaryPrimitives.ReadUInt32LittleEndian(chunks.Span);
-            if (chunkLength == 0 || chunkLength % 4 != 0 || chunkLength > chunks.Length - chunkHeaderSize)
-                return default;
+            if (chunkLength % 4 != 0 || chunkLength > chunks.Length - chunkHeaderSize)
+                throw new InvalidOperationException("A GLB chunk is not 4-byte aligned or runs past the declared length.");
 
             if (BinaryPrimitives.ReadUInt32LittleEndian(chunks.Span[4..]) == jsonChunkType)
             {
-                if (!json.IsEmpty) return default;
+                if (!json.IsEmpty || chunkLength == 0)
+                    throw new InvalidOperationException("A GLB needs exactly one non-empty JSON chunk.");
                 json = chunks.Slice(chunkHeaderSize, (int)chunkLength);
             }
             chunks = chunks[(chunkHeaderSize + (int)chunkLength)..];
         }
+        if (json.IsEmpty) throw new InvalidOperationException("A GLB needs exactly one non-empty JSON chunk.");
         return json;
     }
 }

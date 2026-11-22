@@ -300,6 +300,8 @@ public sealed class GltfSkinnedMaterialPartsTests
     [InlineData("animations", "invalid-utf8-clip-name")]
     [InlineData("skinned-material", "invalid-utf8-node-name")]
     [InlineData("animations", "invalid-utf8-node-name")]
+    [InlineData("skinned-material", "partial-chunk-header")]
+    [InlineData("animations", "partial-chunk-header")]
     public void Malformed_bytes_carry_their_reason_identity_and_original_failure(string overload, string input)
     {
         // #1791: standard reader exceptions must have the same refusal contract as SharpGLTF failures.
@@ -319,6 +321,17 @@ public sealed class GltfSkinnedMaterialPartsTests
             int nameOffset = json.IndexOf(name);
             Assert.True(nameOffset >= 0);
             json[nameOffset + 1] = 0xff;
+        }
+        else if (input == "partial-chunk-header")
+        {
+            byte[] valid = new SkinnedAttachmentGlbFixture().Build();
+            LoadBytes(overload, valid, identity);
+
+            // #1876: the model reader accepts a declared length that ends inside a chunk header, so the image policy
+            // must refuse it rather than skip its scan.
+            glb = new byte[valid.Length + 3];
+            valid.CopyTo(glb, 0);
+            BinaryPrimitives.WriteUInt32LittleEndian(glb.AsSpan(8), (uint)glb.Length);
         }
         else
         {

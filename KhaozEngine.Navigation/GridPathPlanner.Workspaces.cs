@@ -15,7 +15,10 @@ public sealed partial class GridPathPlanner
     NavSpace IIncrementalRegionPathPlanner.Space => _space;
 
     PathPlanWorkspaces IIncrementalRegionPathPlanner.CreateWorkspaces(int count, PathQueryBudget largestBudget)
-        => new GridPlanningWorkspaces(this, count, largestBudget);
+    {
+        RequireRegionRequestSupport();
+        return new GridPlanningWorkspaces(this, count, largestBudget);
+    }
 
     void IIncrementalRegionPathPlanner.ValidateWorkspaces(PathPlanWorkspaces workspaces, PathQueryBudget budget)
     {

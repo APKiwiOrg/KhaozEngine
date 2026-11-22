@@ -80,6 +80,7 @@ public sealed partial class GroundNavigation
 
         internal PathPlanWorkspaces CreateWorkspaces(int count, PathQueryBudget largestBudget, RouteStraightener? straightener = null)
         {
+            RequireRequestSupport();
             RequireStraightenerProfile(straightener);
             return new GridPlanningWorkspaces((IGridRequestAdapter?)straightener ?? this, count, largestBudget);
         }
@@ -103,8 +104,8 @@ public sealed partial class GroundNavigation
         internal PathPlanRequest BeginPath(Vector3 start, NavGoalRegion goal, float agentRadius, PathQueryBudget budget,
             PathPlanWorkspaces workspaces, RouteStraightener? straightener = null)
         {
-            RequireStraightenerProfile(straightener);
             RequireRequestSupport();
+            RequireStraightenerProfile(straightener);
             return GridPlanningWorkspaces.Require(workspaces)
                 .BeginAdapted((IGridRequestAdapter?)straightener ?? this, start, goal, agentRadius, budget);
         }

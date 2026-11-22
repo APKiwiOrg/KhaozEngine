@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Security.Cryptography;
@@ -158,6 +159,28 @@ public class BodyCollidersTests
         Assert.Equal(index.HasValue ? last.Joint : null, error.JointName);
         Assert.Equal(reason == BodyCollidersRefusal.RigIdentityInvalid ? rig : null, error.RigIdentity);
         Assert.Equal(reason == BodyCollidersRefusal.TooManyColliders ? 33 : (int?)null, error.ColliderCount);
+    }
+
+    [Fact]
+    public void The_constructor_reads_an_uncounted_sequence_only_one_past_the_cap()
+    {
+        Assert.Equal(BodyColliderSet.MaxColliders,
+            new BodyColliderSet(Rig, Uncounted(BodyColliderSet.MaxColliders)).Colliders.Count);
+
+        var error = Assert.Throws<BodyCollidersDataException>(() => new BodyColliderSet(Rig, Uncounted(int.MaxValue)));
+
+        Assert.Equal(BodyCollidersRefusal.TooManyColliders, error.Reason);
+        Assert.Equal(BodyColliderSet.MaxColliders + 1, error.ColliderCount);
+    }
+
+    // An iterator cannot report its size. Reading more than one item past the cap fails the test.
+    static IEnumerable<ColliderDefinition> Uncounted(int count)
+    {
+        for (int read = 0; read < count; read++)
+        {
+            Assert.True(read <= BodyColliderSet.MaxColliders);
+            yield return Upper;
+        }
     }
 
     static (string Control, string Broken, int Count) JsonCase(string fault) => fault switch

@@ -41,7 +41,8 @@ public sealed class BodyCollidersDataException : MalformedDataException, IAttach
     /// <summary>The joint name of a collider refused for its name, points or radius, when available.</summary>
     public string? JointName { get; init; }
 
-    /// <summary>The size of a collider sequence that exceeds the limit.</summary>
+    /// <summary>The size of a collider sequence that exceeds the limit. For a sequence that cannot report its size, the
+    /// number read when the limit was passed, which is one more than the limit.</summary>
     public int? ColliderCount { get; init; }
 
     MalformedDataException IAttachmentDataException.WithSource(string sourceName) => new BodyCollidersDataException(Reason, $"{sourceName}: {Message}", this)

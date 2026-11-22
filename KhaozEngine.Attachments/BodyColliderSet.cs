@@ -22,9 +22,7 @@ public sealed class BodyColliderSet
             throw new BodyCollidersDataException(BodyCollidersRefusal.RigIdentityInvalid, "rig must be a complete lowercase rig-v1 identity.")
             { JsonPath = "$.rig", RigIdentity = rigIdentity };
 
-        if (colliders.TryGetNonEnumeratedCount(out int count)) ValidateCount(count);
-        ColliderDefinition[] owned = colliders.ToArray();
-        ValidateCount(owned.Length);
+        ColliderDefinition[] owned = Own(colliders);
         for (int index = 0; index < owned.Length; index++)
             ValidateCollider(owned[index], index);
 
@@ -42,6 +40,24 @@ public sealed class BodyColliderSet
 
     /// <summary>The lowercase SHA-256 of the canonical bytes <see cref="BodyCollidersJson.Write"/> produces.</summary>
     public string Sha256 { get; }
+
+    // A counted source is checked before it is copied. An uncounted one is read only until it passes the cap, so a
+    // huge or endless sequence refuses after MaxColliders + 1 items instead of being copied whole.
+    static ColliderDefinition[] Own(IEnumerable<ColliderDefinition> colliders)
+    {
+        if (colliders.TryGetNonEnumeratedCount(out int count))
+        {
+            ValidateCount(count);
+            return colliders.ToArray();
+        }
+        var owned = new List<ColliderDefinition>();
+        foreach (ColliderDefinition collider in colliders)
+        {
+            owned.Add(collider);
+            ValidateCount(owned.Count);
+        }
+        return owned.ToArray();
+    }
 
     internal static void ValidateCount(int count)
     {

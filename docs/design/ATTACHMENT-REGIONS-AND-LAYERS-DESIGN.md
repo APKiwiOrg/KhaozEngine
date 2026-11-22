@@ -145,7 +145,7 @@ the colour, motion, cascade, point and outline passes need no change.
 
 `KhaozEngine.Attachments` may not reference `KhaozEngine.Render3D`. It references only `KhaozEngine.Primitives`, and
 `ArchitectureTests.Attachment_definitions_reference_only_the_shared_primitives` pins that edge so publishers and
-tools stay GPU free. The coverage claim check takes plain positions, indices and an optional vertex mask.
+tools stay GPU free. The coverage claim check takes plain positions, indices, a part ID and a vertex mask.
 
 ## Signatures corrected against the code
 
@@ -196,7 +196,8 @@ Coverage claim check:
 
 - `CoverageClaimCheck.Verify` takes `IReadOnlyList<CoverageClaimMesh>` for the body and the piece, where
   `CoverageClaimMesh` takes `(ReadOnlyMemory<Vector3> Positions, ReadOnlyMemory<uint> Indices)` in its constructor.
-  Its `Swinging` mask is required for a part with motion, as described in
+  Its init-only `PartId` maps each mesh to a definition part when a piece declares motion. Its `Swinging` mask is
+  required for a part with motion, as described in
   [Attachment motion](ATTACHMENT-MOTION-DESIGN.md#coverage-claims-and-swinging-triangles). Body parts follow the
   region map's part order. Piece meshes are already in the body's rest frame, so a rigid part is placed
   by its joint's rest transform and its local transform before the call. The outward normal comes from each

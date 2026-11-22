@@ -14,15 +14,14 @@ public static class CoverageClaimCheck
     /// <summary>
     /// Check <paramref name="piece"/>'s covered regions against the body. <paramref name="bodyMeshes"/> follow
     /// <paramref name="body"/>'s part order. <paramref name="pieceMeshes"/> are already in the body's rest frame.
-    /// For a piece with motion, supply one mesh per definition part in ascending part ID order and a swinging mask
-    /// for every part with motion. A claimed body triangle is covered when a ray from its centroid along its
-    /// outward normal, from counter clockwise
-    /// winding, meets a fixed piece triangle from either side at a distance from 0 to
+    /// For a piece with motion, supply one mesh per definition part in any order and set each mesh's
+    /// <see cref="CoverageClaimMesh.PartId"/>. Every part with motion needs a swinging mask. A claimed body triangle
+    /// is covered when a ray from its centroid along its outward normal, from counter clockwise winding, meets a
+    /// fixed piece triangle from either side at a distance from 0 to
     /// <paramref name="maxDistanceMetres"/> inclusive.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">The distance is not finite or not greater than zero.</exception>
-    /// <exception cref="ArgumentException">The mesh count for a piece with motion differs from its part count, or a
-    /// nonempty swinging mask has a different length than its mesh's positions.</exception>
+    /// <exception cref="ArgumentException">A nonempty swinging mask has a different length than its mesh's positions.</exception>
     /// <exception cref="CoverageClaimDataException">The geometry or the claim breaks a rule.</exception>
     public static CoverageClaimReport Verify(IReadOnlyList<CoverageClaimMesh> bodyMeshes, BodyRegionMap body, AttachmentSetDefinition piece,
         IReadOnlyList<CoverageClaimMesh> pieceMeshes, float maxDistanceMetres)

@@ -7720,9 +7720,10 @@ draws its own handle, and one that is wholly covered draws nothing, so both stil
 **Check a claim offline.** A false `Covers` claim hides skin that nothing replaces and opens a hole in the body.
 `CoverageClaimCheck.Verify(bodyMeshes, body, piece, pieceMeshes, maxDistanceMetres)` checks at the rest pose that
 fixed triangles of the piece lie over every triangle of every region it claims. For a piece with motion, pass
-one mesh per definition part in ascending part ID order. Use `AttachmentGlb.SwingingVertices(glb, sourceName,
-chainJoints)` to populate `CoverageClaimMesh.Swinging` for each chained part. An omitted or empty mask for a
-part with motion raises `CoverageClaimDataException` with `SwingMaskMissing` and the part's ID and mesh key.
+one mesh per definition part in any order and set each mesh's `CoverageClaimMesh.PartId` to its definition ID.
+Use `AttachmentGlb.SwingingVertices(glb, sourceName, chainJoints)` to populate `CoverageClaimMesh.Swinging`
+for each chained part. An omitted or empty mask for a part with motion raises `CoverageClaimDataException`
+with `SwingMaskMissing` and the part's ID and mesh key.
 The report lists the uncovered triangles by part and counts the skipped piece triangles in
 `IgnoredSwingingTriangleCount`.
 A tool runs it when a piece is made, never per frame. The consumer chooses the distance, because how far a piece
@@ -7757,7 +7758,7 @@ regions, map and host mesh from the preceding section, a loaded `cape` set and a
 same skeleton. Keep one motion and one set of frame buffers per wearer.
 
 ```csharp
-LoadedBodyColliders colliders = cache.GetBodyColliders(colliderKey, colliderSha256, bodyRigIdentity, bodyMesh);
+LoadedBodyColliders colliders = cache.GetBodyColliders(colliderKey, colliderSha256, bodyRigIdentity, hostMesh: bodyMesh);
 using BoundOutfit outfit = cache.BindOutfit(body, [cape.Bind(map, bodyMesh)]);
 WornMotion motion = outfit.CreateMotion(colliders);
 Skeleton skeleton = map.Skeleton;

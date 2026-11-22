@@ -66,8 +66,10 @@ Existing sets and draws are unchanged.
 - Coverage claims use fixed geometry. `AttachmentGlb.SwingingVertices(glb, sourceName, chainJoints)` reads
   the vertex mask for a garment GLB. Supply it as the init-only `CoverageClaimMesh.Swinging` property so
   `CoverageClaimCheck.Verify` skips every piece triangle with a swinging vertex. Sets with motion pass one
-  mesh per part in part ID order. A moving part without a mask refuses with `CoverageClaimRefusal.SwingMaskMissing`
-  and the part ID and mesh key. `CoverageClaimReport.IgnoredSwingingTriangleCount` records how many triangles it skipped.
+  mesh per part in any order and set each mesh's init-only `CoverageClaimMesh.PartId`. Unstated, unknown or repeated
+  IDs and missing part meshes have typed refusals. A moving part without a mask refuses with
+  `CoverageClaimRefusal.SwingMaskMissing` and the part ID and mesh key.
+  `CoverageClaimReport.IgnoredSwingingTriangleCount` records how many triangles it skipped.
 - Publish format 4 only after every reader is on 24.5.0 or later. A 24.4.0 reader raises
   `AttachmentSetDataException` with `JsonPropertyUnknown`, `JsonPath` of `$` and `PropertyName` of
   `colliders` if the root contains that member, including an empty array. For format 4 without that member

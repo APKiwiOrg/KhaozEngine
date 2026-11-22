@@ -297,8 +297,9 @@ only what the fixed part of a piece covers, such as a cloak's collar.
 
 The fitting tool derives a per-vertex mask from the same skinned GLB it imports and the part's chain joint names.
 Both use flattened mesh, primitive and vertex order so each flag describes the position at the same index. A piece
-with motion passes one mesh per definition part in ascending part ID order. A missing or empty mask for a part with
-motion refuses with `SwingMaskMissing`, including its part ID and mesh key.
+with motion passes one mesh per definition part in any order and sets `CoverageClaimMesh.PartId` on each mesh.
+The check verifies that each part is represented exactly once, so a reordered mesh keeps its own swing evidence.
+A missing or empty mask for a part with motion refuses with `SwingMaskMissing`, including its part ID and mesh key.
 The [coverage claim check reference](../../KhaozEngine.Attachments/README.md#coverage-claim-check) describes the API.
 
 ## Room for cloth
@@ -362,7 +363,8 @@ or collider.
   chain that is not a parent line, an anchor that is not a host skin joint, a chain bind mismatch, an unresolved
   collider joint, body colliders for another rig identity or skeleton instance, and too many colliders on one wearer.
 - `AttachmentSubmissionRefusal`: a motion made for another outfit or set.
-- `CoverageClaimRefusal`: a missing or empty swing mask for a piece part that declares motion.
+- `CoverageClaimRefusal`: an unstated, unknown or repeated mesh part ID, a definition part without a mesh, or a
+  missing or empty swing mask for a part that declares motion.
 - `GltfImportRefusal`: an image named by a relative path in a byte import.
 
 ## Tests
@@ -423,9 +425,10 @@ Each task records here any shape the code required that differs from this note, 
   at least one set bound with a host mesh, since a joint map has no inverse binds. The bound capsule keeps its
   rest-model data and the inverse bind so the radius can use a single scale from their composed rest-to-world
   transform.
-- Coverage claim evidence. The check receives untagged geometry, so sets declaring motion use one mesh per
-  definition part, ordered by part ID. This locates each required mask without changing the geometry type.
-  The refusal identifies the mesh index, part ID and asset key.
+- Coverage claim evidence. Init-only `CoverageClaimMesh.PartId` identifies the definition part because list
+  position can pair a chained part with another mesh's mask. A set declaring motion supplies one mesh per part
+  in any order. The check refuses an unstated, unknown or repeated ID, a missing part mesh or a missing mask
+  on the mesh for a moving part. Zero is the default, and the check ignores IDs on pieces without motion.
 
 - Motion submission. The public overloads keep the set and outfit draw signatures, with a motion argument before
   the skeleton. `MotionMismatch` uses the existing submission argument exception and identifies the motion

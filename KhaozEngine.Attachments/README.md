@@ -378,7 +378,9 @@ Geometry arrives as `CoverageClaimMesh(Positions, Indices)`, plain `ReadOnlyMemo
   tags triangles by part and position and a mesh that disagrees would be checked against the wrong regions.
 - `pieceMeshes` are already in the body's rest frame. A rigid part is placed by its joint's rest transform and its
   local transform before the call, since the check has no rig to place it with. For a piece with motion, give one
-  mesh per definition part in ascending part ID order, combining any material groups within that part.
+  mesh per definition part in any order, combining any material groups within that part. Set each mesh's init-only
+  `PartId` to the corresponding definition part ID. Zero leaves the ID unstated. The check ignores `PartId` on
+  body meshes and on pieces without motion.
 - Each part with motion needs a nonempty `Swinging` mask with one `bool` per position. An empty mask on a part
   without motion means all its vertices are fixed. The check skips a piece triangle if any of its vertices swings.
   The hidden body regions are fixed when the outfit binds, so a moving piece triangle could swing away and leave a hole.
@@ -424,10 +426,9 @@ overflows nor underflows and only a triangle of truly zero area counts as degene
 
 A null argument throws `ArgumentNullException`. An invalid maximum distance throws `ArgumentOutOfRangeException`.
 A nonempty `Swinging` mask with a length different from its mesh's position count throws `ArgumentException`.
-A piece with motion also throws `ArgumentException` on `pieceMeshes` if the mesh count differs from its part count.
-The geometry and region refusals below throw `CoverageClaimDataException`, derived from `MalformedDataException`, with
-a `CoverageClaimRefusal Reason`. `MeshKind` says whether a refused mesh is a `Body` or `Piece` mesh and `MeshIndex`
-is its zero-based position in that list, which for a body mesh is its map part.
+The refusals below throw `CoverageClaimDataException`, derived from `MalformedDataException`, with a
+`CoverageClaimRefusal Reason`. `MeshKind` says whether a refused or missing mesh is a `Body` or `Piece` mesh.
+`MeshIndex` is the mesh's zero-based position when it is present, which for a body mesh is its map part.
 
 | Reason | What it refuses | Other identifiers |
 |---|---|---|
@@ -438,6 +439,10 @@ is its zero-based position in that list, which for a body mesh is its map part.
 | `IndexOutOfRange` | an index past the mesh's positions. | `MeshKind`, `MeshIndex`, `IndexPosition`, `VertexIndex`, `VertexCount` |
 | `PositionNotFinite` | a position with a NaN or infinite component. | `MeshKind`, `MeshIndex`, `VertexIndex` |
 | `SwingMaskMissing` | a piece mesh without the mask required by its part's motion. | `MeshKind`, `MeshIndex`, `PartId`, `MeshKey` |
+| `PieceMeshPartIdMissing` | a piece mesh with `PartId` zero when the definition has motion. | `MeshKind`, `MeshIndex`, `PartId` (zero) |
+| `PieceMeshPartIdUnknown` | a piece mesh naming a part ID absent from a definition with motion. | `MeshKind`, `MeshIndex`, `PartId` |
+| `PieceMeshPartIdDuplicate` | a second piece mesh naming the same part ID in a definition with motion. | `MeshKind`, `MeshIndex` (the second mesh), `PartId`, `MeshKey` |
+| `PiecePartMeshMissing` | a part with no mesh in a piece with motion. | `MeshKind`, `PartId`, `MeshKey` |
 
 The check has its own refusal family rather than `OutfitDataException`, because it resolves no worn list, so the
 outfit refusal's `WornIndex` would have nothing to name.

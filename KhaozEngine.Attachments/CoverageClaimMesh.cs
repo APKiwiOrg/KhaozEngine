@@ -8,6 +8,10 @@ public readonly record struct CoverageClaimMesh(ReadOnlyMemory<Vector3> Position
 {
     readonly ReadOnlyMemory<bool> _swinging;
 
+    /// <summary>The definition part this mesh represents. Zero leaves the part unstated. Required for every
+    /// piece mesh when the piece declares motion. Ignored for body meshes and pieces without motion.</summary>
+    public uint PartId { get; init; }
+
     /// <summary>One flag per position. Required for a piece part with motion. Otherwise, empty means all vertices
     /// are fixed. Only piece flags affect coverage.</summary>
     /// <remarks>An empty mask is stored as the default, so a mesh given an empty mask equals the same mesh given none,

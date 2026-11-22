@@ -23,6 +23,18 @@ public enum CoverageClaimRefusal
 
     /// <summary>Refuses a piece mesh without a swinging vertex mask for a part that declares motion.</summary>
     SwingMaskMissing,
+
+    /// <summary>Refuses a mesh without a part ID in a piece that declares motion.</summary>
+    PieceMeshPartIdMissing,
+
+    /// <summary>Refuses a mesh whose part ID the piece definition does not declare.</summary>
+    PieceMeshPartIdUnknown,
+
+    /// <summary>Refuses a second mesh naming the same definition part in a piece that declares motion.</summary>
+    PieceMeshPartIdDuplicate,
+
+    /// <summary>Refuses a definition part with no mesh in a piece that declares motion.</summary>
+    PiecePartMeshMissing,
 }
 
 /// <summary>Which input list a refused coverage claim mesh belongs to. Members are only ever appended.</summary>

@@ -23,12 +23,13 @@ public class CoverageClaimCheckTests
     static readonly CoverageClaimMesh[] FlatBody = [new(FlatPositions, FlatIndices)];
 
     [Theory]
-    [InlineData(null)]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void A_plate_covers_its_region_only_when_it_is_fixed(bool? swinging)
+    [InlineData(null, 0u)]
+    [InlineData(null, 99u)]
+    [InlineData(false, 0u)]
+    [InlineData(true, 0u)]
+    public void A_plate_covers_its_region_only_when_it_is_fixed(bool? swinging, uint partId)
     {
-        CoverageClaimMesh plate = PlateOverUpper(0.01f);
+        CoverageClaimMesh plate = PlateOverUpper(0.01f) with { PartId = partId };
         if (swinging is bool flag)
             plate = plate with { Swinging = new[] { flag, flag, flag, flag } };
         CoverageClaimReport report = CoverageClaimCheck.Verify(FlatBody, FlatMap, Piece("upper"), [plate], Limit);
@@ -67,19 +68,19 @@ public class CoverageClaimCheckTests
     [Fact]
     public void Verify_requires_swing_evidence_for_the_chained_part_of_a_format_four_piece()
     {
-        // #1879: omitting the chain mask must not let a swinging plate count as fixed coverage.
+        // #1879: reordering meshes must not let a rigid plate's mask stand in for a chained plate's mask.
         AttachmentSetDefinition piece = ChainedPiece();
-        CoverageClaimMesh fixedPlate = PlateOverUpper(Limit * 2);
-        CoverageClaimMesh chainedPlate = PlateOverUpper(0.01f);
+        CoverageClaimMesh fixedPlate = PlateOverUpper(0.02f) with { PartId = 3, Swinging = new bool[4] };
+        CoverageClaimMesh chainedPlate = PlateOverUpper(0.01f) with { PartId = 12 };
         CoverageClaimMesh masked = chainedPlate with { Swinging = new[] { true, true, true, true } };
-        Assert.False(CoverageClaimCheck.Verify(FlatBody, FlatMap, piece, [fixedPlate, masked], Limit).Honest);
+        Assert.True(CoverageClaimCheck.Verify(FlatBody, FlatMap, piece, [masked, fixedPlate], Limit).Honest);
 
         var error = Assert.Throws<CoverageClaimDataException>(() =>
-            CoverageClaimCheck.Verify(FlatBody, FlatMap, piece, [fixedPlate, chainedPlate], Limit));
+            CoverageClaimCheck.Verify(FlatBody, FlatMap, piece, [chainedPlate, fixedPlate], Limit));
 
         Assert.Equal(CoverageClaimRefusal.SwingMaskMissing, error.Reason);
         Assert.Equal(CoverageClaimMeshKind.Piece, error.MeshKind);
-        Assert.Equal(1, error.MeshIndex);
+        Assert.Equal(0, error.MeshIndex);
         Assert.Equal(12u, error.PartId);
         Assert.Equal("parts/chain.glb", error.MeshKey);
     }
@@ -87,13 +88,42 @@ public class CoverageClaimCheckTests
     [Fact]
     public void Verify_requires_one_mesh_per_definition_part_to_locate_swing_evidence()
     {
-        // #1879: dropping an earlier part would shift the mesh that supplies the chained part's evidence.
+        // #1879: a motion-bearing piece supplies geometry for every part, including rigid parts.
         AttachmentSetDefinition piece = ChainedPiece();
-        CoverageClaimMesh fixedPlate = PlateOverUpper(Limit * 2);
-        CoverageClaimMesh masked = PlateOverUpper(0.01f) with { Swinging = new[] { true, true, true, true } };
+        CoverageClaimMesh fixedPlate = PlateOverUpper(Limit * 2) with { PartId = 3 };
+        CoverageClaimMesh masked = PlateOverUpper(0.01f) with { PartId = 12, Swinging = new[] { true, true, true, true } };
         Assert.False(CoverageClaimCheck.Verify(FlatBody, FlatMap, piece, [fixedPlate, masked], Limit).Honest);
 
-        Assert.Throws<ArgumentException>("pieceMeshes", () => CoverageClaimCheck.Verify(FlatBody, FlatMap, piece, [masked], Limit));
+        var error = Assert.Throws<CoverageClaimDataException>(() =>
+            CoverageClaimCheck.Verify(FlatBody, FlatMap, piece, [masked], Limit));
+
+        Assert.Equal(CoverageClaimRefusal.PiecePartMeshMissing, error.Reason);
+        Assert.Equal(CoverageClaimMeshKind.Piece, error.MeshKind);
+        Assert.Null(error.MeshIndex);
+        Assert.Equal(3u, error.PartId);
+        Assert.Equal("parts/fixed.glb", error.MeshKey);
+    }
+
+    [Theory]
+    [InlineData(0u, CoverageClaimRefusal.PieceMeshPartIdMissing, null)]
+    [InlineData(99u, CoverageClaimRefusal.PieceMeshPartIdUnknown, null)]
+    [InlineData(12u, CoverageClaimRefusal.PieceMeshPartIdDuplicate, "parts/chain.glb")]
+    public void Verify_refuses_invalid_piece_mesh_part_ids(uint partId, CoverageClaimRefusal reason, string? meshKey)
+    {
+        // #1879: each mesh in a motion-bearing piece identifies a different definition part.
+        AttachmentSetDefinition piece = ChainedPiece();
+        CoverageClaimMesh fixedPlate = PlateOverUpper(0.02f) with { PartId = 3, Swinging = new bool[4] };
+        CoverageClaimMesh masked = PlateOverUpper(0.01f) with { PartId = 12, Swinging = new[] { true, true, true, true } };
+        Assert.True(CoverageClaimCheck.Verify(FlatBody, FlatMap, piece, [masked, fixedPlate], Limit).Honest);
+
+        var error = Assert.Throws<CoverageClaimDataException>(() =>
+            CoverageClaimCheck.Verify(FlatBody, FlatMap, piece, [masked, fixedPlate with { PartId = partId }], Limit));
+
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal(CoverageClaimMeshKind.Piece, error.MeshKind);
+        Assert.Equal(1, error.MeshIndex);
+        Assert.Equal(partId, error.PartId);
+        Assert.Equal(meshKey, error.MeshKey);
     }
 
     [Theory]
@@ -119,7 +149,7 @@ public class CoverageClaimCheckTests
     public void An_empty_swing_mask_keeps_a_mesh_equal_to_one_without_a_mask()
     {
         CoverageClaimMesh plate = PlateOverUpper(0.01f);
-        CoverageClaimMesh emptyMask = plate with { Swinging = Array.Empty<bool>() };
+        CoverageClaimMesh emptyMask = plate with { PartId = 0, Swinging = Array.Empty<bool>() };
         CoverageClaimMesh flagged = plate with { Swinging = new bool[plate.Positions.Length] };
 
         Assert.Equal(plate, emptyMask);

@@ -537,7 +537,8 @@ canonical JSON, reference checks, the `IAttachmentAssetSource` byte seam, direct
 embedded rigid and skinned GLB preflight. `AttachmentGlb.ComputeRigIdentity` provides versioned body
 fit evidence from raw accessor bytes and canonical rest frames, excluding animation and appearance.
 Body region maps, the outfit rule and the coverage claim check live here too. The check takes plain
-positions, indices and vertex masks for parts with motion, so a tool can explain or check an outfit offline.
+positions and indices, plus part IDs for pieces with motion and masks for the moving parts, so a tool can
+explain or check an outfit offline.
 Body collider data and the chain solver also live here. The solver takes world-space transforms
 and capsules through `System.Numerics`, so a tool can simulate a worn set from exported poses.
 JSON uses `System.Text.Json` and hashing uses SHA-256 from the BCL. No renderer or particular

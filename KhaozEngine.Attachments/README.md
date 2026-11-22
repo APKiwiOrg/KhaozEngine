@@ -155,8 +155,8 @@ the set is worn. Colliders use the same joint, points and radius as the [body co
 The set owns copies of its motion and colliders. A layer is required when either is present.
 
 `AttachmentSetJson.MotionFormatVersion` is 4. A 24.4.x reader checks root members before it checks the version.
-It refuses a format 4 set with colliders as `JsonPropertyUnknown` for `colliders` and a motion-only set as
-`FormatVersionUnsupported`. Earlier readers refuse the first unfamiliar root member, which is `layer` in canonical
+It refuses a format 4 set with a root `colliders` member, even an empty array, as `JsonPropertyUnknown` for
+`colliders`, and any other format 4 set as `FormatVersionUnsupported`. Earlier readers refuse the first unfamiliar root member, which is `layer` in canonical
 bytes. Move every reader to 24.5.0 or later before publishing format 4.
 
 ### Canonical set bytes
@@ -543,7 +543,8 @@ Every JSON refusal also carries `SourceName`. Direct constructor and reference c
 
 Format 4 JSON refusals above include `JsonPath`. Chain, joint, link and collider indices are zero-based and refer
 to input order. Counts report the supplied size and the required minimum or allowed maximum. For a collider
-sequence without a known count, construction stops at the first item past the cap.
+sequence without a known count, construction stops at the first item past the cap, so `ActualCount` is the number
+read, one more than the cap, and a lower bound on the sequence's length.
 
 ## GLB refusals
 

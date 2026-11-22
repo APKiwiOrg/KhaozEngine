@@ -39,6 +39,12 @@ internal static class AttachmentSetMotionJson
         string path = AttachmentSetMotion.MotionPath(partIndex);
         if (motion.ValueKind != JsonValueKind.Object)
             throw Refuse(StrictAttachmentJson.Fault.ValueShape, path, $"{path}: expected an object.", null);
+        // A repeated discriminator is a duplicate before it is a kind, so the reader never dispatches on one of two
+        // kinds. The other members are checked after the kind, because a future kind brings members of its own.
+        int kinds = 0;
+        foreach (JsonProperty member in motion.EnumerateObject())
+            if (member.NameEquals("kind") && ++kinds > 1)
+                throw Refuse(StrictAttachmentJson.Fault.DuplicateProperty, path, $"{path}: duplicate property 'kind'.", "kind");
         JsonElement kindValue = StrictAttachmentJson.Required(motion, "kind", path, Refuse);
         if (kindValue.ValueKind != JsonValueKind.String)
             throw new AttachmentSetDataException(AttachmentSetRefusal.JsonStringRequired, $"{path}.kind: expected a string.")

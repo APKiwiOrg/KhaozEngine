@@ -219,6 +219,7 @@ public sealed class AttachmentSchemaRefusalTests
 
     [Theory]
     [InlineData(AttachmentSetRefusal.MotionKindUnsupported, "$.parts[0].motion.kind")]
+    [InlineData(AttachmentSetRefusal.JsonPropertyDuplicate, "$.parts[0].motion")]
     [InlineData(AttachmentSetRefusal.ChainsEmpty, "$.parts[0].motion.chains")]
     [InlineData(AttachmentSetRefusal.TooManyChains, "$.parts[0].motion.chains")]
     [InlineData(AttachmentSetRefusal.ChainJointsEmpty, "$.parts[0].motion.chains[0].joints", 0)]
@@ -256,6 +257,8 @@ public sealed class AttachmentSchemaRefusalTests
         string json = reason switch
         {
             AttachmentSetRefusal.MotionKindUnsupported => Replace(control, "\"kind\":\"chains\"", "\"kind\":\"cloth\""),
+            // A second, unsupported kind must still read as a duplicate, never as the kind a reader happened to keep.
+            AttachmentSetRefusal.JsonPropertyDuplicate => Replace(control, "\"kind\":\"chains\"", "\"kind\":\"chains\",\"kind\":\"cloth\""),
             AttachmentSetRefusal.ChainsEmpty => Replace(control, allChains, ""),
             AttachmentSetRefusal.TooManyChains => Replace(control, JsonChains(32), JsonChains(33)),
             AttachmentSetRefusal.ChainJointsEmpty => Replace(control, "\"left0\",\"left1\"", ""),
@@ -290,7 +293,12 @@ public sealed class AttachmentSchemaRefusalTests
         Assert.Equal(collider >= 0 ? collider : (int?)null, error.ColliderIndex);
         Assert.Equal(reason == AttachmentSetRefusal.ChainSettingOutOfRange ? "trail" : null, error.SettingName);
         Assert.Equal(reason == AttachmentSetRefusal.MotionKindUnsupported ? "cloth" : null, error.Kind);
-        Assert.Equal(reason == AttachmentSetRefusal.MotionWithoutLayer ? "layer" : null, error.PropertyName);
+        Assert.Equal(reason switch
+        {
+            AttachmentSetRefusal.MotionWithoutLayer => "layer",
+            AttachmentSetRefusal.JsonPropertyDuplicate => "kind",
+            _ => null,
+        }, error.PropertyName);
         Assert.Equal(reason switch
         {
             AttachmentSetRefusal.ChainJointNameEmpty => " ",

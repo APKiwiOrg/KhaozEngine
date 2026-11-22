@@ -136,8 +136,12 @@ internal static class OutfitPartLift
             if (distance == 0)
                 return false;
 
+            // Normalize the authored direction without rounding the offset before adding it to the source.
+            double x = direction.X, y = direction.Y, z = direction.Z;
+            double scale = distance / Math.Sqrt(x * x + y * y + z * z);
+            Vector3 liftedPosition = new((float)(Position.X + x * scale), (float)(Position.Y + y * scale),
+                (float)(Position.Z + z * scale));
             // A positive lift can round away when added to the source position.
-            Vector3 liftedPosition = Position + direction * distance;
             if (new PositionBits(liftedPosition) == new PositionBits(Position))
                 return false;
             Position = liftedPosition;

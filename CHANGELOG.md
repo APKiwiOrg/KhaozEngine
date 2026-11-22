@@ -17,13 +17,17 @@ outfits and draws are unchanged.
 **Standoff and lift.**
 
 - Format 5 adds optional root `standoff` and skinned part `lift`. Either addition requires a layer. The
-  `AttachmentSetDefinition` overload accepts `RegionStandoff(Region, Metres)` entries, and a skinned part can
-  set its init-only `Lift` to `PartLiftDefinition(ClearanceMetres)` alongside motion. `AttachmentSetJson.LiftFormatVersion`
-  is 5. The writer preserves the canonical bytes and semantic hashes of sets that use formats 1 to 4.
+  `AttachmentSetDefinition` overload accepts `RegionStandoff(Region, Metres)` entries, exposed through
+  `AttachmentSetDefinition.Standoff` and capped by `AttachmentSetDefinition.MaxStandoffEntries`. A skinned part
+  can set its init-only `Lift` to `PartLiftDefinition(ClearanceMetres)` alongside motion.
+  `AttachmentSetJson.LiftFormatVersion` is 5. Upgrade all readers to 24.7.0 before any publisher writes format 5.
+  Readers on 24.6 or earlier refuse it. The writer preserves the canonical bytes and semantic hashes of sets that
+  use formats 1 to 4.
 - `AttachmentGlb.LiftBasis(glb, sourceName)` reads `_LIFT_DIRECTION` and `_LIFT_BEARING`. Its
-  `LiftBasisVertex` entries identify each vertex's material part and index in that part.
+  `LiftBasis.Vertices` holds `LiftBasisVertex` entries that identify each vertex's material part and index in that part.
 - `OutfitLift.Resolve(coverage, meshes)` computes lift offline from the coverage snapshot and a `LiftingPartMesh`
-  per lifting part. It exposes height below, effective standoff and lifted rest positions. Each vertex clears the
+  of `LiftMaterialMesh` entries per lifting part. The result exposes `OutfitLift.HasLift` and the queries
+  `HeightBelow`, `EffectiveStandoff` and `LiftedPositions`. Each vertex clears the
   highest visible standoff in its regions on strictly lower layers, accounting for lift already applied to those
   layers. The bare-body fit is preserved where no lower standoff contributes.
 
@@ -42,8 +46,10 @@ outfits and draws are unchanged.
 **Offline standoff check.**
 
 - `StandoffClaimCheck.Verify(bodyMeshes, body, piece, pieceMeshes)` measures fixed piece vertices in the
-  body's rest frame along the selected body triangles' outward normals. `StandoffClaimReport` lists the
-  regional maxima, declared standoffs, understated regions and positive heights in undeclared regions.
+  body's rest frame along the selected body triangles' outward normals. `StandoffClaimReport.Regions` holds
+  `StandoffClaimRegion` entries with `Name`, `HighestHeightMetres`, `VertexCount` and `DeclaredStandoffMetres`.
+  `UnderstatedRegions` lists heights above their declarations, and `UndeclaredRegions` lists positive heights
+  where the set declares no standoff.
 
 **Refusals.**
 
@@ -53,7 +59,7 @@ outfits and draws are unchanged.
   `StandoffIndex` for refused entries.
 - `AttachmentSkinnedGeometryRefusal` appends `LiftAttributeMissing`, `LiftAttributeShapeMismatch`,
   `LiftDirectionInvalid`, `LiftBearingInvalid` and `CoincidentLiftDataMismatch`. A coincident mismatch
-  includes both flattened vertex indices.
+  includes both flattened vertex indices as `VertexIndex` and `OtherVertexIndex`.
 - `SkinnedMeshViewRefusal` appends `PositionCountMismatch` with `VertexCount` and `PositionCount`, and
   `PositionNonFinite` with `VertexIndex`. `AttachmentBindingRefusal` appends `OutfitLiftUnsupported` with the
   set's cache key in `SourceName`, `WornIndex` and `PartId` when a scene cannot create a needed displaced view.

@@ -101,8 +101,31 @@ public class StandoffClaimCheckTests
         Assert.Equal(region, Assert.Single(report.UndeclaredRegions));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_nearby_zero_area_triangle_cannot_hide_an_understated_chest_claim(bool addCollapsedFace)
+    {
+        Vector3[] positions =
+        [
+            Vector3.Zero, Vector3.UnitX, Vector3.UnitY,
+            new(0, 0.25f, 0.0625f), new(0.5f, 0.25f, 0.0625f), new(1, 0.25f, 0.0625f),
+        ];
+        uint[] indices = addCollapsedFace ? [0, 1, 2, 3, 4, 5] : [0, 1, 2];
+        RegionRun[] runs = addCollapsedFace ? [new(0, 1), new(1, 1)] : [new(0, 1)];
+        BodyRegionMap body = new(Rig, ["chest", "side"], [runs]);
+        AttachmentSetDefinition piece = WithStandoff(Piece("chest"), new RegionStandoff("chest", 0.03125f));
+        CoverageClaimMesh pieceMesh = new(new[] { new Vector3(0.25f, 0.25f, 0.0625f) }, ReadOnlyMemory<uint>.Empty);
+
+        StandoffClaimReport report = StandoffClaimCheck.Verify([new(positions, indices)], body, piece, [pieceMesh]);
+
+        Assert.Equal(new StandoffClaimRegion("chest", 0.0625, 1, 0.03125f), Assert.Single(report.Regions));
+        Assert.Equal("chest", Assert.Single(report.UnderstatedRegions));
+        Assert.Empty(report.UndeclaredRegions);
+    }
+
     [Fact]
-    public void A_zero_area_triangle_has_no_normal_height()
+    public void A_body_with_only_zero_area_triangles_produces_no_regional_measurements()
     {
         Vector3[] positions = [new(0, 0, 0), new(0.5f, 0, 0), new(1, 0, 0)];
         BodyRegionMap body = new(Rig, ["upper"], [[new RegionRun(0, 1)]]);
@@ -111,7 +134,8 @@ public class StandoffClaimCheckTests
         StandoffClaimReport report = StandoffClaimCheck.Verify([new(positions, new uint[] { 0, 1, 2 })], body,
             Piece("upper"), [pieceMesh]);
 
-        Assert.Equal(new StandoffClaimRegion("upper", 0, 1, null), Assert.Single(report.Regions));
+        Assert.Empty(report.Regions);
+        Assert.Empty(report.UnderstatedRegions);
         Assert.Empty(report.UndeclaredRegions);
     }
 

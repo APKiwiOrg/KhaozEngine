@@ -43,6 +43,10 @@ public sealed partial class BoundOutfit : IDisposable
 
     internal object MotionIdentity => _motionIdentity ??= new object();
 
+    internal bool SharesDisplacedViewPositionsForTests(BoundOutfit other, int viewIndex) =>
+        _used[viewIndex].RestPositions is { } positions &&
+        other._used[viewIndex].RestPositions is { } otherPositions && positions.Equals(otherPositions);
+
     /// <summary>Create independent motion state for one wearer of this binding.</summary>
     /// <remarks>Body colliders must be loaded for this outfit's rig identity and skeleton instance.</remarks>
     public WornMotion CreateMotion(LoadedBodyColliders? bodyColliders, ChainSimulationOptions? options = null)

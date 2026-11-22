@@ -45,7 +45,8 @@ lifted geometry of the layer below it first.
 The fitting step already finds the skin under each vertex to copy its weights. It also writes two vertex attributes
 into the part's GLB: the **lift direction**, the skin's outward normal under the vertex in the body's rest space, and
 the **bearing**, how far the part's underside stands off the skin under that vertex. A vertex lifts by
-`max(0, heightBelow + clearance - bearing)` along its lift direction.
+`max(0, heightBelow + clearance - bearing)` along its normalized lift direction, so the baked length tolerance
+does not change the applied distance.
 
 Every vertex of one cross section shares a footprint and so a bearing, which keeps the section's thickness. A span
 that already bridges a hollow above the garment, as a taut strap does, keeps its place, because its bearing is
@@ -95,8 +96,8 @@ An outfit is resolved against a body's region map as it is for hiding. Then, in 
 3. A vertex of a lifting part takes the regions of every triangle that uses it or any vertex of the same part at the
    same position, negative zero counting as zero. Coincident vertices from split normals or material seams therefore
    always move together. Its height below is the largest over those regions.
-4. The vertex lifts by `max(0, heightBelow + clearance - bearing)` along its lift direction, and not at all when no
-   region it touches has a height below.
+4. The vertex lifts by `max(0, heightBelow + clearance - bearing)` along its normalized lift direction. It stays
+   in place when no region it touches has a height below.
 5. A set's **effective standoff** at `r` is its declared standoff there plus the largest lift any vertex of its parts
    took at `r`. A layer above therefore clears a part that was itself lifted. The bound is conservative: where a
    set's highest point over a region did not lift, a layer above clears it by more than it needs.
@@ -240,9 +241,10 @@ SkinnedMeshHandle lifted = scene.CreateSkinnedMeshView(source, indices, restPosi
 
 `StandoffClaimCheck.Verify(bodyMeshes, body, piece, pieceMeshes)` takes the meshes `CoverageClaimCheck` takes, in the
 body's rest frame, and validates them by the same rules with the same refusals. For each fixed vertex it finds
-the nearest body triangle. The triangle supplies a region and a signed height measured from its plane along the
-outward normal. At a ridge, triangles within one micrometre of the nearest distance compete by height so the
-reported region belongs to the surface the piece stands highest over. The report gives each measured region's
+the nearest nondegenerate body triangle. The triangle supplies a region and a signed height measured from its
+plane along the outward normal. A body with no such triangles yields no measurements. At a ridge, triangles
+within one micrometre of the nearest distance compete by height so the reported region belongs to the surface
+the piece stands highest over. The report gives each measured region's
 maximum height and declared standoff, and names:
 
 - **understated** regions, where a vertex stands higher than the declared standoff,
@@ -268,6 +270,7 @@ The wearables limits are 32 wearers, at most 2 ms added CPU preparation, no mana
 - Per bind: one pass over each lifting part's vertices and triangles, and one vertex and index buffer upload for each
   displaced view not already shared.
 - Memory: each distinct displaced view holds its vertices twice, 96 bytes each in the GPU buffer and in the CPU copy.
+  The outfit cache also retains one shared position array per distinct displaced view, at 12 bytes per vertex.
 
 `LiftBindCostDiagnostics` reports binding cost for 32 distinct garment and armour pairs after their sets are
 loaded. It measures `BoundOutfit.WriteDraws` for the same armour draws with and without garments, after 120 warm
@@ -304,9 +307,9 @@ All headless, on synthetic bodies and pieces built in code.
   does not move. A section keeps its thickness. With no lower set nothing moves. A region a higher layer hides does
   not lift the part over it. Three layers stack through the effective standoff. Sets on one layer do not lift each
   other. Coincident vertices move together, and a hem ramps over one triangle.
-- **Displaced views.** Colour, cascade and point shadow, outline and CPU skinning draws read the view's own vertex
-  buffer or rest copy. Bounds contain the lifted positions. Release waits for the frame boundary, and each refusal is
-  reached beside a control.
+- **Displaced views.** Colour, GPU motion, dissolve, cascade and point shadow, outline and CPU skinning draws
+  read the view's own vertex buffer or rest copy. Bounds contain the lifted positions. Release waits for the
+  frame boundary, and each refusal is reached beside a control.
 - **Binding.** An outfit with a garment lifts a following part on a higher layer. Two wearers of one outfit share one
   displaced view. Taking the garment off draws the source again. A chained lifting part binds, steps and draws. A
   scene without the capability refuses only when something lifts. Draws allocate nothing once warm.
@@ -345,6 +348,9 @@ Each task records here any shape the code required that differs from this note, 
   vertices takes the first vertex's direction and bearing in upload order, which the GLB policy keeps equal to the
   others within its tolerance. A standoff region the body lacks refuses as `OutfitRefusal.RegionUnknown` when the
   coverage resolves.
-- Outfit binding. The custom lease path uses `GltfLoader.LoadSkinnedPartGeometry` in place of the index-only
-  helper, so one decode provides both index lists and rest vertices in material order without decoding maps.
-  Scene3D leases read the retained upload through `SourceIndices` and `SourceVertices`.
+- Outfit binding. For custom leases, `GltfLoader.LoadSkinnedPartGeometry` provides index lists and rest vertices
+  for a mesh used by any part that declares lift. `GltfLoader.LoadSkinnedPartIndices` reads indices in the same
+  material order for other tagged meshes. Each mesh is decoded at most once per bind without decoding material
+  maps. Scene3D leases read the retained upload through `SourceIndices` and `SourceVertices`. The internal
+  `OutfitViewCache.Acquire` returns the handle and supplies the canonical `ViewKey` as an out parameter, so each
+  outfit retains the shared position storage.

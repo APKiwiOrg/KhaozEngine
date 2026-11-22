@@ -567,8 +567,9 @@ back to TileWorld. Dispose attachment caches before their scene.
 Render3D grants `InternalsVisibleTo` to the arm for the attachment upload and binding paths. A skinned lease and a cache call
 `Scene3D.RefuseSourcesWithLiveViews` before releasing anything, so a live mesh view refuses the release before any
 handle unloads. An outfit reads each tagged mesh's index lists and any rest positions it needs for lift when it
-binds. Scene3D leases lend their retained geometry. For a custom lease, the cache decodes the geometry once per
-mesh identity per bind from verified bytes through `GltfLoader.LoadSkinnedPartGeometry`, which skips material maps.
+binds. Scene3D leases lend their retained geometry. For a custom lease, the cache decodes verified bytes once per
+mesh identity per bind. It uses `GltfLoader.LoadSkinnedPartGeometry` for a mesh used by any part that declares
+lift and `GltfLoader.LoadSkinnedPartIndices` for other tagged meshes. Both paths skip material maps.
 A chained bind reads the garment hierarchy and rest locals from those bytes through
 `GltfLoader.LoadAttachmentSkeleton`, which skips geometry decoding and material maps. The shipped upload
 lease also uses an internal Scene3D seam to grow a chained mesh's bounds and propagate them to its views.

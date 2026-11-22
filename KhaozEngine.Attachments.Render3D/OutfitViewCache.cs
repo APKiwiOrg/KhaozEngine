@@ -19,18 +19,21 @@ internal sealed class OutfitViewCache
 
     internal OutfitViewCache(IAttachmentViewScene scene) => _scene = scene;
 
-    /// <summary>Take one use of the view drawing <paramref name="key"/>, creating it on first use.</summary>
-    internal SkinnedMeshHandle Acquire(ViewKey key)
+    /// <summary>Take one use of the view drawing <paramref name="key"/>, creating it on first use.
+    /// Return the retained key so all callers release the view using the same backing arrays.</summary>
+    internal SkinnedMeshHandle Acquire(ViewKey key, out ViewKey canonicalKey)
     {
         if (_views.TryGetValue(key, out SharedView? shared))
         {
             shared.Users++;
+            canonicalKey = shared.Key;
             return shared.View;
         }
         SkinnedMeshHandle view = key.RestPositions is { } restPositions
             ? ((IAttachmentDisplacedViewScene)_scene).CreateSkinnedView(key.Source, key.Indices.Span, restPositions.Span)
             : _scene.CreateSkinnedView(key.Source, key.Indices.Span);
-        _views.Add(key, new SharedView(view));
+        _views.Add(key, new SharedView(key, view));
+        canonicalKey = key;
         return view;
     }
 
@@ -46,8 +49,9 @@ internal sealed class OutfitViewCache
         _scene.ReleaseSkinnedView(shared.View);
     }
 
-    sealed class SharedView(SkinnedMeshHandle view)
+    sealed class SharedView(ViewKey key, SkinnedMeshHandle view)
     {
+        internal ViewKey Key { get; } = key;
         internal SkinnedMeshHandle View { get; } = view;
         internal int Users { get; set; } = 1;
     }

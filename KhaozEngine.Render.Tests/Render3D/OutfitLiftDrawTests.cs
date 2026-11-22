@@ -61,6 +61,7 @@ public sealed class OutfitLiftDrawTests
         SkinnedMeshHandle mesh = ArmourDraw(rig, first);
 
         Assert.Equal(mesh, ArmourDraw(rig, second));
+        Assert.True(first.SharesDisplacedViewPositionsForTests(second, 0));
         Assert.Equal(before + 1, rig.Scene.LiveSkinnedMeshCount);
 
         first.Dispose();
@@ -70,6 +71,29 @@ public sealed class OutfitLiftDrawTests
         rig.Scene.Begin();
         Assert.False(rig.Scene.IsSkinnedMeshView(mesh));
         Assert.Equal(before, rig.Scene.LiveSkinnedMeshCount);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_custom_lease_decodes_a_shared_mesh_only_once_even_when_one_use_needs_vertices(bool withLift)
+    {
+        using var rig = new OutfitRig(customLeases: true);
+        LoadedBodyRegions body = Body(rig);
+        BoundAttachmentSet garment = Garment(rig);
+        BoundAttachmentSet armour = Armour(rig);
+        var part = (SkinnedAttachmentPartDefinition)Assert.Single(armour.Definition.Parts);
+        BoundAttachmentSet plain = rig.Wear("plain.json", new AttachmentSetDefinition(
+            [part with { Lift = null }], AttachmentLayer.Armour, []));
+        int decodesBefore = GltfDecodeAdmission.ModelDecodeEntries;
+
+        using BoundOutfit outfit = rig.Cache.BindOutfit(body, [garment, plain, withLift ? armour : plain]);
+
+        // The garment and the shared armour each have one mesh identity.
+        Assert.Equal(2, GltfDecodeAdmission.ModelDecodeEntries - decodesBefore);
+        Assert.Equal(rig.Draws(plain), rig.Draws(outfit, 1));
+        SkinnedMeshHandle lastDraw = Assert.Single(rig.Draws(outfit, 2)).Skinned.Mesh;
+        Assert.Equal(withLift, rig.Scene.IsSkinnedMeshView(lastDraw));
     }
 
     [Fact]

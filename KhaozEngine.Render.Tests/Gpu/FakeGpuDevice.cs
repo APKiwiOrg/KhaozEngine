@@ -157,6 +157,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>Every buffer this factory has handed out, in creation order. See <see cref="Textures"/>.</summary>
         internal List<FakeBuffer> Buffers { get; } = new();
+        internal bool StrictBufferDisposal { get; set; }
         internal List<FakeFramebuffer> Framebuffers { get; } = new();
 
         /// <summary>Every graphics pipeline request with the GLSL source carried by its real shader-set handle.</summary>
@@ -204,7 +205,8 @@ namespace KhaozEngine.Tests.Gpu
         {
             if (ThrowOnBufferCreate == Buffers.Count + 1)
                 throw new InvalidOperationException("planned buffer creation failure");
-            var b = new FakeBuffer(d.SizeInBytes, d.StructureByteStride, d.Usage);
+            var b = new FakeBuffer(d.SizeInBytes, d.StructureByteStride, d.Usage)
+            { StrictDisposal = StrictBufferDisposal };
             Buffers.Add(b);
             return b;
         }
@@ -328,7 +330,14 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>Buffer destruction attempts, for ownership and retirement assertions.</summary>
         internal int DisposeCalls { get; private set; }
 
-        public void Dispose() => DisposeCalls++;
+        internal bool StrictDisposal { get; init; }
+
+        public void Dispose()
+        {
+            if (StrictDisposal && Disposed)
+                throw new ObjectDisposedException(nameof(FakeBuffer), "The buffer was already destroyed.");
+            DisposeCalls++;
+        }
     }
 
     internal sealed class FakeTexture : IGpuTexture

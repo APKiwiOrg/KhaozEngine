@@ -74,77 +74,91 @@ namespace KhaozEngine.Render3D
         static SkinnedGltfMesh BuildSkinned(ModelRoot root, string path) =>
             DecodeSkinned(root, path, splitByMaterial: false)[0].Mesh;
 
-        // Both flattened and material-part imports use this decoder. Only the destination buffers differ.
-        static IReadOnlyList<(SkinnedGltfMesh Mesh, GltfMaterial? Material)> DecodeSkinned(
-            ModelRoot root, string path, bool splitByMaterial, CoverageImportCollector? coverage = null)
+        // Share material grouping and triangle rebasing between upload and index-only reads.
+        static (List<SkinnedGeometry> Groups, Skin? Skin) ReadSkinnedGeometry(
+            ModelRoot root, string path, bool splitByMaterial, bool readVertices, CoverageImportCollector? coverage = null)
         {
             var groups = new List<SkinnedGeometry>();
             Skin? skin = null;
+            string identity = $"glTF asset '{path}'";
 
             foreach (var mesh in root.LogicalMeshes)
                 foreach (var prim in mesh.Primitives)
                 {
-                    var pos = prim.GetVertexAccessor("POSITION")?.AsVector3Array();
-                    var joints = prim.GetVertexAccessor("JOINTS_0")?.AsVector4Array();
-                    var weights = prim.GetVertexAccessor("WEIGHTS_0")?.AsVector4Array();
-                    if (pos == null || joints == null || weights == null) continue;
+                    var position = prim.GetVertexAccessor("POSITION");
+                    var joints = prim.GetVertexAccessor("JOINTS_0");
+                    var weights = prim.GetVertexAccessor("WEIGHTS_0");
+                    if (position == null || joints == null || weights == null) continue;
 
-                    coverage?.VerifySkin(root, mesh, path);
-                    SkinnedGeometry? group = splitByMaterial
-                        ? groups.Find(g => ReferenceEquals(g.Material, prim.Material))
-                        : groups.FirstOrDefault();
-                    if (group == null)
+                    int partIndex = splitByMaterial
+                        ? groups.FindIndex(g => ReferenceEquals(g.Material, prim.Material))
+                        : groups.Count == 0 ? -1 : 0;
+                    if (partIndex < 0)
                     {
-                        group = new SkinnedGeometry(prim.Material);
-                        groups.Add(group);
+                        partIndex = groups.Count;
+                        groups.Add(new SkinnedGeometry(prim.Material));
                     }
-                    var verts = group.Vertices;
-                    var indices = group.Indices;
-                    var srcTangent = group.SourceTangents;
-
-                    // Single-skin assumption: the first skin found supplies InverseBind/RestPose for all meshes.
-                    // A glb where different meshes use different skins is not supported. Later meshes would mis-bind against this skin.
-                    skin ??= root.LogicalNodes.FirstOrDefault(n => n.Mesh == mesh && n.Skin != null)?.Skin
-                             ?? root.LogicalSkins.FirstOrDefault();
-
-                    var normals = prim.GetVertexAccessor("NORMAL")?.AsVector3Array();
-                    var texcoords = prim.GetVertexAccessor("TEXCOORD_0")?.AsVector2Array();
-                    // TANGENT is a vec4 (xyz = tangent direction, w = bitangent sign per glTF spec). When absent,
-                    // it is computed below from UV+position.
-                    var tangents = prim.GetVertexAccessor("TANGENT")?.AsVector4Array();
-                    // Per-vertex COLOR_0 multiplies the material colour exactly as the rigid path does, so a rigged
-                    // asset painted with vertex colours reads the same as the prop kit it was authored beside.
-                    var colors = prim.GetVertexAccessor("COLOR_0")?.AsColorArray();
-                    Vector4 baseColor = ReadBaseColor(prim.Material);
-                    string identity = $"glTF asset '{path}'";
-
-                    int baseIndex = verts.Count;
-                    int sourceStart = coverage?.AddSkinned(mesh, prim, groups.IndexOf(group), baseIndex, pos, joints, weights) ?? 0;
-                    for (int i = 0; i < pos.Count; i++)
+                    SkinnedGeometry group = groups[partIndex];
+                    int baseIndex = group.VertexCount;
+                    int vertexCount = position.Count;
+                    int sourceStart = 0;
+                    if (readVertices)
                     {
-                        Vector4 w = SkinningMath.NormalizeWeights(weights[i]);
-                        verts.Add(new SkinnedVertex
-                        {
-                            Position = pos[i],
-                            Normal = normals != null && i < normals.Count ? normals[i] : Vector3.UnitY,
-                            Color = colors != null && i < colors.Count ? baseColor * colors[i] : baseColor,
-                            Uv = texcoords != null && i < texcoords.Count ? texcoords[i] : Vector2.Zero,
-                            BoneIndices = joints[i],
-                            BoneWeights = w,
-                        });
-                        srcTangent.Add(tangents != null && i < tangents.Count ? tangents[i] : (Vector4?)null);
+                        var positions = position.AsVector3Array();
+                        var jointIndices = joints.AsVector4Array();
+                        var jointWeights = weights.AsVector4Array();
+                        coverage?.VerifySkin(root, mesh, path);
+                        // The first skin supplies the inverse binds and rest pose for every mesh.
+                        skin ??= root.LogicalNodes.FirstOrDefault(n => n.Mesh == mesh && n.Skin != null)?.Skin
+                                 ?? root.LogicalSkins.FirstOrDefault();
+                        sourceStart = coverage?.AddSkinned(mesh, prim, partIndex, baseIndex, positions, jointIndices, jointWeights) ?? 0;
+                        AppendSkinnedVertices(group, prim, positions, jointIndices, jointWeights);
                     }
-                    int partIndex = groups.IndexOf(group);
+                    group.VertexCount = checked(baseIndex + vertexCount);
+
                     int sourceTriangle = 0;
                     foreach (var (a, b, c) in prim.GetTriangleIndices())
                     {
-                        indices.Add(MeshIndexValidation.Rebase(a, pos.Count, baseIndex, path, partIndex: partIndex, diagnosticIdentity: identity));
-                        indices.Add(MeshIndexValidation.Rebase(b, pos.Count, baseIndex, path, partIndex: partIndex, diagnosticIdentity: identity));
-                        indices.Add(MeshIndexValidation.Rebase(c, pos.Count, baseIndex, path, partIndex: partIndex, diagnosticIdentity: identity));
+                        group.Indices.Add(MeshIndexValidation.Rebase(a, vertexCount, baseIndex, path, partIndex: partIndex, diagnosticIdentity: identity));
+                        group.Indices.Add(MeshIndexValidation.Rebase(b, vertexCount, baseIndex, path, partIndex: partIndex, diagnosticIdentity: identity));
+                        group.Indices.Add(MeshIndexValidation.Rebase(c, vertexCount, baseIndex, path, partIndex: partIndex, diagnosticIdentity: identity));
                         coverage?.AddTriangle(mesh, prim, sourceTriangle++, partIndex, sourceStart, a, b, c);
                     }
                 }
 
+            return (groups, skin);
+        }
+
+        static void AppendSkinnedVertices(SkinnedGeometry group, MeshPrimitive prim, IList<Vector3> positions,
+            IList<Vector4> joints, IList<Vector4> weights)
+        {
+            var normals = prim.GetVertexAccessor("NORMAL")?.AsVector3Array();
+            var texcoords = prim.GetVertexAccessor("TEXCOORD_0")?.AsVector2Array();
+            // A missing tangent is computed from the UVs and positions after the triangles are known.
+            var tangents = prim.GetVertexAccessor("TANGENT")?.AsVector4Array();
+            // Per-vertex COLOR_0 multiplies the material colour, as it does on the rigid path.
+            var colors = prim.GetVertexAccessor("COLOR_0")?.AsColorArray();
+            Vector4 baseColor = ReadBaseColor(prim.Material);
+
+            for (int i = 0; i < positions.Count; i++)
+            {
+                group.Vertices.Add(new SkinnedVertex
+                {
+                    Position = positions[i],
+                    Normal = normals != null && i < normals.Count ? normals[i] : Vector3.UnitY,
+                    Color = colors != null && i < colors.Count ? baseColor * colors[i] : baseColor,
+                    Uv = texcoords != null && i < texcoords.Count ? texcoords[i] : Vector2.Zero,
+                    BoneIndices = joints[i],
+                    BoneWeights = SkinningMath.NormalizeWeights(weights[i]),
+                });
+                group.SourceTangents.Add(tangents != null && i < tangents.Count ? tangents[i] : (Vector4?)null);
+            }
+        }
+
+        static IReadOnlyList<(SkinnedGltfMesh Mesh, GltfMaterial? Material)> DecodeSkinned(
+            ModelRoot root, string path, bool splitByMaterial, CoverageImportCollector? coverage = null)
+        {
+            var (groups, skin) = ReadSkinnedGeometry(root, path, splitByMaterial, readVertices: true, coverage);
             if (skin == null || groups.All(group => group.Vertices.Count == 0))
                 throw new GltfImportStateException(GltfImportRefusal.NoSkinnedMesh,
                     "glTF has no skinned mesh (JOINTS_0/WEIGHTS_0 + skin): " + path)
@@ -189,6 +203,7 @@ namespace KhaozEngine.Render3D
         sealed class SkinnedGeometry
         {
             internal GltfMaterial? Material { get; }
+            internal int VertexCount { get; set; }
             internal List<SkinnedVertex> Vertices { get; } = new();
             internal List<uint> Indices { get; } = new();
             internal List<Vector4?> SourceTangents { get; } = new();

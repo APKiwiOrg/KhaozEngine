@@ -46,6 +46,20 @@ namespace KhaozEngine.Render3D
             });
         }
 
+        /// <summary>Read the material-part index lists of an already admitted skinned attachment without
+        /// decoding vertices or material maps. Order and rebasing match the full skinned import.</summary>
+        internal static ReadOnlyMemory<uint>[] LoadSkinnedPartIndices(ReadOnlyMemory<byte> glb, string identity)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(identity);
+            return TranslateModelErrors(identity, () =>
+            {
+                var (groups, _) = ReadSkinnedGeometry(LoadModel(glb, identity), identity, splitByMaterial: true, readVertices: false);
+                var indices = new ReadOnlyMemory<uint>[groups.Count];
+                for (int i = 0; i < indices.Length; i++) indices[i] = groups[i].Indices.ToArray();
+                return indices;
+            });
+        }
+
         /// <summary>Read the skeleton of an already admitted skinned attachment without decoding geometry or
         /// material maps. The attachment policy admits exactly one skin.</summary>
         internal static Skeleton LoadAttachmentSkeleton(ReadOnlyMemory<byte> glb, string identity)

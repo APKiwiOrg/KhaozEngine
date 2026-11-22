@@ -16,10 +16,15 @@ public sealed partial class SkinnedMeshViewTests
     static Vector3[] LiftedPositions() =>
         Strip().Vertices.Select(vertex => vertex.Position + Vector3.UnitZ * 0.25f).ToArray();
 
-    [Fact]
-    public void A_displaced_view_binds_its_own_vertices_in_every_gpu_skinned_pass()
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void A_displaced_view_binds_its_own_vertices_in_every_gpu_skinned_pass(bool temporal, bool dissolve)
     {
         using var rig = new ViewRig(gpuSkinning: true);
+        rig.Scene.ForceTemporalForTests = temporal;
         SkinnedMeshHandle source = rig.LoadStrip(out _, out FakeBuffer sourceVertices);
         SkinnedMeshHandle plain = rig.CreateView(source, AlternateTriangles, out FakeBuffer plainIndices);
         SkinnedMeshHandle view = rig.CreateDisplacedView(source, LiftedPositions(), out FakeBuffer viewIndices,
@@ -29,7 +34,11 @@ public sealed partial class SkinnedMeshViewTests
             MeshOutlineGroup outline = scene.BeginMeshOutline(Color.White, 2f);
             foreach (SkinnedMeshHandle handle in new[] { source, plain, view })
             {
-                var draw = new SkinnedInstanceDraw(handle, Matrix4x4.Identity);
+                var draw = new SkinnedInstanceDraw(handle, Matrix4x4.Identity)
+                {
+                    Dissolve = dissolve ? 0.5f : 0f,
+                    Motion = MotionKey.From((ulong)handle.Index + 1),
+                };
                 scene.DrawSkinned(draw, rig.Pose);
                 scene.DrawSkinnedOutline(outline, draw, rig.Pose);
             }
@@ -41,6 +50,20 @@ public sealed partial class SkinnedMeshViewTests
         Assert.True(rig.Scene.IsSkinnedMeshView(view));
         Assert.Equal(["cascade 6", "colour 6", "outline 6", "point 6"], Shapes(PassDraws(draws, viewIndices)));
         Assert.Equal(["cascade 6", "colour 6", "outline 6", "point 6"], Shapes(PassDraws(draws, plainIndices)));
+        var colour = Assert.Single(draws, draw => draw.IndexBuffer == viewIndices && PassOf(draw.Pipeline) == "colour");
+        var pipeline = Assert.IsType<FakePipeline>(colour.Pipeline);
+        var colourShaders = Assert.IsType<FakeGraphicsPipelineRequest>(pipeline.Request);
+        Assert.Equal(temporal ? ShaderSources.SkinnedModelMotionVert : ShaderSources.SkinnedModelVert, colourShaders.VertexGlsl);
+        string expectedFragment = (temporal, dissolve) switch
+        {
+            (true, true) => ShaderSources.SkinnedModelDissolveMotionFrag,
+            (true, false) => ShaderSources.SkinnedModelMotionFrag,
+            (false, true) => ShaderSources.SkinnedModelDissolveFrag,
+            _ => ShaderSources.SkinnedModelFrag,
+        };
+        if (ShadowVisibilityTargets.HasVisibility(colourShaders.Description.Outputs))
+            expectedFragment = ShadowVisibilityTargets.Fragment(expectedFragment, motion: temporal);
+        Assert.Equal(expectedFragment, colourShaders.FragmentGlsl);
         Assert.Equal((uint)(AlternateTriangles.Length * sizeof(ushort)), viewIndices.SizeInBytes);
         Assert.All(draws.Where(draw => draw.IndexBuffer == viewIndices),
             draw => Assert.Same(viewVertices, draw.VertexBuffer));
@@ -158,6 +181,7 @@ public sealed partial class SkinnedMeshViewTests
     public void An_unloaded_displaced_view_draws_this_frame_and_retires_both_buffers_at_the_boundary()
     {
         using var rig = new ViewRig(gpuSkinning: true);
+        rig.Factory.StrictBufferDisposal = true;
         SkinnedMeshHandle source = rig.LoadStrip(out FakeBuffer sourceIndices, out FakeBuffer sourceVertices);
         SkinnedMeshHandle view = rig.CreateDisplacedView(source, LiftedPositions(), out FakeBuffer viewIndices,
             out FakeBuffer viewVertices);
@@ -169,13 +193,15 @@ public sealed partial class SkinnedMeshViewTests
 
         Assert.Contains(draws, draw => draw.IndexBuffer == viewIndices && draw.VertexBuffer == viewVertices);
         Assert.True(rig.Scene.IsSkinnedMeshView(view));
+        Assert.False(viewIndices.Disposed);
+        Assert.False(viewVertices.Disposed);
         rig.Scene.Begin();
         Assert.False(rig.Scene.IsSkinnedMeshView(view));
         Assert.False(viewIndices.Disposed);
         Assert.False(viewVertices.Disposed);
         for (int boundary = 0; boundary < GpuRetireQueue.DefaultFrameDelay; boundary++) rig.Scene.Begin();
-        Assert.Equal(1, viewIndices.DisposeCalls);
-        Assert.Equal(1, viewVertices.DisposeCalls);
+        Assert.True(viewIndices.Disposed);
+        Assert.True(viewVertices.Disposed);
         Assert.False(sourceIndices.Disposed);
         Assert.False(sourceVertices.Disposed);
     }
@@ -186,6 +212,7 @@ public sealed partial class SkinnedMeshViewTests
     public void A_displaced_view_and_its_source_each_release_their_own_buffers_once(bool unload)
     {
         using var rig = new ViewRig(gpuSkinning: true);
+        rig.Factory.StrictBufferDisposal = true;
         SkinnedMeshHandle source = rig.LoadStrip(out FakeBuffer sourceIndices, out FakeBuffer sourceVertices);
         SkinnedMeshHandle view = rig.CreateDisplacedView(source, LiftedPositions(), out FakeBuffer viewIndices,
             out FakeBuffer viewVertices);
@@ -203,23 +230,35 @@ public sealed partial class SkinnedMeshViewTests
             Assert.Equal(0, rig.Scene.LiveSkinnedMeshCount);
             Assert.False(viewVertices.Disposed);
             Assert.False(viewIndices.Disposed);
+            Assert.False(sourceVertices.Disposed);
+            Assert.False(sourceIndices.Disposed);
             rig.Scene.Begin();
             for (int boundary = 0; boundary < GpuRetireQueue.DefaultFrameDelay; boundary++) rig.Scene.Begin();
             Assert.True(viewVertices.Disposed);
             Assert.True(viewIndices.Disposed);
+            Assert.True(sourceVertices.Disposed);
+            Assert.True(sourceIndices.Disposed);
+        }
+        else
+        {
+            Assert.False(viewVertices.Disposed);
+            Assert.False(viewIndices.Disposed);
+            Assert.False(sourceVertices.Disposed);
+            Assert.False(sourceIndices.Disposed);
         }
 
         rig.Scene.Dispose();
-        Assert.Equal(1, sourceIndices.DisposeCalls);
-        Assert.Equal(1, sourceVertices.DisposeCalls);
-        Assert.Equal(1, viewIndices.DisposeCalls);
-        Assert.Equal(1, viewVertices.DisposeCalls);
+        Assert.True(sourceIndices.Disposed);
+        Assert.True(sourceVertices.Disposed);
+        Assert.True(viewIndices.Disposed);
+        Assert.True(viewVertices.Disposed);
     }
 
     [Fact]
     public void A_failed_displaced_view_upload_retires_the_unpublished_buffers()
     {
         using var rig = new ViewRig(gpuSkinning: true);
+        rig.Factory.StrictBufferDisposal = true;
         SkinnedMeshHandle source = rig.LoadStrip(out FakeBuffer sourceIndices, out FakeBuffer sourceVertices);
         Vector3[] positions = LiftedPositions();
         int buffers = rig.Factory.Buffers.Count;
@@ -235,9 +274,10 @@ public sealed partial class SkinnedMeshViewTests
         Assert.Equal(1, rig.Scene.LiveSkinnedMeshCount);
         FakeBuffer[] unpublished = rig.Factory.Buffers.Skip(buffers).ToArray();
         Assert.Equal(2, unpublished.Length);
+        Assert.All(unpublished, buffer => Assert.False(buffer.Disposed));
         rig.Scene.Begin();
         for (int boundary = 0; boundary < GpuRetireQueue.DefaultFrameDelay; boundary++) rig.Scene.Begin();
-        Assert.All(unpublished, buffer => Assert.Equal(1, buffer.DisposeCalls));
+        Assert.All(unpublished, buffer => Assert.True(buffer.Disposed));
         Assert.False(sourceIndices.Disposed);
         Assert.False(sourceVertices.Disposed);
         Assert.True(rig.Scene.IsSkinnedMeshView(rig.Scene.CreateSkinnedMeshView(source, AlternateTriangles, positions)));

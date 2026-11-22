@@ -86,9 +86,10 @@ public sealed partial class AttachmentSetCache
         if (Scene is not IAttachmentViewScene viewScene)
             throw new AttachmentBindingDataException(AttachmentBindingRefusal.OutfitViewsUnsupported,
                 "Drawing an outfit needs a scene that creates skinned mesh views, an IAttachmentViewScene.");
+        HashSet<AttachmentMeshRef>? liftingMeshes = LiftingMeshReferences(definitions);
         var read = new Dictionary<MeshIdentity, OutfitMeshGeometry>();
         var tagged = new ReadOnlyMemory<uint>[]?[sets.Length][];
-        for (int index = 0; index < sets.Length; index++) tagged[index] = TaggedIndices(sets[index], read);
+        for (int index = 0; index < sets.Length; index++) tagged[index] = TaggedIndices(sets[index], liftingMeshes, read);
         OutfitCoverage coverage = ResolveOutfit(body.Map, sets, definitions);
         OutfitLift? lift = ResolveOutfitLift(coverage, sets, read);
 
@@ -116,8 +117,7 @@ public sealed partial class AttachmentSetCache
             for (; acquired < used.Length; acquired++)
             {
                 (int index, int slot, ViewKey key) = pending[acquired];
-                SkinnedMeshHandle view = views.Acquire(key);
-                used[acquired] = key;
+                SkinnedMeshHandle view = views.Acquire(key, out used[acquired]);
                 if (acquired < wornViews) draws[index][slot] = draws[index][slot] with { Skinned = view };
                 else bodyMeshes[slot] = view;
             }
@@ -139,13 +139,15 @@ public sealed partial class AttachmentSetCache
     // The index lists of every skinned part that carries region runs, read when an outfit is bound so a cache that
     // never binds one keeps nothing extra. A part's runs cover its triangles in material order, then each material
     // handle's triangle order, and must add up to them. Parts without runs, and rigid parts, get null.
-    ReadOnlyMemory<uint>[]?[] TaggedIndices(BoundAttachmentSet set, Dictionary<MeshIdentity, OutfitMeshGeometry> read)
+    ReadOnlyMemory<uint>[]?[] TaggedIndices(BoundAttachmentSet set, HashSet<AttachmentMeshRef>? liftingMeshes,
+        Dictionary<MeshIdentity, OutfitMeshGeometry> read)
     {
         var tagged = new ReadOnlyMemory<uint>[]?[set.Definition.Parts.Count];
         for (int part = 0; part < tagged.Length; part++)
         {
             if (set.Definition.Parts[part] is not SkinnedAttachmentPartDefinition { Regions.Count: > 0 } skinned) continue;
-            ReadOnlyMemory<uint>[] indices = ReadOutfitGeometry(skinned.Mesh, read).Indices;
+            bool needsVertices = liftingMeshes?.Contains(skinned.Mesh) == true;
+            ReadOnlyMemory<uint>[] indices = ReadOutfitGeometry(skinned.Mesh, needsVertices, read).Indices;
             int runs = 0, triangles = 0;
             foreach (NamedRegionRun run in skinned.Regions) runs += run.TriangleCount;
             foreach (ReadOnlyMemory<uint> handle in indices) triangles += handle.Length / 3;

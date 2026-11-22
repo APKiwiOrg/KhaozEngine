@@ -405,7 +405,8 @@ and `IndexInPart` in upload order, with materials grouped by first use.
 `HeightBelow(wornIndex, region)` is the highest effective standoff among visible sets on strictly lower
 layers, or null when there is no contributor. `EffectiveStandoff(wornIndex, region)` is the visible set's
 declared standoff plus its greatest lift in that region, or null when it does not contribute. Region indices
-refer to the body map. Each vertex uses the highest height below of all regions that touch its position.
+refer to the body map. Each vertex uses the highest height below of all regions that touch its position
+and moves along its normalized direction.
 `LiftedPositions(wornIndex, partId)` returns rest positions in upload order by material, or null when the
 part has no moved vertex. `HasLift` is true when any part moved. Resolve at bind or run the same calculation
 offline for fitted poses. See the [lift rule](../docs/design/ATTACHMENT-LIFT-DESIGN.md#the-rule).
@@ -498,10 +499,10 @@ outfit refusal's `WornIndex` would have nothing to name.
 
 `StandoffClaimCheck.Verify(bodyMeshes, body, piece, pieceMeshes)` checks declared standoffs offline in the
 body's rest frame. Use the [coverage claim check](#coverage-claim-check) geometry, part IDs and per-vertex
-swing masks. It measures each fixed vertex against the nearest body triangle, using the signed distance
-along the triangle's outward normal. Triangles within 1 micrometre of the nearest distance compete by
-height. Equal heights choose the first triangle in body part and triangle order. A degenerate triangle has
-zero normal height, and a body without triangles yields no measurements.
+swing masks. It measures each fixed vertex against the nearest nondegenerate body triangle, using the signed
+distance along the triangle's outward normal. Triangles within 1 micrometre of the nearest distance compete by
+height. Equal heights choose the first triangle in body part and triangle order. A body without nondegenerate
+triangles yields no measurements.
 
 `StandoffClaimReport.Regions` lists measured regions in body map order as `StandoffClaimRegion` values with
 `Name`, `HighestHeightMetres`, `VertexCount` and nullable `DeclaredStandoffMetres`. `UnderstatedRegions` lists

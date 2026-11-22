@@ -18,19 +18,24 @@ public class OutfitLiftTests
         AttachmentGlb.ComputeRigIdentity(new SkinnedAttachmentGlbFixture().Build(), "body.glb"),
         ["a", "b"], [[new RegionRun(Front, 1), new RegionRun(Back, 1)]]);
 
-    [Fact]
-    public void A_part_clears_the_layer_below_in_its_authored_direction()
+    [Theory]
+    [InlineData(1f)]
+    [InlineData(0.9995f)]
+    public void A_part_clears_the_layer_below_in_its_authored_direction(float directionLength)
     {
-        LiftMaterialMesh material = Triangle(Vector3.Zero, direction: -Vector3.UnitX);
-        OutfitLift lift = Resolve([Garment(new RegionStandoff("a", 0.008f)), Lifting(AttachmentLayer.Armour)],
+        LiftMaterialMesh material = Triangle(Vector3.Zero, direction: -Vector3.UnitX * directionLength);
+        AttachmentSetDefinition armour = Lifting(AttachmentLayer.Armour, standoff: [new("a", 0)]);
+        OutfitLift lift = Resolve([Garment(new RegionStandoff("a", 0.008f)), armour],
             new LiftingPartMesh(1, LiftingPartId, [material]));
 
         Assert.Equal(0.008f, lift.HeightBelow(1, Front));
         Assert.True(lift.HasLift);
+        float distance = 0.008f + Clearance - Bearing;
+        Assert.Equal(distance, lift.EffectiveStandoff(1, Front));
         ReadOnlyMemory<Vector3> positions = Assert.Single(Positions(lift, 1));
         Assert.Equal(3, positions.Length);
         for (int vertex = 0; vertex < positions.Length; vertex++)
-            AssertPosition(material.Positions.Span[vertex] - new Vector3(0.007f, 0, 0), positions.Span[vertex]);
+            Assert.Equal(material.Positions.Span[vertex] - new Vector3(distance, 0, 0), positions.Span[vertex]);
     }
 
     [Fact]

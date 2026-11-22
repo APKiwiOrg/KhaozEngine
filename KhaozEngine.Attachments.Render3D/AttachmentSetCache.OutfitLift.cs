@@ -36,16 +36,31 @@ public sealed partial class AttachmentSetCache
         return new ViewKey(source, indices, positions);
     }
 
-    // Borrow indices and vertices from the shipped upload. A custom lease cannot lend either, so decode its
-    // verified bytes once per mesh identity per bind, without material maps.
-    OutfitMeshGeometry ReadOutfitGeometry(AttachmentMeshRef reference, Dictionary<MeshIdentity, OutfitMeshGeometry> read)
+    // Pick the decode shape before reading any tagged part. A mesh worn both ways still gets one decode.
+    static HashSet<AttachmentMeshRef>? LiftingMeshReferences(AttachmentSetDefinition[] definitions)
+    {
+        HashSet<AttachmentMeshRef>? liftingMeshes = null;
+        foreach (AttachmentSetDefinition definition in definitions)
+            foreach (AttachmentPartDefinition part in definition.Parts)
+                if (part is SkinnedAttachmentPartDefinition { Lift: not null })
+                    (liftingMeshes ??= []).Add(part.Mesh);
+        return liftingMeshes;
+    }
+
+    // Borrow the renderer's upload, or decode only the needed data from a custom lease's verified bytes.
+    OutfitMeshGeometry ReadOutfitGeometry(AttachmentMeshRef reference, bool needsVertices,
+        Dictionary<MeshIdentity, OutfitMeshGeometry> read)
     {
         var identity = new MeshIdentity(reference, Skinned: true);
         if (read.TryGetValue(identity, out OutfitMeshGeometry? known)) return known;
         CachedMesh mesh = _meshes[identity];
-        OutfitMeshGeometry geometry = mesh.Lease is SkinnedAttachmentUpload upload
-            ? new OutfitMeshGeometry(upload)
-            : new OutfitMeshGeometry(GltfLoader.LoadSkinnedPartGeometry(mesh.Bytes, reference.Key));
+        OutfitMeshGeometry geometry;
+        if (mesh.Lease is SkinnedAttachmentUpload upload)
+            geometry = new OutfitMeshGeometry(upload);
+        else if (needsVertices)
+            geometry = new OutfitMeshGeometry(GltfLoader.LoadSkinnedPartGeometry(mesh.Bytes, reference.Key));
+        else
+            geometry = new OutfitMeshGeometry(GltfLoader.LoadSkinnedPartIndices(mesh.Bytes, reference.Key));
         read.Add(identity, geometry);
         return geometry;
     }
@@ -67,6 +82,8 @@ public sealed partial class AttachmentSetCache
             _parts = parts;
             Indices = parts.Select(part => (ReadOnlyMemory<uint>)part.Indices32).ToArray();
         }
+
+        internal OutfitMeshGeometry(ReadOnlyMemory<uint>[] indices) => Indices = indices;
 
         internal ReadOnlyMemory<uint>[] Indices { get; }
 

@@ -10,7 +10,7 @@ public static class StandoffClaimCheck
     const double NearestDistanceToleranceMetres = 0.000001;
 
     /// <summary>
-    /// Finds the nearest body triangle for each fixed piece vertex. The triangle supplies the region and the height,
+    /// Finds the nearest nondegenerate body triangle for each fixed piece vertex. It supplies the region and height,
     /// which is the signed distance in metres from its plane along its outward normal.
     /// Body meshes follow the region map's part order. Piece meshes are already in the body's rest frame.
     /// For a piece with motion, supply one mesh per definition part in any order with its
@@ -18,8 +18,7 @@ public static class StandoffClaimCheck
     /// </summary>
     /// <remarks>
     /// Triangles within one micrometre of the nearest distance compete by height. Equal heights choose the first
-    /// triangle in body part and triangle order. Zero area triangles contribute no normal height.
-    /// A body without triangles yields no measurements.
+    /// triangle in body part and triangle order. A body without nondegenerate triangles yields no measurements.
     /// </remarks>
     /// <exception cref="ArgumentException">A nonempty swinging mask has a different length than its mesh's positions.</exception>
     /// <exception cref="CoverageClaimDataException">The geometry or the claim breaks a rule.</exception>
@@ -80,8 +79,9 @@ public static class StandoffClaimCheck
             for (int triangle = 0; triangle < regions.Length; triangle++)
             {
                 int index = triangle * 3;
-                triangles.Add(new BodyTriangle(regions[triangle], new Point(positions[(int)indices[index]]),
-                    new Point(positions[(int)indices[index + 1]]), new Point(positions[(int)indices[index + 2]])));
+                var face = new BodyTriangle(regions[triangle], new Point(positions[(int)indices[index]]),
+                    new Point(positions[(int)indices[index + 1]]), new Point(positions[(int)indices[index + 2]]));
+                if (face.HasNormal) triangles.Add(face);
             }
         }
         return triangles.ToArray();
@@ -139,17 +139,18 @@ public static class StandoffClaimCheck
         }
 
         internal int Region { get; }
+        internal bool HasNormal => normalLength > 0;
 
         internal (double DistanceSquared, double Height) Measure(Point vertex)
         {
             Point fromA = vertex - a;
             Point fromB = vertex - b;
             Point fromC = vertex - c;
-            double height = normalLength > 0 ? Point.Dot(fromA, normal) / normalLength : 0;
+            double height = Point.Dot(fromA, normal) / normalLength;
 
             // The edge tests only see the projection into the triangle's plane. If it falls outside,
-            // or the triangle has no plane, the closest point lies on one of the closed edge segments.
-            if (normalLength > 0 && OnInnerSide(ab, fromA) && OnInnerSide(bc, fromB) && OnInnerSide(ca, fromC))
+            // the closest point lies on one of the closed edge segments.
+            if (OnInnerSide(ab, fromA) && OnInnerSide(bc, fromB) && OnInnerSide(ca, fromC))
                 return (height * height, height);
 
             double distanceSquared = Math.Min(SegmentDistanceSquared(ab, fromA, fromB),

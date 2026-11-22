@@ -126,12 +126,13 @@ public sealed partial class MoveToRangePlanningTests
     }
 
     [Fact]
-    public void FollowerRefusesAPointOnlyGridEvenWithItsOwnPool()
+    public void FollowerRefusesAPointOnlyGridWithAForeignPool()
     {
         var space = NavSpace.Single(NavGrid.FromWalkable(3, 1, 1f, 0f, 0f, (_, _) => true));
         var grid = new GridPathPlanner(space);
-        using var pool = ((IIncrementalRegionPathPlanner)grid).CreateWorkspaces(1, PathQueryBudget.Default);
-        Assert.Throws<ArgumentException>(() => new PathFollower(grid, Follow(pool, 6), space));
+        var physicalGrid = new GridPathPlanner(Flat(3, 1, Tuning.CapsuleRadius).Space);
+        using var pool = ((IIncrementalRegionPathPlanner)physicalGrid).CreateWorkspaces(1, PathQueryBudget.Default);
+        Assert.Throws<ArgumentException>("config", () => new PathFollower(grid, Follow(pool, 6), space));
     }
 
     [Fact]

@@ -27,6 +27,31 @@ public sealed class ConstrainedGridRequestTests
             new GridPlanningWorkspaces(constrainedPlanner, 1, PathQueryBudget.Default));
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    public void PointOnlyGridRefusesWorkspacesBeforeCheckingTheCount(int count)
+    {
+        IIncrementalRegionPathPlanner pointOnly =
+            new GridPathPlanner(NavSpace.Single(NavGrid.FromWalkable(3, 1, 1f, 0f, 0f, (_, _) => true)));
+
+        Assert.False(pointOnly.SupportsRequests);
+        Assert.Throws<NotSupportedException>(() => pointOnly.CreateWorkspaces(count, PathQueryBudget.Default));
+    }
+
+    [Fact]
+    public void PointOnlyGridRefusesRegionBeginBeforeCheckingPoolOwnership()
+    {
+        IIncrementalRegionPathPlanner pointOnly =
+            new GridPathPlanner(NavSpace.Single(NavGrid.FromWalkable(3, 1, 1f, 0f, 0f, (_, _) => true)));
+        IIncrementalRegionPathPlanner physical = Corridor(3);
+        using var foreign = physical.CreateWorkspaces(1, PathQueryBudget.Default);
+
+        Assert.False(pointOnly.SupportsRequests);
+        Assert.Throws<NotSupportedException>(() =>
+            pointOnly.BeginPath(Start, End(3), 0f, PathQueryBudget.Default, foreign));
+    }
+
     [Fact]
     public void PoolRejectsARequestCreatedByAnotherPool()
     {

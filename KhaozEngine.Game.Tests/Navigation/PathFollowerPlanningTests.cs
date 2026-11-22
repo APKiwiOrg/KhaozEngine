@@ -62,21 +62,23 @@ public sealed partial class PathFollowerPlanningTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void MovingTargetCannotStarve(bool vertical)
+    [InlineData(1f, 0f, 0f)]
+    [InlineData(0f, 1f, 0f)]
+    [InlineData(0f, 0f, 1f)]
+    public void MovingTargetCannotStarve(float x, float y, float z)
     {
         var planner = Corridor(3);
         using var pool = Incremental(planner).CreateWorkspaces(1, Budget(2));
         var follower = Follower(planner, pool, 6);
         var member = End(3);
+        Vector3 drift = new(x, y, z);
         for (int call = 1; call <= 23; call++)
         {
-            Vector3 anchor = vertical ? member.Anchor with { Y = call * 2f } : member.Anchor with { X = call * 2f };
+            Vector3 anchor = member.Anchor + drift * (call * 2f);
             var goal = call == 1 ? member : new NavGoalRegion(anchor, 50f, _ => false);
             Waiting(follower, follower.Tick(Start, goal, 0f, 1f));
         }
-        var drifted = new NavGoalRegion(vertical ? new(2.5f, 10f, 0.5f) : new(10f, 0f, 0.5f), 16f, _ => false);
+        var drifted = new NavGoalRegion(member.Anchor + drift * 8f, 16f, _ => false);
         AssertPartial(follower, follower.Tick(Start, drifted, 0f, 1f));
         AssertPartial(follower, follower.Tick(Start, drifted, 0f, 0.25f));
         Waiting(follower, follower.Tick(Start, drifted, 0f, 0.25f));

@@ -17,16 +17,20 @@ namespace KhaozEngine.Render3D
         // read-only stream, so the validation fallback can re-read it.
         static ModelRoot LoadModel(ReadOnlyMemory<byte> glb, string identity, bool requireEmbeddedImages = false)
         {
-            GltfDecodeAdmission.EnterModelDecode();
             ArraySegment<byte> bytes = MemoryMarshal.TryGetArray(glb, out ArraySegment<byte> segment)
                 ? segment : new ArraySegment<byte>(glb.ToArray());
+            if (requireEmbeddedImages)
+            {
+                try { GltfByteImagePolicy.Validate(bytes.AsMemory(), identity); }
+                catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+                {
+                    throw MalformedModelError(identity, ex);
+                }
+            }
+
+            GltfDecodeAdmission.EnterModelDecode();
             return LoadModel(identity, settings =>
             {
-                if (requireEmbeddedImages)
-                {
-                    settings ??= new ReadSettings();
-                    settings.JsonPreprocessor = json => GltfByteImagePolicy.Validate(json, identity);
-                }
                 using var stream = new MemoryStream(bytes.Array!, bytes.Offset, bytes.Count, writable: false);
                 try { return ModelRoot.ReadGLB(stream, settings); }
                 catch (Exception ex) when (ex is IOException or ArgumentException or FormatException

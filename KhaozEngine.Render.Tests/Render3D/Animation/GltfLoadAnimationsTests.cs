@@ -8,6 +8,7 @@ using SharpGLTF.Geometry;
 using SharpGLTF.Geometry.VertexTypes;
 using SharpGLTF.Materials;
 using SharpGLTF.Scenes;
+using SharpGLTF.Schema2;
 using Xunit;
 
 namespace KhaozEngine.Tests.Render3D.Animation
@@ -16,7 +17,7 @@ namespace KhaozEngine.Tests.Render3D.Animation
     {
         // A 2-bone skinned triangle (bone0 at origin, bone1 a child at +1 Y) WITH a "walk" animation that
         // translates bone1 from (0,1,0) to (0,3,0) over 1 second.
-        static string WriteAnimatedRiggedGlb(bool secondClip = false)
+        internal static ModelRoot CreateAnimatedRiggedModel(bool secondClip = false)
         {
             var mesh = new MeshBuilder<VertexPositionNormal, VertexEmpty, VertexJoints4>("skin");
             var prim = mesh.UsePrimitive(MaterialBuilder.CreateDefault());
@@ -46,10 +47,13 @@ namespace KhaozEngine.Tests.Render3D.Animation
 
             var scene = new SceneBuilder();
             scene.AddSkinnedMesh(mesh, Matrix4x4.Identity, bone0, bone1);
-            var model = scene.ToGltf2();
+            return scene.ToGltf2();
+        }
 
+        static string WriteAnimatedRiggedGlb(bool secondClip = false)
+        {
             string path = Path.Combine(Path.GetTempPath(), $"ke_anim_{Guid.NewGuid():N}.glb");
-            model.SaveGLB(path);
+            CreateAnimatedRiggedModel(secondClip).SaveGLB(path);
             return path;
         }
 

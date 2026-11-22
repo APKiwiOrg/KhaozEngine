@@ -9,6 +9,7 @@ using KhaozEngine.Attachments;
 using KhaozEngine.Imaging;
 using KhaozEngine.Render3D;
 using KhaozEngine.Tests.Attachments;
+using KhaozEngine.Tests.Render3D.Animation;
 using KhaozEngine.Tests.TileWorld;
 using Xunit;
 
@@ -199,24 +200,29 @@ public sealed class GltfSkinnedMaterialPartsTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Byte_import_refuses_an_external_image_even_when_unused(bool usedByMaterial)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    [InlineData(false, true)]
+    public void Byte_import_refuses_external_images_by_logical_index(bool usedByMaterial, bool repeatedImages)
     {
         var fixture = Fixture();
         byte[] pixels = [0, 180, 40, 255, 10, 90, 30, 255];
         var images = fixture.Root["images"]!.AsArray();
-        int imageIndex = usedByMaterial ? 2 : images.Count;
+        int materialImageCount = images.Count;
+        int imageIndex = usedByMaterial ? 2 : materialImageCount;
         if (!usedByMaterial)
             images.Add(new JsonObject { ["bufferView"] = fixture.AddView(PngWriter.Encode(pixels, 2, 1)), ["mimeType"] = "image/png" });
+        if (repeatedImages)
+            images.Add(images[0]!.DeepClone());
         const string identity = " body.glb ";
-        byte[] embedded = fixture.Build();
+        byte[] embedded = BuildGlb();
         Assert.NotNull(GltfLoader.LoadSkinnedWithMaterial(embedded, identity).Maps.Roughness);
         Assert.Empty(GltfLoader.LoadAnimations(embedded, identity));
 
         const string imageName = "surface.png";
         images[imageIndex] = new JsonObject { ["uri"] = imageName };
-        byte[] external = fixture.Build();
+        byte[] external = BuildGlb();
         using var dir = new TempDir();
         string path = dir.Sub("body.glb");
         File.WriteAllBytes(path, external);
@@ -228,6 +234,17 @@ public sealed class GltfSkinnedMaterialPartsTests
             Assert.Throws<GltfImportDataException>(() => GltfLoader.LoadSkinnedWithMaterial(external, identity)));
         AssertExternalImageRefusal(
             Assert.Throws<GltfImportDataException>(() => GltfLoader.LoadAnimations(external, identity)));
+
+        byte[] BuildGlb()
+        {
+            if (!repeatedImages) return fixture.Build();
+
+            // #1876: the decoder appends both occurrences into one logical image list.
+            string first = string.Join(",", images.Take(materialImageCount).Select(image => image!.ToJsonString()));
+            string second = string.Join(",", images.Skip(materialImageCount).Select(image => image!.ToJsonString()));
+            return fixture.Build(json => json.Replace($"\"images\":{images.ToJsonString()}",
+                $"\"images\":[{first}],\"images\":[{second}]", StringComparison.Ordinal));
+        }
 
         void AssertExternalImageRefusal(GltfImportDataException error)
         {
@@ -279,11 +296,36 @@ public sealed class GltfSkinnedMaterialPartsTests
     [InlineData("animations", "image-data-uri-without-base64")]
     [InlineData("skinned-material", "unsupported-image-data-uri")]
     [InlineData("animations", "unsupported-image-data-uri")]
+    [InlineData("skinned-material", "invalid-utf8-clip-name")]
+    [InlineData("animations", "invalid-utf8-clip-name")]
+    [InlineData("skinned-material", "invalid-utf8-node-name")]
+    [InlineData("animations", "invalid-utf8-node-name")]
     public void Malformed_bytes_carry_their_reason_identity_and_original_failure(string overload, string input)
     {
         // #1791: standard reader exceptions must have the same refusal contract as SharpGLTF failures.
         const string identity = " caller-owned-malformed.glb ";
-        var error = Assert.Throws<GltfImportDataException>(() => LoadBytes(overload, MalformedGlb(input), identity));
+        byte[] glb;
+        if (input is "invalid-utf8-clip-name" or "invalid-utf8-node-name")
+        {
+            using var stream = new MemoryStream();
+            GltfLoadAnimationsTests.CreateAnimatedRiggedModel().WriteGLB(stream);
+            glb = stream.ToArray();
+            LoadBytes(overload, glb, identity);
+
+            // #1876: a UTF-8 replacement fallback must not turn this malformed name into an accepted name.
+            int jsonLength = (int)BinaryPrimitives.ReadUInt32LittleEndian(glb.AsSpan(12));
+            Span<byte> json = glb.AsSpan(20, jsonLength);
+            ReadOnlySpan<byte> name = input == "invalid-utf8-clip-name" ? "\"walk\""u8 : "\"bone1\""u8;
+            int nameOffset = json.IndexOf(name);
+            Assert.True(nameOffset >= 0);
+            json[nameOffset + 1] = 0xff;
+        }
+        else
+        {
+            glb = MalformedGlb(input);
+        }
+
+        var error = Assert.Throws<GltfImportDataException>(() => LoadBytes(overload, glb, identity));
         Assert.Equal(GltfImportRefusal.MalformedModel, error.Reason);
         Assert.Equal(identity, error.Identity);
         Assert.NotNull(error.InnerException);

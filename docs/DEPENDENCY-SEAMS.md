@@ -560,13 +560,15 @@ without adding attachment members to `ITileWorldScene`. Outfits need the separat
 `IAttachmentViewScene`, which both shipped adapters implement, so `IAttachmentScene` gained no
 member. The tile renderer references the attachment arm, and the attachment arm has no dependency
 back to TileWorld. Dispose attachment caches before their scene.
-Render3D grants `InternalsVisibleTo` to the arm for three members. A skinned lease and a cache call
+Render3D grants `InternalsVisibleTo` to the arm for the attachment upload and binding paths. A skinned lease and a cache call
 `Scene3D.RefuseSourcesWithLiveViews` before releasing anything, so a live mesh view refuses the release before any
 handle unloads. An outfit reads each tagged mesh's index lists when it binds, to build mesh views without the cache
 keeping a copy. For the renderer's own leases it borrows the lists Scene3D already holds through
 `Scene3D.SkinnedSourceIndices`. A custom scene's lease cannot lend them, so the cache decodes the mesh's geometry
-again from its verified bytes through `GltfLoader.LoadSkinnedPartIndices`, which skips every material map. Keeping
-all three internal leaves the public renderer surface and `IAttachmentScene` unchanged.
+again from its verified bytes through `GltfLoader.LoadSkinnedPartIndices`, which skips every material map.
+A chained bind reads the garment hierarchy and rest locals from those bytes through
+`GltfLoader.LoadAttachmentSkeleton`, which skips geometry decoding and material maps. These members remain
+internal, so the public renderer surface and `IAttachmentScene` stay unchanged.
 
 ## Render3D ECS arm: the renderer carries no Ecs edge
 

@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.Attachments;
@@ -25,6 +26,8 @@ public sealed class WornMotionTests
         string rev = rig.Source.Add(key, BodyCollidersJson.Write(definition));
         LoadedBodyColliders loaded = rig.Cache.GetBodyColliders(key, rev, OutfitRig.Rig);
         Assert.Equal(DistantCapsule, Assert.Single(loaded.Set.Colliders));
+        string wrongHash = (rev[0] == '0' ? '1' : '0') + rev[1..];
+        Assert.Throws<InvalidDataException>(() => rig.Cache.GetBodyColliders(key, wrongHash, OutfitRig.Rig));
         rig.Source.Bytes.Remove(key);
         Assert.Same(loaded, rig.Cache.GetBodyColliders(key, rev, OutfitRig.Rig));
 
@@ -60,17 +63,31 @@ public sealed class WornMotionTests
         Assert.Equal("missing", error.JointName);
     }
 
-    [Fact]
-    public void A_map_only_set_needs_an_explicit_host_skin_when_it_creates_motion_with_colliders()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Collider_motion_requires_a_set_bound_with_the_explicit_host_skin(bool asOutfit)
     {
         using var rig = new OutfitRig();
         AttachmentMeshRef mesh = rig.Source.Mesh("rigid.glb", AttachmentTestSource.Glb());
         LoadedAttachmentSet loaded = rig.Load("rigid.json",
             new AttachmentSetDefinition([OutfitRig.Rigid(1, mesh, "alpha")], AttachmentLayer.Garment, [], [DistantCapsule]));
-        Step(rig, rig.Bind(loaded).CreateMotion(null));
+        BoundAttachmentSet explicitSkin = rig.Bind(loaded);
         BoundAttachmentSet mapOnly = loaded.Bind(rig.Map);
-
-        var error = Assert.Throws<AttachmentBindingDataException>(() => mapOnly.CreateMotion(null));
+        AttachmentBindingDataException error;
+        if (asOutfit)
+        {
+            LoadedBodyRegions body = rig.BodyRegions(new RegionRun(0, 4));
+            using BoundOutfit valid = rig.Cache.BindOutfit(body, [explicitSkin]);
+            using BoundOutfit invalid = rig.Cache.BindOutfit(body, [mapOnly]);
+            Step(rig, valid.CreateMotion(null));
+            error = Assert.Throws<AttachmentBindingDataException>(() => invalid.CreateMotion(null));
+        }
+        else
+        {
+            Step(rig, explicitSkin.CreateMotion(null));
+            error = Assert.Throws<AttachmentBindingDataException>(() => mapOnly.CreateMotion(null));
+        }
 
         Assert.Equal(AttachmentBindingRefusal.ColliderHostMeshRequired, error.Reason);
         Assert.Equal("rigid.json", error.SourceName);
@@ -81,7 +98,7 @@ public sealed class WornMotionTests
     {
         using var rig = new OutfitRig();
         LoadedBodyRegions body = rig.BodyRegions(new RegionRun(0, 4));
-        using BoundOutfit outfit = rig.Cache.BindOutfit(body, []);
+        using BoundOutfit outfit = rig.Cache.BindOutfit(body, [WearChain(rig)]);
         Step(rig, outfit.CreateMotion(BodyColliders(rig, DistantCapsule)));
         string otherRig = "rig-v1:" + new string('b', 64);
         string key = "other-colliders.json";

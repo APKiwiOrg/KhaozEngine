@@ -24,7 +24,6 @@ public sealed class BoundOutfit : IDisposable
     readonly ViewKey[] _used;
     readonly string _bodyRigIdentity;
     readonly Skeleton? _hostSkeleton;
-    readonly ReadOnlyMemory<Matrix4x4> _hostInverseBind;
     object? _motionIdentity;
     bool _disposed;
 
@@ -40,7 +39,6 @@ public sealed class BoundOutfit : IDisposable
         _used = used;
         _bodyRigIdentity = bodyRegions.Map.RigIdentity;
         _hostSkeleton = bodyRegions.HostSkeleton;
-        _hostInverseBind = bodyRegions.HostInverseBind;
     }
 
     internal object MotionIdentity => _motionIdentity ??= new object();
@@ -51,14 +49,13 @@ public sealed class BoundOutfit : IDisposable
         ThrowIfDisposed();
         Skeleton skeleton = _hostSkeleton ?? (_worn.Length > 0 ? _worn[0].Skeleton :
             throw new InvalidOperationException("Creating motion requires a body skin or a worn set with a skeleton."));
-        ReadOnlySpan<Matrix4x4> inverseBind = _hostInverseBind.Span;
-        if (_hostSkeleton is null)
-            foreach (BoundAttachmentSet set in _worn)
-                if (ReferenceEquals(set.Skeleton, skeleton) && !set.HostInverseBind.IsEmpty)
-                {
-                    inverseBind = set.HostInverseBind;
-                    break;
-                }
+        ReadOnlySpan<Matrix4x4> inverseBind = default;
+        foreach (BoundAttachmentSet set in _worn)
+            if (ReferenceEquals(set.Skeleton, skeleton) && !set.HostInverseBind.IsEmpty)
+            {
+                inverseBind = set.HostInverseBind;
+                break;
+            }
         return WornMotionBinding.Create(MotionIdentity, skeleton, inverseBind, _worn, _draws,
             bodyColliders, _bodyRigIdentity, options);
     }

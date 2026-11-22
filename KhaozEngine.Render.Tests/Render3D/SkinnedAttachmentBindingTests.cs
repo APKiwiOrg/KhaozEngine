@@ -78,6 +78,29 @@ public sealed class SkinnedAttachmentBindingTests
             set.WriteDraws(rig.Skeleton, posed, rig.Model, rig.Key, new RigidInstanceDraw(default, Matrix4x4.Identity), draw));
     }
 
+    [Fact]
+    public void Chain_metadata_is_cached_only_after_a_successful_bind_from_verified_bytes()
+    {
+        using var rig = new OutfitRig();
+        AttachmentMeshRef mesh = rig.Source.Mesh("chain.glb", SkinnedAttachmentGlbFixture.Chained().Build());
+        LoadedAttachmentSet invalid = rig.Load("invalid.json", ChainSet(mesh, ["left0", "left1", "absent"]));
+        LoadedAttachmentSet valid = rig.Load("valid.json", ChainSet(mesh));
+        Assert.Null(rig.Cache.CachedChainJointsForTests(mesh));
+        Assert.True(rig.Source.Bytes.Remove(mesh.Key));
+        int live = rig.Scene.LiveSkinnedMeshCount;
+
+        var error = Assert.Throws<AttachmentBindingDataException>(() => rig.Bind(invalid));
+
+        Assert.Equal(AttachmentBindingRefusal.ChainJointMissing, error.Reason);
+        Assert.Equal(live, rig.Scene.LiveSkinnedMeshCount);
+        Assert.Null(rig.Cache.CachedChainJointsForTests(mesh));
+        Assert.Equal(1, rig.Bind(valid).DrawCount);
+        var metadata = rig.Cache.CachedChainJointsForTests(mesh);
+        Assert.NotNull(metadata);
+        Assert.Equal(1, rig.Bind(valid).DrawCount);
+        Assert.Same(metadata, rig.Cache.CachedChainJointsForTests(mesh));
+    }
+
     [Theory]
     [InlineData(AttachmentBindingRefusal.ChainJointMissing, "absent")]
     [InlineData(AttachmentBindingRefusal.ChainJointIsHostJoint, "left1")]
@@ -146,6 +169,7 @@ public sealed class SkinnedAttachmentBindingTests
             : new AttachmentSetDefinition([part]);
         LoadedAttachmentSet loaded = rig.Load("plain.json", definition);
         BoundAttachmentSet bound = rig.Bind(loaded);
+        Assert.Null(rig.Cache.CachedChainJointsForTests(part.Mesh));
         Matrix4x4[] pose = RotatedPalette(rig.Skeleton);
         var actual = new AttachmentDraw[1];
 

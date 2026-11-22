@@ -1,6 +1,4 @@
-using System;
 using System.Collections.Generic;
-using System.Numerics;
 using KhaozEngine.Render3D;
 
 namespace KhaozEngine.Attachments.Render3D;
@@ -13,19 +11,17 @@ public sealed class LoadedBodyRegions
     readonly BodyRegionMap _map;
 
     internal LoadedBodyRegions(AttachmentSetCache owner, BodyRegionMap map, SkinnedMeshHandle[] parts, uint[][] indices,
-        SkinnedGltfMesh? host)
+        Skeleton? hostSkeleton)
     {
         Owner = owner;
         _map = map;
         Parts = parts;
         Indices = indices;
-        HostSkeleton = host?.Skeleton;
-        HostInverseBind = host?.InverseBind.AsSpan().ToArray();
+        HostSkeleton = hostSkeleton;
     }
 
     internal AttachmentSetCache Owner { get; }
     internal Skeleton? HostSkeleton { get; }
-    internal ReadOnlyMemory<Matrix4x4> HostInverseBind { get; }
 
     /// <summary>The body's material part handles, in the map's part order.</summary>
     internal IReadOnlyList<SkinnedMeshHandle> Parts { get; }

@@ -36,7 +36,8 @@ public sealed class WornMotion
 
     /// <summary>Advance the chains from the host's exact skeleton and current model-space joint palette.</summary>
     /// <remarks>Call once after posing the host. Anchors and capsules are posed into world space, where gravity
-    /// acts. Valid steps allocate no managed memory once warm.</remarks>
+    /// acts. Step validates the model and the palette matrices read for anchors and colliders. Each draw validates
+    /// the matrices it reads and refuses invalid ones. Valid steps allocate no managed memory once warm.</remarks>
     public void Step(Skeleton skeleton, ReadOnlySpan<Matrix4x4> palette, in Matrix4x4 model,
         float deltaSeconds, MotionLevel level = MotionLevel.Simulated)
     {

@@ -42,7 +42,7 @@ public sealed partial class AttachmentSetCache
                 $"{key}: the region map tags {map.Parts.Count} parts, the body has {bodyParts.Count}.")
             { SourceName = key, ExpectedPartCount = bodyParts.Count, ActualPartCount = map.Parts.Count };
         var indices = new uint[bodyParts.Count][];
-        SkinnedGltfMesh? host = null;
+        Skeleton? hostSkeleton = null;
         for (int part = 0; part < indices.Length; part++)
         {
             SkinnedGltfMesh mesh = bodyMeshes[part] ?? throw new ArgumentNullException(nameof(bodyMeshes), $"bodyMeshes[{part}] is null.");
@@ -50,12 +50,12 @@ public sealed partial class AttachmentSetCache
                 throw new AttachmentBindingDataException(AttachmentBindingRefusal.BodyRegionMapMismatch,
                     $"{key}: part {part} tags {map.TriangleCount(part)} triangles, the body's mesh has {mesh.TriangleCount}.")
                 { SourceName = key, BodyPartIndex = part, ExpectedTriangleCount = mesh.TriangleCount, ActualTriangleCount = map.TriangleCount(part) };
-            host ??= mesh;
+            if (part == 0) hostSkeleton = mesh.Skeleton;
             indices[part] = (uint[])mesh.Indices32.Clone();
         }
         var handles = new SkinnedMeshHandle[bodyParts.Count];
         for (int part = 0; part < handles.Length; part++) handles[part] = bodyParts[part];
-        return new LoadedBodyRegions(this, map, handles, indices, host);
+        return new LoadedBodyRegions(this, map, handles, indices, hostSkeleton);
     }
 
     /// <summary>Apply the outfit rule to <paramref name="body"/> and <paramref name="worn"/> and build every view the

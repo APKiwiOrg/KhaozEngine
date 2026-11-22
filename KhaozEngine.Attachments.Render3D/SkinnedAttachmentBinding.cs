@@ -98,13 +98,13 @@ internal sealed class SkinnedAttachmentBinding
     }
 
     internal static SkinnedAttachmentBinding FromResources(SkinnedAttachmentPartDefinition part, ContractJointMap map,
-        SkinnedGltfMesh hostMesh, AttachmentPartResources resources)
+        SkinnedGltfMesh hostMesh, AttachmentPartResources resources, IReadOnlyList<GarmentChainJoint> chainJoints)
     {
         if (!resources.IsSkinned)
             throw new AttachmentBindingDataException(AttachmentBindingRefusal.GarmentMetadataMissing,
                 $"{Context(part)}: garment skin metadata is missing.")
             { PartId = part.Id, MeshKey = part.Mesh.Key };
-        return new SkinnedAttachmentBinding(part, map, hostMesh, resources.JointNames, resources.InverseBind, resources.RestPose.Count, resources.ChainJoints);
+        return new SkinnedAttachmentBinding(part, map, hostMesh, resources.JointNames, resources.InverseBind, resources.RestPose.Count, chainJoints);
     }
 
     internal void ValidatePalette(ReadOnlySpan<Matrix4x4> hostPalette)

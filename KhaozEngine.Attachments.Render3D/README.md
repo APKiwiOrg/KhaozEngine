@@ -75,8 +75,9 @@ embedded GLB policy, and decodes all new geometry and material maps before uploa
 all references before using warm uploads. A reference requested under both kinds is refused, including
 reuse after a different set warmed the cache. The cache copies source memory and shares each compatible
 `(key, hash, kind)` upload across its parts and sets. A failure releases newly acquired resources and
-preserves earlier cached assets. Skinned material groups retain their skin-order joint names, parent
-nodes, local rest transforms, inverse binds and rest poses as immutable metadata. Loading allocates
+preserves earlier cached assets. Skinned material groups retain their skin-order joint names, inverse
+binds and rest poses as immutable metadata. At the first successful chained bind, the cache also
+captures the parent nodes and local rest transforms from the verified GLB bytes. Loading allocates
 no frame palettes.
 
 GLB preflight propagates `AttachmentGlbContainerDataException`, `AttachmentAccessorDataException`,
@@ -292,14 +293,14 @@ once per wearer. The motion combines the visible chains on their distinct host a
 capsules from the body file and all worn sets, with a limit of 64 per wearer. Passing null for body
 colliders still includes worn set capsules. The host inverse binds place capsules in joint-local
 space. The current joint palette and model place them into world space for each step. Each
-transform scales the radius by its largest axis scale. A bare set that uses colliders needs the
-explicit host mesh at binding, even if its parts are rigid. A collider index names its position in
-the normalized source list.
+transform scales the radius by its largest axis scale. Collider motion needs a set bound with the
+explicit host mesh, even if its parts are rigid. An outfit uses the inverse binds already held by
+its first such worn set. A collider index names its position in the normalized source list.
 
 Animate the host, call `motion.Step(skeleton, palette, model, deltaSeconds)` once with its current
 pose, then submit draws and outlines. `Step` uses the binding's exact skeleton and full host skin
-palette. It validates the model and the joint matrices that drive anchors and capsules. Valid steps
-allocate nothing once warm. `MotionLevel.Held` blends toward rest. `Reset()` restores the rest hang
+palette. It validates the model and the joint matrices it reads for anchors and capsules. Each draw
+validates the matrices it reads and refuses an invalid one. Valid steps allocate nothing once warm. `MotionLevel.Held` blends toward rest. `Reset()` restores the rest hang
 immediately and clears velocity on the next valid step. `Tune(wornIndex, partId, chain, settings)`
 changes settings on the next substep. Worn and chain indices are zero-based and a bare set uses
 worn index zero. A fully hidden part has no tunable chains. Wearers can share a binding and have

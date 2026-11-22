@@ -387,10 +387,13 @@ Each task records here any shape the code required that differs from this note, 
 
 - Wearer binding. `Bind` validates chains before creating submission scratch, because the ordinary draw methods
   need the rest hang before a wearer creates motion. The cache already owns the uploads at this point.
+  A chained bind reads the hierarchy and rest locals from the verified bytes. The cache keeps that metadata only
+  after every part binds, so a refusal creates no cache entries or scene resources.
   `Tune(wornIndex, partId, chain, settings)` includes the worn position because different sets can reuse a part ID.
   The bare set uses index zero. `Reset` exposes the rest hang immediately and lets the solver discard velocity on
   its next valid step.
-- Body collider binding. An outfit compares the loaded collider rig with the region map's rig and uses the body
-  skin's captured inverse binds. A bare set has only its explicit host skin matrices, so the caller supplies its
-  rig identity to `GetBodyColliders`. A map-only bare set still draws rigid parts. Creating its motion with
-  colliders requires rebinding with a host mesh, since the map has no inverse binds.
+- Body collider binding. An outfit compares the loaded collider rig with the region map's rig and borrows the
+  inverse binds already stored by its first set bound with the host mesh. Region loading only retains the
+  skeleton reference for motion. A bare set has only its explicit host skin matrices, so the caller supplies its
+  rig identity to `GetBodyColliders`. A map-only binding still draws rigid parts. Motion with colliders needs
+  at least one set bound with a host mesh, since a joint map has no inverse binds.

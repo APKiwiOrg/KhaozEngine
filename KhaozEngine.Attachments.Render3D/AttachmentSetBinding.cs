@@ -17,21 +17,21 @@ public sealed class AttachmentSetBinding
     readonly Matrix4x4[]? _hostInverseBind;
 
     public AttachmentSetBinding(AttachmentSetDefinition definition, ContractJointMap map)
-        : this(definition, map, null, null, null) { }
+        : this(definition, map, null, null, null, null) { }
 
     public AttachmentSetBinding(AttachmentSetDefinition definition, ContractJointMap map,
         SkinnedGltfMesh hostMesh, IReadOnlyDictionary<AttachmentMeshRef, SkinnedGltfMesh> skinnedMeshes)
         : this(definition, map, hostMesh ?? throw new ArgumentNullException(nameof(hostMesh)),
-            skinnedMeshes ?? throw new ArgumentNullException(nameof(skinnedMeshes)), null)
+            skinnedMeshes ?? throw new ArgumentNullException(nameof(skinnedMeshes)), null, null)
     { }
 
     internal AttachmentSetBinding(AttachmentSetDefinition definition, ContractJointMap map,
-        SkinnedGltfMesh hostMesh, IReadOnlyList<AttachmentPartResources> resources)
-        : this(definition, map, hostMesh, null, resources) { }
+        SkinnedGltfMesh hostMesh, IReadOnlyList<AttachmentPartResources> resources, AttachmentSetCache cache)
+        : this(definition, map, hostMesh, null, resources, cache) { }
 
     AttachmentSetBinding(AttachmentSetDefinition definition, ContractJointMap map, SkinnedGltfMesh? hostMesh,
         IReadOnlyDictionary<AttachmentMeshRef, SkinnedGltfMesh>? skinnedMeshes,
-        IReadOnlyList<AttachmentPartResources>? resources)
+        IReadOnlyList<AttachmentPartResources>? resources, AttachmentSetCache? cache)
     {
         ArgumentNullException.ThrowIfNull(definition);
         ArgumentNullException.ThrowIfNull(map);
@@ -48,6 +48,7 @@ public sealed class AttachmentSetBinding
         _hostInverseBind = hostMesh?.InverseBind.AsSpan().ToArray();
         var configurationParts = new CoverageConfigurationPart[definition.Parts.Count];
         _parts = new ResolvedPart[definition.Parts.Count];
+        Dictionary<AttachmentMeshRef, IReadOnlyList<GarmentChainJoint>>? pendingChainJoints = null;
         for (int i = 0; i < _parts.Length; i++)
         {
             AttachmentPartDefinition definitionPart = definition.Parts[i];
@@ -56,7 +57,10 @@ public sealed class AttachmentSetBinding
             {
                 SkinnedAttachmentBinding skin = resources is null
                     ? SkinnedAttachmentBinding.FromMesh(skinned, map, hostMesh!, skinnedMeshes!)
-                    : SkinnedAttachmentBinding.FromResources(skinned, map, hostMesh!, resources[i]);
+                    : SkinnedAttachmentBinding.FromResources(skinned, map, hostMesh!, resources[i],
+                        skinned.Motion is ChainMotionDefinition
+                            ? cache!.ReadChainJoints(skinned.Mesh, ref pendingChainJoints)
+                            : []);
                 _parts[i] = new ResolvedPart(skinned.Id, string.Empty, -1, Matrix4x4.Identity, skin);
                 configurationParts[i] = new(skinned.Id, string.Empty, Matrix4x4.Identity, Matrix4x4.Identity);
                 continue;
@@ -79,6 +83,8 @@ public sealed class AttachmentSetBinding
         }
         _worlds = new Matrix4x4[_parts.Length];
         _configurationParts = Array.AsReadOnly(configurationParts);
+        // No mesh revision enters the shared chain cache until every part has bound.
+        if (pendingChainJoints is not null) cache!.PublishChainJoints(pendingChainJoints);
     }
 
     internal IReadOnlyList<CoverageConfigurationPart> ConfigurationParts => _configurationParts;

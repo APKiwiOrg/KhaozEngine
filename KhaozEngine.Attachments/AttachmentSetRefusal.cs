@@ -78,7 +78,7 @@ public enum AttachmentSetRefusal
     /// <summary>Refuses a JSON value shape rejected by a framework accessor, or a covers entry or region run of the wrong shape.</summary>
     JsonValueShapeInvalid,
 
-    /// <summary>Refuses a region-tagged format without a layer, or region tags on a set that has no layer.</summary>
+    /// <summary>Refuses a region-tagged format, tagged parts or covered regions without a layer.</summary>
     LayerMissing,
 
     /// <summary>Refuses a layer that is not one of the defined layers.</summary>
@@ -158,4 +158,28 @@ public enum AttachmentSetRefusal
 
     /// <summary>Refuses motion or colliders in a set with no layer.</summary>
     MotionWithoutLayer,
+
+    /// <summary>Refuses standoff entries in a set with no layer.</summary>
+    StandoffWithoutLayer,
+
+    /// <summary>Refuses lift in a set with no layer, identifying the part and its input index.</summary>
+    LiftWithoutLayer,
+
+    /// <summary>Refuses a blank or absent standoff region name, identifying its input entry.</summary>
+    StandoffRegionNameEmpty,
+
+    /// <summary>Refuses a standoff region name with malformed UTF-16, identifying its input entry and name when decodable.</summary>
+    StandoffRegionNameMalformedUtf16,
+
+    /// <summary>Refuses a repeated standoff region name, identifying the duplicate entry and name.</summary>
+    StandoffRegionDuplicate,
+
+    /// <summary>Refuses a non-finite standoff or one outside zero to 0.25 metres, identifying the input entry and region name.</summary>
+    StandoffValueOutOfRange,
+
+    /// <summary>Refuses more than 128 standoff entries, identifying the supplied count and maximum.</summary>
+    TooManyStandoffEntries,
+
+    /// <summary>Refuses non-finite lift clearance or clearance outside zero to 0.05 metres, identifying the part and its input index.</summary>
+    LiftClearanceOutOfRange,
 }

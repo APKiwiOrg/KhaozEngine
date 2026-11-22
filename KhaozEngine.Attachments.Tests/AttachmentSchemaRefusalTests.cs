@@ -321,6 +321,59 @@ public sealed class AttachmentSchemaRefusalTests
     }
 
     [Theory]
+    [InlineData(AttachmentSetRefusal.StandoffWithoutLayer, "$", "layer")]
+    [InlineData(AttachmentSetRefusal.LiftWithoutLayer, "$", "layer", true)]
+    [InlineData(AttachmentSetRefusal.StandoffRegionNameEmpty, "[0]", null, false, 0, " ")]
+    [InlineData(AttachmentSetRefusal.StandoffRegionNameMalformedUtf16, "[0]", null, false, 0)]
+    [InlineData(AttachmentSetRefusal.StandoffRegionDuplicate, "[0]", null, false, 1, "belly")]
+    [InlineData(AttachmentSetRefusal.StandoffValueOutOfRange, "[1]", null, false, 0, "belly", "-0.001")]
+    [InlineData(AttachmentSetRefusal.StandoffValueOutOfRange, "[1]", null, false, 0, "belly", "0.251")]
+    [InlineData(AttachmentSetRefusal.StandoffValueOutOfRange, "[1]", null, false, 0, "belly", "1e100")]
+    [InlineData(AttachmentSetRefusal.TooManyStandoffEntries, "$.standoff")]
+    [InlineData(AttachmentSetRefusal.LiftClearanceOutOfRange, "$.parts[0].lift.clearance", null, true, -1, null, "-0.001")]
+    [InlineData(AttachmentSetRefusal.LiftClearanceOutOfRange, "$.parts[0].lift.clearance", null, true, -1, null, "0.051")]
+    [InlineData(AttachmentSetRefusal.LiftClearanceOutOfRange, "$.parts[0].lift.clearance", null, true, -1, null, "1e100")]
+    [InlineData(AttachmentSetRefusal.JsonPropertyMissing, "$.parts[0].lift", "clearance", true)]
+    [InlineData(AttachmentSetRefusal.JsonPropertyUnknown, "$.parts[0].lift", "extra", true)]
+    [InlineData(AttachmentSetRefusal.JsonPropertyDuplicate, "$.parts[0].lift", "clearance", true)]
+    public void A_bad_format_5_set_reports_the_rule_and_location(AttachmentSetRefusal reason, string path, string? property = null,
+        bool part = false, int index = -1, string? region = null, string? number = null)
+    {
+        string control = part ? AttachmentFixtures.LiftSetJson(lift: AttachmentFixtures.LiftJson)
+            : AttachmentFixtures.LiftSetJson(standoff: reason == AttachmentSetRefusal.TooManyStandoffEntries ? JsonStandoff(128) : AttachmentFixtures.StandoffJson);
+        string json = reason switch
+        {
+            AttachmentSetRefusal.StandoffWithoutLayer or AttachmentSetRefusal.LiftWithoutLayer => Replace(control, "\"layer\":\"garment\",", ""),
+            AttachmentSetRefusal.StandoffRegionNameEmpty => Replace(control, "\"belly\"", "\" \""),
+            AttachmentSetRefusal.StandoffRegionNameMalformedUtf16 => Replace(control, "\"belly\"", """ "\uD800" """),
+            AttachmentSetRefusal.StandoffRegionDuplicate => Replace(control, """["chest",0.006]""", """["belly",0.006]"""),
+            AttachmentSetRefusal.StandoffValueOutOfRange => Replace(control, "0.008", number!),
+            AttachmentSetRefusal.TooManyStandoffEntries => Replace(control, JsonStandoff(128), JsonStandoff(129)),
+            AttachmentSetRefusal.LiftClearanceOutOfRange => Replace(control, "0.001", number!),
+            AttachmentSetRefusal.JsonPropertyMissing => Replace(control, AttachmentFixtures.LiftJson, "{}"),
+            AttachmentSetRefusal.JsonPropertyUnknown => Replace(control, AttachmentFixtures.LiftJson, """{"clearance":0.001,"extra":0}"""),
+            AttachmentSetRefusal.JsonPropertyDuplicate => Replace(control, AttachmentFixtures.LiftJson, """{"clearance":0.001,"clearance":0}"""),
+            _ => throw new ArgumentOutOfRangeException(nameof(reason)),
+        };
+        const string source = "format5.json";
+        Assert.NotEqual(control, json);
+        var error = Assert.Throws<AttachmentSetDataException>(() => AttachmentSetJson.Parse(Encoding.UTF8.GetBytes(json), source));
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal(index < 0 ? path : $"$.standoff[{index}]{path}", error.JsonPath);
+        Assert.Equal(property, error.PropertyName);
+        Assert.Equal(source, error.SourceName);
+        Assert.Equal(part ? 2u : (uint?)null, error.PartId);
+        Assert.Equal(part ? 0 : (int?)null, error.PartIndex);
+        Assert.Equal(region, error.RegionName);
+        Assert.Equal(index < 0 ? null : (int?)index, error.StandoffIndex);
+        Assert.Equal(reason == AttachmentSetRefusal.TooManyStandoffEntries ? 129 : (int?)null, error.ActualCount);
+        Assert.Equal(reason == AttachmentSetRefusal.TooManyStandoffEntries ? 128 : (int?)null, error.ExpectedCount);
+        Assert.Single(AttachmentSetJson.Parse(Encoding.UTF8.GetBytes(control), source).Parts);
+    }
+
+    static string JsonStandoff(int count) => "[" + string.Join(",", Enumerable.Range(0, count).Select(i => $$"""["region{{i}}",0]""")) + "]";
+
+    [Theory]
     [InlineData(1, "colliders", "$")]
     [InlineData(2, "colliders", "$")]
     [InlineData(3, "colliders", "$")]
@@ -328,7 +381,16 @@ public sealed class AttachmentSchemaRefusalTests
     [InlineData(2, "motion", "$.parts[0]")]
     [InlineData(3, "motion", "$.parts[0]")]
     [InlineData(4, "motion", "$.parts[0]")]
-    public void The_new_members_are_unknown_to_older_formats_and_motion_is_unknown_on_rigid_parts(int version, string member, string path)
+    [InlineData(1, "standoff", "$")]
+    [InlineData(2, "standoff", "$")]
+    [InlineData(3, "standoff", "$")]
+    [InlineData(4, "standoff", "$")]
+    [InlineData(1, "lift", "$.parts[0]")]
+    [InlineData(2, "lift", "$.parts[0]")]
+    [InlineData(3, "lift", "$.parts[0]")]
+    [InlineData(4, "lift", "$.parts[0]")]
+    [InlineData(5, "lift", "$.parts[0]")]
+    public void The_new_members_are_unknown_to_older_formats_and_unsupported_part_kinds(int version, string member, string path)
     {
         string rigid = AttachmentFixtures.PartJson().TrimEnd();
         string taggedRigid = Replace(Replace(rigid, "\"id\":1", "\"id\":1,\"kind\":\"rigid\""), "}", ",\"region\":\"a\"}", lastOnly: true);
@@ -337,18 +399,22 @@ public sealed class AttachmentSchemaRefusalTests
             1 => AttachmentFixtures.SetJson(rigid),
             2 => $$$"""{"formatVersion":2,"parts":[{"id":1,"kind":"skinned","mesh":{"key":"parts/garment.glb","sha256":"{{{AttachmentFixtures.Hash}}}"}}]}""",
             3 => $$"""{"formatVersion":3,"layer":"garment","covers":[],"parts":[{"id":1,"kind":"skinned","mesh":{"key":"parts/garment.glb","sha256":"{{AttachmentFixtures.Hash}}"},"regions":[["a",1]]}]}""",
-            4 => $$"""{"formatVersion":4,"layer":"garment","covers":[],"parts":[{{taggedRigid}}]}""",
+            4 when member == "lift" => AttachmentFixtures.MotionSetJson(),
+            4 or 5 => $$"""{"formatVersion":{{version}},"layer":"garment","covers":[],"parts":[{{taggedRigid}}]}""",
             _ => throw new ArgumentOutOfRangeException(nameof(version)),
         };
-        string json = member == "colliders"
-            ? Replace(control, "\"parts\":", "\"colliders\":[" + AttachmentFixtures.Collider0Json + "],\"parts\":")
-            : Replace(control, "}]", $$$""","motion":{"kind":"chains","chains":[{{{AttachmentFixtures.Chain0Json}}}]}}]""", lastOnly: true);
-        Assert.Single(ParseSet(control).Parts);
+        string json = path == "$"
+            ? Replace(control, "\"parts\":", $"\"{member}\":" + (member == "colliders"
+                ? "[" + AttachmentFixtures.Collider0Json + "]" : AttachmentFixtures.StandoffJson) + ",\"parts\":")
+            : Replace(control, "}]", member == "motion"
+                ? $$$""","motion":{"kind":"chains","chains":[{{{AttachmentFixtures.Chain0Json}}}]}}]"""
+                : $$$""","lift":{{{AttachmentFixtures.LiftJson}}}}]""", lastOnly: true);
         Assert.NotEqual(control, json);
         var error = Assert.Throws<AttachmentSetDataException>(() => ParseSet(json));
         Assert.Equal(AttachmentSetRefusal.JsonPropertyUnknown, error.Reason);
         Assert.Equal(path, error.JsonPath);
         Assert.Equal(member, error.PropertyName);
+        Assert.Single(ParseSet(control).Parts);
     }
 
     [Theory]

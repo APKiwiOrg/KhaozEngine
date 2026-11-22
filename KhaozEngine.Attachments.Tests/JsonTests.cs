@@ -73,7 +73,7 @@ public class JsonTests
         Assert.Equal(AttachmentFixtures.Colliders(), set.Colliders);
         byte[] written = AttachmentSetJson.Write(set);
         Assert.Equal(canonical, Encoding.UTF8.GetString(written));
-        Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(written)), set.SemanticSha256);
+        Assert.Equal("f84ac02728c8e0db49f0cb6ea74a442d87b247e8ec81734beaa5d09417b052d5", set.SemanticSha256);
     }
 
     [Theory]
@@ -143,6 +143,77 @@ public class JsonTests
         Assert.Equal(motion, root.GetProperty("parts")[0].TryGetProperty("motion", out JsonElement partMotion));
         if (motion) Assert.False(partMotion.TryGetProperty("links", out _));
         Assert.Equal(set.SemanticSha256, AttachmentSetJson.Parse(written, "round-trip.json").SemanticSha256);
+    }
+
+    [Theory]
+    [InlineData(false, null, null, 3)]
+    [InlineData(true, null, null, 4)]
+    [InlineData(false, "[]", null, 3)]
+    [InlineData(false, AttachmentFixtures.StandoffJson, null, 5)]
+    [InlineData(false, null, AttachmentFixtures.LiftJson, 5)]
+    [InlineData(true, null, AttachmentFixtures.LiftJson, 5)]
+    public void Format_5_writes_the_lowest_format_that_preserves_the_definition(bool chains, string? standoff, string? lift, int expectedVersion)
+    {
+        AttachmentSetDefinition set = Parse(AttachmentFixtures.LiftSetJson(standoff, lift, chains));
+
+        Assert.Equal(expectedVersion, WrittenVersion(set));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Format_5_round_trips_standoff_or_a_lifting_part_with_chains(bool chains)
+    {
+        string json = chains ? AttachmentFixtures.LiftSetJson(lift: AttachmentFixtures.LiftJson, chains: true)
+            : AttachmentFixtures.LiftSetJson(standoff: AttachmentFixtures.StandoffJson);
+        AttachmentSetDefinition parsed = Parse(json);
+        var part = Assert.IsType<SkinnedAttachmentPartDefinition>(Assert.Single(parsed.Parts));
+        if (chains)
+        {
+            Assert.Equal(AttachmentLayer.Armour, parsed.Layer);
+            Assert.Equal(new PartLiftDefinition(0.001f), part.Lift);
+            Assert.Equal(AttachmentFixtures.Motion(), part.Motion);
+            Assert.Empty(parsed.Standoff);
+        }
+        else
+        {
+            Assert.Equal(AttachmentLayer.Garment, parsed.Layer);
+            Assert.Equal([new RegionStandoff("belly", 0.008f), new RegionStandoff("chest", 0.006f)], parsed.Standoff);
+            Assert.Equal(["chest"], parsed.Covers);
+            Assert.Null(part.Lift);
+        }
+
+        byte[] written = AttachmentSetJson.Write(parsed);
+        Assert.Equal(Encoding.UTF8.GetBytes(json), written);
+        AttachmentSetDefinition roundTrip = AttachmentSetJson.Parse(written, "round-trip.json");
+        Assert.Equal(parsed.SemanticSha256, roundTrip.SemanticSha256);
+        Assert.Equal(part, Assert.Single(roundTrip.Parts));
+        Assert.Equal(parsed.Standoff, roundTrip.Standoff);
+    }
+
+    [Theory]
+    [InlineData("""[["chest",0.006],["belly",0]]""", """{"clearance":0}""")]
+    [InlineData("""[["belly",-0],["chest",0.006]]""", """{"clearance":-0}""")]
+    public void Format_5_canonicalizes_standoff_order_and_signed_zero(string standoff, string lift)
+    {
+        string canonical = AttachmentFixtures.LiftSetJson("""[["belly",0],["chest",0.006]]""", """{"clearance":0}""");
+        string alternate = AttachmentFixtures.LiftSetJson(standoff, lift);
+        Assert.NotEqual(canonical, alternate);
+
+        AttachmentSetDefinition set = Parse(alternate);
+
+        Assert.Equal(Encoding.UTF8.GetBytes(canonical), AttachmentSetJson.Write(set));
+        Assert.Equal(Parse(canonical).SemanticSha256, set.SemanticSha256);
+    }
+
+    [Theory]
+    [InlineData("0.008", "0.009")]
+    [InlineData("0.001", "0.002")]
+    public void Format_5_revision_tracks_standoff_and_clearance(string original, string changed)
+    {
+        string control = AttachmentFixtures.LiftSetJson(AttachmentFixtures.StandoffJson, AttachmentFixtures.LiftJson);
+
+        Assert.NotEqual(Parse(control).SemanticSha256, Parse(control.Replace(original, changed, StringComparison.Ordinal)).SemanticSha256);
     }
 
     [Fact]
@@ -403,7 +474,7 @@ public class JsonTests
             "unknown-mesh" => V2(skinned.Replace("\"key\":", "\"extra\":0,\"key\":", StringComparison.Ordinal)),
             "duplicate-id-across-kinds" => V2(rigid + "," + skinned.Replace("\"id\":2", "\"id\":1", StringComparison.Ordinal)),
             "missing-mesh" => V2("{\"id\":1,\"kind\":\"skinned\"}"),
-            "unsupported-version" => V2(skinned).Replace("\"formatVersion\":2", "\"formatVersion\":5", StringComparison.Ordinal),
+            "unsupported-version" => V2(skinned).Replace("\"formatVersion\":2", "\"formatVersion\":6", StringComparison.Ordinal),
             "zero-id" => V2(skinned.Replace("\"id\":2", "\"id\":0", StringComparison.Ordinal)),
             "conflicting-hashes" => V2(rigid + "," + skinned.Replace(AttachmentFixtures.Hash, new string('b', 64), StringComparison.Ordinal)),
             _ => throw new ArgumentException(name),

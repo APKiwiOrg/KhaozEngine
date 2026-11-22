@@ -11,8 +11,11 @@ public sealed class AttachmentSetDefinition
     /// <summary>The maximum number of colliders a worn set can add.</summary>
     public const int MaxColliders = 8;
 
+    /// <summary>The maximum number of regions a worn set can declare standoff for.</summary>
+    public const int MaxStandoffEntries = 128;
+
     /// <summary>Admit a set with no layer, which formats 1 and 2 express. Its parts carry no region tags.</summary>
-    public AttachmentSetDefinition(IEnumerable<AttachmentPartDefinition> parts) : this(parts, null, null, [])
+    public AttachmentSetDefinition(IEnumerable<AttachmentPartDefinition> parts) : this(parts, null, null, [], [])
     {
     }
 
@@ -21,23 +24,28 @@ public sealed class AttachmentSetDefinition
     /// rigid part names its region and every skinned part tags its triangles with region runs. Format 3 expresses it.
     /// </summary>
     public AttachmentSetDefinition(IEnumerable<AttachmentPartDefinition> parts, AttachmentLayer layer, IEnumerable<string> covers)
-        : this(parts, (AttachmentLayer?)layer, covers, [])
+        : this(parts, layer, covers, [], [])
     {
     }
 
     /// <summary>Admit a worn set that adds the given colliders while worn.</summary>
     public AttachmentSetDefinition(IEnumerable<AttachmentPartDefinition> parts, AttachmentLayer layer, IEnumerable<string> covers,
-        IEnumerable<ColliderDefinition> colliders) : this(parts, (AttachmentLayer?)layer, covers, colliders)
+        IEnumerable<ColliderDefinition> colliders) : this(parts, layer, covers, colliders, [])
     {
     }
 
-    AttachmentSetDefinition(IEnumerable<AttachmentPartDefinition> parts, AttachmentLayer? layer, IEnumerable<string>? covers,
-        IEnumerable<ColliderDefinition> colliders)
+    /// <summary>Admit a worn set with the given layer, covered regions, colliders and standoff.</summary>
+    /// <remarks>A set without a layer requires all three lists to be empty. Its parts carry no region tags, motion or lift.</remarks>
+    public AttachmentSetDefinition(IEnumerable<AttachmentPartDefinition> parts, AttachmentLayer? layer, IEnumerable<string>? covers,
+        IEnumerable<ColliderDefinition> colliders, IEnumerable<RegionStandoff> standoff)
     {
         ArgumentNullException.ThrowIfNull(parts);
         AttachmentPartDefinition[] owned = parts.ToArray();
         if (owned.Length == 0)
             throw new AttachmentSetArgumentException(AttachmentSetRefusal.PartsEmpty, "An attachment set must contain parts.", nameof(parts)) { PartCount = owned.Length };
+        Standoff = AttachmentSetLift.OwnStandoff(standoff, layer is not null);
+        if (layer is null && covers?.Any() == true)
+            throw new AttachmentSetArgumentException(AttachmentSetRefusal.LayerMissing, "A set with covered regions requires a layer.", nameof(covers));
         string[] coveredRegions = layer is { } admittedLayer ? AttachmentSetRegions.Covers(admittedLayer, covers!) : [];
 
         var ids = new HashSet<uint>();
@@ -78,13 +86,14 @@ public sealed class AttachmentSetDefinition
                 throw new AttachmentSetArgumentException(AttachmentSetRefusal.MeshHashConflict, $"{context}: mesh '{part.Mesh.Key}' has conflicting hashes.", nameof(parts))
                 { PartId = part.Id, MeshKey = part.Mesh.Key, DeclaredHash = part.Mesh.Sha256, ExistingHash = existing.Sha256 };
             meshes[part.Mesh.Key] = part.Mesh;
+            AttachmentSetLift.CheckPart(part, layer is not null, partIndex);
             part = AttachmentSetMotion.Part(part, layer is not null, partIndex);
             owned[partIndex] = AttachmentSetRegions.Part(part, layer is not null, nameof(parts));
         }
         Array.Sort(owned, (left, right) => left.Id.CompareTo(right.Id));
         Layer = layer;
         Covers = Array.AsReadOnly(coveredRegions);
-        Colliders = AttachmentSetMotion.Colliders(colliders);
+        Colliders = AttachmentSetMotion.Colliders(colliders, layer is not null);
         Parts = Array.AsReadOnly(owned);
         Meshes = Array.AsReadOnly(meshes.Values.OrderBy(mesh => mesh.Key, StringComparer.Ordinal).ToArray());
         SemanticSha256 = Convert.ToHexStringLower(SHA256.HashData(AttachmentSetJson.Write(this)));
@@ -98,6 +107,9 @@ public sealed class AttachmentSetDefinition
 
     /// <summary>The set's colliders, in canonical order by ordinal joint name, start, end and radius.</summary>
     public IReadOnlyList<ColliderDefinition> Colliders { get; }
+
+    /// <summary>The set's owned standoff entries, in ordinal region order. Empty when no standoff is declared.</summary>
+    public IReadOnlyList<RegionStandoff> Standoff { get; }
 
     public IReadOnlyList<AttachmentPartDefinition> Parts { get; }
     public IReadOnlyList<AttachmentMeshRef> Meshes { get; }

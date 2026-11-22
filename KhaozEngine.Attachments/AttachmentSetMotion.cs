@@ -88,13 +88,16 @@ internal static class AttachmentSetMotion
         return owned.MoveToImmutable();
     }
 
-    internal static ImmutableArray<ColliderDefinition> Colliders(IEnumerable<ColliderDefinition> colliders)
+    internal static ImmutableArray<ColliderDefinition> Colliders(IEnumerable<ColliderDefinition> colliders, bool layered)
     {
         ArgumentNullException.ThrowIfNull(colliders);
         if (colliders.TryGetNonEnumeratedCount(out int count)) CheckColliderCount(count);
         // An uncounted source can be arbitrarily long. Admit at most the first item beyond the cap.
         ColliderDefinition[] owned = colliders.Take(AttachmentSetDefinition.MaxColliders + 1).ToArray();
         CheckColliderCount(owned.Length);
+        if (!layered && owned.Length > 0)
+            throw new AttachmentSetArgumentException(AttachmentSetRefusal.MotionWithoutLayer,
+                "A set with colliders requires a layer.", nameof(colliders)) { JsonPath = "$" };
         for (int index = 0; index < owned.Length; index++)
         {
             ColliderDefinition collider = owned[index];

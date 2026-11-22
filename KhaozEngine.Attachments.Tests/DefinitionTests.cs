@@ -311,6 +311,93 @@ public class DefinitionTests
         Assert.Equal(before, AttachmentSetJson.Write(set));
     }
 
+    [Fact]
+    public void Skinned_part_value_equality_includes_lift_clearance()
+    {
+        var part = AttachmentFixtures.TaggedSkinned() with { Lift = new(0.001f) };
+        SkinnedAttachmentPartDefinition same = part with { Lift = new(0.001f) };
+        SkinnedAttachmentPartDefinition changed = part with { Lift = new(0.002f) };
+
+        Assert.Equal(part, same);
+        Assert.Equal(part.GetHashCode(), same.GetHashCode());
+        Assert.NotEqual(part, changed);
+        Assert.NotEqual(part.GetHashCode(), changed.GetHashCode());
+        Assert.NotEqual(part, part with { Lift = null });
+    }
+
+    [Fact]
+    public void A_worn_set_owns_standoff_in_ordinal_region_order()
+    {
+        RegionStandoff[] entries = [new("belly", 0), new("Belly", 0.25f)];
+        var set = new AttachmentSetDefinition([AttachmentFixtures.TaggedSkinned()], AttachmentLayer.Garment, [], [], entries);
+        byte[] before = AttachmentSetJson.Write(set);
+
+        entries[0] = new("chest", 0.008f);
+
+        Assert.Equal([new RegionStandoff("Belly", 0.25f), new RegionStandoff("belly", 0)], set.Standoff);
+        Assert.Empty(set.Covers);
+        Assert.Equal(before, AttachmentSetJson.Write(set));
+        Assert.Throws<NotSupportedException>(() => ((IList<RegionStandoff>)set.Standoff).Clear());
+    }
+
+    [Theory]
+    [InlineData(AttachmentSetRefusal.StandoffWithoutLayer)]
+    [InlineData(AttachmentSetRefusal.LiftWithoutLayer)]
+    [InlineData(AttachmentSetRefusal.StandoffRegionNameEmpty, 0, "")]
+    [InlineData(AttachmentSetRefusal.StandoffRegionNameMalformedUtf16, 0)]
+    [InlineData(AttachmentSetRefusal.StandoffRegionDuplicate, 1, "belly")]
+    [InlineData(AttachmentSetRefusal.StandoffValueOutOfRange, 0, "belly", -0.001f)]
+    [InlineData(AttachmentSetRefusal.StandoffValueOutOfRange, 0, "belly", 0.251f)]
+    [InlineData(AttachmentSetRefusal.StandoffValueOutOfRange, 0, "belly", float.PositiveInfinity)]
+    [InlineData(AttachmentSetRefusal.TooManyStandoffEntries)]
+    [InlineData(AttachmentSetRefusal.LiftClearanceOutOfRange, -1, null, -0.001f)]
+    [InlineData(AttachmentSetRefusal.LiftClearanceOutOfRange, -1, null, 0.051f)]
+    [InlineData(AttachmentSetRefusal.LiftClearanceOutOfRange, -1, null, float.NaN)]
+    public void Invalid_lift_definitions_identify_the_rule_and_input(AttachmentSetRefusal reason,
+        int entry = -1, string? region = null, float value = 0)
+    {
+        bool lift = reason is AttachmentSetRefusal.LiftWithoutLayer or AttachmentSetRefusal.LiftClearanceOutOfRange;
+        var part = AttachmentFixtures.TaggedSkinned() with { Lift = lift ? new(0.05f) : null };
+        RegionStandoff[] standoff = reason == AttachmentSetRefusal.TooManyStandoffEntries
+            ? Enumerable.Range(0, 128).Select(i => new RegionStandoff($"region{i}", 0)).ToArray()
+            : lift ? [] : [new("belly", 0.25f), new("chest", 0.008f)];
+        AttachmentLayer? layer = AttachmentLayer.Armour;
+        Assert.Single(new AttachmentSetDefinition([part], layer, [], [], standoff).Parts);
+
+        if (reason == AttachmentSetRefusal.StandoffRegionNameMalformedUtf16) region = "\uD800";
+        switch (reason)
+        {
+            case AttachmentSetRefusal.StandoffWithoutLayer:
+            case AttachmentSetRefusal.LiftWithoutLayer:
+                layer = null;
+                break;
+            case AttachmentSetRefusal.StandoffRegionNameEmpty:
+            case AttachmentSetRefusal.StandoffRegionNameMalformedUtf16:
+            case AttachmentSetRefusal.StandoffRegionDuplicate:
+                standoff[entry] = standoff[entry] with { Region = region! };
+                break;
+            case AttachmentSetRefusal.StandoffValueOutOfRange:
+                standoff[entry] = standoff[entry] with { Metres = value };
+                break;
+            case AttachmentSetRefusal.TooManyStandoffEntries:
+                standoff = [.. standoff, new("overCap", 0)];
+                break;
+            case AttachmentSetRefusal.LiftClearanceOutOfRange:
+                part = part with { Lift = new(value) };
+                break;
+        }
+
+        var error = Assert.Throws<AttachmentSetArgumentException>(() => new AttachmentSetDefinition([part], layer, [], [], standoff));
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal(lift ? "parts" : "standoff", error.ParamName);
+        Assert.Equal(lift ? 2u : (uint?)null, error.PartId);
+        Assert.Equal(lift ? 0 : (int?)null, error.PartIndex);
+        Assert.Equal(entry < 0 ? null : (int?)entry, error.StandoffIndex);
+        Assert.Equal(region, error.RegionName);
+        Assert.Equal(reason == AttachmentSetRefusal.TooManyStandoffEntries ? 129 : (int?)null, error.ActualCount);
+        Assert.Equal(reason == AttachmentSetRefusal.TooManyStandoffEntries ? 128 : (int?)null, error.ExpectedCount);
+    }
+
     [Theory]
     [InlineData(AttachmentSetRefusal.MotionKindUnsupported)]
     [InlineData(AttachmentSetRefusal.ChainsEmpty)]
@@ -485,6 +572,20 @@ internal static class AttachmentFixtures
     internal const string Chain2Json = """{"joints":["rear0"],"tip":[0,-0.125,0],"stiffness":0,"damping":0,"gravity":0,"trail":0,"angleLimit":0.5,"radius":0}""";
     internal const string Collider0Json = """{"joint":"legL","start":[0,0,0],"end":[0,1,0],"radius":0.125}""";
     internal const string Collider1Json = """{"joint":"upper","start":[0,1,0],"end":[0,1,0],"radius":0.25}""";
+
+    internal const string StandoffJson = """[["belly",0.008],["chest",0.006]]""";
+    internal const string LiftJson = """{"clearance":0.001}""";
+
+    internal static string LiftSetJson(string? standoff = null, string? lift = null, bool chains = false)
+    {
+        string set = chains ? MotionSetJson().Replace("\"formatVersion\":4,\"layer\":\"garment\"", "\"formatVersion\":5,\"layer\":\"armour\"", StringComparison.Ordinal)
+            : $$$"""{"formatVersion":5,"layer":"garment","covers":["chest"],"parts":[{"id":2,"kind":"skinned","mesh":{"key":"parts/panel.glb","sha256":"{{{Hash}}}"},"regions":[["chest",2]]}]}""";
+        if (standoff is not null)
+            set = set.Insert(set.IndexOf("\"parts\":", StringComparison.Ordinal), $"\"standoff\":{standoff},");
+        if (lift is not null)
+            set = set.Insert(set.LastIndexOf("}]", StringComparison.Ordinal), $""","lift":{lift}""");
+        return set;
+    }
 
     internal static string MotionSetJson() =>
         $$$"""{"formatVersion":4,"layer":"garment","covers":[],"colliders":[{{{Collider0Json}}},{{{Collider1Json}}}],"parts":[{"id":2,"kind":"skinned","mesh":{"key":"parts/garment.glb","sha256":"{{{Hash}}}"},"regions":[["a",4]],"motion":{"kind":"chains","chains":[{{{Chain0Json}}},{{{Chain1Json}}},{{{Chain2Json}}}],"links":[[0,1],[1,2]]}}]}""";

@@ -20,6 +20,9 @@ public static class AttachmentSetJson
     /// <summary>The format of a worn set with skinned part motion or colliders.</summary>
     public const int MotionFormatVersion = 4;
 
+    /// <summary>The format of a worn set with region standoff or skinned part lift.</summary>
+    public const int LiftFormatVersion = 5;
+
     public static AttachmentSetDefinition Parse(ReadOnlyMemory<byte> utf8, string sourceName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourceName);
@@ -27,23 +30,26 @@ public static class AttachmentSetJson
         {
             using JsonDocument document = JsonDocument.Parse(utf8, new JsonDocumentOptions());
             JsonElement root = document.RootElement;
-            Members(root, "root", "$", "formatVersion", "layer", "covers", "colliders", "parts");
+            Members(root, "root", "$", "formatVersion", "layer", "covers", "colliders", "standoff", "parts");
             JsonElement version = Required(root, "formatVersion", "root", "$");
             if (version.ValueKind != JsonValueKind.Number || !version.TryGetInt32(out int number)
-                || number is not (RigidOnlyFormatVersion or CurrentFormatVersion or RegionsFormatVersion or MotionFormatVersion))
+                || number is not (RigidOnlyFormatVersion or CurrentFormatVersion or RegionsFormatVersion or MotionFormatVersion or LiftFormatVersion))
                 throw new AttachmentSetDataException(AttachmentSetRefusal.FormatVersionUnsupported, "root: unsupported formatVersion.")
                 {
                     JsonPath = "$.formatVersion",
                     FormatVersion = version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out int declaredVersion) ? declaredVersion : null,
                 };
-            bool motionFormat = number == MotionFormatVersion;
-            bool tagged = number is RegionsFormatVersion or MotionFormatVersion;
+            bool liftFormat = number == LiftFormatVersion;
+            bool motionFormat = number >= MotionFormatVersion;
+            bool tagged = number >= RegionsFormatVersion;
             if (!tagged) Members(root, "root", "$", "formatVersion", "parts");
             else if (!motionFormat) Members(root, "root", "$", "formatVersion", "layer", "covers", "parts");
-            // A missing layer in format 4 has a specific refusal when motion or colliders require it.
+            else if (!liftFormat) Members(root, "root", "$", "formatVersion", "layer", "covers", "colliders", "parts");
+            // A missing layer in format 4 or 5 has a specific refusal when an addition requires it.
             AttachmentLayer? layer = tagged && (!motionFormat || root.TryGetProperty("layer", out _)) ? ReadLayer(root) : null;
             string[]? covers = tagged ? ReadCovers(root) : null;
             ColliderDefinition[] colliders = motionFormat ? AttachmentSetMotionJson.ReadColliders(root) : [];
+            RegionStandoff[] standoff = liftFormat ? AttachmentSetLiftJson.ReadStandoff(root) : [];
             JsonElement array = Required(root, "parts", "root", "$");
             if (array.ValueKind != JsonValueKind.Array)
                 throw new AttachmentSetDataException(AttachmentSetRefusal.PartsNotArray, "root: parts must be an array.") { JsonPath = "$.parts" };
@@ -59,7 +65,8 @@ public static class AttachmentSetJson
                     Members(item, context, jsonPath, "id", "mesh", "joint", "local");
                 else
                 {
-                    if (motionFormat) Members(item, context, jsonPath, "id", "kind", "mesh", "joint", "local", "region", "regions", "motion");
+                    if (liftFormat) Members(item, context, jsonPath, "id", "kind", "mesh", "joint", "local", "region", "regions", "motion", "lift");
+                    else if (motionFormat) Members(item, context, jsonPath, "id", "kind", "mesh", "joint", "local", "region", "regions", "motion");
                     else if (tagged) Members(item, context, jsonPath, "id", "kind", "mesh", "joint", "local", "region", "regions");
                     else Members(item, context, jsonPath, "id", "kind", "mesh", "joint", "local");
                     string kind = Text(item, "kind", context, jsonPath);
@@ -72,7 +79,8 @@ public static class AttachmentSetJson
                     };
                     if (!rigid)
                     {
-                        if (motionFormat) Members(item, context, jsonPath, "id", "kind", "mesh", "regions", "motion");
+                        if (liftFormat) Members(item, context, jsonPath, "id", "kind", "mesh", "regions", "motion", "lift");
+                        else if (motionFormat) Members(item, context, jsonPath, "id", "kind", "mesh", "regions", "motion");
                         else Members(item, context, jsonPath, tagged ? ["id", "kind", "mesh", "regions"] : ["id", "kind", "mesh"]);
                     }
                     else if (tagged) Members(item, context, jsonPath, "id", "kind", "mesh", "joint", "local", "region");
@@ -91,6 +99,7 @@ public static class AttachmentSetJson
                     {
                         Regions = tagged ? ReadRuns(item, id, jsonPath) : [],
                         Motion = motionFormat ? AttachmentSetMotionJson.ReadMotion(item, id, partIndex) : null,
+                        Lift = liftFormat ? AttachmentSetLiftJson.ReadLift(item, id, partIndex) : null,
                     });
                     continue;
                 }
@@ -124,10 +133,11 @@ public static class AttachmentSetJson
             }
             if (motionFormat && layer is null)
             {
+                if (liftFormat) AttachmentSetLiftJson.RequireLayerForAdditions(parts, standoff);
                 AttachmentSetMotionJson.RequireLayerForAdditions(parts, colliders);
                 layer = ReadLayer(root);
             }
-            return layer is { } setLayer ? new AttachmentSetDefinition(parts, setLayer, covers!, colliders) : new AttachmentSetDefinition(parts);
+            return new AttachmentSetDefinition(parts, layer, covers, colliders, standoff);
         }
         catch (MalformedDataException error)
         {
@@ -152,13 +162,14 @@ public static class AttachmentSetJson
         ArgumentNullException.ThrowIfNull(definition);
         // The lowest format that expresses the definition, so a set without a layer keeps its format 1 or 2 bytes and hash.
         bool tagged = definition.Layer is not null;
-        bool hasMotionAdditions = tagged && AttachmentSetMotionJson.HasAdditions(definition);
+        bool hasLiftAdditions = tagged && AttachmentSetLiftJson.HasAdditions(definition);
+        bool hasMotionAdditions = tagged && !hasLiftAdditions && AttachmentSetMotionJson.HasAdditions(definition);
         bool rigidOnly = !tagged && definition.Parts.All(part => part is RigidAttachmentPartDefinition);
         using var stream = new MemoryStream();
         using (var writer = new Utf8JsonWriter(stream))
         {
             writer.WriteStartObject();
-            int format = hasMotionAdditions ? MotionFormatVersion : tagged ? RegionsFormatVersion
+            int format = hasLiftAdditions ? LiftFormatVersion : hasMotionAdditions ? MotionFormatVersion : tagged ? RegionsFormatVersion
                 : rigidOnly ? RigidOnlyFormatVersion : CurrentFormatVersion;
             writer.WriteNumber("formatVersion", format);
             if (definition.Layer is { } layer)
@@ -169,6 +180,7 @@ public static class AttachmentSetJson
                 writer.WriteEndArray();
             }
             AttachmentSetMotionJson.WriteColliders(writer, definition.Colliders);
+            AttachmentSetLiftJson.WriteStandoff(writer, definition.Standoff);
             writer.WriteStartArray("parts");
             foreach (AttachmentPartDefinition part in definition.Parts)
             {
@@ -201,6 +213,7 @@ public static class AttachmentSetJson
                     }
                     writer.WriteEndArray();
                     AttachmentSetMotionJson.WriteMotion(writer, skinned.Motion);
+                    AttachmentSetLiftJson.WriteLift(writer, skinned.Lift);
                 }
                 writer.WriteEndObject();
             }
@@ -297,4 +310,13 @@ public static class AttachmentSetJson
             { JsonPath = AttachmentJsonPath.Property(jsonPath, name), PropertyName = name };
         return member.GetString()!;
     }
+
+    internal static AttachmentSetRefusal StrictReason(StrictAttachmentJson.Fault fault) => fault switch
+    {
+        StrictAttachmentJson.Fault.UnknownProperty => AttachmentSetRefusal.JsonPropertyUnknown,
+        StrictAttachmentJson.Fault.DuplicateProperty => AttachmentSetRefusal.JsonPropertyDuplicate,
+        StrictAttachmentJson.Fault.MissingProperty => AttachmentSetRefusal.JsonPropertyMissing,
+        StrictAttachmentJson.Fault.ValueShape => AttachmentSetRefusal.JsonValueShapeInvalid,
+        _ => throw new ArgumentOutOfRangeException(nameof(fault)),
+    };
 }

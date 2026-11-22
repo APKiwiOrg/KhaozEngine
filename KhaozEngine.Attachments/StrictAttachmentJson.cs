@@ -33,6 +33,14 @@ internal static class StrictAttachmentJson
         ? value.GetString()!
         : throw refuse(Fault.ValueShape, path, $"{path}: expected a string.");
 
+    internal static float Number(JsonElement value, string path, Refuse refuse)
+    {
+        if (value.ValueKind != JsonValueKind.Number)
+            throw refuse(Fault.ValueShape, path, $"{path}: expected a number.");
+        // Domain validation locates numeric tokens that overflow float.
+        return value.TryGetSingle(out float number) ? number : float.NaN;
+    }
+
     internal static JsonElement ArrayValue(JsonElement value, string path, Refuse refuse) => value.ValueKind == JsonValueKind.Array
         ? value
         : throw refuse(Fault.ValueShape, path, $"{path}: expected an array.");

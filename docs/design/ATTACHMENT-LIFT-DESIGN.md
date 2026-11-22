@@ -310,3 +310,10 @@ break.
 ## Signatures corrected against the code
 
 Each task records here any shape the code required that differs from this note, keeping the planned behaviour.
+
+- Worn set format. `AttachmentSetDefinition(parts, layer, covers, colliders, standoff)` is a new overload.
+  The existing constructors keep their signatures. The new overload accepts a nullable layer so the
+  constructor reports standoff or lift without a layer through the same refusal family as the JSON reader.
+  `SkinnedAttachmentPartDefinition.Lift` is an init-only property, preserving the positional constructor and
+  deconstruction. Standoff entry refusals carry `StandoffIndex` in input order and `RegionName` when available.
+  An unpaired escaped surrogate has no decoded region name, so its JSON refusal carries the index and path.

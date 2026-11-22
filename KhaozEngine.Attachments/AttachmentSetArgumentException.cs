@@ -42,7 +42,7 @@ public sealed class AttachmentSetArgumentException : ArgumentException, IAttachm
     /// <summary>The undefined layer value given to the constructor.</summary>
     public AttachmentLayer? Layer { get; init; }
 
-    /// <summary>The refused covered or part region name.</summary>
+    /// <summary>The refused covered, part or standoff region name when available.</summary>
     public string? RegionName { get; init; }
 
     /// <summary>The zero-based input index of the refused covered region.</summary>
@@ -66,13 +66,16 @@ public sealed class AttachmentSetArgumentException : ArgumentException, IAttachm
     /// <summary>The zero-based input collider index within the refused set.</summary>
     public int? ColliderIndex { get; init; }
 
+    /// <summary>The zero-based input index of the refused standoff entry.</summary>
+    public int? StandoffIndex { get; init; }
+
     /// <summary>The JSON member name of the refused chain setting.</summary>
     public string? SettingName { get; init; }
 
-    /// <summary>The supplied item count for a motion or collider count refusal.</summary>
+    /// <summary>The supplied item count for a motion, collider or standoff count refusal.</summary>
     public int? ActualCount { get; init; }
 
-    /// <summary>The required minimum or allowed maximum for a motion or collider count refusal.</summary>
+    /// <summary>The required minimum or allowed maximum for a motion, collider or standoff count refusal.</summary>
     public int? ExpectedCount { get; init; }
 
     internal string? JsonPath { get; init; }
@@ -87,6 +90,7 @@ public sealed class AttachmentSetArgumentException : ArgumentException, IAttachm
         JointIndex = JointIndex,
         LinkIndex = LinkIndex,
         ColliderIndex = ColliderIndex,
+        StandoffIndex = StandoffIndex,
         SettingName = SettingName,
         ParamName = ParamName,
         PartCount = PartCount,

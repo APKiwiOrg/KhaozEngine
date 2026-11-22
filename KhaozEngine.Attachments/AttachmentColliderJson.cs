@@ -24,7 +24,7 @@ internal static class AttachmentColliderJson
         }
         Vector3 start = ReadPoint(StrictAttachmentJson.Required(value, "start", path, refuse), path + ".start", refuse);
         Vector3 end = ReadPoint(StrictAttachmentJson.Required(value, "end", path, refuse), path + ".end", refuse);
-        float radius = ReadNumber(StrictAttachmentJson.Required(value, "radius", path, refuse), path + ".radius", refuse);
+        float radius = StrictAttachmentJson.Number(StrictAttachmentJson.Required(value, "radius", path, refuse), path + ".radius", refuse);
         return new ColliderDefinition(joint, start, end, radius);
     }
 
@@ -33,16 +33,8 @@ internal static class AttachmentColliderJson
         if (value.ValueKind != JsonValueKind.Array || value.GetArrayLength() != 3)
             throw refuse(StrictAttachmentJson.Fault.ValueShape, path, $"{path}: expected three numbers.");
 
-        return new Vector3(ReadNumber(value[0], path + "[0]", refuse),
-            ReadNumber(value[1], path + "[1]", refuse), ReadNumber(value[2], path + "[2]", refuse));
-    }
-
-    internal static float ReadNumber(JsonElement value, string path, StrictAttachmentJson.Refuse refuse)
-    {
-        if (value.ValueKind != JsonValueKind.Number)
-            throw refuse(StrictAttachmentJson.Fault.ValueShape, path, $"{path}: expected a number.");
-        // Domain validation locates numeric tokens that overflow float.
-        return value.TryGetSingle(out float number) ? number : float.NaN;
+        return new Vector3(StrictAttachmentJson.Number(value[0], path + "[0]", refuse),
+            StrictAttachmentJson.Number(value[1], path + "[1]", refuse), StrictAttachmentJson.Number(value[2], path + "[2]", refuse));
     }
 
     internal static void Write(Utf8JsonWriter writer, ColliderDefinition collider)

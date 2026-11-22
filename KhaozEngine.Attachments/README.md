@@ -159,6 +159,22 @@ It refuses a format 4 set with a root `colliders` member, even an empty array, a
 `colliders`, and any other format 4 set as `FormatVersionUnsupported`. Earlier readers refuse the first unfamiliar root member, which is `layer` in canonical
 bytes. Move every reader to 24.5.0 or later before publishing format 4.
 
+### Format 5
+
+Format 5 adds optional root `standoff` and optional skinned part `lift` to format 4. A set with either needs a
+layer. Formats 1 to 4 refuse these members as unknown, and rigid parts refuse `lift` in every format.
+
+- `"standoff":[["belly",0.008],["chest",0.006]]` declares each region's outer surface height above the bare skin
+  at rest, in metres. A set can declare at most 128 unique, nonblank region names with well-formed UTF-16. Each
+  height must be finite and between 0 and 0.25 m inclusive. A region can have standoff without being in `covers`.
+- `"lift":{"clearance":0.001}` declares the gap a skinned part keeps above lower layers, in metres. The
+  clearance member is required and must be finite and between 0 and 0.05 m inclusive. A skinned part can
+  declare both `motion` and `lift`.
+
+Use `new AttachmentSetDefinition(parts, layer, covers, colliders, standoff)` with `RegionStandoff` entries to
+declare standoff. The set owns the entries and exposes them in ordinal region name order. Set the skinned part's
+`Lift` to a `PartLiftDefinition` to declare lift. `AttachmentSetJson.LiftFormatVersion` is 5.
+
 ### Canonical set bytes
 
 The example hash is a placeholder. Hash the exact self-contained GLB bytes. `local` contains 16
@@ -170,10 +186,11 @@ every format's root members before the version is read, and against the declared
 document with a `layer` and no `formatVersion` is therefore refused as `JsonPropertyMissing` for the version,
 not as `JsonPropertyUnknown` for the layer, because the version decides what every other member means.
 
-`Write(definition)` emits the lowest format that expresses the definition. A set with motion or colliders writes
-format 4. A layered set with neither writes format 3, even when all its parts are rigid. A set without a layer
-writes format 1 if all its parts are rigid, even after parsing format 2, and format 2 if it contains skinned
-parts. Existing canonical format 1 to 3 bytes and semantic hashes stay unchanged.
+`Write(definition)` emits the lowest format that expresses the definition. A set with standoff or lift writes
+format 5. A set whose only additions are motion or colliders writes format 4. A layered set without those
+additions writes format 3, even when all its parts are rigid. A set without a layer writes format 1 if all its parts
+are rigid, even after parsing format 2, and format 2 if it contains skinned parts. Existing canonical format 1 to 4
+bytes and semantic hashes stay unchanged.
 
 Property order is `id, mesh, joint, local` in format 1 and `id, kind, mesh` followed by rigid `joint, local` in
 format 2. Format 3 writes `formatVersion, layer, covers, parts` at the root and appends `region` to a rigid part
@@ -181,10 +198,12 @@ and `regions` to a skinned part. Format 4 writes nonempty `colliders` between `c
 joint, start, end and radius order. A skinned part writes `motion` after `regions`. Motion writes `kind, chains`
 and then `links` when nonempty. Each chain writes `joints, tip, stiffness, damping, gravity, trail, angleLimit,
 radius`. Chain and joint order are preserved. Links put the lower index first and sort by the two indices.
+Format 5 writes nonempty `standoff` after `covers` and any `colliders`, with entries in ordinal region name order.
+A skinned part writes `lift` after `regions` and any `motion`.
 
 Signed zero is normalized without changing other float values. The writer emits canonical UTF-8 with no trailing
-newline. Its SHA-256 is `SemanticSha256`. Source whitespace, part and collider listing order, and link listing
-order and direction do not change that revision.
+newline. Its SHA-256 is `SemanticSha256`. Source whitespace, part, collider and standoff listing order, and link
+listing order and direction do not change that revision.
 
 Keep each part ID stable across source reordering. The renderer derives temporal identities from
 that semantic revision, the part ID and material ordinal. A changed declared mesh hash changes
@@ -549,8 +568,8 @@ Every JSON refusal also carries `SourceName`. Direct constructor and reference c
 | `JsonPropertyMissing` | a required property absent from attachment JSON. | `JsonPath`, `PropertyName` |
 | `JsonStringRequired` | a non-string attachment schema member. | `JsonPath`, `PropertyName` |
 | `JsonMalformed` | malformed JSON syntax while retaining the caller source name. | `InnerException` |
-| `JsonValueShapeInvalid` | a JSON value shape rejected by a framework accessor, or a `covers` entry, region run or format 4 member of the wrong shape. | `InnerException` or `JsonPath` with the applicable indices |
-| `LayerMissing` | a region-tagged format without a layer, or a part with a region tag in a set built without a layer. | `JsonPath` and `PropertyName`, or `PartId` |
+| `JsonValueShapeInvalid` | a JSON value shape rejected by a framework accessor, or a `covers` entry, region run or format 4 or 5 member of the wrong shape. | `InnerException` or `JsonPath` with the applicable indices |
+| `LayerMissing` | a region-tagged format without a layer, or a constructed set with region tags or covered regions and no layer. | `JsonPath` and `PropertyName` from JSON, `PartId` for region tags, or `ParamName` for covered regions |
 | `LayerUnknown` | a layer that names no defined layer. | `JsonPath` and `LayerName`, or `Layer` |
 | `CoveredRegionDuplicate` | a covered region listed more than once. | `CoverIndex`, `RegionName` |
 | `PartRegionMissing` | a part without its `region` or `regions` in a set with a layer. | `PartId`, and `JsonPath` and `PropertyName` from JSON |
@@ -569,11 +588,17 @@ Every JSON refusal also carries `SourceName`. Direct constructor and reference c
 | `ColliderPointInvalid`, `ColliderRadiusInvalid` | a collider with non-finite endpoint components or a radius that is non-finite or nonpositive. | `ColliderIndex`, `JointName` |
 | `TooManyColliders` | a set with more than 8 colliders. | `ActualCount`, `ExpectedCount` |
 | `MotionWithoutLayer` | motion or colliders on a set with no layer. | `PartId` and `PartIndex` for motion, plus `PropertyName` from JSON |
+| `StandoffWithoutLayer` | standoff on a set with no layer. | `PropertyName` from JSON or `ParamName` from the constructor |
+| `LiftWithoutLayer` | lift on a set with no layer. | `PartId`, `PartIndex`, plus `PropertyName` from JSON |
+| `StandoffRegionNameEmpty`, `StandoffRegionNameMalformedUtf16`, `StandoffRegionDuplicate` | a blank, malformed or repeated standoff region name. | `StandoffIndex`, `RegionName` when available |
+| `StandoffValueOutOfRange` | a standoff outside its finite range. | `StandoffIndex`, `RegionName` |
+| `TooManyStandoffEntries` | a set with more than 128 standoff entries. | `ActualCount`, `ExpectedCount` |
+| `LiftClearanceOutOfRange` | a lift clearance outside its finite range. | `PartId`, `PartIndex` |
 
-Format 4 JSON refusals above include `JsonPath`. Chain, joint, link and collider indices are zero-based and refer
-to input order. Counts report the supplied size and the required minimum or allowed maximum. For a collider
-sequence without a known count, construction stops at the first item past the cap, so `ActualCount` is the number
-read, one more than the cap, and a lower bound on the sequence's length.
+Format 4 and 5 JSON refusals above include `JsonPath`. Chain, joint, link, collider and standoff indices are
+zero-based and refer to input order. Counts report the supplied size and the required minimum or allowed maximum.
+For a collider or standoff sequence without a known count, construction stops at the first item past the cap,
+so `ActualCount` is the number read, one more than the cap, and a lower bound on the sequence's length.
 
 ## GLB refusals
 

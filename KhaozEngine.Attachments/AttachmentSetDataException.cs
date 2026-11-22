@@ -38,7 +38,7 @@ public sealed class AttachmentSetDataException : MalformedDataException, IAttach
     /// <summary>The supplied item count, or null when a local transform is not an array.</summary>
     public int? ActualCount { get; init; }
 
-    /// <summary>The required local-transform component count or the minimum or maximum for a motion or collider count refusal.</summary>
+    /// <summary>The required local-transform component count or the minimum or maximum for a motion, collider or standoff count refusal.</summary>
     public int? ExpectedCount { get; init; }
 
     /// <summary>The zero-based index of the refused local-transform component.</summary>
@@ -80,7 +80,7 @@ public sealed class AttachmentSetDataException : MalformedDataException, IAttach
     /// <summary>The undefined layer value given to the constructor.</summary>
     public AttachmentLayer? Layer { get; init; }
 
-    /// <summary>The refused covered or part region name.</summary>
+    /// <summary>The refused covered, part or standoff region name when available.</summary>
     public string? RegionName { get; init; }
 
     /// <summary>The zero-based input index of the refused covered region.</summary>
@@ -107,6 +107,9 @@ public sealed class AttachmentSetDataException : MalformedDataException, IAttach
     /// <summary>The zero-based input collider index within the refused set.</summary>
     public int? ColliderIndex { get; init; }
 
+    /// <summary>The zero-based input index of the refused standoff entry.</summary>
+    public int? StandoffIndex { get; init; }
+
     /// <summary>The JSON member name of the refused chain setting.</summary>
     public string? SettingName { get; init; }
 
@@ -117,6 +120,7 @@ public sealed class AttachmentSetDataException : MalformedDataException, IAttach
         JointIndex = JointIndex,
         LinkIndex = LinkIndex,
         ColliderIndex = ColliderIndex,
+        StandoffIndex = StandoffIndex,
         SettingName = SettingName,
         JsonPath = JsonPath,
         PropertyName = PropertyName,

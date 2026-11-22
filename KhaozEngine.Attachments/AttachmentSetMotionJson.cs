@@ -30,7 +30,7 @@ internal static class AttachmentSetMotionJson
             { JsonPath = path + ".joint", ColliderIndex = index });
 
         Exception Refuse(StrictAttachmentJson.Fault fault, string jsonPath, string message, string? property) =>
-            new AttachmentSetDataException(Reason(fault), message) { JsonPath = jsonPath, PropertyName = property, ColliderIndex = index };
+            new AttachmentSetDataException(AttachmentSetJson.StrictReason(fault), message) { JsonPath = jsonPath, PropertyName = property, ColliderIndex = index };
     }
 
     internal static PartMotionDefinition? ReadMotion(JsonElement part, uint partId, int partIndex)
@@ -67,7 +67,7 @@ internal static class AttachmentSetMotionJson
         return new ChainMotionDefinition(definitions, links);
 
         Exception Refuse(StrictAttachmentJson.Fault fault, string jsonPath, string message, string? property) =>
-            new AttachmentSetDataException(Reason(fault), message)
+            new AttachmentSetDataException(AttachmentSetJson.StrictReason(fault), message)
             { JsonPath = jsonPath, PropertyName = property, PartId = partId, PartIndex = partIndex };
     }
 
@@ -93,10 +93,10 @@ internal static class AttachmentSetMotionJson
         return new ChainDefinition(names, tip, settings);
 
         Exception Refuse(StrictAttachmentJson.Fault fault, string jsonPath, string message, string? property) =>
-            new AttachmentSetDataException(Reason(fault), message)
+            new AttachmentSetDataException(AttachmentSetJson.StrictReason(fault), message)
             { JsonPath = jsonPath, PropertyName = property, PartId = partId, PartIndex = partIndex, ChainIndex = chainIndex };
 
-        float Setting(string name) => AttachmentColliderJson.ReadNumber(
+        float Setting(string name) => StrictAttachmentJson.Number(
             StrictAttachmentJson.Required(chain, name, path, Refuse), path + "." + name, Refuse);
     }
 
@@ -209,14 +209,5 @@ internal static class AttachmentSetMotionJson
     }
 
     static Exception RootRefusal(StrictAttachmentJson.Fault fault, string path, string message, string? property) =>
-        new AttachmentSetDataException(Reason(fault), message) { JsonPath = path, PropertyName = property };
-
-    static AttachmentSetRefusal Reason(StrictAttachmentJson.Fault fault) => fault switch
-    {
-        StrictAttachmentJson.Fault.UnknownProperty => AttachmentSetRefusal.JsonPropertyUnknown,
-        StrictAttachmentJson.Fault.DuplicateProperty => AttachmentSetRefusal.JsonPropertyDuplicate,
-        StrictAttachmentJson.Fault.MissingProperty => AttachmentSetRefusal.JsonPropertyMissing,
-        StrictAttachmentJson.Fault.ValueShape => AttachmentSetRefusal.JsonValueShapeInvalid,
-        _ => throw new ArgumentOutOfRangeException(nameof(fault)),
-    };
+        new AttachmentSetDataException(AttachmentSetJson.StrictReason(fault), message) { JsonPath = path, PropertyName = property };
 }

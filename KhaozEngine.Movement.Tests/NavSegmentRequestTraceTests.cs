@@ -193,22 +193,24 @@ public sealed class NavSegmentRequestTraceTests
         for (int cut = 0; cut < trace.Length; cut++)
         {
             var request = new NavSegmentRequest(navigation, from, to);
+            var units = new PathWorkByKind();
             using var work = new NavFootprintDiagnostics();
-            if (prefix != 0) request.Advance(prefix);
+            if (prefix != 0) request.AdvanceForTests(prefix, units);
             Assert.Equal(prefix, request.WorkSpent);
             Assert.Equal(trace[cut].Op, request.NextOperation);
             Assert.Null(request.Result);
 
-            request.Advance(1);
+            request.AdvanceForTests(1, units);
             prefix += trace[cut].Weight;
             Assert.Equal(prefix, request.WorkSpent);
             bool last = cut + 1 == trace.Length;
             Assert.Equal(last ? Done : trace[cut + 1].Op, request.NextOperation);
             Assert.Equal(last ? accepted : (bool?)null, request.Result);
 
-            request.Advance(int.MaxValue);
+            request.AdvanceForTests(int.MaxValue, units);
             Assert.Equal(accepted, request.Result);
             Assert.Equal(total, request.WorkSpent);
+            Assert.Equal(request.WorkSpent, units.Total);
             Assert.Equal(cells, work.CandidateCells);
         }
         Assert.Equal(total, prefix);

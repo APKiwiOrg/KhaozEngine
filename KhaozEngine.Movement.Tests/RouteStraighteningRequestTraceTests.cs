@@ -48,14 +48,16 @@ public sealed partial class RouteStraighteningRequestTests
         for (int cut = 0; cut < trace.Length; cut++)
         {
             using var request = Assert.IsType<RouteStraighteningRequest>(planner.BeginPath(start, goal, 0f, Budget, pool));
-            if (spent != 0) request.Advance(new(spent));
+            var work = new PathWorkByKind();
+            if (spent != 0) request.AdvanceForTests(new(spent), work);
             Assert.Equal(spent, request.WorkSpent);
             Assert.Equal(trace[cut].Start, request.NextStartOperationForTests);
             if (trace[cut].Start == Segment.Done) Assert.Equal(trace[cut].Search, request.NextPhaseForTests);
             Assert.Null(request.Result);
             bool last = cut + 1 == trace.Length;
-            request.Advance(new(1));
+            request.AdvanceForTests(new(1), work);
             spent += trace[cut].Units;
+            Assert.Equal(request.WorkSpent, work.Total);
             Assert.Equal(spent, request.WorkSpent);
             if (last)
             {
@@ -257,9 +259,10 @@ public sealed partial class RouteStraighteningRequestTests
         foreach (var (operation, segment, units) in trace)
         {
             using var diagnostic = new NavFootprintDiagnostics();
+            var work = new PathWorkByKind();
             var cursor = new RouteStraighteningCursor(slicedStraightener, Start, 0, raw, fallBack: false, scratch);
             int spent = 0;
-            if (prefix != 0) cursor.RunSlice(prefix, ref spent);
+            if (prefix != 0) cursor.RunSliceForTests(prefix, ref spent, work);
             Assert.Equal(prefix, spent);
             Assert.Equal(operation, cursor.NextOperation);
             if (operation == Straight.Segment)
@@ -272,7 +275,7 @@ public sealed partial class RouteStraighteningRequestTests
             Assert.Null(cursor.Result);
 
             spent = 0;
-            cursor.RunSlice(1, ref spent);
+            cursor.RunSliceForTests(1, ref spent, work);
             prefix += units;
             Assert.Equal(units, spent);
             bool last = prefix == total;
@@ -283,9 +286,10 @@ public sealed partial class RouteStraighteningRequestTests
                 Paid next = trace.First(step => (cumulative += step.Units) > prefix);
                 Assert.Equal(next.Operation, cursor.NextOperation);
                 if (next.Operation == Straight.Segment) Assert.Equal(next.Segment, cursor.NextSegmentOperation);
-                cursor.RunSlice(int.MaxValue, ref spent);
+                cursor.RunSliceForTests(int.MaxValue, ref spent, work);
             }
             Assert.Equal(total - prefix + units, spent);
+            Assert.Equal(total, work.Total);
             AssertBits(expected, Assert.IsType<NavPath>(cursor.Result));
             if (ReferenceEquals(raw, expected)) Assert.Same(raw, cursor.Result);
             Assert.Equal(cells, diagnostic.CandidateCells);

@@ -5,8 +5,6 @@ namespace KhaozEngine.Attachments;
 
 internal static class ChainConstraints
 {
-    private const float LinkFrequency = 10;
-
     internal static void FollowChain(ChainParticles particles, int chain, in Matrix4x4 anchor,
         ReadOnlySpan<ColliderCapsule> colliders, in ChainSettings settings, float seconds, bool pullTowardRest)
     {
@@ -49,43 +47,6 @@ internal static class ChainConstraints
             particles.JointWorlds[joint] = parent;
             particles.WorldSwings[joint] = swing;
         }
-    }
-
-    internal static bool ApplyLinks(ChainParticles particles, float seconds)
-    {
-        var rig = particles.Rig;
-        float halfWeight = 0.5f * ChainMath.MidpointSpringWeight(LinkFrequency, seconds);
-        if (halfWeight == 0)
-            return false;
-
-        bool moved = false;
-        for (int index = 0; index < rig.Links.Count; index++)
-        {
-            var link = rig.Links[index];
-            int firstCount = rig.Chains[link.First].Joints.Count;
-            int secondCount = rig.Chains[link.Second].Joints.Count;
-            int first = rig.FirstJoint(link.First) + link.First;
-            int second = rig.FirstJoint(link.Second) + link.Second;
-            int commonCount = Math.Min(firstCount, secondCount);
-            for (int joint = 1; joint < commonCount; joint++)
-                moved |= ApplyLink(particles, first + joint, second + joint, halfWeight);
-            moved |= ApplyLink(particles, first + firstCount, second + secondCount, halfWeight);
-        }
-
-        return moved;
-    }
-
-    private static bool ApplyLink(ChainParticles particles, int first, int second, float halfWeight)
-    {
-        var rest = particles.RestPositions[second] - particles.RestPositions[first];
-        var predicted = particles.Positions[second] - particles.Positions[first];
-        var started = particles.SubstepStarts[second] - particles.SubstepStarts[first];
-        var axis = ChainMath.Direction(predicted, ChainMath.Direction(rest, Vector3.UnitX));
-        float midpointSpacing = Vector3.Dot(0.5f * (started + predicted), axis);
-        var correction = halfWeight * (midpointSpacing - rest.Length()) * axis;
-        particles.ApplySpring(first, correction);
-        particles.ApplySpring(second, -correction);
-        return correction != Vector3.Zero;
     }
 
     private static Vector3 ClampBend(Vector3 direction, Vector3 rest, float cosine)

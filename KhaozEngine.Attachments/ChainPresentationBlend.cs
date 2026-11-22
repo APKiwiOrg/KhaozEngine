@@ -5,7 +5,7 @@ namespace KhaozEngine.Attachments;
 
 internal sealed class ChainPresentationBlend(int jointCount)
 {
-    private readonly Quaternion[] _startingSwings = new Quaternion[jointCount];
+    private readonly Quaternion[] _displayedSwings = new Quaternion[jointCount];
     private float _elapsed;
 
     internal void Begin(ChainParticles particles, ReadOnlySpan<ChainPose> previousAnchors)
@@ -18,17 +18,23 @@ internal sealed class ChainPresentationBlend(int jointCount)
             var rotation = previousAnchors[definition.Anchor].Rotation;
             int first = rig.FirstJoint(chain);
             for (int joint = first; joint < first + definition.Joints.Count; joint++)
-                _startingSwings[joint] = ChangeBasis(particles.WorldSwings[joint], rotation);
+                _displayedSwings[joint] = ChangeBasis(particles.WorldSwings[joint], rotation);
         }
     }
 
     internal bool Advance(ChainParticles particles, ReadOnlySpan<ChainPose> anchors, float seconds, float duration, bool toRest)
     {
-        _elapsed = MathF.Min(_elapsed + seconds, duration);
-        if (_elapsed >= duration)
+        float remaining = duration - _elapsed;
+        if (seconds >= remaining)
+        {
+            _elapsed = duration;
             return false;
+        }
 
-        float blend = _elapsed / duration;
+        // For a moving live target, continue from the last displayed swing so crossing
+        // the half-turn relative to the original held pose cannot switch blend arcs.
+        float blend = seconds / remaining;
+        _elapsed += seconds;
         var rig = particles.Rig;
         for (int chain = 0; chain < rig.Chains.Count; chain++)
         {
@@ -39,9 +45,10 @@ internal sealed class ChainPresentationBlend(int jointCount)
             int first = rig.FirstJoint(chain);
             for (int joint = first; joint < first + definition.Joints.Count; joint++)
             {
-                var startingSwing = ChangeBasis(_startingSwings[joint], intoWorld);
+                var displayedSwing = ChangeBasis(_displayedSwings[joint], intoWorld);
                 var targetSwing = toRest ? Quaternion.Identity : particles.WorldSwings[joint];
-                var worldSwing = Quaternion.Slerp(startingSwing, targetSwing, blend);
+                var worldSwing = Quaternion.Slerp(displayedSwing, targetSwing, blend);
+                _displayedSwings[joint] = ChangeBasis(worldSwing, anchor.Rotation);
                 var unswung = rig.RestLocal(joint) * parent;
                 parent = unswung * Matrix4x4.CreateFromQuaternion(worldSwing);
                 parent.Translation = unswung.Translation;

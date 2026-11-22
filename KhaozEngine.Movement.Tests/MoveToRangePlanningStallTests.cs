@@ -17,7 +17,8 @@ public sealed partial class MoveToRangePlanningTests
         using var pool = navigation.CreatePlanningWorkspaces(1);
         var mover = new MoveToRange(navigation, new PathFollowConfig
         {
-            Planning = new(new(128), pool),
+            // The short route fits its first call: 20 start and snap, 50 membership, 64 search, 8 reconstruction.
+            Planning = new(new(142), pool),
             ReplanCooldownSeconds = 0f,
         }, Stall);
         MoveState body = At(0.5f);

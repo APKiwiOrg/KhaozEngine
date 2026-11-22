@@ -10,6 +10,8 @@ namespace KhaozEngine.Tests.Navigation;
 
 public sealed partial class PathFollowerPlanningTests
 {
+    const int PartialWork = 132;
+
     // ExpansionCapHasALiteralTrace: snap, region, certificate, seed, two expansions and one waypoint.
     static readonly int[] PartialTrace =
     [
@@ -23,7 +25,7 @@ public sealed partial class PathFollowerPlanningTests
     [InlineData(7)]
     [InlineData(8)]
     [InlineData(31)]
-    [InlineData(128)]
+    [InlineData(PartialWork)]
     public void PublishCallDependsOnlyOnInputsQuotasAndPool(int quota)
     {
         var planner = Corridor(3);
@@ -56,7 +58,7 @@ public sealed partial class PathFollowerPlanningTests
             Waiting(follower, follower.Tick(Start, End(3), 0f, 1f));
         // The final slice released the lease, even though the follower has yet to adopt.
         using var next = Incremental(planner).BeginPath(Start, End(3), 0f, Budget(2), pool);
-        next.Advance(new(128));
+        next.Advance(new(PartialWork));
         Assert.Equal(PathPlanState.Ready, next.State);
         AssertPartialAt(follower, 24, 24);
     }
@@ -96,8 +98,8 @@ public sealed partial class PathFollowerPlanningTests
         var planner = new GridPathPlanner(space);
         using var pool = Incremental(planner).CreateWorkspaces(1, Budget(2));
         var follower = Follower(planner, pool, 7, space);
-        // The second layer adds two layer probes, a member box and two candidate cells.
-        int slices = Slices(7, [2, 2, 2, 4, 4, .. PartialTrace]);
+        // Two layer probes, snap, two boxes, then all four candidates before the usual search.
+        int slices = Slices(7, [2, 2, 2, 2, 2, 4, 4, 4, 4, .. PartialTrace.AsSpan(4)]);
         var goal = End(3);
         for (int call = 1; call <= slices; call++)
             Waiting(follower, follower.Tick(Start, goal, 0f, 0f));
@@ -124,7 +126,7 @@ public sealed partial class PathFollowerPlanningTests
         var owner = Follower(planner, pool, 7);
         Waiting(owner, owner.Tick(Start, End(3), 0f, 0f));
         using var waiter = Incremental(planner).BeginPath(Start, End(3), 0f, Budget(2), pool);
-        waiter.Advance(new(128));
+        waiter.Advance(new(PartialWork));
         Assert.Equal(0, waiter.WorkSpent);
 
         switch (cause)
@@ -141,7 +143,7 @@ public sealed partial class PathFollowerPlanningTests
         }
 
         Assert.False(owner.PlanningPending);
-        waiter.Advance(new(128));
+        waiter.Advance(new(PartialWork));
         Assert.Equal(PathPlanState.Ready, waiter.State);
     }
 
@@ -158,7 +160,7 @@ public sealed partial class PathFollowerPlanningTests
 
         follower.Reset();
         owner.Cancel();
-        next.Advance(new(128));
+        next.Advance(new(PartialWork));
         Assert.False(follower.PlanningPending);
         Assert.Equal(PathPlanState.Ready, next.State);
     }

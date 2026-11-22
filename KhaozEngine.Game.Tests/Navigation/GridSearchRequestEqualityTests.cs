@@ -11,7 +11,7 @@ public partial class GridSearchRequestEqualityTests
     [InlineData(1)]
     [InlineData(2)]
     [InlineData(3)]
-    [InlineData(7)]
+    [InlineData(PathWorkWeights.Largest + 1)]
     [InlineData(64)]
     [InlineData(PathWorkWeights.Largest - 1)]
     [InlineData(PathWorkWeights.Largest)]

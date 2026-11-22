@@ -149,6 +149,22 @@ internal sealed class SkinnedAttachmentGlbFixture
         Accessors[accessor]!["max"] = new JsonArray(max.X, max.Y, max.Z);
     }
 
+    internal void SetUniformSkinning(int primitive, int vertexCount, Vector4 joints, Vector4 weights)
+    {
+        JsonNode attributes = Primitives[primitive]!["attributes"]!;
+        int jointAccessor = Accessors.Count;
+        AddAccessor(vertexCount, "VEC4", 5121, false, false);
+        int weightAccessor = Accessors.Count;
+        AddAccessor(vertexCount, "VEC4", 5126, false, false);
+        attributes["JOINTS_0"] = jointAccessor;
+        attributes["WEIGHTS_0"] = weightAccessor;
+        for (int vertex = 0; vertex < vertexCount; vertex++)
+        {
+            SetElement(jointAccessor, vertex, joints.X, joints.Y, joints.Z, joints.W);
+            SetElement(weightAccessor, vertex, weights.X, weights.Y, weights.Z, weights.W);
+        }
+    }
+
     void AddAccessor(int count, string type, int componentType, bool normalized, bool strided)
     {
         int components = type == "MAT4" ? 16 : type == "VEC3" ? 3 : type == "SCALAR" ? 1 : 4;

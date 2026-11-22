@@ -267,8 +267,16 @@ The wearables limits are 32 wearers, at most 2 ms added CPU preparation, no mana
 - Per bind: one pass over each lifting part's vertices and triangles, and one vertex and index buffer upload for each
   displaced view not already shared.
 - Memory: each distinct displaced view holds its vertices twice, 96 bytes each in the GPU buffer and in the CPU copy.
-- `LiftBindCostDiagnostics` reports the bind cost of 32 wearers with distinct garment and armour pairs and the per
-  frame draw cost with lifted parts, as report only timing excluded from default CI.
+
+`LiftBindCostDiagnostics` reports binding cost for 32 distinct garment and armour pairs after their sets are
+loaded. It measures `BoundOutfit.WriteDraws` for the same armour draws with and without garments, after 120 warm
+frames and over 600 measured frames. The report is one JSON line, including the runner environment. Default CI
+excludes the diagnostic. Run the command below on a GitHub-hosted runner after approval. Only that run supplies
+timing evidence. Set `KE_LIFT_COST_SMOKE_FRAMES` to 1 through 119 to shorten both frame counts for a harness check.
+
+```sh
+KE_GPU_TESTS=0 dotnet test KhaozEngine.Render.Tests -c Release --filter 'Category=Diagnostic&FullyQualifiedName~LiftBindCostDiagnostics' --logger 'console;verbosity=detailed'
+```
 
 ## Refusals
 

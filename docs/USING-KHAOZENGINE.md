@@ -10734,20 +10734,22 @@ call that runs its last operation, or on its first call if it has no operations.
 greater than zero, completion needs at most W planning calls, and at fixed quota q at least the largest
 weight L it needs at most `ceil(W / (q - L + 1))` calls. A quota bounds work. Elapsed time varies
 with hardware, runtime tier, cache and data, the cost of the region predicate and interruptions.
-First-use and JIT time are outside the quota. The quota covers the sliced planning work only. Each
-owner tick also tests goal membership, steers, and revalidates the start of a finished route before
-adopting it, which can resolve the start footprint again. Measure the whole owner tick when sizing
-a simulation budget.
+First-use and JIT time are outside the quota. The quota covers the sliced planning work only. An
+owner tick can also check current goal membership, validate the start of a result that completed on
+an earlier call and run steering. Validating changed feet can resolve both start footprints
+synchronously. Measure the whole owner tick when sizing a simulation budget.
 
 A planning wait returns `WaitingForPath` at zero motion. `PlanningPending` is true from the begin
 until the route is adopted or the request is cancelled. It describes the request and not the tick's
-output: a mover that is airborne, committed or settling reports `Suspended`, makes no planning call
-on that tick and keeps the flag set. A planning wait neither counts toward the mover's stall latch
-nor clears its stall window. A first-call result can steer immediately. A result that completes
-later is considered on the next owner tick, and adoption is conditional. If the feet have reached
-the goal region, the owner arrives and drops the result. If the feet no longer resolve to the start
-the request was planned from, the owner begins a new request from the current feet. Otherwise it
-adopts the route. The result has the same status and waypoint bits as
+output. If a mover suspends with a request outstanding, it returns `Suspended` at zero motion, makes
+no planning call on that tick and leaves the request in place. A planning wait neither counts toward
+the mover's stall latch nor clears its stall window. A result that completes on the first call is
+adopted in that call and can steer immediately. A result that completes on a later call waits for
+the next tick that processes it. On that tick, feet inside the goal region arrive and drop the
+result. Otherwise the owner adopts the route if the feet are bit-identical to the start of the query
+or still resolve to the same admitted start node, and begins a new request from the current feet if
+they do not. A change of the mover's target shape, range or capsule cancels the request when the
+mover next processes a tick. The result has the same status and waypoint bits as
 synchronous planning for the same frozen start, goal, radius and query budget, including the
 straightening fallback captured at the start. Leave `Planning` unset for point queries, custom
 planners and views with query-time area exclusions. They plan synchronously.
@@ -10761,7 +10763,7 @@ pure until the result is ready or cancelled. Equal route bits across platforms a
 numeric kernel.
 
 Choose a quota on the hardware that runs the simulation. From an engine source checkout, the
-calibration diagnostic reports sampled costs, work by kind, and slice counts at several quotas.
+calibration diagnostic reports sampled timings, work units by kind, and slice counts at several quotas.
 Compare those observations with the workload and time available on your own hardware. Work units
 and `PathPlanningConfig.MinimumQuotaUnits` can change between engine versions, so a tuned quota
 belongs to the engine version it was measured on. Check it against the runtime minimum after an
@@ -10778,9 +10780,9 @@ reconstruction steps with weight 1. A search unit in a constrained unreachable f
 2.7 ns against 6.7 ns in the open-ground expansion fixture. For the footprint-heavy requests at quotas
 of 1,024, 4,096 and 16,384 units under the weights in force before calibration, the observed 99th
 percentile advance cost per unit was about 1.2 to 1.45 times the median. Those advances were not
-measured again under the calibrated table, and shorter advances were not used because the clock
-reads are a visible share of them. These figures describe that machine and those fixtures. Use your
-own measurements for deployment
+measured again under the calibrated table. The 64 and 256 unit rows are left out of that range
+because clock overhead can be material at those quotas. These figures describe that machine and
+those fixtures. Use your own measurements for deployment
 and see the [calibration rationale](design/REGION-ROUTE-PLANNING.md#calibration) for the limits.
 
 ### Route-free approach (`DirectMoveToRange`)

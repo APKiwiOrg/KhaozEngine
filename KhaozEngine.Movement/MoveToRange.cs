@@ -195,8 +195,9 @@ public sealed partial class MoveToRange
 
     /// <summary>Clears the route, shape snapshot, replan cooldown, stall window and latched block, and cancels a
     /// pending planning request.</summary>
-    /// <exception cref="InvalidOperationException">Cancelling a pending request overlaps another call into its
-    /// workspace pool.</exception>
+    /// <exception cref="InvalidOperationException">The mover still holds a request and the reset overlaps
+    /// another call into that request's workspace pool. This includes a completed result awaiting adoption and
+    /// a cancelled request the mover has yet to clear.</exception>
     public void Reset()
     {
         _follower.Reset();

@@ -13,9 +13,10 @@ namespace KhaozEngine.Navigation;
 /// <para>Serialize construction of owners, ticks, resets, pool reads and disposal for each shared pool, and
 /// keep region predicates pure. The pool detects only a call that overlaps another call into the pool itself,
 /// such as a region predicate that reads the pool while a request advances, or a second thread that enters
-/// the pool at the same moment. That call throws <see cref="InvalidOperationException"/>, and so does an
-/// owner's reset when its cancellation overlaps. Owner ticks that overlap outside the pool go undetected,
-/// so serialization stays the caller's duty. A pool can move to another thread between calls.</para>
+/// the pool at the same moment. That call throws <see cref="InvalidOperationException"/>, and so does the
+/// reset of an owner that still holds a request, whatever the request's state, when it overlaps another
+/// pool call. Owner ticks that overlap outside the pool go undetected, so serialization stays the caller's
+/// duty. A pool can move to another thread between calls.</para>
 /// <para>Each follower or mover holds at most one request. Use one workspace per sharing owner to avoid
 /// waiting. In a smaller pool, new requests queue in order and spend no work until granted a workspace.
 /// Completion or reset passes the workspace immediately to the oldest waiter, which can spend its quota on

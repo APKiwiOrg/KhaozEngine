@@ -26,8 +26,9 @@ Prewarmed scratch stays fixed during advances, and a nonempty published route al
 While the route is pending, the follower drops the previous path and holds at zero motion.
 `MoveToRange` preserves its stall window during this wait. An exhausted Partial route's cooldown
 wait still counts toward stall. A begin that finishes immediately can steer on that call. If a later
-slice finishes, it still holds on that call and the owner considers adoption on the next tick. This
-keeps a final slice and an expensive steering or arrival step on separate calls.
+slice finishes, it still holds on that call and the owner considers adoption on the next tick that
+processes it. A suspended mover leaves the request in place. This keeps a final slice and an
+expensive steering or arrival step on separate calls.
 
 Adoption checks current membership first. It accepts the result if the actual feet equal the frozen
 start or resolve to the same admitted start node. Otherwise the follower starts from the current feet.
@@ -113,9 +114,9 @@ at weight 1. Search in the constrained unreachable fixture was about 2.7 ns per 
 for the open-ground expansion fixture. The model therefore transfers poorly to some searches. For
 the footprint-heavy requests at quotas of 1,024, 4,096 and 16,384 units, measured under the weights
 in force before calibration, the 99th percentile advance cost per unit was about 1.2 to 1.45 times
-the median. Advances were not measured again under the calibrated table. Quotas of 64 and 256 were
-left out of every estimate because the clock reads are a visible share of so short an advance. The
-measurements supply no elapsed-time bound.
+the median. Advances were not measured again under the calibrated table. The 64 and 256 unit rows
+were report-only and are left out of that range because clock overhead can be material at those
+quotas. The measurements supply no elapsed-time bound.
 
 FootprintSetup, shared by EndpointStart and SegmentStart, and the straightening feet, candidate and
 offset charges were set by scaling their related segment charges and rounding up. Straightening

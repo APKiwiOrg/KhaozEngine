@@ -21,8 +21,8 @@ public sealed partial class PathFollower
     internal bool UsesPlanning => _config.Planning is not null;
 
     /// <summary>
-    /// True while the owner is waiting for a workspace, still planning, or holding a completed route for
-    /// adoption on its next tick. Reset and cancellation clear the flag. Pool disposal cancels leased and
+    /// True while the owner is waiting for a workspace, still planning, or holding a completed route that a
+    /// later tick has yet to adopt or drop. Reset and cancellation clear the flag. Pool disposal cancels leased and
     /// queued work immediately, and completed results remain available for adoption. The flag describes the
     /// request and not the tick's output: an owner can report another status while it is set, such as a
     /// suspended mover that makes no planning call on that tick.

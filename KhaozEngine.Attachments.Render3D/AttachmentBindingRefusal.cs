@@ -110,4 +110,8 @@ public enum AttachmentBindingRefusal
 
     /// <summary>Refuses collider binding without the host skin's inverse binds.</summary>
     ColliderHostMeshRequired,
+
+    /// <summary>Refuses a worn part that needs a displaced view over a scene without
+    /// <see cref="IAttachmentDisplacedViewScene"/>. Identifies the set's cache key, worn index and part ID.</summary>
+    OutfitLiftUnsupported,
 }

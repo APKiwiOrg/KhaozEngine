@@ -195,12 +195,17 @@ public sealed class OutfitMotionDrawTests
         }
     }
 
-    [Fact]
-    public void Motion_draw_calls_allocate_nothing_once_warm()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Motion_draw_calls_allocate_nothing_once_warm(bool lifted)
     {
         using var rig = new OutfitRig(recordOutlines: false);
-        BoundAttachmentSet set = WearDrawSet(rig);
-        using BoundOutfit outfit = BindOutfit(rig, set);
+        BoundAttachmentSet set = lifted ? OutfitLiftDrawTests.ChainedArmour(rig) : WearDrawSet(rig);
+        using BoundOutfit outfit = lifted
+            ? rig.Cache.BindOutfit(OutfitLiftDrawTests.Body(rig), [OutfitLiftDrawTests.Garment(rig), set])
+            : BindOutfit(rig, set);
+        if (lifted) Assert.True(rig.Scene.IsSkinnedMeshView(Assert.Single(rig.Draws(outfit, ChainedWornIndex)).Skinned.Mesh));
         WornMotion setMotion = set.CreateMotion(null), outfitMotion = outfit.CreateMotion(null);
         Step(rig, setMotion);
         Step(rig, outfitMotion);
@@ -217,6 +222,7 @@ public sealed class OutfitMotionDrawTests
             rig.Scene.Begin();
             MeshOutlineGroup group = rig.Scene.BeginMeshOutline(Color.White, 2, MeshOutlineOcclusion.None);
             long start = GC.GetAllocatedBytesForCurrentThread();
+            outfitMotion.Step(rig.Skeleton, rig.Palette, rig.Model, 1f / 60f);
             set.WriteDraws(setMotion, rig.Skeleton, rig.Palette, rig.Model, rig.Key, template, draws);
             set.Queue(setMotion, rig.Skeleton, rig.Palette, rig.Model, rig.Key);
             set.Queue(setMotion, rig.Skeleton, rig.Palette, rig.Model, rig.Key, template);

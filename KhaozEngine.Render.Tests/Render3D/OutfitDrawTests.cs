@@ -310,16 +310,21 @@ public sealed class OutfitDrawTests
         Assert.True(viewing.Scene.IsSkinnedMeshView(view));
     }
 
-    [Fact]
-    public void Frame_calls_allocate_nothing_once_warm()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Frame_calls_allocate_nothing_once_warm(bool lifted)
     {
         using var rig = new OutfitRig(recordOutlines: false);
         LoadedBodyRegions body = rig.BodyRegions(BodyRuns);
-        BoundAttachmentSet garment = rig.Wear("garment.json", OutfitRig.Skinned(AttachmentLayer.Garment, ["alpha"],
-            rig.Garment("garment.glb", materials: 2), new NamedRegionRun("alpha", 3), new NamedRegionRun("beta", 3), new NamedRegionRun("gamma", 2)));
-        BoundAttachmentSet armour = rig.Wear("armour.json", OutfitRig.Skinned(AttachmentLayer.Armour, ["beta"],
-            rig.Garment("armour.glb", seed: .5f), new NamedRegionRun("beta", 4)));
+        BoundAttachmentSet garment = lifted ? OutfitLiftDrawTests.Garment(rig)
+            : rig.Wear("garment.json", OutfitRig.Skinned(AttachmentLayer.Garment, ["alpha"],
+                rig.Garment("garment.glb", materials: 2), new NamedRegionRun("alpha", 3), new NamedRegionRun("beta", 3), new NamedRegionRun("gamma", 2)));
+        BoundAttachmentSet armour = lifted ? OutfitLiftDrawTests.Armour(rig)
+            : rig.Wear("armour.json", OutfitRig.Skinned(AttachmentLayer.Armour, ["beta"],
+                rig.Garment("armour.glb", seed: .5f), new NamedRegionRun("beta", 4)));
         using BoundOutfit outfit = rig.Cache.BindOutfit(body, [garment, armour]);
+        if (lifted) Assert.True(rig.Scene.IsSkinnedMeshView(Assert.Single(rig.Draws(outfit, 1)).Skinned.Mesh));
         var draws = new AttachmentDraw[4];
         RigidInstanceDraw template = new(default, Matrix4x4.Identity);
         // One frame queues each worn set's outline once into a fresh group, as a game frame does. Only the outfit's
@@ -486,7 +491,7 @@ internal sealed class OutfitRig : IDisposable
     internal readonly Matrix4x4 Model = Matrix4x4.CreateTranslation(10, 0, 0);
     internal readonly MotionKey Key = MotionKey.From(77);
 
-    internal OutfitRig(bool views = true, bool customLeases = false, bool recordOutlines = true)
+    internal OutfitRig(bool views = true, bool customLeases = false, bool recordOutlines = true, bool displacedViews = true)
     {
         Palette = Skeleton.ComposeRestPose();
         Map = RigidAttachmentTestRig.Map(Skeleton);
@@ -501,7 +506,9 @@ internal sealed class OutfitRig : IDisposable
             };
         Body = new SkinnedGltfMesh(vertices, [0, 1, 2, 2, 1, 3, 2, 3, 4, 4, 3, 5], Binds, Palette, Skeleton);
         BodyHandle = Scene.LoadSkinnedMesh(Body);
-        Recording = new OutfitRecordingScene(Scene, customLeases, recordOutlines);
+        Recording = displacedViews
+            ? new OutfitDisplacedRecordingScene(Scene, customLeases, recordOutlines)
+            : new OutfitRecordingScene(Scene, customLeases, recordOutlines);
         Cache = new AttachmentSetCache(views ? Recording : new MixedAttachmentScene(new Scene3DAttachmentScene(Scene)), Source);
     }
 
@@ -533,15 +540,21 @@ internal sealed class OutfitRig : IDisposable
     /// <summary>A skinned garment of four indexed triangles per material, bound to the body's two joints.</summary>
     internal AttachmentMeshRef Garment(string key, int materials = 1, float seed = 0)
     {
+        SkinnedAttachmentGlbFixture glb = GarmentFixture();
+        glb.SetElement(0, 0, seed, 0, 0);
+        glb.SetIndexedMaterialParts(GarmentTriangles, materials);
+        return Source.Mesh(key, glb.Build());
+    }
+
+    internal static SkinnedAttachmentGlbFixture GarmentFixture()
+    {
         var glb = new SkinnedAttachmentGlbFixture(2);
         glb.Nodes[0]!["name"] = "hip";
         glb.Nodes[1]!["name"] = "knee";
         glb.SetSkinJoints([0, 1]);
         glb.SetInverseBind(0, Binds[1]);
         glb.SetInverseBind(1, Binds[0]);
-        glb.SetElement(0, 0, seed, 0, 0);
-        glb.SetIndexedMaterialParts(GarmentTriangles, materials);
-        return Source.Mesh(key, glb.Build());
+        return glb;
     }
 
     internal uint[] Indices(SkinnedMeshHandle mesh) => Scene.SkinnedSourceSnapshotForTests(mesh).Indices32;
@@ -566,32 +579,32 @@ internal sealed class OutfitRig : IDisposable
 /// <summary>Forwards to the shipped adapter and records which meshes each outline call names.</summary>
 /// <remarks>With customLeases every skinned upload is handed back through a lease of the scene's own type, as a
 /// consumer's adapter would, so the cache cannot borrow the renderer's index lists.</remarks>
-internal sealed class OutfitRecordingScene(Scene3D scene, bool customLeases = false, bool recordOutlines = true) : IAttachmentViewScene
+internal class OutfitRecordingScene(Scene3D scene, bool customLeases, bool recordOutlines) : IAttachmentViewScene
 {
-    readonly Scene3DAttachmentScene _adapter = new(scene);
+    protected Scene3DAttachmentScene Adapter { get; } = new(scene);
     internal List<MeshHandle> OutlinedMeshes { get; } = [];
     internal List<SkinnedMeshHandle> OutlinedSkinned { get; } = [];
-    public IAttachmentMeshLease UploadAttachment(IReadOnlyList<GltfMeshPart> parts) => _adapter.UploadAttachment(parts);
+    public IAttachmentMeshLease UploadAttachment(IReadOnlyList<GltfMeshPart> parts) => Adapter.UploadAttachment(parts);
     public ISkinnedAttachmentMeshLease UploadSkinnedAttachment(IReadOnlyList<GltfSkinnedMeshPart> parts)
     {
-        ISkinnedAttachmentMeshLease lease = _adapter.UploadSkinnedAttachment(parts);
+        ISkinnedAttachmentMeshLease lease = Adapter.UploadSkinnedAttachment(parts);
         return customLeases ? new CustomSkinnedLease(lease) : lease;
     }
     public SkinnedMeshHandle CreateSkinnedView(SkinnedMeshHandle source, ReadOnlySpan<uint> indices) =>
-        _adapter.CreateSkinnedView(source, indices);
-    public void ReleaseSkinnedView(SkinnedMeshHandle view) => _adapter.ReleaseSkinnedView(view);
-    public void DrawMesh(in RigidInstanceDraw draw) => _adapter.DrawMesh(draw);
-    public void DrawSkinned(in SkinnedInstanceDraw draw, ReadOnlySpan<Matrix4x4> bones) => _adapter.DrawSkinned(draw, bones);
+        Adapter.CreateSkinnedView(source, indices);
+    public void ReleaseSkinnedView(SkinnedMeshHandle view) => Adapter.ReleaseSkinnedView(view);
+    public void DrawMesh(in RigidInstanceDraw draw) => Adapter.DrawMesh(draw);
+    public void DrawSkinned(in SkinnedInstanceDraw draw, ReadOnlySpan<Matrix4x4> bones) => Adapter.DrawSkinned(draw, bones);
     public void DrawMeshOutlineDissolved(MeshOutlineGroup group, MeshHandle mesh, Matrix4x4 world, float dissolve, bool complement)
     {
         if (recordOutlines) OutlinedMeshes.Add(mesh);
-        _adapter.DrawMeshOutlineDissolved(group, mesh, world, dissolve, complement);
+        Adapter.DrawMeshOutlineDissolved(group, mesh, world, dissolve, complement);
     }
     public void DrawSkinnedOutlineDissolved(MeshOutlineGroup group, SkinnedMeshHandle mesh,
         ReadOnlySpan<Matrix4x4> bones, Matrix4x4 world, float dissolve, bool complement)
     {
         if (recordOutlines) OutlinedSkinned.Add(mesh);
-        _adapter.DrawSkinnedOutlineDissolved(group, mesh, bones, world, dissolve, complement);
+        Adapter.DrawSkinnedOutlineDissolved(group, mesh, bones, world, dissolve, complement);
     }
 
     sealed class CustomSkinnedLease(ISkinnedAttachmentMeshLease inner) : ISkinnedAttachmentMeshLease
@@ -599,4 +612,11 @@ internal sealed class OutfitRecordingScene(Scene3D scene, bool customLeases = fa
         public IReadOnlyList<SkinnedMeshHandle> Handles => inner.Handles;
         public void Dispose() => inner.Dispose();
     }
+}
+
+internal sealed class OutfitDisplacedRecordingScene(Scene3D scene, bool customLeases, bool recordOutlines)
+    : OutfitRecordingScene(scene, customLeases, recordOutlines), IAttachmentDisplacedViewScene
+{
+    public SkinnedMeshHandle CreateSkinnedView(SkinnedMeshHandle source, ReadOnlySpan<uint> indices, ReadOnlySpan<Vector3> restPositions) =>
+        Adapter.CreateSkinnedView(source, indices, restPositions);
 }

@@ -561,15 +561,14 @@ The arm also owns verified byte snapshots, per-scene upload sharing and transact
 `IAttachmentScene` is an optional upload and full-descriptor draw capability. Its Scene3D adapter
 uses the renderer's deferred unload APIs. The shipped tile-world scene implements this capability
 without adding attachment members to `ITileWorldScene`. Outfits need the separate optional
-`IAttachmentViewScene`, which both shipped adapters implement, so `IAttachmentScene` gained no
-member. The tile renderer references the attachment arm, and the attachment arm has no dependency
+`IAttachmentViewScene`. Both shipped adapters also implement `IAttachmentDisplacedViewScene` for
+parts that lift. The tile renderer references the attachment arm, and the attachment arm has no dependency
 back to TileWorld. Dispose attachment caches before their scene.
 Render3D grants `InternalsVisibleTo` to the arm for the attachment upload and binding paths. A skinned lease and a cache call
 `Scene3D.RefuseSourcesWithLiveViews` before releasing anything, so a live mesh view refuses the release before any
-handle unloads. An outfit reads each tagged mesh's index lists when it binds, to build mesh views without the cache
-keeping a copy. For the renderer's own leases it borrows the lists Scene3D already holds through
-`Scene3D.SkinnedSourceIndices`. A custom scene's lease cannot lend them, so the cache decodes the mesh's geometry
-again from its verified bytes through `GltfLoader.LoadSkinnedPartIndices`, which skips every material map.
+handle unloads. An outfit reads each tagged mesh's index lists and any rest positions it needs for lift when it
+binds. Scene3D leases lend their retained geometry. For a custom lease, the cache decodes the geometry once per
+mesh identity per bind from verified bytes through `GltfLoader.LoadSkinnedPartGeometry`, which skips material maps.
 A chained bind reads the garment hierarchy and rest locals from those bytes through
 `GltfLoader.LoadAttachmentSkeleton`, which skips geometry decoding and material maps. The shipped upload
 lease also uses an internal Scene3D seam to grow a chained mesh's bounds and propagate them to its views.

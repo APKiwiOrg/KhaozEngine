@@ -614,9 +614,9 @@ A cache and binding over this wrapper, or two wrappers over that same scene, the
 Equipment loaded through another scene is refused. Custom tile-world adapters can remain ordinary
 `IAttachmentScene` implementations without the coverage capability.
 
-It also implements the optional `IAttachmentViewScene` capability, forwarding skinned mesh views to the same
-delegate, so an [outfit](../KhaozEngine.Attachments.Render3D/README.md#outfits) bound through a cache over this
-wrapper hides covered triangles exactly as one over `Scene3DAttachmentScene` does.
+It also implements `IAttachmentDisplacedViewScene`, which extends `IAttachmentViewScene`. Both kinds of skinned
+mesh view forward to the same delegate, so an [outfit](../KhaozEngine.Attachments.Render3D/README.md#outfits) can
+hide covered triangles and lift parts when bound through this wrapper.
 
 `Scene3DTileWorldScene` also implements the optional `IAttachmentCoverageScene` capability from
 `KhaozEngine.Attachments.Render3D`. `UploadAttachment(parts)` delegates transactional upload to

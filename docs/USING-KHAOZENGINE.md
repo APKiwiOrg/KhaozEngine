@@ -7663,6 +7663,11 @@ The hidden set is worked out once per outfit, never per frame. It changes only w
 read and allocate nothing. Filtering per frame would test every triangle and rewrite index buffers every frame for
 an answer that has not moved.
 
+A format 5 part can [lift over lower layers](../docs/design/ATTACHMENT-LIFT-DESIGN.md#the-rule). Bind the outfit in
+the same way. A lifted part draws its visible triangles through a shared displaced view, using the lifted rest
+positions in every pass. Both shipped adapters support it. A custom scene needs `IAttachmentDisplacedViewScene`
+when the outfit requires a displaced view.
+
 **Draw it.** Draw the body through the outfit and each worn set by its index in the list given to `BindOutfit`:
 
 ```csharp
@@ -7684,9 +7689,9 @@ shadow, point shadow and outline, on GPU and CPU skinning alike, already draws o
 view is a second entry that shares its source's vertices and materials and owns a filtered index buffer, so every
 pass draws exactly the visible triangles with no shader, pipeline or draw call change. A mask would have touched
 every skinned shader variant and the CPU skinning path, and any pass that missed it would shadow or outline
-triangles the colour pass hides. Views are shared: two outfits that keep the same triangles of one mesh draw through
-one view, which is released when the last of them is disposed. The renderer frees a released view at the next frame
-boundary, so an outfit can change in the middle of a frame without dropping draws already queued.
+triangles the colour pass hides. Views are shared between outfits that draw the same source mesh, visible triangles
+and rest positions. A view is released when the last outfit using it is disposed. The renderer frees a released
+view at the next frame boundary, so an outfit can change in the middle of a frame without dropping draws already queued.
 `Scene3D.CreateSkinnedMeshView` is public for other uses, described under
 [skinned mesh views](../KhaozEngine.Render3D/README.md#skinned-mesh-views).
 
@@ -7703,8 +7708,9 @@ changing anything, and the same call succeeds once the outfit is gone. Outfit di
 - `AttachmentBindingDataException` from `GetBodyRegions` with `BodyRegionMapMismatch` when the map tags another rig,
   part count or part triangle count, and from `BindOutfit` with `PartRegionTagsMismatch` when a skinned part's runs
   miss its mesh's triangles, `OutfitRegionUnknown` when a set names a region the body lacks, and
-  `OutfitViewsUnsupported` over a scene that is not an `IAttachmentViewScene`. `Scene3DAttachmentScene` and
-  `Scene3DTileWorldScene` implement it. A custom `IAttachmentScene` adds it to support outfits.
+  `OutfitViewsUnsupported` over a scene without `IAttachmentViewScene`. `OutfitLiftUnsupported` means a worn part
+  needs a displaced view and the scene lacks `IAttachmentDisplacedViewScene`. The refusal occurs before any
+  views are created.
 - `SkinnedMeshViewArgumentException` from `BindOutfit` with `SourceHasCoverage`, and from disposal or unload with
   `SourceHasLiveViews`.
 - `OutfitDataException` with `OutfitRefusal.RegionUnknown` when a tool calls `OutfitCoverage.Resolve` directly.

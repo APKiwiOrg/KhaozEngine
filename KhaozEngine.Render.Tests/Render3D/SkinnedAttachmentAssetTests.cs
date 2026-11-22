@@ -512,6 +512,36 @@ public sealed class SkinnedAttachmentAssetTests
         Assert.Equal(0, harness.Scene.LiveSkinnedMeshCount);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Tile_scene_creates_and_releases_skinned_views(bool displaced)
+    {
+        using var harness = new AttachmentAssetHarness();
+        ITileWorldScene tileScene = new Scene3DTileWorldScene(harness.Scene);
+        var scene = Assert.IsAssignableFrom<IAttachmentViewScene>(tileScene);
+        GltfSkinnedMeshPart part = Assert.Single(GltfLoader.LoadSkinnedPartsWithMaterials(Glb(), "fixture"));
+        using ISkinnedAttachmentMeshLease lease = scene.UploadSkinnedAttachment([part]);
+        SkinnedMeshHandle source = Assert.Single(lease.Handles);
+        Vector3 offset = displaced ? Vector3.UnitZ : Vector3.Zero;
+        Vector3[] positions = part.Mesh.Vertices.Select(vertex => vertex.Position + offset).ToArray();
+
+        SkinnedMeshHandle view = displaced
+            ? Assert.IsAssignableFrom<IAttachmentDisplacedViewScene>(scene)
+                .CreateSkinnedView(source, part.Mesh.Indices32, positions)
+            : scene.CreateSkinnedView(source, part.Mesh.Indices32);
+
+        Assert.True(harness.Scene.IsSkinnedMeshView(view));
+        SkinnedGltfMesh snapshot = harness.Scene.SkinnedSourceSnapshotForTests(view);
+        Assert.Equal(part.Mesh.Indices32, snapshot.Indices32);
+        Assert.Equal(positions, snapshot.Vertices.Select(vertex => vertex.Position));
+        scene.ReleaseSkinnedView(view);
+        Assert.True(harness.Scene.IsSkinnedMeshView(view));
+        harness.Scene.Begin();
+        Assert.False(harness.Scene.IsSkinnedMeshView(view));
+        Assert.Equal(1, harness.Scene.LiveSkinnedMeshCount);
+    }
+
     static void AssertCachedSnapshotHashes(IReadOnlyList<string> hashes, params string[] expected) =>
         Assert.Equal(expected.Order(), hashes.Order());
 

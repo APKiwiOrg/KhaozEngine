@@ -1627,8 +1627,13 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   metallic-roughness images plus each material's alpha cutoff, exactly as the rigid importer reads them.
   Byte imports need no temporary file and leave the source unchanged. Attachment consumers call
   `AttachmentGlb.ValidateSkinnedEmbedded` before import. `GltfLoader.LoadSkinned(glb, identity)` also
-  imports a flattened mesh from bytes. The existing `LoadSkinned(path)` and
-  `LoadSkinnedWithMaterial(path)` keep their flattened geometry and first-textured-material behaviour.
+  imports a flattened mesh from bytes.
+- Flattened skinned mesh, maps and clips from one GLB snapshot:
+  `GltfLoader.LoadSkinnedWithMaterial(glb, identity)` keeps the path overload's primitive order, skin
+  choice and first-textured-material selection. `GltfLoader.LoadAnimations(glb, identity)` reads the same
+  clips as its path overload. The byte overloads accept images in the GLB buffer or in data URIs and
+  refuse any other image URI anywhere in the GLB, including unused images, because it needs a resource
+  outside the snapshot. Use the path overloads for assets with external images.
 - Mixed attachment sets: the [attachment renderer arm](../KhaozEngine.Attachments.Render3D/README.md)
   binds garments with `loaded.Bind(map, hostMesh)` against actual host inverse binds. It queues one
   `DrawSkinned` per material group using borrowed joint model palettes. CPU and GPU skinning preserve
@@ -2303,6 +2308,7 @@ Every constructor of these concrete family types requires a reason.
 | `NoSkinnedMesh` | An import without usable skinned geometry | `Identity` |
 | `SkinJointLimitExceeded` | A skin above the renderer joint limit | `Identity`, `JointCount`, `MaximumJointCount` |
 | `SkinJointIndexOutsideRange` | A vertex influence outside the imported skin joint count | `Identity`, `JointCount`, `BoneIndices`, `VertexIndex`, `PartIndex` |
+| `ExternalImageInByteImport` | An image URI other than a data URI in a byte load of a flattened skinned mesh with maps or animation clips | `Identity`, zero-based `ImageIndex` on `GltfImportDataException` |
 
 | PropLoadRefusal | Refused input | Identifiers |
 |---|---|---|

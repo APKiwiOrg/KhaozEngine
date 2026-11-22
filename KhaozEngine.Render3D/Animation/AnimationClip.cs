@@ -95,7 +95,8 @@ namespace KhaozEngine.Render3D
     }
 
     /// <summary>A named animation clip: per-joint TRS keyframe tracks + a duration (the longest channel). Read from a
-    /// glTF by <see cref="GltfLoader.LoadAnimations"/>; sampled by <see cref="AnimationSampler"/>; advanced + blended
+    /// glTF by <see cref="GltfLoader.LoadAnimations(string)"/> or the byte overload, sampled by
+    /// <see cref="AnimationSampler"/> and advanced and blended
     /// by <see cref="AnimationPlayer"/>. Tracks are keyed by glTF logical node index via
     /// <see cref="JointTrack.TargetNode"/>.</summary>
     public sealed class AnimationClip

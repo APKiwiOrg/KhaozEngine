@@ -8,6 +8,7 @@ using SharpGLTF.Geometry;
 using SharpGLTF.Geometry.VertexTypes;
 using SharpGLTF.Materials;
 using SharpGLTF.Scenes;
+using SharpGLTF.Schema2;
 using Xunit;
 
 namespace KhaozEngine.Tests.Render3D.Animation
@@ -16,7 +17,7 @@ namespace KhaozEngine.Tests.Render3D.Animation
     {
         // A 2-bone skinned triangle (bone0 at origin, bone1 a child at +1 Y) WITH a "walk" animation that
         // translates bone1 from (0,1,0) to (0,3,0) over 1 second.
-        static string WriteAnimatedRiggedGlb()
+        internal static ModelRoot CreateAnimatedRiggedModel(bool secondClip = false)
         {
             var mesh = new MeshBuilder<VertexPositionNormal, VertexEmpty, VertexJoints4>("skin");
             var prim = mesh.UsePrimitive(MaterialBuilder.CreateDefault());
@@ -34,13 +35,25 @@ namespace KhaozEngine.Tests.Render3D.Animation
             bone1.UseTranslation("walk")
                  .WithPoint(0f, new Vector3(0, 1, 0))
                  .WithPoint(1f, new Vector3(0, 3, 0));
+            if (secondClip)
+            {
+                bone0.UseRotation("turn")
+                     .WithPoint(0f, Quaternion.Identity)
+                     .WithPoint(2f, new Quaternion(0f, 1f, 0f, 0f));
+                bone1.UseScale("turn")
+                     .WithPoint(0f, Vector3.One)
+                     .WithPoint(1.5f, new Vector3(2f, 1f, 1f));
+            }
 
             var scene = new SceneBuilder();
             scene.AddSkinnedMesh(mesh, Matrix4x4.Identity, bone0, bone1);
-            var model = scene.ToGltf2();
+            return scene.ToGltf2();
+        }
 
+        static string WriteAnimatedRiggedGlb(bool secondClip = false)
+        {
             string path = Path.Combine(Path.GetTempPath(), $"ke_anim_{Guid.NewGuid():N}.glb");
-            model.SaveGLB(path);
+            CreateAnimatedRiggedModel(secondClip).SaveGLB(path);
             return path;
         }
 
@@ -77,6 +90,46 @@ namespace KhaozEngine.Tests.Render3D.Animation
                 Assert.Contains(clip.Tracks, t => t.Translation != null);
             }
             finally { File.Delete(path); }
+        }
+
+        [Fact]
+        public void LoadAnimations_BytesMatchPathForMultipleClips()
+        {
+            string path = WriteAnimatedRiggedGlb(secondClip: true);
+            try
+            {
+                var expected = GltfLoader.LoadAnimations(path);
+                byte[] glb = File.ReadAllBytes(path);
+                File.Delete(path);
+                var actual = GltfLoader.LoadAnimations(glb, path);
+
+                Assert.Equal(2, expected.Count);
+                Assert.Equal(expected.Count, actual.Count);
+                for (int i = 0; i < expected.Count; i++)
+                {
+                    Assert.Equal(expected[i].Name, actual[i].Name);
+                    Assert.Equal(expected[i].Duration, actual[i].Duration);
+                    Assert.NotEmpty(expected[i].Tracks);
+                    Assert.Equal(expected[i].Tracks.Count, actual[i].Tracks.Count);
+                    foreach (JointTrack track in expected[i].Tracks)
+                    {
+                        JointTrack other = Assert.Single(actual[i].Tracks, t => t.TargetNode == track.TargetNode);
+                        AssertVectorTrack(track.Translation, other.Translation);
+                        AssertVectorTrack(track.Scale, other.Scale);
+                        Assert.Equal(track.Rotation?.Times, other.Rotation?.Times);
+                        Assert.Equal(track.Rotation?.Values, other.Rotation?.Values);
+                        Assert.Equal(track.Rotation?.Mode, other.Rotation?.Mode);
+                    }
+                }
+            }
+            finally { File.Delete(path); }
+        }
+
+        static void AssertVectorTrack(Vector3Track? expected, Vector3Track? actual)
+        {
+            Assert.Equal(expected?.Times, actual?.Times);
+            Assert.Equal(expected?.Values, actual?.Values);
+            Assert.Equal(expected?.Mode, actual?.Mode);
         }
 
         [Fact]

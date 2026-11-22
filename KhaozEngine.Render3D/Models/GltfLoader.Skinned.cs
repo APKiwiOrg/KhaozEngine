@@ -16,7 +16,7 @@ namespace KhaozEngine.Render3D
         /// orthogonalized against the normal) so a normal-mapped skinned mesh perturbs correctly. A mesh with no UV
         /// gradient keeps a zero tangent (lit by the geometric normal). Material textures are NOT auto-read (bind a
         /// PNG albedo separately, as with <see cref="Load"/>, or opt into auto-read with
-        /// <see cref="LoadSkinnedWithMaterial"/>). Throws if the mesh has no skin/joint data (use
+        /// <see cref="LoadSkinnedWithMaterial(string)"/>). Throws if the mesh has no skin/joint data (use
         /// <see cref="Load"/> for rigid meshes). Indexed directly (no re-weld) so joints/weights stay aligned to
         /// their vertices. Emits 32-bit indices so rigs past the 65,536-vertex ceiling load
         /// (<see cref="SkinnedGltfMesh"/> picks the GPU index width).</summary>
@@ -46,11 +46,29 @@ namespace KhaozEngine.Render3D
         /// the result to <see cref="Scene3D.LoadSkinnedMesh(SkinnedGltfMesh,Scene3D.SurfaceMaps)"/>. A material with
         /// no (or missing/undecodable) textures yields an all-absent <see cref="GltfMaterialMaps"/>, never a
         /// throw.</summary>
-        public static (SkinnedGltfMesh Mesh, GltfMaterialMaps Maps) LoadSkinnedWithMaterial(string path)
+        public static (SkinnedGltfMesh Mesh, GltfMaterialMaps Maps) LoadSkinnedWithMaterial(string path) =>
+            BuildSkinnedWithMaterial(LoadModel(path), path, fromFile: true);
+
+        /// <summary>Load the flattened skinned mesh and decode the first textured material's maps from binary
+        /// glTF bytes. Uses the same primitive order, skin and material selection as the path overload.
+        /// Images can live in the GLB buffer or in data URIs. <paramref name="identity"/> names the asset
+        /// in diagnostics.</summary>
+        /// <exception cref="GltfImportDataException">The GLB is malformed or any image URI names an external
+        /// resource, including an unused image. An external image refusal carries the asset identity and the
+        /// zero-based image index.</exception>
+        public static (SkinnedGltfMesh Mesh, GltfMaterialMaps Maps) LoadSkinnedWithMaterial(
+            ReadOnlyMemory<byte> glb, string identity)
         {
-            ModelRoot root = LoadModel(path);
-            SkinnedGltfMesh mesh = BuildSkinned(root, path);
-            return (mesh, ReadMaterialMaps(FirstTexturedMaterial(root), AssetDirectory(path)));
+            ArgumentException.ThrowIfNullOrWhiteSpace(identity);
+            return TranslateModelErrors(identity,
+                () => BuildSkinnedWithMaterial(LoadModel(glb, identity, requireEmbeddedImages: true), identity, fromFile: false));
+        }
+
+        static (SkinnedGltfMesh Mesh, GltfMaterialMaps Maps) BuildSkinnedWithMaterial(
+            ModelRoot root, string identity, bool fromFile)
+        {
+            SkinnedGltfMesh mesh = BuildSkinned(root, identity);
+            return (mesh, ReadMaterialMaps(FirstTexturedMaterial(root), fromFile ? AssetDirectory(identity) : null));
         }
 
         static SkinnedGltfMesh BuildSkinned(ModelRoot root, string path) =>

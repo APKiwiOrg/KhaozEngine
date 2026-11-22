@@ -351,3 +351,14 @@ rigid part riding a bending surface.
 ## Signatures corrected against the code
 
 Each task records here any shape the code required that differs from this note, keeping the planned behaviour.
+
+- Body colliders. `BodyColliderSet`'s constructor refuses with `BodyCollidersDataException`, as the region map's
+  constructor does, so a file and a constructed set report a broken rule the same way. A collider sequence that cannot
+  report its size is read only one item past `MaxColliders` before it refuses.
+- Byte loading. The byte overloads of `LoadSkinnedWithMaterial` and `LoadAnimations` check every image in the GLB,
+  including images no material uses, because the model reader resolves every image a GLB names. Images in a buffer
+  view or a data URI are accepted. Any other image URI raises `GltfImportDataException` with
+  `ExternalImageInByteImport`, the caller's `Identity` and the zero based `ImageIndex`, counted across repeated
+  `images` arrays as the model reader counts them. The scan reads the GLB's JSON chunk strictly, so invalid UTF-8 and
+  broken chunk framing refuse as `MalformedModel`. The path overloads resolve external images against the asset's
+  folder as before.

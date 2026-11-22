@@ -20,7 +20,9 @@ public sealed partial class PathFollower
     /// <summary>Whether this follower uses requests for region planning.</summary>
     internal bool UsesPlanning => _config.Planning is not null;
 
-    /// <summary>True while waiting for a lease, spending slices, or holding a finished result for adoption.</summary>
+    /// <summary>True while a region request is queued for a lease, has slices remaining, or holds a
+    /// finished result for adoption. Reset and cancellation clear it. Disposing the workspace pool
+    /// cancels leased and queued requests, clearing this flag for those followers immediately.</summary>
     internal bool PlanningPending => _request is { State: not PathPlanState.Cancelled };
 
     /// <summary>Releases a leased or waiting request and drops any ready result without resetting the route.</summary>
@@ -65,12 +67,16 @@ public sealed partial class PathFollower
         return TickCore<TPlanning>(feet, goal.Anchor, radius, 0f, goal, preparingDrop: true);
     }
 
-    void ValidatePlanning()
+    NavSpace? ResolvePlanningSpace(NavSpace? space)
     {
-        if (_config.Planning is not { } planning) return;
+        if (_config.Planning is not { } planning) return space;
         if (_planner is not IIncrementalRegionPathPlanner { SupportsRequests: true } incremental)
             throw new ArgumentException("Planning needs a region planner that supports requests.", "config");
+        NavSpace plannerSpace = incremental.Space;
+        if (space is not null && !ReferenceEquals(space, plannerSpace))
+            throw new ArgumentException("The space must be the request planner's navigation space.", nameof(space));
         incremental.ValidateWorkspaces(planning.Workspaces, _config.Budget);
+        return plannerSpace;
     }
 
     bool BeginPlanning(Vector3 position, NavGoalRegion region, float radius)

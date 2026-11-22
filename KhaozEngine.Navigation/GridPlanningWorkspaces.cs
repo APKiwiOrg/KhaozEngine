@@ -28,7 +28,7 @@ public sealed partial class GridPathPlanner
             internal GridPlanningWorkspaces(GridPathPlanner planner, int count, PathQueryBudget largestBudget,
                 int generation = 0)
             {
-                planner.RequireRequestSupport();
+                planner.RequireRegionRequestSupport();
                 ArgumentOutOfRangeException.ThrowIfLessThan(count, 1);
                 if (float.IsNaN(largestBudget.SnapRadius))
                     throw new ArgumentOutOfRangeException(nameof(largestBudget), "The snap radius limit must be ordered.");

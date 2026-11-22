@@ -8,7 +8,7 @@ namespace KhaozEngine.Movement;
 
 public sealed partial class MoveToRange
 {
-    /// <summary>True while the region follower holds a request or a result awaiting adoption.</summary>
+    /// <inheritdoc cref="PathFollower.PlanningPending"/>
     internal bool PlanningPending => _follower.PlanningPending;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

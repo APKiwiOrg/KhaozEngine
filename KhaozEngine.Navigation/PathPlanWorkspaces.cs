@@ -23,7 +23,8 @@ namespace KhaozEngine.Navigation;
 /// in the next tick.</para>
 /// <para>Release. A request releases its workspace when it completes, before its owner adopts the result, and when
 /// it is cancelled or disposed. A cancelled waiter leaves the queue. A cancelled request holds no lease and cannot
-/// release another's. Disposing the pool cancels every request it holds or queues, and a later begin throws
+/// release another's. Disposing the pool cancels every request it holds or queues. Ready results have already
+/// released their leases and remain available for adoption. A later begin throws
 /// <see cref="ObjectDisposedException"/>.</para>
 /// <para>Sizing. The count has no default because the engine cannot know how many owners share a pool. With
 /// at most one pending request per sharing owner, one workspace per owner prevents waiting. A request that waits
@@ -48,5 +49,6 @@ internal abstract class PathPlanWorkspaces : IDisposable
     public abstract long Waits { get; }
 
     /// <summary>Cancels every request the pool holds or queues and refuses later begins. Idempotent.</summary>
+    /// <exception cref="InvalidOperationException">Disposal overlaps another call into the pool.</exception>
     public abstract void Dispose();
 }

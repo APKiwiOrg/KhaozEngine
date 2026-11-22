@@ -5,6 +5,8 @@ public enum RangeMoveStatus
 {
     Following,
     InRange,
+
+    /// <summary>Holds at zero motion during a region planning request or an exhausted Partial route's cooldown.</summary>
     WaitingForPath,
     Unreachable,
     UnsupportedTransition,

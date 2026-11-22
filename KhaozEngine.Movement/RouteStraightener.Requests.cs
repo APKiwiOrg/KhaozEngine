@@ -27,6 +27,8 @@ internal sealed partial class RouteStraightener : IGridRequestAdapter
 
     bool IIncrementalRegionPathPlanner.SupportsRequests => SupportsRequests;
 
+    NavSpace IIncrementalRegionPathPlanner.Space => RequestNavigation().Space;
+
     PathPlanWorkspaces IIncrementalRegionPathPlanner.CreateWorkspaces(int count, PathQueryBudget largestBudget)
         => RequestNavigation().CreatePlanningWorkspaces(count, largestBudget, this);
 

@@ -30,7 +30,8 @@ and the Stair workload's dependency on its directed link.
 
 Workspace factory tests cover pool size, default and declared query budgets and refusals for a zero count
 and profiles with query-time area exclusions. Mover planning tests cover shared profile pools with per-mover
-fallback, request adoption, lease hand-over on reset and arrival, and supported Drop and stall behavior
-while a request is pending. Allocation guards cover immediate and queued begins and a warmed pending slice.
+fallback, rejection of an unrelated navigation space and delegate-only straightening, request adoption,
+lease hand-over on reset and arrival, and supported Drop and stall behavior while a request is pending.
+Allocation guards cover immediate and queued begins and a warmed pending slice.
 
 Passing a research fixture does not authorize a measurement campaign.

@@ -73,6 +73,8 @@ public sealed partial class GroundNavigation
 
         bool IIncrementalRegionPathPlanner.SupportsRequests => SupportsRequests;
 
+        NavSpace IIncrementalRegionPathPlanner.Space => navigation.Space;
+
         PathPlanWorkspaces IIncrementalRegionPathPlanner.CreateWorkspaces(int count, PathQueryBudget largestBudget)
             => CreateWorkspaces(count, largestBudget);
 

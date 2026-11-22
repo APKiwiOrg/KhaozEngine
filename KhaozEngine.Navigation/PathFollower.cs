@@ -31,9 +31,8 @@ public enum PathFollowState
     /// resumes <see cref="Following"/> (or <see cref="Arrived"/>) once the agent reaches the landing.</summary>
     Hopping,
 
-    /// <summary>A point query is deferred after consuming its route or changing a failed query's
-    /// intent, or a region query's partial corridor is exhausted. Steering is zero until the next
-    /// cooldown-gated replan.</summary>
+    /// <summary>Steering holds at zero while a point replan is deferred, an exhausted region Partial waits
+    /// for cooldown, or a region request waits for a workspace, spends slices or awaits adoption.</summary>
     WaitingForPath,
 
     /// <summary>An unpowered Drop owns traversal until the host acknowledges supported landing.
@@ -149,10 +148,11 @@ public sealed class PathFollowConfig
     /// result keeps the cooldown. Each tick queries at most once.</summary>
     public float ReplanCooldownSeconds { get; init; } = 0.5f;
 
-    /// <summary>Search budget handed to <see cref="IPathPlanner.FindPath"/> on every replan.</summary>
+    /// <summary>Search budget for each synchronous replan or fixed-quota region request.</summary>
     public PathQueryBudget Budget { get; init; } = PathQueryBudget.Default;
 
-    /// <summary>Optional fixed-quota region planning. Requires a compatible, live pool with room for <see cref="Budget"/>.</summary>
+    /// <summary>Optional fixed-quota region planning. Requires a compatible, live pool with room for <see cref="Budget"/>.
+    /// The follower uses the request planner's navigation space.</summary>
     internal PathPlanningConfig? Planning { get; init; }
 
     /// <summary>Default tuning: a 0.6 unit accept radius paired with a 0.8 unit vertical tolerance, 1.5
@@ -173,9 +173,8 @@ public sealed partial class PathFollower
 {
     readonly IPathPlanner _planner;
     readonly PathFollowConfig _config;
-    // Optional, and the only thing that lets the follower resolve which layer the AGENT is on. Null keeps the
-    // pre-existing XZ-only waypoint advance, so a consumer on a single-layer world (or one that never built a
-    // NavSpace of its own) is unaffected.
+    // Resolves the agent's layer for waypoint advance and gives Drops their physical endpoints.
+    // Synchronous callers can omit it for XZ-only advancement.
     readonly NavSpace? _space;
 
     // Keep the route reference adjacent to the index and cooldown so the synchronous reset
@@ -198,22 +197,25 @@ public sealed partial class PathFollower
     /// (<see cref="NavSpace.LayerAt"/>) against the layer each <see cref="NavWaypoint"/> carries. Pass it for
     /// any multi-layer world: without it the advance is XZ-only, and the waypoint at the top of a stair link
     /// sits one cell from its lower partner in XZ, well inside <see cref="PathFollowConfig.AcceptRadius"/>, so
-    /// the follower consumes it while the agent is still a floor below and skips the climb. Leaving it null
-    /// keeps exactly the old behaviour, which is what a single-layer world wants anyway. The space must be able
+    /// the follower consumes it while the agent is still a floor below and skips the climb. With fixed-quota region
+    /// planning, an omitted space resolves to the planner's space. For synchronous following, omitting
+    /// the space uses XZ-only waypoint advancement. The space must be able
     /// to RESOLVE a layer from a position: grids with surface heights, or finite Y bands (every engine baker
     /// produces one of those). A multi-layer space of default <c>NavGrid.FromWalkable</c> grids has neither, so
     /// <see cref="NavSpace.LayerAt"/> answers 0 everywhere and the follower never advances past a layer-1
     /// waypoint. And <paramref name="space"/> resolves from the position handed to the tick, so
     /// pass the agent's GROUND position, not a capsule centre, or low overhead geometry flips the layer.</para></summary>
     /// <exception cref="ArgumentNullException">The planner is null.</exception>
-    /// <exception cref="ArgumentException">Internal region planning requires a compatible planner and pool budget.</exception>
-    /// <exception cref="ObjectDisposedException">The internal region planning pool is disposed.</exception>
+    /// <exception cref="ArgumentException">Fixed-quota region planning requires a compatible engine planner and
+    /// workspace pool, and the query budget must fit the pool. A supplied <paramref name="space"/> must be
+    /// the exact instance used by the planner.</exception>
+    /// <exception cref="ObjectDisposedException">The region planning pool is disposed.</exception>
+    /// <exception cref="InvalidOperationException">Workspace validation overlaps another call into the pool.</exception>
     public PathFollower(IPathPlanner planner, PathFollowConfig? config = null, NavSpace? space = null)
     {
         _planner = planner ?? throw new ArgumentNullException(nameof(planner));
         _config = config ?? PathFollowConfig.Default;
-        _space = space;
-        ValidatePlanning();
+        _space = ResolvePlanningSpace(space);
     }
 
     /// <summary>
@@ -224,12 +226,12 @@ public sealed partial class PathFollower
     /// goal is <see cref="PathFollowState.Unreachable"/> (the planner found no route), and for the
     /// gap after a fully consumed <see cref="NavPathStatus.Partial"/> path. Point following clears the
     /// exhausted Partial path and steers at the raw goal (<see cref="PathFollowState.Following"/>) for one
-    /// tick, then waits at zero motion if the next query is deferred. Region following
-    /// holds at zero motion (<see cref="PathFollowState.WaitingForPath"/>) until a replan picks up a route. While a
-    /// replan is merely due but still gated by <see cref="PathFollowConfig.ReplanCooldownSeconds"/>, this
+    /// tick, then waits at zero motion if the next query is deferred. This property is
+    /// <see langword="null"/> while a region request is pending. While a replan is due and still gated
+    /// by <see cref="PathFollowConfig.ReplanCooldownSeconds"/>, this
     /// stays the previously committed path, so the reader always sees the route the agent is steering on,
     /// never a re-run of the planner. Reading it is allocation-free and never invokes the planner. The
-    /// returned <see cref="NavPath"/> is the instance <see cref="IPathPlanner.FindPath"/> produced, and
+    /// returned <see cref="NavPath"/> comes from the synchronous planner or an adopted region request, and
     /// its <see cref="NavPath.Waypoints"/> is a read-only view that cannot be downcast to mutable storage
     /// (guaranteed by the <see cref="NavPath"/> constructor), so this is a read-only view with no path
     /// back into the follower's state. When non-null it always carries at least one waypoint and

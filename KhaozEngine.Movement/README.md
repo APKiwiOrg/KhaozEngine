@@ -48,13 +48,18 @@ An immediate or queued begin allocates the request and its admission. Pending ad
 working memory. Publishing a nonempty route allocates the result.
 
 `MoveToRange` uses requests when its internal `PathFollowConfig.Planning` is set. The pool must be live,
-serve the selected planner and accommodate the follower budget at construction. Straightened requests need
-the profile constructor. `GroundPursuit` requires synchronous planning and refuses the option.
+serve the selected planner and accommodate the follower budget at construction. The delegate constructor
+requires the request planner's exact navigation space. Straightened requests need the profile constructor.
+`GroundPursuit` requires synchronous planning and refuses the option.
 A planning wait holds at zero motion, drops the old route and neither counts toward stall nor clears the
 stall window, including when it releases supported Drop preparation. Exhausted Partial cooldown waits
 still count. Suspension leaves a request unadvanced. InRange and Reset release a lease or remove its waiter
 before returning, and changes to target shape, range or capsule use Reset. Call Reset before discarding a
 mover or changing its target identity, placement or profile.
+
+Disposing the pool clears `PlanningPending` for movers with leased or queued requests. Completed
+routes awaiting adoption remain available. The next due tick that needs to begin a request on
+the disposed pool throws `ObjectDisposedException`.
 
 A footprint with query-time area exclusions requires synchronous planning, including when combined with
 an unconstrained grid. An area excluding view adds a traversal constraint that can scan a footprint

@@ -31,12 +31,17 @@ public sealed partial class PathFollower
     /// with no cooldown returns Unreachable at zero motion and retries on the next tick.
     /// Switching between point and region calls clears the previous route and cooldown. Call
     /// <see cref="Reset"/> when target identity, shape, range or traversal profile changes.
+    /// With fixed-quota planning, this tick holds at zero motion while waiting for a workspace,
+    /// spending slices or awaiting adoption. Pool disposal cancels leased and queued requests.
+    /// A completed route awaiting adoption remains available.
     /// </summary>
     /// <param name="feetPosition">The moving body's actual world feet position.</param>
     /// <param name="goal">The current goal predicate and its conservative anchor and extent.</param>
     /// <param name="agentRadius">Agent radius passed through to the planner on a replan.</param>
     /// <param name="dt">Timestep in seconds.</param>
     /// <exception cref="NotSupportedException">The planner does not implement <see cref="IRegionPathPlanner"/>.</exception>
+    /// <exception cref="ObjectDisposedException">This tick needs to begin a region request and its pool is disposed.</exception>
+    /// <exception cref="InvalidOperationException">A request call overlaps another call into the pool.</exception>
     public PathFollowOutput Tick(Vector3 feetPosition, NavGoalRegion goal, float agentRadius, float dt)
     {
         ValidateRegionTick(goal);

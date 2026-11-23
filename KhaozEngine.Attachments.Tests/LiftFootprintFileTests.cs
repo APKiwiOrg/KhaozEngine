@@ -72,7 +72,7 @@ public class LiftFootprintFileTests
     [InlineData("body count zero", LiftFootprintRefusal.BodyTriangleCountOutsideRange, 40)]
     [InlineData("body count above limit", LiftFootprintRefusal.BodyTriangleCountOutsideRange, 40)]
     [InlineData("part count", LiftFootprintRefusal.PartCountExceedsRemainingBytes, 44)]
-    [InlineData("zero part", LiftFootprintRefusal.PartIdZero, 67)]
+    [InlineData("zero part", LiftFootprintRefusal.PartIdZero, 48)]
     [InlineData("descending part", LiftFootprintRefusal.PartIdsNotAscending, 67)]
     [InlineData("duplicate part", LiftFootprintRefusal.PartIdsNotAscending, 67)]
     [InlineData("triangle count", LiftFootprintRefusal.TriangleCountExceedsRemainingBytes, 52)]
@@ -111,7 +111,8 @@ public class LiftFootprintFileTests
             case "descending part":
             case "duplicate part":
                 uint id = BinaryPrimitives.ReadUInt32LittleEndian(broken.AsSpan(byteOffset));
-                Assert.Equal((id, 1), (error.PartId, error.PartIndex));
+                // The zero ID is the file's only part. Order faults sit at the second part.
+                Assert.Equal((id, fault == "zero part" ? 0 : 1), (error.PartId, error.PartIndex));
                 break;
             case "triangle count":
                 Assert.Equal((7u, 0), (error.PartId, error.PartIndex));
@@ -187,10 +188,12 @@ public class LiftFootprintFileTests
             "version" => (golden, Replace(golden, 4, [2])),
             "level" => (golden, Replace(golden, 6, [7])),
             "reserved" => (golden, Replace(golden, 7, [1])),
-            "body count zero" => (golden, Replace(golden, 40, [0])),
+            // Entry-free, so a zero body count breaks only the count rule.
+            "body count zero" => (EntryFree(), Replace(EntryFree(), 40, [0, 0, 0, 0])),
             "body count above limit" => (golden, Replace(golden, 40, [0xff, 0xff, 0xff, 0xff])),
             "part count" => (golden, Replace(golden, 44, [0xff, 0xff, 0xff, 0xff])),
-            "zero part" => (golden, Replace(golden, 67, [0, 0, 0, 0])),
+            // The only part, so a zero ID breaks positivity without breaking the ascending order.
+            "zero part" => (SingleTriangle([3, 0]), Replace(SingleTriangle([3, 0]), 48, [0, 0, 0, 0])),
             "descending part" => (golden, Replace(golden, 67, [6, 0, 0, 0])),
             "duplicate part" => (golden, Replace(golden, 67, [7, 0, 0, 0])),
             "triangle count" => (golden, Replace(golden, 52, [0xff, 0xff, 0xff, 0xff])),
@@ -209,6 +212,8 @@ public class LiftFootprintFileTests
             _ => throw new ArgumentException(fault),
         };
     }
+
+    static byte[] EntryFree() => [.. Golden()[..44], 0, 0, 0, 0];
 
     static byte[] SingleTriangle(byte[] triangle) => [.. Golden()[..44], 1, 0, 0, 0, 7, 0, 0, 0, 1, 0, 0, 0, .. triangle];
 

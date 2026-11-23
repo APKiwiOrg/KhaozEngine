@@ -101,10 +101,11 @@ public class LiftFootprintTests
     public void Part_ids_must_be_positive_and_strictly_ascending(uint invalidId, LiftFootprintRefusal reason)
     {
         Assert.Equal(new uint[] { 4, 5 }, new LiftFootprint(Digest, 1, [new(4, []), new(5, [])]).Parts.Select(p => p.PartId));
-        var error = Assert.Throws<LiftFootprintDataException>(() =>
-            new LiftFootprint(Digest, 1, [new(4, []), new(invalidId, [])]));
+        // A zero ID stands alone so it breaks positivity only. Order cases follow the positive ID 4.
+        LiftFootprintPart[] parts = invalidId == 0 ? [new(invalidId, [])] : [new(4, []), new(invalidId, [])];
+        var error = Assert.Throws<LiftFootprintDataException>(() => new LiftFootprint(Digest, 1, parts));
         Assert.Equal(reason, error.Reason);
-        Assert.Equal((invalidId, 1), (error.PartId, error.PartIndex));
+        Assert.Equal((invalidId, parts.Length - 1), (error.PartId, error.PartIndex));
     }
 
     [Fact]
@@ -141,15 +142,18 @@ public class LiftFootprintTests
     }
 
     [Theory]
-    [InlineData(true, LiftFootprintRefusal.SwingingTriangleHasHeights)]
-    [InlineData(false, LiftFootprintRefusal.FixedTriangleHeightCountMismatch)]
-    public void Only_fixed_triangles_carry_one_height_per_cell(bool swinging, LiftFootprintRefusal reason)
+    [InlineData(true, new[] { 5 }, new[] { 0.1 }, LiftFootprintRefusal.SwingingTriangleHasHeights, null, 0.1)]
+    [InlineData(false, new[] { 5, 9 }, new[] { 0.1 }, LiftFootprintRefusal.FixedTriangleHeightCountMismatch, 9L, null)]
+    [InlineData(false, new[] { 5 }, new[] { 0.1, 0.2 }, LiftFootprintRefusal.FixedTriangleHeightCountMismatch, null, 0.2)]
+    public void Only_fixed_triangles_carry_one_height_per_cell(bool swinging, int[] keys, double[] heights,
+        LiftFootprintRefusal reason, long? unmatchedKey, double? unmatchedHeight)
     {
-        double[] valid = swinging ? [] : [0.1];
-        double[] invalid = swinging ? [0.1] : [];
-        Assert.Equal(valid.Length, new LiftFootprintTriangle(swinging, [0], valid).HeightUnits.Length);
-        var error = Assert.Throws<LiftFootprintDataException>(() => new LiftFootprintTriangle(swinging, [0], invalid));
+        double[] valid = swinging ? [] : keys.Select(_ => 0.1).ToArray();
+        Assert.Equal(valid.Length, new LiftFootprintTriangle(swinging, keys, valid).HeightUnits.Length);
+        var error = Assert.Throws<LiftFootprintDataException>(() => new LiftFootprintTriangle(swinging, keys, heights));
         Assert.Equal(reason, error.Reason);
+        int entry = swinging ? 0 : Math.Min(keys.Length, heights.Length);
+        Assert.Equal((entry, unmatchedKey, unmatchedHeight), (error.EntryIndex, error.CellKey, error.HeightMetres));
     }
 
     [Theory]

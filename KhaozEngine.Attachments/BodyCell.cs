@@ -28,7 +28,13 @@ public readonly record struct BodyCell(int Triangle, int Index)
     /// <paramref name="w2"/> for the second and third corners in index order. Finite weights are clamped
     /// to the closed triangle, keeping the third corner's weight on the diagonal edge.
     /// </summary>
-    /// <exception cref="ArgumentOutOfRangeException">The triangle is negative or a weight is nonfinite.</exception>
+    /// <remarks>
+    /// The column is the floor of <c>w1 * 8</c> and the row the floor of <c>w2 * 8</c>, so a point on an interior grid
+    /// line belongs to the cell on its higher side. A point on a grid square's own diagonal belongs to the square's
+    /// lower cell. A point on the triangle's edge opposite the first corner belongs to the cell along that edge.
+    /// Weights must be finite. A caller passes the weights of a closest point, which always are.
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException">The triangle is negative or a weight is NaN or infinite.</exception>
     public static BodyCell At(int triangle, double w1, double w2)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(triangle);

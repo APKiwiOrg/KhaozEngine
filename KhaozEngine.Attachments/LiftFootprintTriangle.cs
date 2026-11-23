@@ -25,7 +25,16 @@ public readonly record struct LiftFootprintTriangle
             throw new LiftFootprintDataException(LiftFootprintRefusal.SwingingTriangleHasHeights, "Swinging triangles carry cells only.")
             { EntryIndex = 0, HeightMetres = heightsMetres[0] };
         if (!swinging && heightsMetres.Length != cellKeys.Length)
-            throw new LiftFootprintDataException(LiftFootprintRefusal.FixedTriangleHeightCountMismatch, "Fixed triangles require one height per cell.");
+        {
+            // Name the first entry without a partner: a key missing its height, or a height without a key.
+            int unmatched = Math.Min(heightsMetres.Length, cellKeys.Length);
+            throw new LiftFootprintDataException(LiftFootprintRefusal.FixedTriangleHeightCountMismatch, "Fixed triangles require one height per cell.")
+            {
+                EntryIndex = unmatched,
+                CellKey = unmatched < cellKeys.Length ? cellKeys[unmatched] : null,
+                HeightMetres = unmatched < heightsMetres.Length ? heightsMetres[unmatched] : null,
+            };
+        }
 
         int[] keys = cellKeys.ToArray();
         ushort[] units = new ushort[heightsMetres.Length];

@@ -28,6 +28,7 @@ public class BodyCellTests
     [InlineData(0.5, 0.5, 54)]
     [InlineData(0.09375, 0.09375, 1)]
     [InlineData(0.0625, 0.0625, 0)]
+    [InlineData(0.25, 0.03125, 4)]
     [InlineData(-0.000000000001, 0, 0)]
     [InlineData(0, 1.000000000001, 63)]
     [InlineData(0.625000000001, 0.375000000001, 47)]

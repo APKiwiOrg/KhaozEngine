@@ -61,9 +61,10 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
                 },
                 measurements = new[]
                 {
-                    Measure(wearers, 144, warmFrames, measuredFrames),
-                    Measure(wearers, 60, warmFrames, measuredFrames),
+                    Measure(wearers, 144, warmFrames, measuredFrames, MotionLevel.Simulated),
+                    Measure(wearers, 60, warmFrames, measuredFrames, MotionLevel.Simulated),
                 },
+                heldMeasurement = Measure(wearers, 144, warmFrames, measuredFrames, MotionLevel.Held),
             }, JsonSerializerOptions.Web);
             output.WriteLine(json);
             Console.WriteLine(json);
@@ -84,19 +85,20 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
         return (count, count);
     }
 
-    static Measurement Measure(List<Wearer> wearers, int frameRate, int warmFrames, int measuredFrames)
+    static Measurement Measure(List<Wearer> wearers, int frameRate, int warmFrames, int measuredFrames, MotionLevel level)
     {
         float frameTime = 1f / frameRate;
         foreach (Wearer wearer in wearers) wearer.Reset();
         for (int frame = 0; frame < warmFrames; frame++)
         {
             foreach (Wearer wearer in wearers) wearer.Pose(frame * frameTime);
-            foreach (Wearer wearer in wearers) wearer.Prepare(frameTime);
+            foreach (Wearer wearer in wearers) wearer.Step(frameTime, level);
+            foreach (Wearer wearer in wearers) wearer.WriteDraws();
         }
         foreach (Wearer wearer in wearers) wearer.ValidateDraws();
 
         var ticks = new long[measuredFrames];
-        long allocated = 0;
+        long allocated = 0, stepTicks = 0, drawTicks = 0;
         using (AllocationRegion.Start("swing preparation frames"))
         {
             for (int frame = 0; frame < ticks.Length; frame++)
@@ -105,11 +107,15 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
 
                 long bytesBefore = GC.GetAllocatedBytesForCurrentThread();
                 long start = Stopwatch.GetTimestamp();
-                foreach (Wearer wearer in wearers) wearer.Prepare(frameTime);
+                foreach (Wearer wearer in wearers) wearer.Step(frameTime, level);
+                long afterStep = Stopwatch.GetTimestamp();
+                foreach (Wearer wearer in wearers) wearer.WriteDraws();
                 long end = Stopwatch.GetTimestamp();
                 allocated += GC.GetAllocatedBytesForCurrentThread() - bytesBefore;
 
                 ticks[frame] = end - start;
+                stepTicks += afterStep - start;
+                drawTicks += end - afterStep;
             }
         }
         foreach (Wearer wearer in wearers) wearer.ValidateDraws();
@@ -117,12 +123,14 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
         Array.Sort(ticks);
         double msPerTick = 1000d / Stopwatch.Frequency;
         return new Measurement(frameRate, ticks.Average() * msPerTick, Percentile(ticks, .50) * msPerTick,
-            Percentile(ticks, .95) * msPerTick, ticks[^1] * msPerTick, allocated);
+            Percentile(ticks, .95) * msPerTick, ticks[^1] * msPerTick, allocated,
+            stepTicks * msPerTick / measuredFrames, drawTicks * msPerTick / measuredFrames);
     }
 
     static long Percentile(long[] sorted, double rank) => sorted[(int)Math.Ceiling(rank * sorted.Length) - 1];
 
-    sealed record Measurement(int FrameRateHz, double MeanMs, double P50Ms, double P95Ms, double MaxMs, long ManagedBytesAllocated);
+    sealed record Measurement(int FrameRateHz, double MeanMs, double P50Ms, double P95Ms, double MaxMs,
+        long ManagedBytesAllocated, double StepMeanMs, double WriteDrawsMeanMs);
 
     static LoadedAttachmentSet LoadPiece(OutfitRig rig, string name, AttachmentLayer layer, string anchor,
         int chainCount, int chainLength, Vector3 firstRoot, bool linkNeighbours)
@@ -261,9 +269,10 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
             model = Matrix4x4.CreateRotationY(-turn) * Matrix4x4.CreateTranslation(position);
         }
 
-        internal void Prepare(float frameTime)
+        internal void Step(float frameTime, MotionLevel level) => motion.Step(skeleton, palette, model, frameTime, level);
+
+        internal void WriteDraws()
         {
-            motion.Step(skeleton, palette, model, frameTime);
             for (int worn = 0; worn < draws.Length; worn++)
                 outfit.WriteDraws(worn, motion, skeleton, palette, model, key, Template, draws[worn]);
         }

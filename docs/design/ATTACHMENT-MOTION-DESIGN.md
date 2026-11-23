@@ -463,7 +463,9 @@ uses 12 body capsules and a cloak whose neighbouring chains have a 25% width bou
 `WornMotion.Step` and `BoundOutfit.WriteDraws` for every worn set, excluding host animation and scene submission.
 After 120 warm frames per rate it reports the mean, p50, p95 and maximum frame cost in milliseconds, total managed
 bytes on the preparation thread and the runner environment in one JSON line. Each rate samples 600 frames at
-a simulated frame rate of 144 Hz or 60 Hz. Timing is report only and excluded from default CI.
+a simulated frame rate of 144 Hz or 60 Hz. Each sample also reports the mean of the motion and draw spans. A
+third sample uses the same 32 wearers held at 144 Hz to measure preparation with no physics steps. The held
+sample shows steady held presentation and draws. Timing is report only and excluded from default CI.
 
 Run the full measurement on a GitHub-hosted runner after approval. Only that run supplies timing evidence.
 

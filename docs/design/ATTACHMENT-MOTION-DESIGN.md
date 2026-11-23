@@ -214,15 +214,21 @@ motion by one step, so a slow capsule could throw a tip at many times its own sp
    root to tip pass without the stiffness spring restores the bend limit, collisions and lengths.
 5. **Width bound.** Chains joined by links of a part that states `linkStretch` run that second pass together, depth by
    depth. Each depth's particles are placed from their final parents. Bound pairs at that depth then move both
-   particles on their own length spheres toward the band. Up to eight alternating sweeps stop early when every
-   pair fits within 0.5 mm of its band. The bend limit and capsules are applied again to each moved particle,
-   because they outrank the bound. The width's escaping relative velocity is removed before the length, limit
-   and contact velocity constraints, which keep the last word. Tip pairs are solved together after all joint
-   depths, because a short chain's tip can be linked to a longer chain's. A pair whose segments point straight
-   apart turns both toward one shared perpendicular, since its tangents give no leverage. Coincident endpoints turn
-   to opposite sides of it, so a gap can open. A bound applied after
-   the whole pass has to drag the joints below a corrected particle without their speed, and the next step
-   pushes them back out. Placing a depth only from final parents keeps lengths exact and drags nothing.
+   particles on their own length spheres toward the band. The first sweep uses the position solve's rounding
+   tolerance. Later sweeps allow a 0.5 mm residual because a shared particle can reopen a neighbour's gap.
+   Correction starts at zero at each margin and reaches the authored band at twice the margin. Each correction
+   targets inside the margin to avoid chasing roundoff at its edge. Alternating sweeps stop when every pair fits
+   within the current margin or after eight sweeps. The bend limit and capsules are applied again to each moved
+   particle because they outrank the bound.
+   The impulse that stops escaping width velocity increases continuously across the 0.5 mm approach margin inside
+   the band, reaching a full stop at the edge within rounding tolerance. This avoids switching between free
+   separation and a full stop while springs and gravity act on a cape at rest. The width velocity constraint runs
+   before the length, limit and contact velocity constraints, which keep the last word. Tip pairs are solved
+   together after all joint depths, because a short chain's tip can be linked to a longer chain's. A pair whose
+   segments point straight apart turns both toward one shared perpendicular, since its tangents give no leverage.
+   Coincident endpoints turn to opposite sides of it, so a gap can open. A bound applied after the whole pass
+   has to drag the joints below a corrected particle without their speed, and the next step pushes them back out.
+   Placing a depth only from final parents keeps lengths exact and drags nothing.
 
 Corrections never write velocity. A chain whose one movable joint hangs from a still anchor never gains kinetic
 energy from its limit, static contacts or length. A chain released from a capsule it rested on starts from rest. The
@@ -531,8 +537,9 @@ All headless, on synthetic skeletons built in code.
   keeps its segment lengths through a large turn between steps and when a resume finishes between steps. A zero
   length hold finishes on a zero time frame, and a step below the minimum refuses.
 - **Width bound.** Linked chains with `linkStretch` keep their spacing inside the bound under a driven anchor, and the
-  same chains without it leave it. The second pass keeps them clear of capsules and within their limits. Coincident
-  tips separate into their band.
+  same chains without it leave it. The second pass keeps them clear of capsules and within their limits. A soft
+  bounded cape at rest against a frozen capsule stops moving at fixed and uneven frame pacing, including at low
+  damping with the bend limit disabled. Coincident tips separate into their band.
 - **Formats.** Formats 4 and 6 and the body collider file round trip. Each refusal sits beside a passing control that
   differs only in the broken rule. Format 1 to 5 bytes and hashes are unchanged.
 - **Binding and draws.** A chained garment binds and draws. Each binding refusal is reached. Without a motion, chain

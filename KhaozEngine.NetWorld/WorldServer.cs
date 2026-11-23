@@ -574,6 +574,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
         // here), so a tick with only delta-capable clients pays no extra world scan. Every client thereafter this
         // tick reuses it, sharing one O(worldPop) rebuild across the tick's fallback clients.
         snapshotIndexFreshThisTick = false;
+        LegacyDeltaFrameSender legacyFrames = replication.BeginServePass();
         foreach (int slot in slots)
         {
             long netId = netIdBySlot[slot];
@@ -586,29 +587,26 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
             InterestVisibility.Filter(interestScratch, slot, netId, config.EntityVisibleToSlot);
             HashSet<long> set = interestScratch;
             if (replication.Serve(slot, world, set, netId, lastAckBySlot[slot])) continue;   // format 2 owns it
-            MoveProtocol.ServerFrameKind kind;
-            byte[] body;
             if (deltaReplicator is not null && deltaCapableSlots.Contains(slot))
             {
-                // Owner-scope the Replicate channel to this client's own player, so an OwnerOnly component is served
-                // only on the client's own entity, never on another player it observes.
-                body = deltaReplicator.WriteFor(slot, world, set, netId);
-                kind = MoveProtocol.ServerFrameKind.Delta;
+                LegacyDeltaAllocationProbe? probe = deltaReplicator.LegacyAllocationsForTests;
+                long serveStart = LegacyDeltaAllocationProbe.Start(probe);
+                using (AoiDeltaReplicator.ServeFrame delta = legacyFrames.Build(deltaReplicator, slot, world, set, netId))
+                {
+                    LegacyDeltaFrameSender.Send(net, deltaReplicator, slot, delta.Bytes, netId, lastAckBySlot[slot],
+                        tickedSlots.Contains(slot) ? ServerTick : null);
+                }
+                probe?.Record(LegacyDeltaPhase.Serve, serveStart);
+                continue;
             }
-            else
-            {
-                // Indexed path: resolves `set` off a netId -> entity index in O(set) instead of a full world scan.
-                // Rebuilt once per tick (on the first fallback client) and shared with every other fallback client
-                // served this tick. Byte-identical to the old full-scan WriteFiltered (see
-                // SnapshotWriterIndexedParityTests and WorldServerSnapshotIndexParityTests).
-                if (!snapshotIndexFreshThisTick) { snapshotIndex.Rebuild(world); snapshotIndexFreshThisTick = true; }
-                body = SnapshotWriter.WriteFiltered(snapshotIndex, snapshotScratch, world, registry, set, ReplicationChannels.Replicate, netId);
-                kind = MoveProtocol.ServerFrameKind.Snapshot;
-            }
-            (kind, byte[] frame) = ServedFrame(slot, kind, netId, lastAckBySlot[slot], body);
+            // Indexed path: resolves the interest set off a netId -> entity index without a per-viewer world scan.
+            if (!snapshotIndexFreshThisTick) { snapshotIndex.Rebuild(world); snapshotIndexFreshThisTick = true; }
+            byte[] body = SnapshotWriter.WriteFiltered(snapshotIndex, snapshotScratch, world, registry, set, ReplicationChannels.Replicate, netId);
+            (MoveProtocol.ServerFrameKind kind, byte[] frame) = ServedSnapshotFrame(slot, netId, lastAckBySlot[slot], body);
             byte[] envelope = MoveProtocol.EncodeServerFrame(kind, frame);
             net.SendTo(slot, envelope, NetChannelReliability.ReliableOrdered);
         }
+        legacyFrames.Complete(deltaReplicator);
         replication.EndServe();
 
         // Clear the per-tick ECS change-tracking + event sets so they don't accumulate on a long-running server.

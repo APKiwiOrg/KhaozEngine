@@ -1729,7 +1729,24 @@ same version-skew bar as 9.16.0.
   **true**; set false to force full snapshots for every client) and **`WorldClientConfig.RequestDeltaReplication`**
   (default **true**). Delivery is reliable-ordered and each delta is built from the projection last sent to that
   client, so reliable order guarantees the client holds the baseline every delta names. Acknowledgements never move
-  the diff basis. The legacy contract, and what a custom host owes it, is in the Replication README.
+  the diff basis. See the [legacy reliable delta contract](../KhaozEngine.Replication/README.md#legacy-reliable-delta-contract).
+- **Serving storage.** Both continuous-world hosts write the legacy delta body into their writer's reusable stream,
+  reserving space for the session opcode, world kind, and ticked header. After the body commits, they fill the prefix
+  for the negotiated kind, skipping the unused tick field for a plain frame. The transport borrows the written span
+  for its synchronous send. A missing slot skips the transport call. A silent transport drop returns normally.
+  A transport exception propagates. Each outcome leaves the completed body's commitment in place. A known lost
+  commitment requires a fresh receiver.
+- **Serving lifetime.** The writer lends its frame buffer until the synchronous send returns, including when
+  the send throws. A nested build during the borrow uses independent scratch and an owned array, so the
+  transport's frame stays intact. Once serving has completed, the post-step hook can step the host again.
+  Each host owns its writer and ticks it serially. Successive ticks can run on different threads.
+  The stream grows as needed, normally doubling capacity. Hosts number passes as the slot loop begins, after the
+  pre-tick hook, and count them when the loop finishes with the buffer available. A pass with no legacy frame
+  counts as zero bytes. Four consecutive counted passes release a buffer above 64 KiB when each pass's largest
+  frame request, including the reserved prefix, fits in a quarter of its capacity. A larger request or a gap
+  from an incomplete or uncounted pass breaks the streak. After four consecutive counted passes, retained
+  capacity is bounded by the larger of 64 KiB and four times the largest request in those passes. The next serve
+  grows from empty after release.
 - **Handshake.** On join a delta-capable `WorldClient` sends a **`MoveProtocol.ClientControlKind.DeltaCapable`**
   hello (a 2-byte control an older server decodes as an unknown control and harmlessly ignores). The server upgrades
   that slot to **`ServerFrameKind.Delta`** frames; the client applies them with `ClientReplicationView.ApplyDelta`,

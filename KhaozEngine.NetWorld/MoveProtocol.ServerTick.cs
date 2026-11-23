@@ -15,11 +15,41 @@ public static partial class MoveProtocol
     {
         if (snapshot is null) throw new ArgumentNullException(nameof(snapshot));
         var b = new byte[TickedFrameHeader + snapshot.Length];
-        BitConverter.TryWriteBytes(b.AsSpan(0, 8), serverTick);
-        BitConverter.TryWriteBytes(b.AsSpan(8, 8), localNetId);
-        BitConverter.TryWriteBytes(b.AsSpan(16, 4), ackSeq);
+        WriteTickedSnapshotHeader(b, serverTick, localNetId, ackSeq);
         snapshot.CopyTo(b.AsSpan(TickedFrameHeader));
         return b;
+    }
+
+    internal const int TickedDeltaPrefixLength = 1 + TickedFrameHeader;
+
+    // Both bodies begin at the same offset. A plain frame starts eight bytes later, so the host can choose the
+    // negotiated kind after the body completes, as it does for owning frames.
+    internal const int PlainDeltaPrefixOffset = TickedFrameHeader - FrameHeader;
+
+    internal static void WriteLegacyDeltaPrefix(Span<byte> frame, long? serverTick, long localNetId, int ackSeq)
+    {
+        if (serverTick is long tick)
+        {
+            frame[0] = (byte)ServerFrameKind.TickedDelta;
+            WriteTickedSnapshotHeader(frame[1..], tick, localNetId, ackSeq);
+        }
+        else
+        {
+            frame[0] = (byte)ServerFrameKind.Delta;
+            WriteSnapshotHeader(frame[1..], localNetId, ackSeq);
+        }
+    }
+
+    private static void WriteSnapshotHeader(Span<byte> destination, long localNetId, int ackSeq)
+    {
+        BitConverter.TryWriteBytes(destination, localNetId);
+        BitConverter.TryWriteBytes(destination[8..], ackSeq);
+    }
+
+    private static void WriteTickedSnapshotHeader(Span<byte> destination, long serverTick, long localNetId, int ackSeq)
+    {
+        BitConverter.TryWriteBytes(destination, serverTick);
+        WriteSnapshotHeader(destination[8..], localNetId, ackSeq);
     }
 
     /// <summary>Splits a ticked server frame into its header and the replication body. False below the 20-byte header,

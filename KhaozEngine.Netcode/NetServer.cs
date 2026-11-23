@@ -257,6 +257,14 @@ public sealed partial class NetServer
         return true;
     }
 
+    // The continuous-world legacy writer owns the complete session Data frame until Send returns. Bypass
+    // sendScratch so a transport callback can send other session data without overwriting the borrowed frame.
+    internal void SendFramedDataTo(int slot, ReadOnlySpan<byte> frame, NetChannelReliability reliability)
+    {
+        if (connectionBySlot.TryGetValue(slot, out NetConnectionId conn))
+            transport.Send(conn, frame, reliability);
+    }
+
     /// <summary>The transport's unfragmented payload limit toward <paramref name="slot"/> on
     /// <paramref name="reliability"/>, as <see cref="INetTransport.MaxUnfragmentedPayloadBytes"/> answers it for the
     /// connection the transport assigned that slot. The limit counts the session frame byte. Zero means unknown. Zero

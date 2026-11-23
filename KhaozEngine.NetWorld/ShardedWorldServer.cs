@@ -575,11 +575,10 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         replication.OpenCaptureTick(deltaCapableSlots);   // or waits out a writer restart, opening no capture
         replication.Advance(dt);   // elapsed time, independent of whether a movement sub-tick ran
         long serveEpoch = ++interestServeEpoch;   // fresh each tick: each served home cell rebuilds its grid once
+        LegacyDeltaFrameSender legacyFrames = replication.BeginServePass();
         foreach (int slot in slots)
         {
             if (!netIdBySlot.TryGetValue(slot, out long netId) || IsLingering(slot)) continue;   // nobody to serve
-            MoveProtocol.ServerFrameKind kind;
-            byte[] body;
             // One reused interest set for the whole client loop, cleared per client. Both writers are done with it
             // before they return, so nothing retains it. The visibility rule filters it here, ghosts included, so
             // both paths serve the same filtered set.
@@ -589,20 +588,22 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
             if (replication.Serve(slot, world, interestScratch, netId, lastAckBySlot[slot])) continue;   // format 2 owns it
             if (deltaReplicator is not null && deltaCapableSlots.Contains(slot))
             {
-                // Owner-scope the Replicate channel to this client's own player (netId is stable across handoff), so an
-                // OwnerOnly component is served only on the client's own entity, never on another player it observes.
-                body = deltaReplicator.WriteFor(slot, world, interestScratch, netId);
-                kind = MoveProtocol.ServerFrameKind.Delta;
+                LegacyDeltaAllocationProbe? probe = deltaReplicator.LegacyAllocationsForTests;
+                long serveStart = LegacyDeltaAllocationProbe.Start(probe);
+                using (AoiDeltaReplicator.ServeFrame delta = legacyFrames.Build(deltaReplicator, slot, world, interestScratch, netId))
+                {
+                    LegacyDeltaFrameSender.Send(net, deltaReplicator, slot, delta.Bytes, netId, lastAckBySlot[slot],
+                        tickedSlots.Contains(slot) ? ServerTick : null);
+                }
+                probe?.Record(LegacyDeltaPhase.Serve, serveStart);
+                continue;
             }
-            else
-            {
-                body = host.SnapshotForClient(slot, world, interestScratch, serveEpoch);
-                kind = MoveProtocol.ServerFrameKind.Snapshot;
-            }
-            (kind, byte[] frame) = ServedFrame(slot, kind, netId, lastAckBySlot[slot], body);
+            byte[] body = host.SnapshotForClient(slot, world, interestScratch, serveEpoch);
+            (MoveProtocol.ServerFrameKind kind, byte[] frame) = ServedSnapshotFrame(slot, netId, lastAckBySlot[slot], body);
             byte[] envelope = MoveProtocol.EncodeServerFrame(kind, frame);
             net.SendTo(slot, envelope, NetChannelReliability.ReliableOrdered);
         }
+        legacyFrames.Complete(deltaReplicator);
         replication.EndServe();
 
         // 6. Clear each cell's per-tick ECS change-tracking + event sets so they don't accumulate on a long-running

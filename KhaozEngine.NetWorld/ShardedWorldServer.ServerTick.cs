@@ -15,15 +15,12 @@ public sealed partial class ShardedWorldServer
     /// reads it in its tick hooks instead of keeping its own frame count.</summary>
     public long ServerTick { get; private set; }
 
-    // The served frame kind and framing for one slot: plain for a slot without the hello, ticked with this call's
-    // ServerTick for one with it. A format 2 slot never reaches here, so its frames stay unticked.
-    private (MoveProtocol.ServerFrameKind, byte[]) ServedFrame(int slot, MoveProtocol.ServerFrameKind kind, long netId,
-        int ack, byte[] body)
+    // Fallback snapshots keep their owning path. The delta sender handles the negotiated delta kinds in place.
+    private (MoveProtocol.ServerFrameKind, byte[]) ServedSnapshotFrame(int slot, long netId, int ack, byte[] body)
     {
-        if (!tickedSlots.Contains(slot)) return (kind, MoveProtocol.EncodeSnapshotFrame(netId, ack, body));
-        MoveProtocol.ServerFrameKind ticked = kind == MoveProtocol.ServerFrameKind.Delta
-            ? MoveProtocol.ServerFrameKind.TickedDelta
-            : MoveProtocol.ServerFrameKind.TickedSnapshot;
-        return (ticked, MoveProtocol.EncodeTickedSnapshotFrame(ServerTick, netId, ack, body));
+        if (!tickedSlots.Contains(slot))
+            return (MoveProtocol.ServerFrameKind.Snapshot, MoveProtocol.EncodeSnapshotFrame(netId, ack, body));
+        return (MoveProtocol.ServerFrameKind.TickedSnapshot,
+            MoveProtocol.EncodeTickedSnapshotFrame(ServerTick, netId, ack, body));
     }
 }

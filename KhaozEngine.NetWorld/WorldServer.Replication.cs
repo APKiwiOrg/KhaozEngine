@@ -25,6 +25,13 @@ public sealed partial class WorldServer
     /// <summary>Test seam: the shared delta writer, or null when delta replication is off.</summary>
     internal AoiDeltaReplicator? DeltaReplicatorForTest => deltaReplicator;
 
+    // Seeds header fields so wire tests can exercise high bytes without running extra ticks or allocating entities.
+    internal void SeedLegacyHeaderForTests(long nextNetId, long previousTick)
+    {
+        allocator.EnsureNextAtLeast(nextNetId);
+        ServerTick = previousTick;
+    }
+
     /// <summary>Test seam: the last format 2 epoch this server issued.</summary>
     internal ulong ReplicationEpochHighWaterForTest => replication.EpochHighWater;
 

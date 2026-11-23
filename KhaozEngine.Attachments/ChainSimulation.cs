@@ -230,15 +230,7 @@ public sealed class ChainSimulation
                 _stepColliders, _previousStepColliders, _settings[chain], seconds, pullTowardRest: true);
         }
 
-        if (_links.Apply(_particles, seconds))
-        {
-            for (int chain = 0; chain < _settings.Length; chain++)
-            {
-                int anchor = Rig.Chains[chain].Anchor;
-                ChainConstraints.FollowChain(_particles, chain, _stepAnchors[anchor],
-                    _stepColliders, _previousStepColliders, _settings[chain], seconds, pullTowardRest: false);
-            }
-        }
+        _links.FinishStep(_particles, _stepAnchors, _stepColliders, _previousStepColliders, _settings, seconds);
 
         _stepWearerPosition = position;
         _stepWearerRotation = rotation;

@@ -11,10 +11,10 @@ internal static class ChainSwingFixture
     internal const int StopTime = 2;
     internal const float SwayFade = 0.25f;
 
-    internal static ChainRig CreateRig()
+    internal static ChainRig CreateRig(float? stretch = null, bool wideLimits = false)
     {
         const int strapChains = 4;
-        var cape = new ChainSettings(25, 12, 1, 0.16f, 0.16f, 0.015f);
+        var cape = new ChainSettings(25, 12, 1, 0.16f, wideLimits ? MathF.PI : 0.16f, 0.015f);
         var strap = new ChainSettings(10, 5, 1, 0.6f, 0.9f, 0.01f);
         var chains = new ChainRigChain[CapeChains + strapChains];
         var links = new ChainLink[CapeChains - 1];
@@ -23,7 +23,7 @@ internal static class ChainSwingFixture
         for (int chain = 0; chain < strapChains; chain++)
             chains[CapeChains + chain] = CreateChain(3, new((chain - 1.5f) * 0.12f, -0.15f, 0.2f), -0.12f, strap);
         for (int link = 0; link < links.Length; link++)
-            links[link] = new ChainLink(link, link + 1);
+            links[link] = new ChainLink(link, link + 1) { Stretch = stretch };
         return new ChainRig(1, chains, links);
     }
 

@@ -26,6 +26,8 @@ internal ref struct ChainVelocityConstraints
         _seconds = seconds;
     }
 
+    internal Vector3 FrameTurn { get => _frameTurn; set => _frameTurn = value; }
+
     internal void Start(Vector3 previousRest, Vector3 rest)
     {
         if (_seconds == 0)
@@ -47,6 +49,12 @@ internal ref struct ChainVelocityConstraints
         if (_seconds == 0)
             return;
 
+        ApplyLocal(parent, length, direction, rest, clamped);
+        _frameTurn = NextTurn(_particles, parent, length, direction, _frameTurn);
+    }
+
+    internal void ApplyLocal(int parent, float length, Vector3 direction, Vector3 rest, bool clamped)
+    {
         var velocities = _particles.Velocities;
         int child = parent + 1;
         if (length == 0)
@@ -60,10 +68,17 @@ internal ref struct ChainVelocityConstraints
         if (clamped)
             StopAtCone(parent, length, direction, rest);
         StopAtCapsules(parent, length, direction);
+    }
+
+    internal static Vector3 NextTurn(ChainParticles particles, int parent, float length, Vector3 direction, Vector3 frameTurn)
+    {
+        if (length == 0)
+            return frameTurn;
 
         // The next cone inherits twist about this segment and swings with its endpoints.
-        var swingTurn = Vector3.Cross(direction, velocities[child] - velocities[parent]) / length;
-        _frameTurn = Vector3.Dot(_frameTurn, direction) * direction + swingTurn;
+        var velocities = particles.Velocities;
+        var swingTurn = Vector3.Cross(direction, velocities[parent + 1] - velocities[parent]) / length;
+        return Vector3.Dot(frameTurn, direction) * direction + swingTurn;
     }
 
     private void StopAtCone(int parent, float length, Vector3 direction, Vector3 rest)

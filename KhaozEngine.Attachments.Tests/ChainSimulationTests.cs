@@ -506,21 +506,30 @@ public class ChainSimulationTests
         }
     }
 
-    [Fact]
-    public void Warm_step_and_compose_do_not_allocate()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Warm_step_and_compose_do_not_allocate(bool bounded)
     {
-        var simulation = Create(Chain(Vector3.UnitX, Settings, Joint(Vector3.Zero), Joint(Vector3.UnitX)), 1);
+        var simulation = bounded
+            ? new ChainSimulation(ChainSwingFixture.CreateRig(0.12f, wideLimits: true), 1)
+            : Create(Chain(Vector3.UnitX, Settings, Joint(Vector3.Zero), Joint(Vector3.UnitX)), 1);
         Matrix4x4[] anchors = [Matrix4x4.Identity];
         ColliderCapsule[] capsules = [new(new(8, 0, 0), new(8, -1, 0), 0.3f)];
-        var output = new Matrix4x4[2];
+        var output = new Matrix4x4[simulation.Rig.JointCount];
+        int frame = 0;
         void AdvanceAndCompose()
         {
-            simulation.Step(anchors, capsules, Matrix4x4.Identity, 1f / 60);
+            var wearer = Matrix4x4.Identity;
+            if (bounded)
+                (anchors[0], wearer) = ChainSwingFixture.Pose(frame++ / 60f);
+            simulation.Step(anchors, capsules, wearer, 1f / 60);
             simulation.ComposeJointWorlds(anchors, output);
         }
 
-        AdvanceAndCompose();
-        AdvanceAndCompose();
+        int warmFrames = bounded ? 20 : 2;
+        for (int call = 0; call < warmFrames; call++)
+            AdvanceAndCompose();
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (var call = 0; call < 100; call++)
             AdvanceAndCompose();

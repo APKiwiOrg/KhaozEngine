@@ -91,6 +91,7 @@ internal sealed class CapturedComponents
     // replicator reads it from one thread.
     private CapturedComponents? publicView;
 
+    // Weak handles for lifetime tests only. No serving path calls this seam.
     internal (WeakReference<CapturedComponents> Source, WeakReference<CapturedComponents>? Public,
         WeakReference<byte[]> Payload) ReferencesForTests() =>
         (new(this), publicView is null ? null : new(publicView), new(buffer.Bytes));

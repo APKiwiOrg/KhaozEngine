@@ -191,7 +191,8 @@ The obligations a standalone owner takes on:
   incrementing. The owner then ends every connection the writer serves, including format 2 sessions on the same
   writer, and only after they have ended calls `ResetAfterLegacySequenceExhaustion()`. It throws before exhaustion,
   and clears the counter, the capture and every slot's legacy and format 2 state. The next capture is sequence 1 and
-  every next serve is full state for a fresh receiver. Replication cannot end transports, so it cannot verify the
+  every next serve is full state for a fresh receiver. An AoI build interrupted by the reset throws
+  `InvalidOperationException` and commits nothing. Replication cannot end transports, so it cannot verify the
   precondition. The reset remembers no format 2 epoch, so the owner's epoch source must stay monotonic across it.
 
 ```csharp

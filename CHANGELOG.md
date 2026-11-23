@@ -42,8 +42,8 @@ which `KhaozEngine.Attachments.Render3D` applies when it binds wearer motion.
 **Performance.**
 
 - Each chain skips capsules beyond its reach while preserving the simulation result.
-- Chain display reuses cached swings when each sample anchor maps to the current anchor by a rotation,
-  positive uniform scale and translation.
+- Chain display reuses cached swings for well-conditioned bases when each sample anchor maps to the current
+  anchor by a rotation, positive uniform scale and translation.
 - The swing cost diagnostic reports the motion and draw spans separately and measures held wearers.
 - Chain stepping reuses capsule geometry across constraint passes and extracts only the anchor rotation they need.
 

@@ -92,8 +92,11 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
         for (int frame = 0; frame < warmFrames; frame++)
         {
             foreach (Wearer wearer in wearers) wearer.Pose(frame * frameTime);
-            foreach (Wearer wearer in wearers) wearer.Step(frameTime, level);
-            foreach (Wearer wearer in wearers) wearer.WriteDraws();
+            foreach (Wearer wearer in wearers)
+            {
+                wearer.Step(frameTime, level);
+                wearer.WriteDraws();
+            }
         }
         foreach (Wearer wearer in wearers) wearer.ValidateDraws();
 
@@ -107,15 +110,19 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
 
                 long bytesBefore = GC.GetAllocatedBytesForCurrentThread();
                 long start = Stopwatch.GetTimestamp();
-                foreach (Wearer wearer in wearers) wearer.Step(frameTime, level);
-                long afterStep = Stopwatch.GetTimestamp();
-                foreach (Wearer wearer in wearers) wearer.WriteDraws();
+                foreach (Wearer wearer in wearers)
+                {
+                    long beforeStep = Stopwatch.GetTimestamp();
+                    wearer.Step(frameTime, level);
+                    long afterStep = Stopwatch.GetTimestamp();
+                    wearer.WriteDraws();
+                    long afterDraws = Stopwatch.GetTimestamp();
+                    stepTicks += afterStep - beforeStep;
+                    drawTicks += afterDraws - afterStep;
+                }
                 long end = Stopwatch.GetTimestamp();
                 allocated += GC.GetAllocatedBytesForCurrentThread() - bytesBefore;
-
                 ticks[frame] = end - start;
-                stepTicks += afterStep - start;
-                drawTicks += end - afterStep;
             }
         }
         foreach (Wearer wearer in wearers) wearer.ValidateDraws();

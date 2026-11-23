@@ -41,6 +41,7 @@ public sealed class ChainRig
     private readonly Matrix4x4[] _restLocals;
     private readonly Matrix4x4[] _restFromAnchor;
     private readonly Vector3[] _segmentOffsets;
+    private readonly double[] _restSquaredBasisConditions;
 
     /// <summary>Validates and copies the supplied chains, joints and links.</summary>
     public ChainRig(int anchorCount, IEnumerable<ChainRigChain> chains, IEnumerable<ChainLink> links)
@@ -74,11 +75,13 @@ public sealed class ChainRig
         _restLocals = new Matrix4x4[jointCount];
         _restFromAnchor = new Matrix4x4[jointCount];
         _segmentOffsets = new Vector3[jointCount];
+        _restSquaredBasisConditions = new double[snapshot.Length];
         for (int chain = 0; chain < snapshot.Length; chain++)
         {
             var definition = snapshot[chain];
             int start = _firstJoints[chain];
             var parent = Matrix4x4.Identity;
+            double restSquaredBasisCondition = 1;
             for (int joint = 0; joint < definition.Joints.Count; joint++)
             {
                 int index = start + joint;
@@ -87,12 +90,15 @@ public sealed class ChainRig
                 if (!ChainMath.TryInvert(local, out _) || !ChainMath.TryInvert(rest, out _))
                     throw new ArgumentException($"Chain {chain} joint {joint} has an invalid rest transform.", nameof(chains));
 
+                // Rotations do not amplify scale spread. A product bounds it even after the joints swing.
+                restSquaredBasisCondition *= ChainMath.SquaredBasisCondition(local);
                 _restLocals[index] = local;
                 _restFromAnchor[index] = rest;
                 _segmentOffsets[index] = joint + 1 < definition.Joints.Count ? definition.Joints[joint + 1].Translation : definition.Tip;
                 parent = rest;
             }
 
+            _restSquaredBasisConditions[chain] = restSquaredBasisCondition;
             if (!ChainMath.IsFinite(Vector3.Transform(definition.Tip, parent)))
                 throw new ArgumentException($"Chain {chain} has a non-finite rest tip position.", nameof(chains));
         }
@@ -129,4 +135,5 @@ public sealed class ChainRig
     internal ReadOnlySpan<Matrix4x4> RestFromAnchor => _restFromAnchor;
     internal Matrix4x4 RestLocal(int joint) => _restLocals[joint];
     internal Vector3 SegmentOffset(int joint) => _segmentOffsets[joint];
+    internal double RestSquaredBasisCondition(int chain) => _restSquaredBasisConditions[chain];
 }

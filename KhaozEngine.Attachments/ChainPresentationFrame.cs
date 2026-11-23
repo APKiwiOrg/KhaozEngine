@@ -9,17 +9,11 @@ internal sealed class ChainPresentationFrame(ChainRig rig)
     internal Quaternion[] Swings { get; } = new Quaternion[rig.JointCount];
     internal ChainPresentationAnchor[] Anchors { get; } = new ChainPresentationAnchor[rig.AnchorCount];
 
-    internal void SetRest(ReadOnlySpan<ChainPose> anchors, ReadOnlySpan<Matrix4x4> inverses)
+    internal void SetRest(ReadOnlySpan<ChainPresentationAnchor> anchors)
     {
         rig.RestFromAnchor.CopyTo(Frames);
         Array.Fill(Swings, Quaternion.Identity);
-        SetAnchors(anchors, inverses);
-    }
-
-    internal void SetAnchors(ReadOnlySpan<ChainPose> anchors, ReadOnlySpan<Matrix4x4> inverses)
-    {
-        for (int index = 0; index < anchors.Length; index++)
-            Anchors[index] = new ChainPresentationAnchor(inverses[index], anchors[index].Rotation);
+        anchors.CopyTo(Anchors);
     }
 
     internal void CopyFrom(ChainPresentationFrame source)

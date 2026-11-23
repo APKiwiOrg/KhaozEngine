@@ -245,9 +245,12 @@ transform. The shown result interpolates the last two steps' anchor relative fra
 them, through the hierarchy. Each joint's swing from its unswung frame is slerped, and each child attaches to its
 blended parent, with the first joint pinned to its anchor. At a grid sample the captured frames are copied.
 Between samples, the solver's cached swings follow the current anchor when each sample-to-current transform
-is a rotation with positive uniform scale and any translation. A changing non-uniform stretch or shear changes
-the endpoint bases differently, so the display reads their swings after applying the current anchor. Near an
-ambiguous half turn it also reads the endpoint frames to preserve the choice of arc. Interpolating each frame's translation on its own
+is a rotation with positive uniform scale and any translation, and the anchor and rest bases are well conditioned.
+A changing non-uniform stretch or shear changes the endpoint bases differently. An ill-conditioned basis can
+lose a direction to float rounding even under a rigid change. The display reads the endpoint matrices in either
+case. Anchor bases are checked per sample and frame. The immutable rig bounds the conditioning of its rest
+locals together, because scale spread can accumulate down a chain. When two endpoint swings are near a half turn
+apart, the display rereads that joint's endpoints so both paths select the same arc. Interpolating each frame's translation on its own
 shortened a segment to about 0.71 of its length halfway through a quarter turn in one step. A frame that ends before
 the next step shows that interpolation, and a zero time frame keeps its shown frames, both composed on the current
 anchor, so the chain never falls behind the body.
@@ -452,11 +455,12 @@ The wearables limits are 32 wearers, at most 2 ms added CPU preparation, no mana
   with a full capsule replay if a contact correction leaves the conservative reach. The cull and both contact
   passes share the capsule axis prepared once per step. A segment reuses its tip offset until a position
   correction changes its direction. Constraint setup extracts the anchor rotation and skips the unused stretch.
-  At the default 120 Hz simulation rate, a 144 Hz frame averages 0.83 steps and a 60 Hz frame averages two. A frame between grid steps rebuilds each
-  shown chain from the last two steps. When both sample anchors carry by a positive similarity, the display
-  transports and slerps cached swings, then composes each joint on its blended parent without factoring its
-  endpoint matrices. An affine fallback reads the endpoint swings for an anchor that changes stretch or shear
-  between a sample and the current frame.
+  At the default 120 Hz simulation rate, a 144 Hz frame averages 0.83 steps and a 60 Hz frame averages two.
+  A frame between grid steps rebuilds each shown chain from the last two steps. When both sample anchors carry
+  by a positive similarity and the bases are well conditioned, the display transports and slerps cached swings
+  and composes each joint on its blended parent. It still factors a joint's endpoint matrices near a half turn
+  between the swings, where rounding can choose the opposite arc. The affine fallback factors every joint
+  when the anchor changes stretch or shear or the chain's combined basis condition exceeds the cache bound.
 - GPU: no shader, pass or draw count changes. A chained part adds palette entries within the 128 joint limit.
 - Allocation is tested per call, as outfit draws are.
 
@@ -465,8 +469,9 @@ uses 12 body capsules and a cloak whose neighbouring chains have a 25% width bou
 `WornMotion.Step` and `BoundOutfit.WriteDraws` for every worn set, excluding host animation and scene submission.
 After 120 warm frames per rate it reports the mean, p50, p95 and maximum frame cost in milliseconds, total managed
 bytes on the preparation thread and the runner environment in one JSON line. Each rate samples 600 frames at
-a simulated frame rate of 144 Hz or 60 Hz. Each sample also reports the mean of the motion and draw spans. A
-third sample uses the same 32 wearers held at 144 Hz to measure preparation with no physics steps. The held
+a simulated frame rate of 144 Hz or 60 Hz. Each wearer's motion step is immediately followed by its draws. The
+diagnostic sums the spans around those calls and includes their timestamps in the frame total. A third sample
+uses the same 32 wearers held at 144 Hz to measure preparation with no physics steps. The held
 sample shows steady held presentation and draws. Timing is report only and excluded from default CI.
 
 Run the full measurement on a GitHub-hosted runner after approval. Only that run supplies timing evidence.

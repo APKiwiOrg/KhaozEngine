@@ -1,5 +1,4 @@
 using System;
-using System.Numerics;
 
 namespace KhaozEngine.Attachments;
 
@@ -12,13 +11,13 @@ internal sealed class ChainPresentationBlend(ChainRig rig, ChainPresentationHier
     internal void Begin() => _elapsed = 0;
 
     internal bool Advance(ChainPresentationFrame shown, ReadOnlySpan<ChainPose> anchors,
-        ReadOnlySpan<Matrix4x4> anchorInverses, float seconds, float duration, bool toRest)
+        ReadOnlySpan<ChainPresentationAnchor> frame, float seconds, float duration, bool toRest)
     {
         float remaining = duration - _elapsed;
         if (seconds >= remaining)
         {
             if (toRest)
-                shown.SetRest(anchors, anchorInverses);
+                shown.SetRest(frame);
             else
                 shown.CopyFrom(LiveTarget);
             _elapsed = duration;
@@ -31,7 +30,7 @@ internal sealed class ChainPresentationBlend(ChainRig rig, ChainPresentationHier
         // Continue from the last displayed swings so a changing target cannot switch arcs across a half-turn.
         float amount = seconds / remaining;
         _elapsed += seconds;
-        hierarchy.Interpolate(shown, toRest ? null : LiveTarget, shown, anchors, anchorInverses, amount);
+        hierarchy.Interpolate(shown, toRest ? null : LiveTarget, shown, anchors, frame, amount);
         return true;
     }
 }

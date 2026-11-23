@@ -3,8 +3,13 @@ using System.Numerics;
 
 namespace KhaozEngine.Attachments;
 
-internal readonly record struct ChainPresentationAnchor(Matrix4x4 Inverse, Quaternion Rotation)
+internal readonly record struct ChainPresentationAnchor(Matrix4x4 Inverse, Quaternion Rotation, double SquaredBasisCondition)
 {
+    internal ChainPresentationAnchor(in Matrix4x4 matrix, in Matrix4x4 inverse, Quaternion rotation)
+        : this(inverse, rotation, ChainMath.SquaredBasisCondition(matrix))
+    {
+    }
+
     internal bool TryCarryTo(in ChainPose current, out ChainSwingTransport transport)
     {
         transport = default;

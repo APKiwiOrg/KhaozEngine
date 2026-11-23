@@ -26,6 +26,25 @@ internal static class ChainMath
         return IsAffine(inverse);
     }
 
+    internal static double SquaredBasisCondition(in Matrix4x4 matrix)
+    {
+        var x = new Vector3(matrix.M11, matrix.M12, matrix.M13);
+        var y = new Vector3(matrix.M21, matrix.M22, matrix.M23);
+        var z = new Vector3(matrix.M31, matrix.M32, matrix.M33);
+        double xx = Dot(x, x), yy = Dot(y, y), zz = Dot(z, z);
+        double xy = Math.Abs(Dot(x, y)), xz = Math.Abs(Dot(x, z)), yz = Math.Abs(Dot(y, z));
+
+        // The row Gram matrix has the squared singular values as its eigenvalues.
+        // Gershgorin bounds also reject bases whose smallest direction cannot be bounded away from zero.
+        double lower = Math.Min(xx - (xy + xz), Math.Min(yy - (xy + yz), zz - (xz + yz)));
+        double upper = Math.Max(xx + (xy + xz), Math.Max(yy + (xy + yz), zz + (xz + yz)));
+        return lower > 0 ? upper / lower : double.PositiveInfinity;
+
+        // Double intermediates retain small separations and keep the squared float range representable.
+        static double Dot(Vector3 left, Vector3 right) =>
+            (double)left.X * right.X + (double)left.Y * right.Y + (double)left.Z * right.Z;
+    }
+
     internal static double DistanceSquared(Vector3 first, Vector3 second)
     {
         double x = (double)first.X - second.X;

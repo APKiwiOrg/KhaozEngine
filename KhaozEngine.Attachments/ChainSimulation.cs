@@ -13,7 +13,7 @@ public sealed class ChainSimulation
     private ChainStepClock _clock;
     private readonly ChainSettings[] _settings;
     private readonly ChainPresentationFrame _shown;
-    private readonly Matrix4x4[] _anchorInverses;
+    private readonly ChainPresentationAnchor[] _framePresentationAnchors;
     private readonly Matrix4x4[] _stepAnchors;
     private readonly Matrix4x4[] _stepAnchorInverses;
     private ChainPose[] _previousAnchors;
@@ -50,7 +50,7 @@ public sealed class ChainSimulation
             _settings[chain] = rig.Chains[chain].Settings;
         _shown = new ChainPresentationFrame(rig);
         rig.RestFromAnchor.CopyTo(_shown.Frames);
-        _anchorInverses = new Matrix4x4[rig.AnchorCount];
+        _framePresentationAnchors = new ChainPresentationAnchor[rig.AnchorCount];
         _stepAnchors = new Matrix4x4[rig.AnchorCount];
         _stepAnchorInverses = new Matrix4x4[rig.AnchorCount];
         _previousAnchors = new ChainPose[rig.AnchorCount];
@@ -73,8 +73,6 @@ public sealed class ChainSimulation
     {
         ValidateFrame(anchorWorlds, colliders, wearer, deltaSeconds, level);
         var frameWearer = new ChainPose(wearer);
-        for (int anchor = 0; anchor < anchorWorlds.Length; anchor++)
-            _frameAnchors[anchor] = new ChainPose(anchorWorlds[anchor]);
 
         bool reset = _needsReset || deltaSeconds > Options.LongestGapSeconds ||
             ChainMath.DistanceSquared(wearer.Translation, _previousWearer.Matrix.Translation) >
@@ -83,7 +81,7 @@ public sealed class ChainSimulation
         {
             _particles.SetRest(anchorWorlds, reset: true);
             _clock.Reset();
-            _shown.SetRest(_frameAnchors, _anchorInverses);
+            _shown.SetRest(_framePresentationAnchors);
             _stepPresentation.Reset(_shown);
             _blend.Begin();
             _resuming = false;
@@ -93,7 +91,7 @@ public sealed class ChainSimulation
             _resuming = false;
             if (!_held)
                 _blend.Begin();
-            _blend.Advance(_shown, _frameAnchors, _anchorInverses, deltaSeconds, Options.HoldBlendSeconds, toRest: true);
+            _blend.Advance(_shown, _frameAnchors, _framePresentationAnchors, deltaSeconds, Options.HoldBlendSeconds, toRest: true);
         }
         else
         {
@@ -109,12 +107,12 @@ public sealed class ChainSimulation
             Advance(colliders, frameWearer, deltaSeconds);
             if (_resuming && (deltaSeconds > 0 || Options.HoldBlendSeconds == 0))
             {
-                _stepPresentation.Show(_clock.Interpolation, _frameAnchors, _anchorInverses, _blend.LiveTarget);
-                _resuming = _blend.Advance(_shown, _frameAnchors, _anchorInverses,
+                _stepPresentation.Show(_clock.Interpolation, _frameAnchors, _framePresentationAnchors, _blend.LiveTarget);
+                _resuming = _blend.Advance(_shown, _frameAnchors, _framePresentationAnchors,
                     deltaSeconds, Options.HoldBlendSeconds, toRest: false);
             }
             else if (deltaSeconds > 0)
-                _stepPresentation.Show(_clock.Interpolation, _frameAnchors, _anchorInverses, _shown);
+                _stepPresentation.Show(_clock.Interpolation, _frameAnchors, _framePresentationAnchors, _shown);
         }
 
         (_previousAnchors, _frameAnchors) = (_frameAnchors, _previousAnchors);
@@ -180,11 +178,16 @@ public sealed class ChainSimulation
                 throw new ArgumentException("Capsule endpoints must be finite and radii finite and nonnegative.", nameof(colliders));
         }
 
-        // Inverse scratch is unpublished and revalidated on every call.
+        // Anchor scratch is unpublished and revalidated on every call.
         for (int anchor = 0; anchor < anchorWorlds.Length; anchor++)
         {
-            if (!ChainMath.TryInvert(anchorWorlds[anchor], out _anchorInverses[anchor]))
+            ref readonly var world = ref anchorWorlds[anchor];
+            if (!ChainMath.TryInvert(world, out var inverse))
                 throw new ArgumentException($"Anchor {anchor} must have a finite invertible affine transform.", nameof(anchorWorlds));
+
+            var pose = new ChainPose(world);
+            _frameAnchors[anchor] = pose;
+            _framePresentationAnchors[anchor] = new ChainPresentationAnchor(world, inverse, pose.Rotation);
         }
     }
 
@@ -230,7 +233,7 @@ public sealed class ChainSimulation
 
         _stepWearerPosition = position;
         _stepWearerRotation = rotation;
-        _stepPresentation.Capture(_particles, _stepAnchorInverses);
+        _stepPresentation.Capture(_particles, _stepAnchors, _stepAnchorInverses);
         _particles.RememberAnchorRotations();
         (_previousStepColliders, _stepColliders) = (_stepColliders, _previousStepColliders);
     }
@@ -262,7 +265,7 @@ public sealed class ChainSimulation
             {
                 // A change in handedness can make an intermediate pose singular.
                 pose = current;
-                _stepAnchorInverses[anchor] = _anchorInverses[anchor];
+                _stepAnchorInverses[anchor] = _framePresentationAnchors[anchor].Inverse;
             }
             _stepAnchors[anchor] = pose;
         }

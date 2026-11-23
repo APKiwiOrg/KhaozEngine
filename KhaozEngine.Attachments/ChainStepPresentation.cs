@@ -14,11 +14,12 @@ internal sealed class ChainStepPresentation(ChainRig rig, ChainPresentationHiera
         _current.CopyFrom(shown);
     }
 
-    internal void Capture(ChainParticles particles, ReadOnlySpan<Matrix4x4> anchorInverses)
+    internal void Capture(ChainParticles particles, ReadOnlySpan<Matrix4x4> anchorWorlds, ReadOnlySpan<Matrix4x4> anchorInverses)
     {
         (_previous, _current) = (_current, _previous);
         for (int anchor = 0; anchor < anchorInverses.Length; anchor++)
-            _current.Anchors[anchor] = new ChainPresentationAnchor(anchorInverses[anchor], particles.StepAnchorRotations[anchor]);
+            _current.Anchors[anchor] = new ChainPresentationAnchor(anchorWorlds[anchor], anchorInverses[anchor],
+                particles.StepAnchorRotations[anchor]);
 
         var worlds = particles.JointWorlds;
         for (int chain = 0; chain < rig.Chains.Count; chain++)
@@ -37,7 +38,7 @@ internal sealed class ChainStepPresentation(ChainRig rig, ChainPresentationHiera
         particles.JointSwings.CopyTo(_current.Swings, 0);
     }
 
-    internal void Show(float amount, ReadOnlySpan<ChainPose> anchors, ReadOnlySpan<Matrix4x4> inverses,
+    internal void Show(float amount, ReadOnlySpan<ChainPose> anchors, ReadOnlySpan<ChainPresentationAnchor> frame,
         ChainPresentationFrame shown)
     {
         if (amount == 0)
@@ -45,6 +46,6 @@ internal sealed class ChainStepPresentation(ChainRig rig, ChainPresentationHiera
         else if (amount == 1)
             shown.CopyFrom(_current);
         else
-            hierarchy.Interpolate(_previous, _current, shown, anchors, inverses, amount);
+            hierarchy.Interpolate(_previous, _current, shown, anchors, frame, amount);
     }
 }

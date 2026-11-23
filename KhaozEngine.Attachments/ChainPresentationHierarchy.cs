@@ -5,18 +5,29 @@ namespace KhaozEngine.Attachments;
 
 internal sealed class ChainPresentationHierarchy(ChainRig rig)
 {
-    private readonly (bool Cached, ChainSwingTransport From, ChainSwingTransport To)[] _transports = new
-        (bool, ChainSwingTransport, ChainSwingTransport)[rig.AnchorCount];
+    // Cap the condition number at eight. The round trip through an anchor and the subsequent
+    // basis read can each amplify float rounding. The squared cap keeps that contribution
+    // to about four millionths (64 times the float round-off unit).
+    private const double MaximumSquaredBasisCondition = 64;
+    private const float ArcTieTolerance = 0.000004f;
+
+    private readonly (double SquaredBasisCondition, ChainSwingTransport From, ChainSwingTransport To)[] _transports =
+        new (double, ChainSwingTransport, ChainSwingTransport)[rig.AnchorCount];
 
     internal void Interpolate(ChainPresentationFrame from, ChainPresentationFrame? to, ChainPresentationFrame output,
-        ReadOnlySpan<ChainPose> anchors, ReadOnlySpan<Matrix4x4> inverses, float amount)
+        ReadOnlySpan<ChainPose> anchors, ReadOnlySpan<ChainPresentationAnchor> frame, float amount)
     {
         for (int index = 0; index < anchors.Length; index++)
         {
-            ChainSwingTransport toTransport = default;
-            bool cached = from.Anchors[index].TryCarryTo(anchors[index], out var fromTransport) &&
+            ChainSwingTransport fromTransport = default, toTransport = default;
+            double condition = Math.Max(frame[index].SquaredBasisCondition, from.Anchors[index].SquaredBasisCondition);
+            if (to is not null)
+                condition = Math.Max(condition, to.Anchors[index].SquaredBasisCondition);
+
+            bool similar = condition <= MaximumSquaredBasisCondition &&
+                from.Anchors[index].TryCarryTo(anchors[index], out fromTransport) &&
                 (to is null || to.Anchors[index].TryCarryTo(anchors[index], out toTransport));
-            _transports[index] = (cached, fromTransport, toTransport);
+            _transports[index] = (similar ? condition : double.PositiveInfinity, fromTransport, toTransport);
         }
 
         for (int chain = 0; chain < rig.Chains.Count; chain++)
@@ -25,8 +36,11 @@ internal sealed class ChainPresentationHierarchy(ChainRig rig)
             int first = rig.FirstJoint(chain);
             int end = first + definition.Joints.Count;
             var anchor = anchors[definition.Anchor].Matrix;
-            var inverse = inverses[definition.Anchor];
-            var (cached, fromTransport, toTransport) = _transports[definition.Anchor];
+            var inverse = frame[definition.Anchor].Inverse;
+            var (anchorCondition, fromTransport, toTransport) = _transports[definition.Anchor];
+            double condition = anchorCondition * rig.RestSquaredBasisCondition(chain);
+            bool cached = condition <= MaximumSquaredBasisCondition;
+            float arcTieTolerance = (float)condition * ArcTieTolerance;
             var blendedParent = anchor;
             var fromParent = anchor;
             var toParent = anchor;
@@ -40,7 +54,7 @@ internal sealed class ChainPresentationHierarchy(ChainRig rig)
                     fromSwing = fromTransport.Apply(from.Swings[joint]);
                     toSwing = to is null ? Quaternion.Identity : toTransport.Apply(to.Swings[joint]);
                     // At a half-turn, endpoint rounding can choose the opposite shortest arc.
-                    if (MathF.Abs(Quaternion.Dot(fromSwing, toSwing)) <= 0.000004f)
+                    if (MathF.Abs(Quaternion.Dot(fromSwing, toSwing)) <= arcTieTolerance)
                     {
                         fromParent = joint == first ? anchor : previousFromFrame * anchor;
                         toParent = to is null || joint == first ? anchor : to.Frames[joint - 1] * anchor;
@@ -67,7 +81,7 @@ internal sealed class ChainPresentationHierarchy(ChainRig rig)
             }
         }
 
-        output.SetAnchors(anchors, inverses);
+        frame.CopyTo(output.Anchors);
     }
 
     private static Quaternion ReadSwing(in Matrix4x4 local, in Matrix4x4 frame, in Matrix4x4 anchor, ref Matrix4x4 parent)

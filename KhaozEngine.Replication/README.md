@@ -24,6 +24,8 @@ area-of-interest deltas over a reliable channel, and opt-in format 2 acknowledge
   The reader and its base stream are synchronous borrows valid only during the read call. Do not retain or
   dispose them. The engine reuses readers for framed receive and sample decoding to avoid allocating a reader
   for each component read.
+  A bounded reader starts at position zero with access only to its payload, throws `EndOfStreamException` when a
+  read requires more bytes than remain, and allows the codec to leave bytes unread.
   `IsRegistered(ushort)` (since 17.38.0) asks whether this registry has a codec for an id, for a caller judging
   whether an id it read out of STORED bytes is one this build knows: cell-blob persistence uses it to retire a
   candidate parse of a blob whose wire generation was never recorded. `IsRegistered<T>(id, expectedChannels)`
@@ -105,7 +107,7 @@ area-of-interest deltas over a reliable channel, and opt-in format 2 acknowledge
   decouples presentation from the tick cadence and the render fps. Both interpolation paths reuse a sample reader
   on the calling thread. Each sample starts at position zero with its exact byte length and a clean UTF-8 decoder.
   A nested decode borrows a separate reader. The engine releases the backing array when the callback exits, including
-  when it throws. Reads on an idle sample reader or stream throw. Using a retained reader or stream while a later
+  when it throws. An idle sample reader sees an empty payload. Using a retained reader or stream while a later
   callback is active is unsupported.
   The optional `excludeNetId` skips one entity in both
   calls (the local, predicted avatar): it renders from prediction, so its client-world position must stay the

@@ -35,6 +35,9 @@ public sealed class ReplicationRegistry
     /// (read consumes exactly what write produced). The reader and its base stream are synchronous borrows valid
     /// only during the read call. Do not retain or dispose them. The engine reuses readers for framed receive
     /// and sample decoding to avoid allocating a reader for each component read.
+    /// A bounded reader starts at position zero with access only to its payload, throws
+    /// <see cref="EndOfStreamException"/> when a read requires more bytes than remain, and allows the codec
+    /// to leave bytes unread.
     /// Supplying <paramref name="lerp"/> makes the component
     /// interpolatable (smoothed between snapshots by <see cref="ClientReplicationView.Interpolate"/>).
     /// <paramref name="discreteSample"/> instead makes it fixed-delay <b>nearest-sampled</b> (no blending): the

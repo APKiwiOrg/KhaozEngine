@@ -1,11 +1,10 @@
 using System;
 using System.IO;
-using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace KhaozEngine.Replication;
 
-/// <summary>Reuses the BinaryReader and fixed-buffer MemoryStream that an interpolation codec reads.</summary>
+/// <summary>Reuses the BinaryReader and bounded payload stream that an interpolation codec reads.</summary>
 internal sealed class SampleReader
 {
     // A callback takes its pair out of the thread's free list. Nested decodes can reuse another pair,
@@ -13,11 +12,12 @@ internal sealed class SampleReader
     [ThreadStatic]
     private static SampleReader? available;
 
-    private readonly MemoryStream stream = new(Array.Empty<byte>());
+    private readonly FramedPayloadStream stream = new();
+    private readonly SampleEncoding encoding = new();
     private readonly BinaryReader reader;
     private SampleReader? next;
 
-    private SampleReader() => reader = new BinaryReader(stream);
+    private SampleReader() => reader = new BinaryReader(stream, encoding);
 
     internal static T Read<T>(Func<BinaryReader, T> read, byte[] sample)
     {
@@ -26,31 +26,26 @@ internal sealed class SampleReader
         slot.next = null;
         try
         {
-            Rebind(slot.stream, sample, 0, sample.Length, writable: true, publiclyVisible: false);
-            ReaderDisposed(slot.reader) = false;
+            slot.stream.Retarget(sample, 0, sample.Length);
             return read(slot.reader);
         }
         finally
         {
-            // MemoryStream.Dispose leaves the backing array in place for ToArray, so detach the sample first.
-            Rebind(slot.stream, Array.Empty<byte>(), 0, 0, writable: false, publiclyVisible: false);
-            slot.stream.Dispose();
-            ReaderDisposed(slot.reader) = true;
-            ReaderDecoder(slot.reader)?.Reset();
+            slot.stream.Release();
+            slot.encoding.ResetDecoder();
             slot.next = available;
             available = slot;
         }
     }
 
-    // BinaryReader's MemoryStream path has its own character and EOF cursor behavior. Reuse the actual
-    // BCL pair and initialize the bounded stream through its array constructor to preserve those semantics.
-    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = ".ctor")]
-    private static extern void Rebind(MemoryStream stream, byte[] buffer, int index, int count, bool writable, bool publiclyVisible);
+    // This encoding belongs to one reader. Keep its lazily created decoder so incomplete UTF-8
+    // at the end of this sample cannot affect the next sample the reader borrows.
+    private sealed class SampleEncoding : UTF8Encoding
+    {
+        private Decoder? decoder;
 
-    // BinaryReader has no public reopen or decoder reset. Keep both .NET runtime accessors at this boundary.
-    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_disposed")]
-    private static extern ref bool ReaderDisposed(BinaryReader reader);
+        public override Decoder GetDecoder() => decoder ??= base.GetDecoder();
 
-    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_decoder")]
-    private static extern ref Decoder? ReaderDecoder(BinaryReader reader);
+        internal void ResetDecoder() => decoder?.Reset();
+    }
 }

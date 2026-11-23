@@ -1,4 +1,5 @@
 using System;
+using System.Buffers.Binary;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -72,6 +73,100 @@ public class AoiProjectionLifetimeTests
         Assert.Equal(1, reader.ReadInt32());
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ResetDuringLegacySelectionRefusesAndClearsTheCandidate(bool openNextTick)
+    {
+        const int slot = 0;
+        (AoiDeltaReplicator writer, World world, HashSet<long> interest) = NewSource();
+        writer.BeginTick();
+        // Warm the spare at sequence 1 so the callback can restart with the same sequence.
+        writer.WriteFor(slot, world, interest, ownerNetId: 1);
+        writer.WriteFor(slot, world, interest, ownerNetId: 1);
+        Func<int> candidateCount = writer.ObserveCandidateCountForTests(slot);
+        var old = writer.CaptureReferencesForTests(world, 1);
+        var view = new CallbackInterest(interest, () => ResetDuringSelection(writer, slot, openNextTick));
+
+        Assert.Throws<InvalidOperationException>(() => writer.WriteFor(slot, world, view, ownerNetId: 1));
+
+        Assert.Equal(0, writer.LegacySlotCount);
+        Assert.Equal(0, writer.LegacyHistoryCount);
+        Assert.Equal(0, candidateCount());
+        Collect();
+        Assert.False(Alive(old.Source));
+        Assert.False(Alive(old.Payload));
+        GC.KeepAlive(candidateCount);
+
+        if (!openNextTick) writer.BeginTick();
+        byte[] restarted = writer.WriteFor(slot, world, interest, ownerNetId: 1);
+        using var reader = new BinaryReader(new MemoryStream(restarted));
+        Assert.Equal(-1, reader.ReadInt32());
+        Assert.Equal(1, reader.ReadInt32());
+        Assert.Equal(0, reader.ReadInt32()); // Removed entities.
+        Assert.Equal(1, reader.ReadInt32()); // Changed entities.
+        Assert.Equal(1L, reader.ReadInt64());
+        Assert.True(reader.ReadBoolean());
+        Assert.Equal(0, reader.ReadInt32()); // Removed components.
+        Assert.Equal(ReplicationRegistry.FirstExtensionTypeId, reader.ReadUInt16());
+        Assert.Equal(sizeof(int), reader.Read7BitEncodedInt());
+        Assert.Equal(138, reader.ReadInt32());
+        Assert.Equal((ushort)0, reader.ReadUInt16());
+        Assert.Equal(restarted.Length, reader.BaseStream.Position);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ResetDuringRebuildSelectionCannotStageAPacketForTheReplacementEpoch(bool reopenStream)
+    {
+        const int slot = 0;
+        (AoiDeltaReplicator writer, World world, HashSet<long> interest) = NewSource();
+        var options = new DeltaRebuildOptions();
+        writer.BeginTick();
+        writer.StartRebuild(slot, 1, options);
+        writer.BuildRebuildFor(slot, world, interest, ownerNetId: 1);
+        var old = writer.CaptureReferencesForTests(world, 1);
+        var view = new CallbackInterest(interest, () =>
+        {
+            ResetDuringSelection(writer, slot, reopenStream);
+            if (reopenStream) writer.StartRebuild(slot, 2, options);
+        });
+
+        Assert.Throws<InvalidOperationException>(() => writer.BuildRebuildFor(slot, world, view, ownerNetId: 1));
+
+        RebuildUsage usage = writer.RebuildUsageForTest(slot);
+        Assert.Null(usage.CandidateId);
+        Assert.Equal(0, usage.RetainedCount);
+        Assert.Equal(0, writer.LegacyHistoryCount);
+        Collect();
+        Assert.False(Alive(old.Source));
+        Assert.False(Alive(old.Payload));
+
+        if (!reopenStream)
+        {
+            writer.BeginTick();
+            writer.StartRebuild(slot, 2, options);
+        }
+        ReplicationDeltaPacket restarted = writer.BuildRebuildFor(slot, world, interest, ownerNetId: 1);
+        Assert.Equal(new ReplicationPacketId(2, 1), restarted.Id);
+        Assert.True(restarted.IsKeyframe);
+        Assert.Null(restarted.Baseline);
+        Assert.True(writer.TryGetRetainedProjectionForTest(slot, restarted.Id, out ReplicationProjection retained));
+        Assert.Equal(1, retained.EntityCount);
+        Assert.True(retained.TryGetEntity(1, out ProjectedEntity entity));
+        Assert.True(entity.TryGet(ReplicationRegistry.FirstExtensionTypeId, out ProjectedComponent secret));
+        Assert.Equal(138, BinaryPrimitives.ReadInt32LittleEndian(secret.Span));
+    }
+
+    private static void ResetDuringSelection(AoiDeltaReplicator writer, int slot, bool openNextTick)
+    {
+        writer.Forget(slot);
+        writer.SeedLegacySequenceForTest(int.MaxValue);
+        writer.ResetAfterLegacySequenceExhaustion();
+        if (openNextTick) writer.BeginTick();
+    }
+
     [Fact]
     public void ForgetReleasesAnIdleSlotsLastCaptureAfterTheCacheMovesOn()
     {
@@ -91,6 +186,21 @@ public class AoiProjectionLifetimeTests
         Assert.False(Alive(old.Public));
         Assert.False(Alive(old.Payload));
         GC.KeepAlive(writer);
+    }
+
+    [Fact]
+    public void ForgetDuringSelectionStartsAFullBody()
+    {
+        var world = new World();
+        world.Set(world.Spawn(), new NetId(1));
+        var writer = new AoiDeltaReplicator(new ReplicationRegistry());
+        WriteNext(writer, 0, world, [1]);
+        WriteNext(writer, 0, world, [1]);
+        writer.BeginTick();
+
+        byte[] body = writer.WriteFor(0, world, new CallbackInterest([1], () => writer.Forget(0)));
+
+        AssertBody(body, -1, [], [1]);
     }
 
     [Fact]

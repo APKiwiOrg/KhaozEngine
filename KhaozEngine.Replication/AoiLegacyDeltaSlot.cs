@@ -13,6 +13,13 @@ internal sealed class AoiLegacyDeltaSlot(int sequence, Projection projection) : 
 
     internal Projection PrepareCandidate() => candidate ??= new Projection();
 
+    // Keep the observed spare alive across slot removal without exposing its mutable entries.
+    internal Func<int> ObserveCandidateCountForTests()
+    {
+        Projection observed = candidate ?? throw new InvalidOperationException("The slot has no spare projection.");
+        return () => observed.Count;
+    }
+
     internal void Commit(int sequence, Projection projection, bool recycle)
     {
         Projection retired = Projection;

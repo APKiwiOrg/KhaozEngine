@@ -39,6 +39,38 @@ public class LegacyDeltaProjectionAllocationTests
     }
 
     [Theory]
+    [InlineData(false, 8)]
+    [InlineData(false, 32)]
+    [InlineData(true, 8)]
+    [InlineData(true, 32)]
+    public void WarmCaptureCacheHitsAllocateNothing(bool sharded, int sessions)
+    {
+        using var server = new LegacyDeltaServeFixture(sharded, sessions);
+        for (int i = 0; i < 12; i++) Spawn(server, i);
+        var meter = new ProjectionMeter(server);
+        for (int i = 0; i < 4; i++) meter.Tick();
+
+        var hitBytes = new List<long>(sessions);
+        long scansBeforeServe = 0;
+        long bytesBeforeServe = 0;
+        server.Observe = (_, _, _, _) =>
+        {
+            scansBeforeServe = server.Writer.WorldScanCount;
+            bytesBeforeServe = meter.CaptureBytes;
+        };
+        server.Transport.Observe = (_, _, _) =>
+        {
+            if (server.Writer.WorldScanCount == scansBeforeServe)
+                hitBytes.Add(meter.CaptureBytes - bytesBeforeServe);
+        };
+        meter.MeasureTick();
+
+        // Every seat in this fixture is in the same world, so the first serve alone scans.
+        Assert.Equal(sessions - 1, hitBytes.Count);
+        Assert.All(hitBytes, bytes => Assert.Equal(0, bytes));
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void FailedNestedBuildDuringSendLeavesTheLentSlotsSpareUntouched(bool owning)
@@ -138,6 +170,8 @@ public class LegacyDeltaProjectionAllocationTests
     private sealed class ProjectionMeter(LegacyDeltaServeFixture server)
     {
         private readonly LegacyDeltaAllocationProbe probe = Attach(server.Writer);
+
+        internal long CaptureBytes => probe[LegacyDeltaPhase.Capture] + probe[LegacyDeltaPhase.CaptureCacheHit];
 
         private static LegacyDeltaAllocationProbe Attach(AoiDeltaReplicator writer)
         {

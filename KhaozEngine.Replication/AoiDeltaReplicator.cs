@@ -73,6 +73,8 @@ public sealed class AoiDeltaReplicator
 
     internal int LegacyHistoryCount => captureByWorld.Count;
 
+    internal Func<int> ObserveCandidateCountForTests(int slot) => slots[slot].ObserveCandidateCountForTests();
+
     internal (WeakReference<Comps> Source, WeakReference<Comps>? Public, WeakReference<byte[]> Payload)
         CaptureReferencesForTests(World world, long netId) => captureByWorld[world][netId].ReferencesForTests();
 

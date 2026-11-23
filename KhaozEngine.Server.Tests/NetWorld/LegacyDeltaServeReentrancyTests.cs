@@ -122,6 +122,49 @@ public class LegacyDeltaServeReentrancyTests
     }
 
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void ResetDuringHostCaptureRefusesTheServeAndLeavesAFreshFirstBody(bool sharded, bool openNextTick)
+    {
+        Action? duringCapture = null;
+        using var server = new LegacyDeltaServeFixture(sharded, 1, onPayloadCapture: () => duringCapture?.Invoke());
+        (World world, Entity actor) = server.Spawn(new LegacyDeltaServeFixture.Payload(45));
+        long actorId = world.Get<NetId>(actor).Value;
+        var seat = server.Clients[0];
+        int slot = seat.Net.Slot;
+        server.Tick();
+        server.Writer.SeedLegacySequenceForTest(int.MaxValue - 1);
+        duringCapture = () =>
+        {
+            duringCapture = null;
+            server.Disconnect(seat);
+            server.Writer.Forget(slot);
+            server.Writer.ResetAfterLegacySequenceExhaustion();
+            if (openNextTick) server.Writer.BeginTick();
+        };
+        bool sent = false;
+        server.Transport.Observe = (_, _, _) => sent = true;
+
+        Assert.Throws<InvalidOperationException>(server.Tick);
+
+        Assert.False(sent);
+        Assert.Equal(0, server.Writer.LegacySlotCount);
+        Assert.Equal(0, server.Writer.LegacyHistoryCount);
+        if (!openNextTick) server.Writer.BeginTick();
+        byte[] restarted = server.Writer.WriteFor(slot, world, new HashSet<long> { actorId });
+        Assert.Equal(-1, BinaryPrimitives.ReadInt32LittleEndian(restarted));
+        Assert.Equal(1, BinaryPrimitives.ReadInt32LittleEndian(restarted.AsSpan(4)));
+
+        var receiver = new World();
+        var clientView = new ClientReplicationView(server.Registry);
+        clientView.ApplyDelta(receiver, restarted);
+        Assert.True(clientView.TryGetEntity(actorId, out Entity received));
+        Assert.Equal(new LegacyDeltaServeFixture.Payload(45), receiver.Get<LegacyDeltaServeFixture.Payload>(received));
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void OrdinarySessionSendDuringTheBorrowKeepsBothFramesIntact(bool sharded)

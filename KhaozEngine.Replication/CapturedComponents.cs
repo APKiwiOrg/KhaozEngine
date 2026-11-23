@@ -105,7 +105,7 @@ internal sealed class CapturedComponents
     {
         if (publicView is not null) return publicView;
         bool anyOwnerOnly = false;
-        foreach (ushort typeId in segments.Keys)
+        foreach (var (typeId, _) in segments)
             if (!IsPublic(registry, typeId)) { anyOwnerOnly = true; break; }
         if (!anyOwnerOnly) return publicView = this;   // the common entity: nothing to strip, nothing to allocate
 

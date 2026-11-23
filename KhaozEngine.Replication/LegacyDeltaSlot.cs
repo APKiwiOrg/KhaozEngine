@@ -15,7 +15,7 @@ namespace KhaozEngine.Replication;
 /// diagnostic bookkeeping. It never selects a diff basis. The projection's component segments reference immutable
 /// capture buffers, so holding it keeps that one capture alive until the slot is served again or forgotten.
 /// </remarks>
-internal sealed class LegacyDeltaSlot
+internal class LegacyDeltaSlot
 {
     public LegacyDeltaSlot(int sequence, Dictionary<long, CapturedComponents> projection)
     {

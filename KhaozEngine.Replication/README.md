@@ -90,12 +90,10 @@ area-of-interest deltas over a reliable channel, and opt-in format 2 acknowledge
   The wire is byte-identical to `ServerReplicator.WriteFor` (a full snapshot is the `baseline -1` delta), so
   `ClientReplicationView.ApplyDelta` decodes both. Keyed by `NetId` (not by owning cell), so a seamless cell handoff
   reads as a component delta, never a despawn+respawn. This is what `WorldServer`/`ShardedWorldServer`/`MmoServer`
-  serve on the live path (see `KhaozEngine.NetWorld`). `WriteFor` captures the whole world once per tick, shared
-  across every client served from that world (not once per client), into one pooled buffer, so allocation drops
-  sharply at high client counts while the wire stays byte-identical. On top of that shared capture the per-client
-  projection is `O(interestSet)`: it resolves each client's interest set off the capture in `O(1)` per entity and
-  re-orders the selection by capture position, rather than walking the whole capture per client - so per-client cost
-  scales with the client's area of interest, not the world population, with the wire unchanged.
+  serve on the live path (see `KhaozEngine.NetWorld`). `WriteFor` captures the whole world once per tick, into an
+  immutable, garbage-collected buffer shared by all viewers served from that world. To build a projection it looks
+  up each interest id and sorts the selected entities by capture position to preserve wire order. A non-owner
+  shares the capture's filtered component view for each entity with owner-only data.
 - **`InterestGrid`** - a spatial-hash area-of-interest query (`Insert` / `Query(center, radius)`) used to compute a
   client's interest set for `WriteFiltered` / `AoiDeltaReplicator.WriteFor`.
 - **`ClientReplicationView`** - apply a snapshot to a client `World`: spawn new entities, despawn gone ones,
@@ -167,6 +165,17 @@ every change since the last acknowledgement. That is a header and bandwidth diff
 
 The obligations a standalone owner takes on:
 
+- **AoI projection storage.** Each legacy slot holds its exact committed projection and can keep one empty
+  dictionary for the next candidate. Successful body completion swaps them, then clears the retired dictionary
+  to release its capture references. A failed candidate is cleared before returning. Ordering scratch drops its
+  references when selection exits, including on failure. Nested builds during a legacy frame build or send use
+  independent candidate and ordering storage. An idle slot can retain the capture behind its committed projection.
+  Forgetting the slot or resetting the writer releases both dictionaries.
+- **Oversize AoI storage.** Four consecutive ordinary commits that each use at most a quarter of their two
+  dictionaries' larger capacity, when that capacity exceeds 1,024 entries, start retiring oversized dictionaries.
+  Each retired dictionary above 1,024 entries is released if the new view fits in a quarter of its capacity. A fifth
+  equally small commit can release the other dictionary. Failed builds leave the streak alone. A nested commitment
+  restarts it. Keeping the spare through short dips lets alternating view sizes keep their warmed storage.
 - **Send commitment.** Completing a body commits its projection and sequence before framing or delivery. A failed
   body build leaves the previous projection in place. Both public `WriteFor` methods return caller-owned arrays.
   Ship each committed payload exactly once, in order, over a reliable-ordered channel to the receiver it was built

@@ -132,6 +132,20 @@ internal sealed class LegacyDeltaServeFixture : IDisposable
         else sharded!.Tick(Dt);
     }
 
+    internal event Action<float> BeforeTick
+    {
+        add
+        {
+            if (flat is not null) flat.OnBeforeTick += value;
+            else sharded!.OnBeforeTick += value;
+        }
+        remove
+        {
+            if (flat is not null) flat.OnBeforeTick -= value;
+            else sharded!.OnBeforeTick -= value;
+        }
+    }
+
     internal void AfterTick(Action action)
     {
         void Once(float _)

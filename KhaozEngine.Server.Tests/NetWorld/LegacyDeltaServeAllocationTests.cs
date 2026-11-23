@@ -13,6 +13,7 @@ public class LegacyDeltaServeAllocationTests(ITestOutputHelper output)
 {
     private const int WarmTicks = 24;
     private const int MeasuredTicks = 32;
+    private const int OversizeWords = 20 * 1024;
 
     [Theory]
     [InlineData(false, 8)]
@@ -38,43 +39,58 @@ public class LegacyDeltaServeAllocationTests(ITestOutputHelper output)
     public void AlternatingLargeAndSmallFramesStayWarm()
     {
         using var rig = new Workload(sharded: true, sessions: 8);
-        const int largeWords = 20 * 1024;
         for (int i = 0; i < WarmTicks; i++) rig.Tick();
-        rig.Tick(largeWords);
+        rig.Tick(OversizeWords);
 
         long largest = 0;
         _ = AllocationMeasurement.Measure("alternating large and small served frames", () =>
         {
             for (int i = 0; i < 8; i++)
             {
-                rig.Tick(i % 2 == 0 ? 4 : largeWords);
+                rig.Tick(i % 2 == 0 ? 4 : OversizeWords);
                 largest = Math.Max(largest, Math.Abs(rig.EngineBytes));
             }
         }, budget: 16L * 1024 * 1024);
         Assert.Equal(0, largest);
     }
 
-    [Fact]
-    public void SustainedSmallFramesReleaseAnOversizeOutlierBuffer()
+    [Theory]
+    [InlineData(3, false)]
+    [InlineData(4, true)]
+    public void OversizeBufferIsReleasedAfterExactlyFourLowUsePasses(int lowPasses, bool expectGrowth)
     {
         using var rig = new Workload(sharded: true, sessions: 8);
-        const int largeWords = 20 * 1024;
-        for (int i = 0; i < WarmTicks; i++) rig.Tick();
-        _ = AllocationMeasurement.Measure("oversize served frame", () => rig.Tick(largeWords));
+        PrimeOversizeBuffer(rig);
+        for (int i = 0; i < lowPasses; i++) rig.Tick();
+
+        _ = AllocationMeasurement.Measure("same-size outlier after low-use passes", () => rig.Tick(OversizeWords));
+        Assert.Equal(expectGrowth, rig.EngineBytes > 0);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void NestedPreTickCallsStillReleaseAfterFourLowUseServingPasses(bool sharded)
+    {
+        using var rig = new Workload(sharded, 1);
+        PrimeOversizeBuffer(rig);
+        int sequence = rig.Sequence;
+
+        rig.TickWithNestedPreTick();
+        Assert.True(rig.LoopbackBytes > 0);
+        rig.TickWithNestedPreTick();
+        Assert.True(rig.LoopbackBytes > 0);
+        Assert.Equal(sequence + 4, rig.Sequence);
+
+        _ = AllocationMeasurement.Measure("same-size outlier after nested serving passes",
+            () => rig.Tick(OversizeWords));
         Assert.True(rig.EngineBytes > 0);
+    }
 
-        // The first small tick cannot evict the buffer. Continued small work eventually does.
-        _ = AllocationMeasurement.Measure("first two small ticks after the outlier", () =>
-        {
-            rig.Tick();
-            long first = rig.EngineBytes;
-            rig.Tick();
-            Assert.Equal(0, first + rig.EngineBytes);
-        });
+    private static void PrimeOversizeBuffer(Workload rig)
+    {
         for (int i = 0; i < WarmTicks; i++) rig.Tick();
-        MeasureFixedFrames(rig, "small after release");
-
-        _ = AllocationMeasurement.Measure("oversize served frame after release", () => rig.Tick(largeWords));
+        _ = AllocationMeasurement.Measure("oversize served frame", () => rig.Tick(OversizeWords));
         Assert.True(rig.EngineBytes > 0);
     }
 
@@ -152,10 +168,26 @@ public class LegacyDeltaServeAllocationTests(ITestOutputHelper output)
         }
 
         internal LegacyDeltaAllocationProbe Probe { get; } = new();
+        internal int Sequence => server.Writer.CurrentSeq;
         internal long LoopbackBytes => server.Transport.TransportBytes;
         internal long EngineSendBytes => Probe[LegacyDeltaPhase.Send] - LoopbackBytes;
         internal long EngineBytes => Probe[LegacyDeltaPhase.Serve] - Probe[LegacyDeltaPhase.Capture]
             - Probe[LegacyDeltaPhase.Projection] - LoopbackBytes;
+
+        internal void TickWithNestedPreTick()
+        {
+            bool nested = false;
+            void StepOnce(float _)
+            {
+                if (nested) return;
+                nested = true;
+                server.Tick();
+            }
+
+            server.BeforeTick += StepOnce;
+            try { Tick(); }
+            finally { server.BeforeTick -= StepOnce; }
+        }
 
         internal void FaultOneTick(Exception fault, bool bodyFailure)
         {

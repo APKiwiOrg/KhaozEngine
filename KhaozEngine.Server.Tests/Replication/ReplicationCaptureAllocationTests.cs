@@ -7,7 +7,7 @@ using Xunit;
 namespace KhaozEngine.Tests.Replication;
 
 /// <summary>
-/// Steady-state allocation guard for the pooled, span-based capture path. The capture used to allocate a
+/// Steady-state allocation guard for the consolidated, span-based capture path. The capture used to allocate a
 /// <c>byte[]</c> per component per entity every tick (MemoryStream + BinaryWriter + ToArray inside the codec). It now
 /// serializes the whole capture into one consolidated buffer with <c>(offset, length)</c> segments over it, diffs via
 /// <see cref="ReadOnlySpan{T}"/> equality, and slices payloads straight to the wire. This test drives a populated
@@ -87,7 +87,7 @@ public class ReplicationCaptureAllocationTests
         {
             for (int i = 0; i < Entities; i++) world.Get<C0>(entities[i]).V += 1f; // move C0 only -> steady delta
             if (prevSeq > 0)
-                for (int c = 0; c < Clients; c++) repl.Acknowledge(c, prevSeq);   // 1-tick RTT ack -> delta from last ack
+                for (int c = 0; c < Clients; c++) repl.Acknowledge(c, prevSeq);   // 1-tick RTT for sequence diagnostics
             int seq = repl.BeginTick();
             for (int c = 0; c < Clients; c++) repl.WriteFor(c, world, interest[c]);
             prevSeq = seq;
@@ -98,7 +98,7 @@ public class ReplicationCaptureAllocationTests
         for (int i = 0; i < 64; i++) Tick();
 
         const int measured = 200;
-        // The steady state allocates near 36 MB across the window, so the region reserves room for all of it.
+        // Leave room for the full process-wide allocation window.
         long perTick = AllocationMeasurement.Measure($"{measured} steady capture ticks",
             () => { for (int i = 0; i < measured; i++) Tick(); }, budget: 64L * 1024 * 1024) / measured;
 
@@ -106,16 +106,11 @@ public class ReplicationCaptureAllocationTests
         //  - one shared world capture rebuilt each tick (retained while a slot's last sent projection references it):
         //    one consolidated payload buffer, one outer netId->components dictionary, and per entity one
         //    CapturedComponents plus one small typeId->segment dictionary. No byte[] per component.
-        //  - per client (fast path, no owner-scoped component here): one projected dictionary retained as the slot's
-        //    last sent projection (it references the shared capture, so no payload copy) plus the outgoing wire byte[]
-        //    WriteFor returns (the caller owns it, so it is unavoidable).
-        // What it must NOT allocate is a byte[] per present component per entity: the prior representation did exactly
-        // that, Entities*Comps arrays every tick. Their object headers alone are Entities*Comps*24 = ~49 KB/tick, more
-        // than double the slack between the measured steady state and this threshold, so reverting to the byte[]-per-
-        // component representation pushes per-tick allocation over the bar and fails this test.
-        // Measured steady state is ~180 KB/tick (segment dicts + last sent projections + wire, none of them a
-        // per-component array). The bar sits ~11% above that for runtime noise and ~29 KB below the old scheme's total.
-        const long threshold = 200_000;
+        //  - per client: the outgoing wire byte[] that WriteFor returns to its caller. Each warmed slot reuses its
+        //    projection dictionaries and references the shared capture.
+        // The prior representation allocated Entities*Comps arrays every tick. Their object headers alone add
+        // Entities*Comps*24 bytes, so the threshold must be closer to the warmed allocation than that floor.
+        const long threshold = 180_000;
         long oldPerComponentHeaderFloor = (long)Entities * Comps * 24; // headers only, before any payload
 
         // The two bounds sandwich the threshold in (perTick, perTick + headerFloor]: it passes at the measured

@@ -44,20 +44,27 @@ public class LegacyDeltaProjectionAllocationTests
     public void FailedNestedBuildDuringSendLeavesTheLentSlotsSpareUntouched(bool owning)
     {
         bool showExtras = false;
+        int nestedSlot = -1;
         var extras = new HashSet<long>();
-        using var server = new LegacyDeltaServeFixture(useShards: true, 1, (_, id) => showExtras || !extras.Contains(id));
+        using var server = new LegacyDeltaServeFixture(useShards: true, 2,
+            (slot, id) => slot != nestedSlot || showExtras || !extras.Contains(id));
+        Seat viewer = server.Clients[0];
+        nestedSlot = viewer.Net.Slot;
         for (int i = 0; i < 48; i++) extras.Add(Spawn(server, i));
 
+        // The other viewer warms the shared ordering list at the larger size.
         var meter = new ProjectionMeter(server);
         for (int i = 0; i < 4; i++) meter.Tick();
 
         var fault = new IOException();
         server.Observe = (slot, world, set, owner) =>
         {
+            if (slot != nestedSlot) return;
             var expanded = new HashSet<long>(set);
             expanded.UnionWith(extras);
-            server.Transport.Observe = (_, frame, _) =>
+            server.Transport.Observe = (target, frame, _) =>
             {
+                if (target != viewer.Connection) return;
                 byte[] original = frame.ToArray();
                 server.Writer.FailNextLegacyBodyCompletionForTests(fault);
                 void Build()
@@ -110,9 +117,16 @@ public class LegacyDeltaProjectionAllocationTests
         Serve(large);
         for (int i = 0; i < lowUses; i++) Serve(small);
 
-        probe.Reset();
-        AllocationMeasurement.Measure("outlier projection after small views", () => Serve(large));
-        Assert.Equal(grows, probe[LegacyDeltaPhase.Projection] > 0);
+        void AssertNextLargeView()
+        {
+            probe.Reset();
+            AllocationMeasurement.Measure("outlier projection after small views", () => Serve(large));
+            Assert.Equal(grows, probe[LegacyDeltaPhase.Projection] > 0);
+        }
+
+        // Each large serve uses a different dictionary.
+        AssertNextLargeView();
+        AssertNextLargeView();
     }
 
     private static long Spawn(LegacyDeltaServeFixture server, int value)

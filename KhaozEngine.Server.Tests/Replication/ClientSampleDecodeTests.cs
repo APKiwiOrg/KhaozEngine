@@ -123,44 +123,47 @@ public sealed class ClientSampleDecodeTests
         Assert.Equal(27f, second.Value);
     }
 
-    [Fact]
-    public void EscapedReaderCannotSeeALaterSampleDuringItsCallback()
+    [Theory]
+    [InlineData(1)]
+    [InlineData(16)]
+    public void TruncatedUtf8DoesNotChangeTheNextSample(ushort typeId)
     {
-        BinaryReader? earlier = null;
-        bool readingHistory = false;
-        float? escapedValue = null;
-        var registry = ClientSampleFixture.Registry(16, true, reader =>
-        {
-            float value = reader.ReadSingle();
-            if (readingHistory)
-            {
-                if (earlier is null)
-                {
-                    earlier = reader;
-                }
-                else
-                {
-                    try
-                    {
-                        earlier.BaseStream.Position = 0;
-                        escapedValue = earlier.ReadSingle();
-                    }
-                    catch (ObjectDisposedException)
-                    {
-                        // A callback-scoped borrow may refuse access to the expired reader.
-                    }
-                }
-            }
-            return new ClientSampleFixture.Sample(value);
-        });
-        var fixture = new ClientSampleFixture(registry, 3.5f, 8.5f);
-        readingHistory = true;
+        var registry = new ReplicationRegistry();
+        registry.Register<Characters>(typeId, static (value, writer) => writer.Write((char)value.Older),
+            static reader => new Characters(reader.Read(), 0),
+            lerp: static (older, newer, _) => new Characters(older.Older, newer.Older));
+        Assert.True(registry.TryGet(typeId, out ComponentCodec codec));
+        var world = new World();
+        Entity entity = world.Spawn();
 
-        fixture.Interpolate(0.25f);
-        fixture.Interpolate(0.75f);
+        // An incomplete UTF-8 character buffers its prefix in BinaryReader's decoder and returns EOF.
+        // The next sample starts with a complete character and must decode as if that prefix never existed.
+        codec.LerpFromBytes!(world, entity, [0xe2, 0x82], [0xc2, 0xa2], 0.5f);
 
-        Assert.Equal(8.5f, fixture.Value);
-        if (escapedValue.HasValue)
-            Assert.Equal(3.5f, escapedValue.Value);
+        Assert.Equal(new Characters(-1, '\u00a2'), world.Get<Characters>(entity));
     }
+
+    [Fact]
+    public void NumericOverreadAfterASeekPreservesLegacyCursorRecovery()
+    {
+        var registry = new ReplicationRegistry();
+        registry.Register<Characters>(1, static (value, writer) => writer.Write((byte)value.Older),
+            static reader =>
+            {
+                Stream stream = reader.BaseStream;
+                int pastEnd = (int)stream.Seek(1, SeekOrigin.End);
+                try { reader.ReadInt32(); }
+                catch (EndOfStreamException) { return new Characters(pastEnd, (int)stream.Position); }
+                throw new InvalidOperationException("Expected the read past the sample to fail.");
+            }, discreteSample: true);
+        Assert.True(registry.TryGet(1, out ComponentCodec codec));
+        var world = new World();
+        Entity entity = world.Spawn();
+
+        codec.SetFromBytes!(world, entity, [0x61]);
+
+        Assert.Equal(new Characters(2, 1), world.Get<Characters>(entity));
+    }
+
+    private readonly record struct Characters(int Older, int Newer) : IComponent;
 }

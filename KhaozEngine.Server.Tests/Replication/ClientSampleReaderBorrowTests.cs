@@ -43,6 +43,12 @@ public sealed class ClientSampleReaderBorrowTests
         Assert.Throws<ObjectDisposedException>(() => stream.Position);
         Assert.Throws<ObjectDisposedException>(() => { stream.Position = 0; });
         Assert.Throws<ObjectDisposedException>(() => stream.Length);
+        Assert.Throws<ObjectDisposedException>(() => stream.Flush());
+        Assert.False(stream.CanRead);
+        Assert.False(stream.CanSeek);
+        Assert.False(stream.CanWrite);
+        Assert.False(stream.CanTimeout);
+        stream.ReadExactly(Span<byte>.Empty);
     }
 
     [Theory]

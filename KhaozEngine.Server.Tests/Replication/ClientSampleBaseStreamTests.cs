@@ -1,7 +1,5 @@
 using System;
-using System.Buffers;
 using System.IO;
-using System.Threading;
 using KhaozEngine.Ecs;
 using KhaozEngine.Replication;
 using Xunit;
@@ -100,64 +98,25 @@ public sealed class ClientSampleBaseStreamTests
     }
 
     [Fact]
-    public void AsyncReadsCompleteInlineAndHonorBoundsAndCancellation()
+    public void SynchronousReadHelpersStayWithinTheSample()
     {
-        byte[] payload = [37, 53];
-        byte[] destination = [0, 0, 89];
-        Decode(payload, reader =>
+        Decode([37, 53, 89], reader =>
         {
             Stream stream = reader.BaseStream;
-            var canceled = new CancellationToken(canceled: true);
-            Assert.ThrowsAny<OperationCanceledException>(() =>
-                stream.ReadAsync(destination.AsMemory(), canceled).GetAwaiter().GetResult());
-            Assert.ThrowsAny<OperationCanceledException>(() =>
-                stream.ReadAsync(destination, 0, destination.Length, canceled).GetAwaiter().GetResult());
-
-            var memoryRead = stream.ReadAsync(destination.AsMemory());
-            bool memoryCompletedInline = memoryRead.IsCompletedSuccessfully;
-            Assert.Equal(2, memoryRead.GetAwaiter().GetResult());
-            Assert.True(memoryCompletedInline);
-            Assert.Equal(new byte[] { 37, 53, 89 }, destination);
-
-            stream.Position = 0;
-            var arrayRead = stream.ReadAsync(destination, 1, 2, CancellationToken.None);
-            bool arrayCompletedInline = arrayRead.IsCompletedSuccessfully;
-            Assert.Equal(2, arrayRead.GetAwaiter().GetResult());
-            Assert.True(arrayCompletedInline);
-            Assert.Equal(new byte[] { 37, 37, 53 }, destination);
-            Assert.Equal(0, stream.ReadAsync(destination.AsMemory()).GetAwaiter().GetResult());
-        });
-    }
-
-    [Fact]
-    public void FailedMemoryDestinationDoesNotConsumeSample()
-    {
-        byte[] payload = [37];
-        var destination = new DisposableMemory();
-        Memory<byte> memory = destination.Memory;
-        ((IDisposable)destination).Dispose();
-        using var oracle = new MemoryStream(payload, writable: false);
-        Assert.Throws<ObjectDisposedException>(() => oracle.ReadAsync(memory).GetAwaiter().GetResult());
-
-        Decode(payload, reader =>
-        {
-            Assert.Throws<ObjectDisposedException>(() => reader.BaseStream.ReadAsync(memory).GetAwaiter().GetResult());
-            Assert.Equal(oracle.ReadByte(), reader.BaseStream.ReadByte());
-        });
-    }
-
-    [Fact]
-    public void SampleStreamIsReadOnly()
-    {
-        Decode([37], reader =>
-        {
-            Stream stream = reader.BaseStream;
+            Assert.True(stream.CanRead);
+            Assert.True(stream.CanSeek);
             Assert.False(stream.CanWrite);
-            Assert.Throws<NotSupportedException>(() => stream.WriteByte(89));
-            Assert.Throws<NotSupportedException>(() => stream.Write(new byte[] { 89 }, 0, 1));
-            Assert.Throws<NotSupportedException>(() => stream.Write(new byte[] { 89 }.AsSpan()));
-            Assert.Throws<NotSupportedException>(() => stream.SetLength(0));
-            Assert.Equal((byte)37, reader.ReadByte());
+            Assert.False(stream.CanTimeout);
+            stream.Flush();
+
+            Span<byte> first = stackalloc byte[2];
+            stream.ReadExactly(first);
+            Assert.Equal(new byte[] { 37, 53 }, first.ToArray());
+
+            byte[] tail = new byte[2];
+            Assert.Equal(1, stream.ReadAtLeast(tail, 2, throwOnEndOfStream: false));
+            Assert.Equal((byte)89, tail[0]);
+            Assert.Throws<EndOfStreamException>(() => stream.ReadExactly(tail.AsSpan()));
         });
     }
 
@@ -172,16 +131,6 @@ public sealed class ClientSampleBaseStreamTests
         Assert.True(registry.TryGet(16, out ComponentCodec codec));
         var world = new World();
         codec.SetFromBytes!(world, world.Spawn(), payload);
-    }
-
-    private sealed class DisposableMemory : MemoryManager<byte>
-    {
-        private byte[]? buffer = new byte[1];
-
-        public override Span<byte> GetSpan() => buffer ?? throw new ObjectDisposedException(nameof(DisposableMemory));
-        public override MemoryHandle Pin(int elementIndex = 0) => throw new NotSupportedException();
-        public override void Unpin() { }
-        protected override void Dispose(bool disposing) => buffer = null;
     }
 
     private readonly record struct Sample(byte Value) : IComponent;

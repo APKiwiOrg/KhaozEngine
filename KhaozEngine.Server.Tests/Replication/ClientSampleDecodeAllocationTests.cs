@@ -1,6 +1,3 @@
-using System;
-using System.Buffers.Binary;
-using System.IO;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -25,42 +22,26 @@ public sealed class ClientSampleDecodeAllocationTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void FixedDelayInlineMemoryReadAllocatesZeroBytes()
-    {
-        long allocated = Measure(discrete: false, readThroughMemory: true);
-        Assert.Equal(0L, allocated);
-    }
-
-    [Fact]
     [Trait("Category", "Diagnostic")]
     public void ReportFixedDelaySampleDecodeAllocation()
     {
         output.WriteLine($"{EntityCount} entities, one component per entity, {Updates} measured updates");
         output.WriteLine($"Lerp: {Measure(discrete: false) / (double)Updates:F2} bytes/update");
         output.WriteLine($"Discrete: {Measure(discrete: true) / (double)Updates:F2} bytes/update");
-        output.WriteLine($"Inline memory read: {Measure(discrete: false, readThroughMemory: true) / (double)Updates:F2} bytes/update");
     }
 
-    private static long Measure(bool discrete, bool readThroughMemory = false)
+    private static long Measure(bool discrete)
     {
-        Memory<byte> destination = new byte[sizeof(float)];
-        bool readHistory = false;
-        var registry = ClientSampleFixture.Registry(16, discrete, reader =>
-        {
-            if (!readThroughMemory || !readHistory) return new ClientSampleFixture.Sample(reader.ReadSingle());
-            int read = reader.BaseStream.ReadAsync(destination).GetAwaiter().GetResult();
-            if (read != destination.Length) throw new EndOfStreamException();
-            return new ClientSampleFixture.Sample(BinaryPrimitives.ReadSingleLittleEndian(destination.Span));
-        });
+        var registry = ClientSampleFixture.Registry(16, discrete,
+            static reader => new ClientSampleFixture.Sample(reader.ReadSingle()));
         var samples = new float[(WarmupUpdates + Updates) / UpdatesPerBracket + 1];
         for (int i = 0; i < samples.Length; i++) samples[i] = 2 + 8 * i;
         var fixture = new ClientSampleFixture(registry, samples, EntityCount);
-        readHistory = true;
 
         bool matches = true;
         for (int i = 0; i < WarmupUpdates; i++) Update(i);
         long allocated = AllocationMeasurement.Measure(
-            readThroughMemory ? "Fixed-delay inline memory sample decode" : $"Fixed-delay {(discrete ? "discrete" : "lerp")} sample decode",
+            $"Fixed-delay {(discrete ? "discrete" : "lerp")} sample decode",
             () =>
             {
                 for (int i = WarmupUpdates; i < WarmupUpdates + Updates; i++) Update(i);

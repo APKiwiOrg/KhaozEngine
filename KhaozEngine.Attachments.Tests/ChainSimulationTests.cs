@@ -45,20 +45,23 @@ public class ChainSimulationTests
     }
 
     [Fact]
-    public void Gravity_starts_at_rest_and_carries_velocity_into_a_shorter_step()
+    public void Gravity_starts_at_rest_and_carries_velocity_through_the_next_grid_step()
     {
         var simulation = Create(Chain(Vector3.UnitX, Settings with { Damping = 0 }, Joint(Vector3.Zero)));
         const float seconds = 1f / 120;
         Step(simulation, 0);
         Step(simulation, seconds);
+        AssertNear(Vector3.UnitX, Tip(simulation));
 
         var expected = Vector3.Normalize(new(1, -0.5f * 9.81f * seconds * seconds, 0));
+        Step(simulation, seconds / 2);
+        AssertNear(Vector3.Normalize(Vector3.UnitX + expected), Tip(simulation), 0.00002f);
+        Step(simulation, seconds / 2);
         AssertNear(expected, Tip(simulation), 0.00002f);
 
-        Step(simulation, seconds / 2);
-        const float elapsed = seconds * 1.5f;
-        // At this small deflection, the tangent trajectory differs from constant
-        // acceleration by less than the tolerance.
+        Step(simulation, seconds);
+        const float elapsed = seconds * 2;
+        // The next displayed grid sample carries the first step's full gravity impulse.
         Assert.InRange(Tip(simulation).Y, -0.5f * 9.81f * elapsed * elapsed - 0.00002f,
             -0.5f * 9.81f * elapsed * elapsed + 0.00002f);
     }
@@ -106,12 +109,14 @@ public class ChainSimulationTests
             var sim = new ChainSimulation(new ChainRig(3, chains, links), 0, options);
             sim.Step([Matrix4x4.CreateRotationZ(angle) * anchors[0], Matrix4x4.CreateRotationZ(-angle), anchors[2]],
                 [], Matrix4x4.Identity, 0);
-            sim.Step(anchors, [], Matrix4x4.Identity, 0);
+            sim.Step(anchors, [], Matrix4x4.Identity, options.MaxStepSeconds);
+            sim.Step(anchors, [], Matrix4x4.Identity, options.MaxStepSeconds);
             return sim;
         }
 
-        var forward = Release([new(0, 1), new(1, 2), new(0, 2)], 0.01f);
-        var reversed = Release([new(0, 2), new(1, 2), new(0, 1)], 0.01f);
+        const float releaseAngle = 0.01f;
+        var forward = Release([new(0, 1), new(1, 2), new(0, 2)], releaseAngle);
+        var reversed = Release([new(0, 2), new(1, 2), new(0, 1)], releaseAngle);
         var control = Release([new(0, 1), new(1, 2), new(0, 2)], 0);
         float Disturbance(ChainSimulation sim)
         {
@@ -121,8 +126,9 @@ public class ChainSimulationTests
             return MathF.Sqrt(sum);
         }
 
-        float initial = Disturbance(forward);
-        Assert.InRange(initial, 0.014f, 0.015f);
+        // The first displayed sample has already integrated one step from the two tilted tips.
+        float initial = MathF.Sqrt(2) * (2 * MathF.Sin(releaseAngle / 2));
+        Assert.InRange(Disturbance(forward), initial * 0.95f, initial * 1.02f);
         for (int frame = 0; frame < 240; frame++)
         {
             forward.Step(anchors, [], Matrix4x4.Identity, options.MaxStepSeconds);
@@ -166,14 +172,17 @@ public class ChainSimulationTests
     }
 
     [Theory]
-    [InlineData(1f / 30, 4)]
-    [InlineData(0.4f, 8)]
-    public void A_frame_matches_advancing_the_interpolated_poses_at_each_substep(float delta, int substeps)
+    [InlineData(4, 0.5f)]
+    [InlineData(29, 0.25f)]
+    public void A_frame_matches_the_retained_grid_steps_inside_it(int completeSteps, float remainder)
     {
+        const float stepSeconds = 1f / 64;
         var chain = Chain(-Vector3.UnitY, Settings with { Trail = 0.4f, Stiffness = 4, Radius = 0.02f },
             Joint(Vector3.Zero), Joint(-Vector3.UnitY));
-        var wholeFrame = Create(chain, 1);
-        var sampled = Create(chain, 1);
+        var options = new ChainSimulationOptions { MaxStepSeconds = stepSeconds };
+        var rig = new ChainRig(1, [chain], []);
+        var wholeFrame = new ChainSimulation(rig, 1, options);
+        var sampled = new ChainSimulation(rig, 1, options);
         void At(ChainSimulation simulation, float fraction, float seconds)
         {
             var wearer = Matrix4x4.CreateRotationY(0.8f * fraction) * Matrix4x4.CreateTranslation(fraction, 0, 0);
@@ -182,13 +191,21 @@ public class ChainSimulationTests
             simulation.Step([anchor], [collider], wearer, seconds);
         }
 
+        float frameSteps = completeSteps + remainder;
         At(wholeFrame, 0, 0);
         At(sampled, 0, 0);
-        At(wholeFrame, 1, delta);
-        for (int index = 1; index <= substeps; index++)
-            At(sampled, (float)index / substeps, 1f / 120);
+        At(wholeFrame, 1, frameSteps * stepSeconds);
+        int first = Math.Max(1, completeSteps - options.MaxStepsPerFrame + 1);
+        for (int step = first; step <= completeSteps; step++)
+            At(sampled, step / frameSteps, stepSeconds);
+        At(sampled, 1, remainder * stepSeconds);
 
         AssertNear(sampled.JointsFromAnchor[1].Translation, wholeFrame.JointsFromAnchor[1].Translation);
+        AssertNear(Tip(sampled), Tip(wholeFrame));
+
+        // The remaining fraction belongs to both paths after a capped frame.
+        At(wholeFrame, 1, (1 - remainder) * stepSeconds);
+        At(sampled, 1, (1 - remainder) * stepSeconds);
         AssertNear(Tip(sampled), Tip(wholeFrame));
     }
 
@@ -231,10 +248,13 @@ public class ChainSimulationTests
             : DistanceToCapsuleAxis(point, capsule);
 
         simulation.Step([Matrix4x4.Identity], [CapsuleAt(1)], Matrix4x4.Identity, 0);
-        for (var frame = 1; frame <= 6; frame++)
+        const int movementSteps = 12;
+        for (int step = 1; step <= movementSteps + 1; step++)
         {
-            var capsule = CapsuleAt(1 - frame / 6f);
-            simulation.Step([Matrix4x4.Identity], [capsule], Matrix4x4.Identity, 1f / 60);
+            var current = CapsuleAt(1 - Math.Min(step, movementSteps) / (float)movementSteps);
+            simulation.Step([Matrix4x4.Identity], [current], Matrix4x4.Identity, 1f / 120);
+            // At a grid boundary presentation shows the preceding simulated step.
+            var capsule = CapsuleAt(1 - (step - 1) / (float)movementSteps);
             Vector3 joint = simulation.JointsFromAnchor[1].Translation;
             Vector3 tip = Tip(simulation);
             Assert.InRange(Clearance(joint, capsule), 0.374f, 4);
@@ -266,7 +286,8 @@ public class ChainSimulationTests
         var simulation = Create(chain);
         Step(simulation, 0);
         var turn = Matrix4x4.CreateRotationZ(2.4f);
-        simulation.Step([turn], [], Matrix4x4.Identity, 1f / 240);
+        simulation.Step([turn], [], Matrix4x4.Identity, 1f / 120);
+        simulation.Step([turn], [], Matrix4x4.Identity, 1f / 120);
         var worlds = new Matrix4x4[2];
         simulation.ComposeJointWorlds([turn], worlds);
 
@@ -301,6 +322,7 @@ public class ChainSimulationTests
         Step(simulation, 0);
         var pose = Matrix4x4.CreateTranslation(1, 0, 0);
         simulation.Step([pose], [], pose, 1f / 120);
+        simulation.Step([pose], [], pose, 1f / 120);
         var before = Tip(simulation);
         float distance = Vector3.Distance(before, -Vector3.UnitY);
         Assert.True(distance > 0.1f);
@@ -327,6 +349,7 @@ public class ChainSimulationTests
             Joint(Vector3.Zero), Joint(-Vector3.UnitY)));
         Step(simulation, 0);
         var pose = Matrix4x4.CreateTranslation(1, 0, 0);
+        simulation.Step([pose], [], pose, 1f / 120);
         simulation.Step([pose], [], pose, 1f / 120);
         var simulated = Tip(simulation);
         simulation.Step([pose], [], pose, 1f / 8, MotionLevel.Held);
@@ -380,6 +403,8 @@ public class ChainSimulationTests
         }
 
         AssertNear(-Vector3.UnitY, At(0, 0, MotionLevel.Held));
+        // Move the presentation anchor before starting the timed blend.
+        At(179, 0);
         float elapsed = 0.125f;
         var previous = At(179, elapsed);
         Assert.InRange(Vector3.Distance(-Vector3.UnitY, previous), 1.39f, 1.43f);
@@ -537,7 +562,8 @@ public class ChainSimulationTests
         Matrix4x4[] poses = [Matrix4x4.Identity, Matrix4x4.CreateTranslation(releaseAlongLink ? Vector3.UnitX : 0.5f * Vector3.UnitZ)];
         var rightRelease = releaseAlongLink ? Matrix4x4.CreateRotationZ(-releaseAngle) * poses[1] : poses[1];
         simulation.Step([Matrix4x4.CreateRotationZ(releaseAngle), rightRelease], [], Matrix4x4.Identity, 0);
-        simulation.Step(poses, [], Matrix4x4.Identity, 0);
+        simulation.Step(poses, [], Matrix4x4.Identity, options.MaxStepSeconds);
+        simulation.Step(poses, [], Matrix4x4.Identity, options.MaxStepSeconds);
 
         var samples = new Vector3[2 * TrajectoryTimes.Length];
         var worlds = new Matrix4x4[2];

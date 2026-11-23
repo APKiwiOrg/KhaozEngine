@@ -15,7 +15,6 @@ internal sealed class ChainParticles
         RestPositions = new Vector3[count];
         Lengths = new float[rig.JointCount];
         JointWorlds = new Matrix4x4[rig.JointCount];
-        WorldSwings = new Quaternion[rig.JointCount];
         PreviousRestDirections = new Vector3[rig.JointCount];
         StepRestDirections = new Vector3[rig.JointCount];
         StepCarries = new ChainCarry[rig.Chains.Count];
@@ -28,7 +27,6 @@ internal sealed class ChainParticles
     internal Vector3[] SubstepStarts { get; }
     internal float[] Lengths { get; }
     internal Matrix4x4[] JointWorlds { get; }
-    internal Quaternion[] WorldSwings { get; }
     internal Vector3[] PreviousRestDirections { get; private set; }
     internal Vector3[] StepRestDirections { get; private set; }
     internal ChainCarry[] StepCarries { get; }
@@ -53,7 +51,6 @@ internal sealed class ChainParticles
                 if (reset)
                 {
                     JointWorlds[joint] = world;
-                    WorldSwings[joint] = Quaternion.Identity;
                     PreviousRestDirections[joint] = ChainMath.Direction(offset, Vector3.UnitY);
                 }
             }
@@ -64,11 +61,32 @@ internal sealed class ChainParticles
         if (reset)
         {
             RestPositions.CopyTo(Positions, 0);
-            ZeroVelocity();
+            Array.Clear(Velocities);
         }
     }
 
-    internal void ZeroVelocity() => Array.Clear(Velocities);
+    internal void SeedFromShown(ReadOnlySpan<ChainPose> anchors, ReadOnlySpan<Matrix4x4> frames)
+    {
+        for (int chain = 0; chain < Rig.Chains.Count; chain++)
+        {
+            var definition = Rig.Chains[chain];
+            var anchor = anchors[definition.Anchor].Matrix;
+            var parent = anchor;
+            int first = Rig.FirstJoint(chain);
+            int end = first + definition.Joints.Count;
+            for (int joint = first; joint < end; joint++)
+            {
+                var unswung = Rig.RestLocal(joint) * parent;
+                var offset = Vector3.TransformNormal(Rig.SegmentOffset(joint), unswung);
+                PreviousRestDirections[joint] = ChainMath.Direction(offset, Vector3.UnitY);
+                parent = frames[joint] * anchor;
+                Positions[joint + chain] = parent.Translation;
+            }
+            Positions[end + chain] = Vector3.Transform(definition.Tip, parent);
+        }
+
+        Array.Clear(Velocities);
+    }
 
     internal void RememberRestDirections() =>
         (PreviousRestDirections, StepRestDirections) = (StepRestDirections, PreviousRestDirections);

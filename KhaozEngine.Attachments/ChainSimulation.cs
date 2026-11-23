@@ -9,16 +9,21 @@ public sealed class ChainSimulation
     private readonly ChainParticles _particles;
     private readonly ChainLinks _links;
     private readonly ChainPresentationBlend _blend;
+    private readonly ChainStepPresentation _stepPresentation;
+    private ChainStepClock _clock;
     private readonly ChainSettings[] _settings;
     private readonly Matrix4x4[] _jointsFromAnchor;
     private readonly Matrix4x4[] _anchorInverses;
     private readonly Matrix4x4[] _stepAnchors;
+    private readonly Matrix4x4[] _stepAnchorInverses;
     private ChainPose[] _previousAnchors;
     private ChainPose[] _frameAnchors;
     private readonly ColliderCapsule[] _previousFrameColliders;
     private ColliderCapsule[] _stepColliders;
     private ColliderCapsule[] _previousStepColliders;
     private ChainPose _previousWearer;
+    private Vector3 _stepWearerPosition;
+    private Quaternion _stepWearerRotation;
     private bool _needsReset = true;
     private bool _held;
     private bool _resuming;
@@ -37,12 +42,15 @@ public sealed class ChainSimulation
         _particles = new ChainParticles(rig);
         _links = new ChainLinks(rig);
         _blend = new ChainPresentationBlend(rig.JointCount);
+        _stepPresentation = new ChainStepPresentation(rig.JointCount);
+        _clock = new ChainStepClock(options.MaxStepSeconds, options.MaxStepsPerFrame);
         _settings = new ChainSettings[rig.Chains.Count];
         for (int chain = 0; chain < _settings.Length; chain++)
             _settings[chain] = rig.Chains[chain].Settings;
         _jointsFromAnchor = rig.RestFromAnchor.ToArray();
         _anchorInverses = new Matrix4x4[rig.AnchorCount];
         _stepAnchors = new Matrix4x4[rig.AnchorCount];
+        _stepAnchorInverses = new Matrix4x4[rig.AnchorCount];
         _previousAnchors = new ChainPose[rig.AnchorCount];
         _frameAnchors = new ChainPose[rig.AnchorCount];
         _previousFrameColliders = new ColliderCapsule[colliderCount];
@@ -54,7 +62,7 @@ public sealed class ChainSimulation
     public int ColliderCount { get; }
     public ChainSimulationOptions Options { get; }
 
-    /// <summary>The latest joint frames relative to their anchors, or the rest hang before the first step.</summary>
+    /// <summary>The displayed joint frames relative to their current anchors.</summary>
     public ReadOnlySpan<Matrix4x4> JointsFromAnchor => _jointsFromAnchor;
 
     /// <summary>Advances to the supplied pose, or blends toward rest while held.</summary>
@@ -72,43 +80,48 @@ public sealed class ChainSimulation
         if (reset)
         {
             _particles.SetRest(anchorWorlds, reset: true);
+            _clock.Reset();
+            _stepPresentation.Reset(Rig.RestFromAnchor);
+            _blend.Begin();
             _resuming = false;
-            if (level == MotionLevel.Held)
-                _blend.Begin(_particles, _frameAnchors);
             Rig.RestFromAnchor.CopyTo(_jointsFromAnchor);
         }
         else if (level == MotionLevel.Held)
         {
             _resuming = false;
             if (!_held)
-                _blend.Begin(_particles, _previousAnchors);
-
-            if (_blend.Advance(_particles, _frameAnchors, deltaSeconds, Options.HoldBlendSeconds, toRest: true))
-                PublishJoints();
-            else
-            {
-                _particles.SetRest(anchorWorlds, reset: true);
-                Rig.RestFromAnchor.CopyTo(_jointsFromAnchor);
-            }
+                _blend.Begin();
+            _blend.Advance(_jointsFromAnchor, Rig.RestFromAnchor, deltaSeconds, Options.HoldBlendSeconds);
         }
         else
         {
             if (_held)
             {
-                _blend.Begin(_particles, _previousAnchors);
+                _particles.SeedFromShown(_previousAnchors, _jointsFromAnchor);
+                _clock.Reset();
+                _stepPresentation.Reset(_jointsFromAnchor);
+                _blend.Begin();
                 _resuming = true;
             }
 
             Advance(colliders, frameWearer, deltaSeconds);
             if (_resuming)
-                _resuming = _blend.Advance(_particles, _frameAnchors, deltaSeconds, Options.HoldBlendSeconds, toRest: false);
-            PublishJoints();
+            {
+                _stepPresentation.Show(_clock.Interpolation, _blend.LiveTarget);
+                _resuming = _blend.Advance(_jointsFromAnchor, _blend.LiveTarget, deltaSeconds, Options.HoldBlendSeconds);
+            }
+            else
+                _stepPresentation.Show(_clock.Interpolation, _jointsFromAnchor);
         }
 
         (_previousAnchors, _frameAnchors) = (_frameAnchors, _previousAnchors);
         colliders.CopyTo(_previousFrameColliders);
         if (reset || level == MotionLevel.Held)
+        {
             colliders.CopyTo(_previousStepColliders);
+            _stepWearerPosition = frameWearer.Matrix.Translation;
+            _stepWearerRotation = frameWearer.Rotation;
+        }
         _previousWearer = frameWearer;
         _held = level == MotionLevel.Held;
         _needsReset = false;
@@ -180,61 +193,57 @@ public sealed class ChainSimulation
 
     private void Advance(ReadOnlySpan<ColliderCapsule> colliders, in ChainPose wearer, float deltaSeconds)
     {
-        double maximumTime = (double)Options.MaxStepSeconds * Options.MaxStepsPerFrame;
-        int count = (int)Math.Clamp(Math.Ceiling((double)deltaSeconds / Options.MaxStepSeconds), 1, Options.MaxStepsPerFrame);
-        float seconds = (float)(Math.Min(deltaSeconds, maximumTime) / count);
-        var oldPosition = _previousWearer.Matrix.Translation;
-        var oldRotation = _previousWearer.Rotation;
-        for (int index = 0; index < count; index++)
-        {
-            // Interpolate the full pose interval even when excess integration time is dropped.
-            float fraction = (index + 1f) / count;
-            for (int anchor = 0; anchor < _stepAnchors.Length; anchor++)
-                _stepAnchors[anchor] = _previousAnchors[anchor].Interpolate(_frameAnchors[anchor], fraction);
-            for (int collider = 0; collider < ColliderCount; collider++)
-                _stepColliders[collider] = Interpolate(_previousFrameColliders[collider], colliders[collider], fraction);
-
-            var position = fraction == 1 ? wearer.Matrix.Translation : Vector3.Lerp(_previousWearer.Matrix.Translation, wearer.Matrix.Translation, fraction);
-            var rotation = fraction == 1 ? wearer.Rotation : Quaternion.Slerp(_previousWearer.Rotation, wearer.Rotation, fraction);
-            var turn = rotation == oldRotation ? Quaternion.Identity : rotation * Quaternion.Conjugate(oldRotation);
-            _particles.SetRest(_stepAnchors, reset: false);
-
-            for (int chain = 0; chain < _settings.Length; chain++)
-            {
-                var definition = Rig.Chains[chain];
-                _particles.Predict(chain, _settings[chain], Options.Gravity,
-                    seconds, oldPosition, position, turn);
-                ChainConstraints.FollowChain(_particles, chain, _stepAnchors[definition.Anchor],
-                    _stepColliders, _previousStepColliders, _settings[chain], seconds, pullTowardRest: true);
-            }
-
-            if (_links.Apply(_particles, seconds))
-            {
-                for (int chain = 0; chain < _settings.Length; chain++)
-                {
-                    int anchor = Rig.Chains[chain].Anchor;
-                    ChainConstraints.FollowChain(_particles, chain, _stepAnchors[anchor],
-                        _stepColliders, _previousStepColliders, _settings[chain], seconds, pullTowardRest: false);
-                }
-            }
-
-            oldPosition = position;
-            oldRotation = rotation;
-            _particles.RememberRestDirections();
-            (_previousStepColliders, _stepColliders) = (_stepColliders, _previousStepColliders);
-        }
+        int count = _clock.Advance(deltaSeconds);
+        for (int step = 0; step < count; step++)
+            Substep(colliders, wearer, _clock.StepFraction(step, count, deltaSeconds));
     }
 
-    private void PublishJoints()
+    private void Substep(ReadOnlySpan<ColliderCapsule> colliders, in ChainPose wearer, float fraction)
     {
-        for (int chain = 0; chain < Rig.Chains.Count; chain++)
+        float seconds = Options.MaxStepSeconds;
+        for (int anchor = 0; anchor < _stepAnchors.Length; anchor++)
         {
-            var definition = Rig.Chains[chain];
-            var inverse = _anchorInverses[definition.Anchor];
-            int start = Rig.FirstJoint(chain);
-            for (int joint = start; joint < start + definition.Joints.Count; joint++)
-                _jointsFromAnchor[joint] = _particles.JointWorlds[joint] * inverse;
+            var current = _frameAnchors[anchor].Matrix;
+            var pose = _previousAnchors[anchor].Interpolate(_frameAnchors[anchor], fraction);
+            if (pose == current || !ChainMath.TryInvert(pose, out _stepAnchorInverses[anchor]))
+            {
+                // A change in handedness can make an intermediate pose singular.
+                pose = current;
+                _stepAnchorInverses[anchor] = _anchorInverses[anchor];
+            }
+            _stepAnchors[anchor] = pose;
         }
+        for (int collider = 0; collider < ColliderCount; collider++)
+            _stepColliders[collider] = Interpolate(_previousFrameColliders[collider], colliders[collider], fraction);
+
+        var position = fraction == 1 ? wearer.Matrix.Translation : Vector3.Lerp(_previousWearer.Matrix.Translation, wearer.Matrix.Translation, fraction);
+        var rotation = fraction == 1 ? wearer.Rotation : Quaternion.Slerp(_previousWearer.Rotation, wearer.Rotation, fraction);
+        var turn = rotation == _stepWearerRotation ? Quaternion.Identity : rotation * Quaternion.Conjugate(_stepWearerRotation);
+        _particles.SetRest(_stepAnchors, reset: false);
+
+        for (int chain = 0; chain < _settings.Length; chain++)
+        {
+            int anchor = Rig.Chains[chain].Anchor;
+            _particles.Predict(chain, _settings[chain], Options.Gravity, seconds, _stepWearerPosition, position, turn);
+            ChainConstraints.FollowChain(_particles, chain, _stepAnchors[anchor],
+                _stepColliders, _previousStepColliders, _settings[chain], seconds, pullTowardRest: true);
+        }
+
+        if (_links.Apply(_particles, seconds))
+        {
+            for (int chain = 0; chain < _settings.Length; chain++)
+            {
+                int anchor = Rig.Chains[chain].Anchor;
+                ChainConstraints.FollowChain(_particles, chain, _stepAnchors[anchor],
+                    _stepColliders, _previousStepColliders, _settings[chain], seconds, pullTowardRest: false);
+            }
+        }
+
+        _stepWearerPosition = position;
+        _stepWearerRotation = rotation;
+        _particles.RememberRestDirections();
+        (_previousStepColliders, _stepColliders) = (_stepColliders, _previousStepColliders);
+        _stepPresentation.Capture(Rig, _particles.JointWorlds, _stepAnchorInverses);
     }
 
     private static ColliderCapsule Interpolate(in ColliderCapsule previous, in ColliderCapsule current, float amount) =>

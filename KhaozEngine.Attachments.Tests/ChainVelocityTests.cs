@@ -81,7 +81,10 @@ public sealed class ChainVelocityTests(ITestOutputHelper output)
 
         var expected = Vector3.Normalize(before + simulation.Options.Gravity * (0.5f * step * step));
         var distant = new Vector3(3, -2, 0);
-        simulation.Step([anchor], [sphere with { Start = distant, End = distant }], anchor, step);
+        var distantSphere = sphere with { Start = distant, End = distant };
+        simulation.Step([anchor], [distantSphere], anchor, step);
+        // The next grid boundary displays the first free step.
+        simulation.Step([anchor], [distantSphere], anchor, step);
         var after = Tip();
         output.WriteLine($"Gravity-only travel: {Vector3.Distance(before, expected):F9} m, actual: {Vector3.Distance(before, after):F9} m");
         Assert.InRange(Vector3.Distance(expected, after), 0, 0.00001f);
@@ -192,15 +195,19 @@ public sealed class ChainVelocityTests(ITestOutputHelper output)
         bool touched = false;
         Vector3 previous = -Vector3.UnitY;
 
-        for (int frame = 0; frame <= 25; frame++)
+        const int stopFrame = 14;
+        const float radius = 0.2f;
+        Vector3 CenterAt(int frame) => new(-0.13f + Math.Min(frame, stopFrame) * (speed * step), -0.81f, 0);
+
+        for (int frame = 0; frame <= 26; frame++)
         {
-            const int stopFrame = 14;
-            var center = new Vector3(-0.13f + Math.Min(frame, stopFrame) * (speed * step), -0.81f, 0);
-            ColliderCapsule capsule = new(center, center, 0.2f);
+            var center = CenterAt(frame);
+            ColliderCapsule capsule = new(center, center, radius);
             simulation.Step([anchor], [capsule], anchor, frame == 0 ? 0 : step);
             var tip = Vector3.Transform(-Vector3.UnitY, simulation.JointsFromAnchor[0]);
-            touched |= MathF.Abs(Vector3.Distance(tip, capsule.Start) - capsule.Radius) < 0.0001f;
-            if (frame > stopFrame)
+            int shownFrame = Math.Max(0, frame - 1);
+            touched |= MathF.Abs(Vector3.Distance(tip, CenterAt(shownFrame)) - radius) < 0.0001f;
+            if (shownFrame > stopFrame)
                 afterStopPeak = MathF.Max(afterStopPeak, Vector3.Distance(tip, previous) / step);
             previous = tip;
         }

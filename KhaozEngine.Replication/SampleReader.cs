@@ -12,12 +12,18 @@ internal sealed class SampleReader
     [ThreadStatic]
     private static SampleReader? available;
 
-    private readonly FramedPayloadStream stream = new();
+    private readonly SamplePayloadStream stream = new();
     private readonly SampleEncoding encoding = new();
     private readonly BinaryReader reader;
     private SampleReader? next;
 
-    private SampleReader() => reader = new BinaryReader(stream, encoding);
+    private SampleReader()
+    {
+        // BinaryReader requires a readable stream at construction.
+        stream.Retarget(Array.Empty<byte>());
+        reader = new BorrowedReader(stream, encoding);
+        stream.Release();
+    }
 
     internal static T Read<T>(Func<BinaryReader, T> read, byte[] sample)
     {
@@ -26,7 +32,7 @@ internal sealed class SampleReader
         slot.next = null;
         try
         {
-            slot.stream.Retarget(sample, 0, sample.Length);
+            slot.stream.Retarget(sample);
             return read(slot.reader);
         }
         finally
@@ -35,6 +41,57 @@ internal sealed class SampleReader
             slot.encoding.ResetDecoder();
             slot.next = available;
             available = slot;
+        }
+    }
+
+    // These BinaryReader methods can return without touching a closed or empty stream.
+    private sealed class BorrowedReader : BinaryReader
+    {
+        private readonly SamplePayloadStream stream;
+
+        internal BorrowedReader(SamplePayloadStream stream, Encoding encoding)
+            : base(stream, encoding) => this.stream = stream;
+
+        public override int PeekChar()
+        {
+            stream.EnsureOpen();
+            return base.PeekChar();
+        }
+
+        public override int Read()
+        {
+            stream.EnsureOpen();
+            return base.Read();
+        }
+
+        public override byte[] ReadBytes(int count)
+        {
+            stream.EnsureOpen();
+            return base.ReadBytes(count);
+        }
+
+        public override char[] ReadChars(int count)
+        {
+            stream.EnsureOpen();
+            return base.ReadChars(count);
+        }
+
+        public override int Read(char[] buffer, int index, int count)
+        {
+            stream.EnsureOpen();
+            return base.Read(buffer, index, count);
+        }
+
+        public override int Read(Span<char> buffer)
+        {
+            stream.EnsureOpen();
+            return base.Read(buffer);
+        }
+
+        public override void ReadExactly(Span<byte> buffer)
+        {
+            stream.EnsureOpen();
+            base.ReadExactly(buffer);
         }
     }
 

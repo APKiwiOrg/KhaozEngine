@@ -31,13 +31,17 @@ public sealed class ReplicationRegistry
     private readonly Dictionary<ushort, ComponentCodec> byId = new();
 
     /// <summary>
-    /// Registers a replicated component. <paramref name="write"/>/<paramref name="read"/> must be symmetric
-    /// (read consumes exactly what write produced). The reader and its base stream are synchronous borrows valid
-    /// only during the read call. Do not retain or dispose them. The engine reuses readers for framed receive
-    /// and sample decoding to avoid allocating a reader for each component read.
-    /// A bounded reader starts at position zero with access only to its payload, throws
-    /// <see cref="EndOfStreamException"/> when a read requires more bytes than remain, and allows the codec
-    /// to leave bytes unread.
+    /// Registers a replicated component. <paramref name="write"/> and <paramref name="read"/> use the same
+    /// encoding. An unframed receive read must consume its complete component so the next frame stays aligned.
+    /// A framed receive read or a sample read starts at position zero within its bounded payload. Framed reads
+    /// on snapshot and legacy delta receive, and sample reads, may leave trailing bytes unread. Format-2
+    /// projection staging requires full payload consumption. Exact reads throw <see cref="EndOfStreamException"/>
+    /// if too few bytes remain.
+    /// Short-result APIs can report EOF or return fewer bytes or characters.
+    /// The reader and its base stream are synchronous borrows valid only during the read call. Do not retain
+    /// or dispose them. The engine reuses readers for framed receive and sample decoding to avoid allocating
+    /// a reader for each component read. The sample stream is read only. A retained sample reader or stream
+    /// throws <see cref="ObjectDisposedException"/> on reads while no decode is active.
     /// Supplying <paramref name="lerp"/> makes the component
     /// interpolatable (smoothed between snapshots by <see cref="ClientReplicationView.Interpolate"/>).
     /// <paramref name="discreteSample"/> instead makes it fixed-delay <b>nearest-sampled</b> (no blending): the

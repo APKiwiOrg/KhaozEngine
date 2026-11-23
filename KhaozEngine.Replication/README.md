@@ -20,12 +20,15 @@ area-of-interest deltas over a reliable channel, and opt-in format 2 acknowledge
   (`FramedPayloadStream`, re-pointed per component and reused for a whole apply, so framing allocates nothing), so
   a codec that carries a declared length of its own can check it against `BaseStream.Length - Position` and a lying
   length cannot be satisfied out of the bytes of the components behind it. A built-in frame is unframed and has no
-  such bound, so it still reads through the stream itself.
+  such bound. An unframed receive read must consume its complete component so the next frame stays aligned.
+  A framed receive read or a sample read starts at position zero within its bounded payload. Framed reads on
+  snapshot and legacy delta receive, and sample reads, may leave trailing bytes unread. Format-2 projection staging
+  requires full payload consumption. Exact reads throw `EndOfStreamException` if too few bytes remain. Short-result
+  APIs can report EOF or return fewer bytes or characters.
   The reader and its base stream are synchronous borrows valid only during the read call. Do not retain or
   dispose them. The engine reuses readers for framed receive and sample decoding to avoid allocating a reader
-  for each component read.
-  A bounded reader starts at position zero with access only to its payload, throws `EndOfStreamException` when a
-  read requires more bytes than remain, and allows the codec to leave bytes unread.
+  for each component read. The sample stream is read only. A retained sample reader or stream throws
+  `ObjectDisposedException` on reads while no decode is active.
   `IsRegistered(ushort)` (since 17.38.0) asks whether this registry has a codec for an id, for a caller judging
   whether an id it read out of STORED bytes is one this build knows: cell-blob persistence uses it to retire a
   candidate parse of a blob whose wire generation was never recorded. `IsRegistered<T>(id, expectedChannels)`
@@ -107,8 +110,7 @@ area-of-interest deltas over a reliable channel, and opt-in format 2 acknowledge
   decouples presentation from the tick cadence and the render fps. Both interpolation paths reuse a sample reader
   on the calling thread. Each sample starts at position zero with its exact byte length and a clean UTF-8 decoder.
   A nested decode borrows a separate reader. The engine releases the backing array when the callback exits, including
-  when it throws. An idle sample reader sees an empty payload. Using a retained reader or stream while a later
-  callback is active is unsupported.
+  when it throws. Using a retained reader or stream while a later callback is active is unsupported.
   The optional `excludeNetId` skips one entity in both
   calls (the local, predicted avatar): it renders from prediction, so its client-world position must stay the
   last-received authoritative value (the reconcile basis), never a fixed-delay interpolated one - passing the local net

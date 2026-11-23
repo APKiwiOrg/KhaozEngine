@@ -66,16 +66,18 @@ internal sealed class ChainWidthBounds(ChainWidthBounds.Pair[] pairs)
 
         var rest = particles.RestPositions[second] - particles.RestPositions[first];
         var axis = ChainMath.Direction(offset, ChainMath.Direction(rest, Vector3.UnitX));
-        var left = new SphereMove(particles, pair.First, 0.5f * axis);
-        var right = new SphereMove(particles, pair.Second, -0.5f * axis);
-        float leverage = Vector3.Dot(left.Tangent - right.Tangent, axis);
-        if (leverage <= 0)
+        var left = new SphereMove(particles, pair.First, 0.5f * axis, axis);
+        var right = new SphereMove(particles, pair.Second, -0.5f * axis, axis);
+        if (left.Tangent == Vector3.Zero && right.Tangent == Vector3.Zero)
             return;
 
+        float leverage = Vector3.Dot(left.Tangent - right.Tangent, axis);
         float maximum = MathF.Min(left.MaximumTravel, right.MaximumTravel);
         float lower = spacing > bound ? 0 : -maximum;
         float upper = spacing > bound ? maximum : 0;
-        float travel = Math.Clamp((spacing - bound) / leverage, lower, upper);
+        // Collinear segments have no first-order leverage. Try a finite swing on their common side.
+        float travel = leverage > 0 ? Math.Clamp((spacing - bound) / leverage, lower, upper)
+            : spacing > bound ? maximum : -maximum;
         float bestError = MathF.Abs(spacing - bound);
         var bestLeft = particles.Positions[first];
         var bestRight = particles.Positions[second];
@@ -116,7 +118,7 @@ internal sealed class ChainWidthBounds(ChainWidthBounds.Pair[] pairs)
         private readonly Vector3 _offset;
         private readonly float _length;
 
-        internal SphereMove(ChainParticles particles, in Member member, Vector3 share)
+        internal SphereMove(ChainParticles particles, in Member member, Vector3 share, Vector3 pairAxis)
         {
             _point = particles.Positions[member.Particle];
             if (member.Anchored)
@@ -130,6 +132,8 @@ internal sealed class ChainWidthBounds(ChainWidthBounds.Pair[] pairs)
 
             var direction = ChainMath.Direction(_offset, Vector3.Zero);
             Tangent = Vector3.Cross(direction, Vector3.Cross(share, direction));
+            if (Tangent.LengthSquared() < 1e-12f)
+                Tangent = 0.5f * ChainMath.Tangent(ChainMath.Perpendicular(pairAxis), direction);
         }
 
         internal Vector3 Tangent { get; }
@@ -151,19 +155,24 @@ internal sealed class ChainWidthBounds(ChainWidthBounds.Pair[] pairs)
     internal void StopVelocities(ChainParticles particles, float seconds)
     {
         for (int index = 0; index < pairs.Length; index++)
-        {
-            var pair = pairs[index];
-            var offset = particles.Positions[pair.Second.Particle] - particles.Positions[pair.First.Particle];
-            float spacing = offset.Length();
-            var (minimum, maximum) = _bands[index];
-            bool stretching = spacing - minimum >= maximum - spacing;
-            if (stretching ? spacing < maximum - SweepTolerance : spacing > minimum + SweepTolerance)
-                continue;
+            StopAtBand(particles, index, seconds);
+        for (int index = pairs.Length - 1; index >= 0; index--)
+            StopAtBand(particles, index, seconds);
+    }
 
-            var rest = particles.RestPositions[pair.Second.Particle] - particles.RestPositions[pair.First.Particle];
-            var axis = ChainMath.Direction(offset, ChainMath.Direction(rest, Vector3.UnitX));
-            StopEscape(particles, pair, axis, seconds, stretching);
-        }
+    private void StopAtBand(ChainParticles particles, int index, float seconds)
+    {
+        var pair = pairs[index];
+        var offset = particles.Positions[pair.Second.Particle] - particles.Positions[pair.First.Particle];
+        float spacing = offset.Length();
+        var (minimum, maximum) = _bands[index];
+        bool stretching = spacing - minimum >= maximum - spacing;
+        if (stretching ? spacing < maximum - SweepTolerance : spacing > minimum + SweepTolerance)
+            return;
+
+        var rest = particles.RestPositions[pair.Second.Particle] - particles.RestPositions[pair.First.Particle];
+        var axis = ChainMath.Direction(offset, ChainMath.Direction(rest, Vector3.UnitX));
+        StopEscape(particles, pair, axis, seconds, stretching);
     }
 
     private static void StopEscape(ChainParticles particles, in Pair pair, Vector3 axis, float seconds, bool stretching)

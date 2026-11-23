@@ -161,7 +161,7 @@ public sealed class ChainWidthBoundsTests(ITestOutputHelper output)
         ChainRigChain first = new(0, [new(Vector3.Zero, Quaternion.Identity, Vector3.One)], -Vector3.UnitY,
             settings with { Trail = firstTrail });
         var second = first with { Anchor = 1, Settings = settings };
-        var particles = new ChainParticles(new ChainRig(2, [first, second], []));
+        var particles = new ChainParticles(new ChainRig(2, [first, second], [new(0, 1) { Stretch = 0.1f }]));
         particles.SetRest([Matrix4x4.Identity, Matrix4x4.CreateTranslation(0.5f, 0, 0)], reset: true);
         var bounds = new ChainWidthBounds([new(new(0, 1, 0), new(1, 3, 2), 0.1f)]);
         return (particles, bounds);
@@ -242,6 +242,100 @@ public sealed class ChainWidthBoundsTests(ITestOutputHelper output)
 
         output.WriteLine($"Unbounded replay SHA256 {Convert.ToHexStringLower(replay.GetHashAndReset())}");
     }
+
+    [Fact]
+    public void A_short_tip_can_hold_two_bounds_at_different_depths()
+    {
+        // #1884: solving A to C later must not reopen the already solved A to B gap.
+        var settings = new ChainSettings(0, 0, 0, 1, MathF.PI, 0);
+        ChainJointRest root = new(Vector3.Zero, Quaternion.Identity, Vector3.One);
+        ChainJointRest child = root with { Translation = -0.5f * Vector3.UnitY };
+        ChainRigChain shortChain = new(0, [root], -Vector3.UnitY, settings);
+        ChainRigChain longChain = new(2, [root, child], -0.5f * Vector3.UnitY, settings);
+        var rig = new ChainRig(3, [shortChain, shortChain with { Anchor = 1 }, longChain],
+            [new(0, 1) { Stretch = 0.1f }, new(0, 2) { Stretch = 0.1f }]);
+        var particles = new ChainParticles(rig);
+        Matrix4x4[] anchors = [Matrix4x4.Identity, Matrix4x4.CreateTranslation(-0.5f, 0, 0),
+            Matrix4x4.CreateTranslation(0.5f, 0, 0)];
+        particles.SetRest(anchors, reset: true);
+        for (int chain = 0; chain < rig.Chains.Count; chain++)
+            particles.Predict(chain, settings, Vector3.Zero, StepSeconds, Vector3.Zero, Vector3.Zero, Quaternion.Identity);
+
+        var tilt = new Vector3(MathF.Sin(0.35f), -MathF.Cos(0.35f), 0);
+        particles.Positions[5] = particles.Positions[4] + 0.5f * tilt;
+        particles.Positions[6] = particles.Positions[5] + 0.5f * tilt;
+        new ChainLinks(rig).FinishStep(particles, anchors, [], [], [settings, settings, settings], StepSeconds);
+
+        Assert.InRange(Vector3.Distance(particles.Positions[1], particles.Positions[3]), 0.447f, 0.553f);
+        Assert.InRange(Vector3.Distance(particles.Positions[1], particles.Positions[6]), 0.447f, 0.553f);
+    }
+
+    [Fact]
+    public void Collinear_tips_can_turn_together_into_their_width_bound()
+    {
+        // #1884: both tangents of the pair axis vanish when the segments point directly apart.
+        var (particles, bounds) = CreateTipPair(1);
+        PredictPair(particles, Vector3.Zero, Quaternion.Identity);
+        particles.Positions[1] = particles.Positions[0] - Vector3.UnitX;
+        particles.Positions[3] = particles.Positions[2] + Vector3.UnitX;
+        bounds.ProjectPositions(particles);
+
+        Assert.InRange(Vector3.Distance(particles.Positions[1], particles.Positions[3]), 0.4495f, 0.5505f);
+        Assert.InRange(Vector3.Distance(particles.Positions[0], particles.Positions[1]), 0.99999f, 1.00001f);
+        Assert.InRange(Vector3.Distance(particles.Positions[2], particles.Positions[3]), 0.99999f, 1.00001f);
+        Assert.True(Vector3.Dot(particles.Positions[1] - particles.Positions[0],
+            particles.Positions[3] - particles.Positions[2]) > 0);
+    }
+
+    [Fact]
+    public void A_bounded_tip_does_not_approach_a_capsule_holding_it()
+    {
+        // #1884: the other tip's escape impulse must not undo the contact stop.
+        var (particles, _) = CreateTipPair(1);
+        PredictPair(particles, Vector3.Zero, Quaternion.Identity);
+        float y = -MathF.Sqrt(1 - 0.06f * 0.06f);
+        particles.Positions[1] = new Vector3(-0.06f, y, 0);
+        particles.Positions[3] = particles.Positions[2] + new Vector3(0.06f, y, 0);
+        particles.Velocities[3] = new Vector3(-y, 0.06f, 0);
+        const float radius = 0.15f;
+        var center = particles.Positions[1] + radius * Vector3.UnitX;
+        ColliderCapsule sphere = new(center, center, radius);
+        FinishTipPair(particles, [sphere]);
+
+        var tip = particles.Positions[1];
+        Assert.InRange(Vector3.Distance(tip, center), radius - 0.00001f, radius + 0.00001f);
+        var segment = Vector3.Normalize(tip - particles.Positions[0]);
+        var normal = Vector3.Normalize(tip - center);
+        var tangent = Vector3.Normalize(normal - Vector3.Dot(normal, segment) * segment);
+        Assert.True(Vector3.Dot(particles.Velocities[1], tangent) >= -0.00001f,
+            $"The held tip approaches the surface at {Vector3.Dot(particles.Velocities[1], tangent):F6} m/s.");
+    }
+
+    [Fact]
+    public void A_bounded_pair_keeps_no_velocity_along_its_segments()
+    {
+        // #1884: width escape and segment length have different constraint axes.
+        var (particles, _) = CreateTipPair(1);
+        PredictPair(particles, Vector3.Zero, Quaternion.Identity);
+        float x = MathF.Sin(0.2f), y = MathF.Cos(0.2f);
+        particles.Positions[1] = new Vector3(-x, -y, 0);
+        particles.Positions[3] = particles.Positions[2] + new Vector3(x, -y, 0);
+        particles.Velocities[1] = new Vector3(-y, x, 0);
+        particles.Velocities[3] = new Vector3(y, x, 0);
+        FinishTipPair(particles, []);
+
+        Assert.InRange(Vector3.Distance(particles.Positions[1], particles.Positions[3]), 0.4495f, 0.5505f);
+        for (int root = 0; root <= 2; root += 2)
+        {
+            var segment = Vector3.Normalize(particles.Positions[root + 1] - particles.Positions[root]);
+            var relative = particles.Velocities[root + 1] - particles.Velocities[root];
+            Assert.InRange(Vector3.Dot(relative, segment), -0.00001f, 0.00001f);
+        }
+    }
+
+    private static void FinishTipPair(ChainParticles particles, ReadOnlySpan<ColliderCapsule> colliders) =>
+        new ChainLinks(particles.Rig).FinishStep(particles, [Matrix4x4.Identity, Matrix4x4.CreateTranslation(0.5f, 0, 0)],
+            colliders, colliders, [particles.Rig.Chains[0].Settings, particles.Rig.Chains[1].Settings], StepSeconds);
 
     private static Vector3 Particle(ChainRig rig, ReadOnlySpan<Matrix4x4> frames, int chain, int joint)
     {

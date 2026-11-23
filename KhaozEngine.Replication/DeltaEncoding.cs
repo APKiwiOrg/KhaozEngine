@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 
 namespace KhaozEngine.Replication;
@@ -16,13 +17,13 @@ internal static class DeltaEncoding
     /// <summary>True if any component was added, removed, or its bytes changed between a baseline and current capture.</summary>
     public static bool EntityChanged(CapturedComponents baseComps, CapturedComponents curComps)
     {
-        foreach (ushort tid in curComps.TypeIds)
+        foreach (var (tid, _) in curComps)
         {
             if (!baseComps.TryGetSpan(tid, out ReadOnlySpan<byte> prev)) return true;
             curComps.TryGetSpan(tid, out ReadOnlySpan<byte> cur); // tid came from curComps, so this always succeeds
             if (!cur.SequenceEqual(prev)) return true;
         }
-        foreach (ushort tid in baseComps.TypeIds)
+        foreach (var (tid, _) in baseComps)
             if (!curComps.Contains(tid)) return true;
         return false;
     }
@@ -46,16 +47,18 @@ internal static class DeltaEncoding
         // isNew also guards the null.
         int removedCount = 0;
         if (!isNew)
-            foreach (ushort tid in baseComps!.TypeIds)
+            foreach (var (tid, _) in baseComps!)
                 if (!curComps.Contains(tid)) removedCount++;
         bw.Write(removedCount);
         if (!isNew)
-            foreach (ushort tid in baseComps!.TypeIds)
+            foreach (var (tid, _) in baseComps!)
                 if (!curComps.Contains(tid)) bw.Write(tid);
 
         // Changed/added components, in registration order.
-        foreach (ComponentCodec codec in registry.Ordered)
+        IReadOnlyList<ComponentCodec> codecs = registry.Ordered;
+        for (int i = 0; i < codecs.Count; i++)
         {
+            ComponentCodec codec = codecs[i];
             if (!curComps.TryGetSpan(codec.TypeId, out ReadOnlySpan<byte> data)) continue;
             bool include = baseComps is null
                 || !baseComps.TryGetSpan(codec.TypeId, out ReadOnlySpan<byte> prev) || !data.SequenceEqual(prev);

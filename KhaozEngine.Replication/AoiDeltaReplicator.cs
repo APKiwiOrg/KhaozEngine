@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using KhaozEngine.Ecs;
 using Comps = KhaozEngine.Replication.CapturedComponents;
 using AoiBaseline = System.Collections.Generic.Dictionary<long, KhaozEngine.Replication.CapturedComponents>;
@@ -55,14 +54,12 @@ public sealed class AoiDeltaReplicator
     private readonly Dictionary<World, AoiBaseline> captureByWorld = new();
     private int captureSeq;
 
-    // Single-threaded per instance (one server tick thread): the capture scratch consolidates each world capture into
-    // one buffer, and the wire scratch (stream + reused changed/removed lists) builds each client's delta without a
-    // per-call allocation beyond the returned wire array and the retained projection. No locking.
+    // Single caller per instance: the capture scratch consolidates each world's capture into one buffer.
+    // The wire writer reuses its body storage across slots. The owning API copies that body before committing.
     private readonly CaptureScratch captureScratch = new();
-    private readonly MemoryStream wireStream = new();
-    private readonly BinaryWriter wireWriter;
-    private readonly List<long> scratchRemoved = new();
-    private readonly List<long> scratchChanged = new();
+    private readonly LegacyDeltaBodyWriter wire = new();
+    private bool wireInUse;
+    private Exception? legacyBodyFailureForTests;
     // Project's reused ordering scratch: the interest-set entities present in the capture, tagged with their capture
     // order, sorted so the projection is built in world ForEach order (byte-identical to the old full-capture walk).
     // Reused across every WriteFor, so a steady-state projection allocates only the exact-size projected baseline.
@@ -81,6 +78,10 @@ public sealed class AoiDeltaReplicator
 
     internal int LegacyHistoryCount => captureByWorld.Count;
 
+    internal LegacyDeltaAllocationProbe? LegacyAllocationsForTests { get; set; }
+    internal void FailNextLegacyBodyCompletionForTests(Exception failure) =>
+        legacyBodyFailureForTests = failure ?? throw new ArgumentNullException(nameof(failure));
+
     /// <summary>Creates an area-of-interest legacy delta writer.</summary>
     /// <param name="registry">The replicated component registry.</param>
     /// <param name="historyDepth">Kept for source compatibility and still validated as positive. The legacy diff
@@ -89,7 +90,6 @@ public sealed class AoiDeltaReplicator
     {
         this.registry = registry ?? throw new ArgumentNullException(nameof(registry));
         if (historyDepth <= 0) throw new ArgumentOutOfRangeException(nameof(historyDepth), historyDepth, "must be positive");
-        wireWriter = new BinaryWriter(wireStream);
         rebuild = new RebuildDeltaWriter(registry);
         // Whether any registered component is owner-scoped. If none is, every client projects to the exact same
         // Replicate-channel state, so WriteFor can reference the shared capture's component dictionaries directly
@@ -169,7 +169,49 @@ public sealed class AoiDeltaReplicator
     /// changed-entity wire order is identical to walking the whole capture. So the per-client cost scales with the
     /// client's area of interest, not the world population. The wire is byte-identical to capturing per client.
     /// </remarks>
-    public byte[] WriteFor(int slot, World world, IReadOnlySet<long> interestSet, long? ownerNetId = null)
+    public byte[] WriteFor(int slot, World world, IReadOnlySet<long> interestSet, long? ownerNetId = null) =>
+        BuildFor(wireInUse ? new LegacyDeltaBodyWriter() : wire, slot, world, interestSet, ownerNetId,
+            prefixLength: 0, owned: true)!;
+
+    // NetWorld fills the reserved prefix and hands these bytes to a synchronous transport call. A nested
+    // build while this writer is in use takes the owning path with independent scratch and an owned frame.
+    internal ServeFrame BorrowForServe(int slot, World world, IReadOnlySet<long> interestSet, long ownerNetId,
+        int prefixLength)
+    {
+        if (wireInUse)
+            return new ServeFrame(null, BuildFor(new LegacyDeltaBodyWriter(), slot, world, interestSet, ownerNetId,
+                prefixLength, owned: true)!);
+
+        wireInUse = true;
+        try
+        {
+            BuildFor(wire, slot, world, interestSet, ownerNetId, prefixLength, owned: false);
+            return new ServeFrame(this, wire.WrittenSpan);
+        }
+        catch
+        {
+            wireInUse = false;
+            throw;
+        }
+    }
+
+    internal void CompleteLegacyServePass(long passOrdinal, int largestFrame)
+    {
+        if (!wireInUse) wire.ReleaseOversize(passOrdinal, largestFrame);
+    }
+
+    internal readonly ref struct ServeFrame(AoiDeltaReplicator? lender, Span<byte> bytes)
+    {
+        internal Span<byte> Bytes { get; } = bytes;
+
+        public void Dispose()
+        {
+            if (lender is not null) lender.wireInUse = false;
+        }
+    }
+
+    private byte[]? BuildFor(LegacyDeltaBodyWriter destination, int slot, World world, IReadOnlySet<long> interestSet,
+        long? ownerNetId, int prefixLength, bool owned)
     {
         if (world is null) throw new ArgumentNullException(nameof(world));
         if (interestSet is null) throw new ArgumentNullException(nameof(interestSet));
@@ -179,46 +221,26 @@ public sealed class AoiDeltaReplicator
         // each entity's components filtered to the Replicate channel owner-scoped to this slot. An OwnerOnly component
         // on another player's entity is stripped here (never sent), so this slot's state holds only what it was
         // actually sent and owner-only visibility falls out of the diff.
+        LegacyDeltaAllocationProbe? probe = LegacyAllocationsForTests;
+        long phaseStart = LegacyDeltaAllocationProbe.Start(probe);
         AoiBaseline capture = CaptureFor(world);
+        probe?.Record(LegacyDeltaPhase.Capture, phaseStart);
+        phaseStart = LegacyDeltaAllocationProbe.Start(probe);
         AoiBaseline projected = Project(capture, interestSet, ownerNetId);
+        probe?.Record(LegacyDeltaPhase.Projection, phaseStart);
+        phaseStart = LegacyDeltaAllocationProbe.Start(probe);
 
         LegacyDeltaSlot? previous = slots.GetValueOrDefault(slot);
         AoiBaseline? baseline = previous?.Projection;
         int baselineSeq = previous?.Sequence ?? -1;
 
-        wireStream.SetLength(0); // reset the reused wire scratch, keep its capacity
-        BinaryWriter bw = wireWriter;
-        bw.Write(baselineSeq);
-        bw.Write(currentSeq);
-
-        // Removed: in the last sent projection, gone from the interest set (left AoI or despawned). A full snapshot
-        // (no baseline) removes implicitly, so it lists nothing. Reused scratch list, cleared per call.
-        scratchRemoved.Clear();
-        if (baseline is not null)
-            foreach (long netId in baseline.Keys)
-                if (!projected.ContainsKey(netId)) scratchRemoved.Add(netId);
-        bw.Write(scratchRemoved.Count);
-        foreach (long netId in scratchRemoved) bw.Write(netId);
-
-        // New (absent from the last sent projection, so written whole) or changed (stayed + component delta).
-        scratchChanged.Clear();
-        foreach (long netId in projected.Keys)
-        {
-            if (baseline is null || !baseline.ContainsKey(netId)) { scratchChanged.Add(netId); continue; }
-            if (DeltaEncoding.EntityChanged(baseline[netId], projected[netId])) scratchChanged.Add(netId);
-        }
-        bw.Write(scratchChanged.Count);
-        foreach (long netId in scratchChanged)
-        {
-            bool isNew = baseline is null || !baseline.ContainsKey(netId);
-            DeltaEncoding.WriteChangedEntity(bw, registry, netId, isNew, isNew ? null : baseline![netId], projected[netId]);
-        }
-
-        bw.Flush();
-        byte[] payload = wireStream.ToArray(); // fresh exact-size array, the caller owns it
+        destination.Write(registry, projected, baseline, baselineSeq, currentSeq, prefixLength,
+            ref legacyBodyFailureForTests);
+        byte[]? payload = owned ? destination.ToArray() : null;
         // Only a completely built payload becomes the slot's last sent state.
         if (previous is null) slots[slot] = new LegacyDeltaSlot(currentSeq, projected);
         else previous.Sent(currentSeq, projected);
+        probe?.Record(LegacyDeltaPhase.Body, phaseStart);
         return payload;
     }
 

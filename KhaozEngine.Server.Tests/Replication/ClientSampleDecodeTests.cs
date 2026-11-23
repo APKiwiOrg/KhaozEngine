@@ -1,0 +1,213 @@
+using System;
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+using KhaozEngine.Ecs;
+using KhaozEngine.Replication;
+using Xunit;
+
+namespace KhaozEngine.Tests.Replication;
+
+// #1886: buffered reads must preserve the legacy sample boundaries and callback isolation.
+public sealed class ClientSampleDecodeTests
+{
+    [Theory]
+    [InlineData(1, false, 0.25f, -0.5f)]
+    [InlineData(16, false, 0.75f, 5.5f)]
+    [InlineData(1, true, 0.5f, -3.5f)]
+    [InlineData(16, true, 0.75f, 8.5f)]
+    public void FixedDelayWritesTheLegacyValueBitForBit(ushort typeId, bool discrete, float factor, float expected)
+    {
+        bool readingHistory = false;
+        var registry = ClientSampleFixture.Registry(typeId, discrete, reader =>
+        {
+            float value = reader.ReadSingle();
+            if (value < 0 && !readingHistory) reader.ReadInt32();
+            return new ClientSampleFixture.Sample(value);
+        });
+        var fixture = new ClientSampleFixture(registry, -3.5f, 8.5f);
+        readingHistory = true; // The older sample has a trailer that this read leaves unread.
+
+        fixture.Interpolate(factor);
+
+        Assert.Equal(BitConverter.SingleToInt32Bits(expected), BitConverter.SingleToInt32Bits(fixture.Value));
+    }
+
+    [Theory]
+    [InlineData(1, false)]
+    [InlineData(16, false)]
+    [InlineData(1, true)]
+    [InlineData(16, true)]
+    public void ShorterCurrentSampleCannotReadTheOlderSamplesTrailer(ushort typeId, bool discrete)
+    {
+        bool overread = false;
+        var registry = ClientSampleFixture.Registry(typeId, discrete, reader =>
+        {
+            float value = reader.ReadSingle();
+            if (value < 0 || overread) reader.ReadInt32();
+            return new ClientSampleFixture.Sample(value);
+        });
+        var fixture = new ClientSampleFixture(registry, -3.5f, 8.5f);
+        fixture.Interpolate(0.25f); // Establish a passing control and read the older sample's trailer.
+        overread = true;
+
+        Assert.Throws<EndOfStreamException>(() => fixture.Interpolate(0.75f));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void LegacyReaderCanDecodeAnotherViewBeforeResuming(bool discrete)
+    {
+        ClientSampleFixture? nested = null;
+        var registry = ClientSampleFixture.Registry(1, discrete, reader =>
+        {
+            float value = reader.ReadSingle();
+            ClientSampleFixture? target = nested;
+            if (target is not null)
+            {
+                nested = null;
+                target.Interpolate(0.25f);
+            }
+            if (value < 0) value += reader.ReadInt32();
+            return new ClientSampleFixture.Sample(value);
+        });
+        var outer = new ClientSampleFixture(registry, -3.5f, 8.5f);
+        var inner = new ClientSampleFixture(registry, 21f, 29f);
+        nested = inner;
+
+        outer.Interpolate(0.25f);
+
+        Assert.Equal(discrete ? 12.5f : 11.5f, outer.Value);
+        Assert.Equal(discrete ? 21f : 23f, inner.Value);
+    }
+
+    [Fact]
+    public async Task ViewsSharingARegistryReadIndependentSamplesAcrossThreads()
+    {
+        var firstReadEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var secondReadFinished = new ManualResetEventSlim();
+        bool readingHistory = false;
+        var registry = ClientSampleFixture.Registry(1, false, reader =>
+        {
+            float value = reader.ReadSingle();
+            if (readingHistory && value == -3.5f)
+            {
+                firstReadEntered.SetResult();
+                secondReadFinished.Wait();
+            }
+            if (value < 0) value += reader.ReadInt32();
+            return new ClientSampleFixture.Sample(value);
+        });
+        var first = new ClientSampleFixture(registry, -3.5f, 8.5f);
+        var second = new ClientSampleFixture(registry, 21f, 29f);
+        readingHistory = true;
+
+        Task rendering = Task.Run(() =>
+        {
+            try { first.Interpolate(0.25f); }
+            finally { firstReadEntered.TrySetResult(); }
+        });
+        await firstReadEntered.Task;
+        try
+        {
+            second.Interpolate(0.75f);
+        }
+        finally
+        {
+            secondReadFinished.Set();
+            await rendering;
+        }
+
+        Assert.Equal(11.5f, first.Value);
+        Assert.Equal(27f, second.Value);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(16)]
+    public void TruncatedUtf8DoesNotChangeTheNextSample(ushort typeId)
+    {
+        var registry = new ReplicationRegistry();
+        registry.Register<Characters>(typeId, static (value, writer) => writer.Write((char)value.Older),
+            static reader => new Characters(reader.Read(), 0),
+            lerp: static (older, newer, _) => new Characters(older.Older, newer.Older));
+        Assert.True(registry.TryGet(typeId, out ComponentCodec codec));
+        var world = new World();
+        Entity entity = world.Spawn();
+
+        // An incomplete UTF-8 character buffers its prefix in BinaryReader's decoder and returns EOF.
+        // The next sample starts with a complete character and must decode as if that prefix never existed.
+        codec.LerpFromBytes!(world, entity, [0xe2, 0x82], [0xc2, 0xa2], 0.5f);
+
+        Assert.Equal(new Characters(-1, '\u00a2'), world.Get<Characters>(entity));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(16)]
+    public void ThrowingCharacterReadDoesNotChangeTheNextSample(ushort typeId)
+    {
+        var registry = new ReplicationRegistry();
+        registry.Register<Characters>(typeId, static (value, writer) => writer.Write((char)value.Older),
+            static reader => new Characters(reader.ReadChar(), 0), discreteSample: true);
+        Assert.True(registry.TryGet(typeId, out ComponentCodec codec));
+        var world = new World();
+        Entity entity = world.Spawn();
+
+        Assert.Throws<EndOfStreamException>(() => codec.SetFromBytes!(world, entity, [0xe2, 0x82]));
+        codec.SetFromBytes!(world, entity, [0xc2, 0xa2]);
+
+        Assert.Equal(new Characters('\u00a2', 0), world.Get<Characters>(entity));
+    }
+
+    [Fact]
+    public void OuterSampleCanFinishAfterCaughtNestedCharacterFailure()
+    {
+        const ushort innerType = ReplicationRegistry.FirstExtensionTypeId;
+        var registry = new ReplicationRegistry();
+        registry.Register<Characters>(innerType, static (value, writer) => writer.Write((char)value.Older),
+            static reader => new Characters(reader.ReadChar(), 0), discreteSample: true);
+        Assert.True(registry.TryGet(innerType, out ComponentCodec innerCodec));
+        var world = new World();
+        Entity outer = world.Spawn();
+        Entity inner = world.Spawn();
+        registry.Register<Characters>(1, static (value, writer) => writer.Write(value.Older), reader =>
+        {
+            byte first = reader.ReadByte();
+            Assert.Throws<EndOfStreamException>(() => innerCodec.SetFromBytes!(world, inner, [0xe2, 0x82]));
+            innerCodec.SetFromBytes!(world, inner, [0xc2, 0xa2]);
+            return new Characters(first, reader.ReadByte());
+        }, discreteSample: true);
+        Assert.True(registry.TryGet(1, out ComponentCodec outerCodec));
+
+        outerCodec.SetFromBytes!(world, outer, [37, 53]);
+
+        Assert.Equal(new Characters(37, 53), world.Get<Characters>(outer));
+        Assert.Equal(new Characters('\u00a2', 0), world.Get<Characters>(inner));
+    }
+
+    [Fact]
+    public void SeekPastSampleCannotReadEarlierSamplesBytes()
+    {
+        var registry = new ReplicationRegistry();
+        registry.Register<Characters>(1, static (value, writer) => writer.Write(value.Older),
+            static reader =>
+            {
+                reader.BaseStream.Seek(2, SeekOrigin.Begin);
+                return new Characters(reader.ReadInt32(), 0);
+            }, discreteSample: true);
+        Assert.True(registry.TryGet(1, out ComponentCodec codec));
+        var world = new World();
+        Entity entity = world.Spawn();
+        var older = new Characters(37, 0);
+
+        codec.SetFromBytes!(world, entity, [0, 0, 37, 0, 0, 0]);
+
+        Assert.Equal(older, world.Get<Characters>(entity));
+        Assert.Throws<EndOfStreamException>(() => codec.SetFromBytes!(world, entity, [0x61]));
+        Assert.Equal(older, world.Get<Characters>(entity));
+    }
+
+    private readonly record struct Characters(int Older, int Newer) : IComponent;
+}

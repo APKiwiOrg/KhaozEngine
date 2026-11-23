@@ -9,7 +9,8 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 2026-11-23
 
 A minor that changes how every hanging chain moves. `KhaozEngine.Attachments` adds API for width bounds,
-which `KhaozEngine.Attachments.Render3D` applies when it binds wearer motion.
+which `KhaozEngine.Attachments.Render3D` applies when it binds wearer motion. It also removes steady
+allocations from legacy delta serving and from client interpolation.
 
 **Fixed.**
 
@@ -40,6 +41,13 @@ which `KhaozEngine.Attachments.Render3D` applies when it binds wearer motion.
 - Every chained piece moves differently. Review existing pieces after upgrading, especially chains
   tuned with tight bend limits and stiff springs that may now look calmer than intended. For example,
   try lower damping on a short tail or wider bend limits with `linkStretch` on a cloak.
+- The `BinaryReader` a replication codec's `read` receives is a borrow on every path, valid only during
+  that call. Client interpolation now reuses one reader per thread over a bounded read-only sample
+  stream, as framed receive already reused one. Do not keep or dispose the reader. On a stored sample,
+  the reader's reads and the base stream's synchronous read, seek, position and length are supported.
+  The stream's asynchronous, APM, copy, write, resize and timeout members throw `NotSupportedException`.
+  Closing the borrow ends only that borrow, and a reader kept past its call throws
+  `ObjectDisposedException`. [#1886](https://github.com/APKiwiOrg/KhaozEngine/issues/1886)
 
 **Performance.**
 
@@ -48,6 +56,13 @@ which `KhaozEngine.Attachments.Render3D` applies when it binds wearer motion.
   anchor by a rotation, positive uniform scale and translation.
 - The swing cost diagnostic reports the motion and draw spans separately and measures held wearers.
 - Chain stepping reuses capsule geometry across constraint passes and extracts only the anchor rotation they need.
+- Client interpolation no longer allocates a stream and a reader for every sampled component value.
+  Existing codec registrations need no change.
+  [#1886](https://github.com/APKiwiOrg/KhaozEngine/issues/1886)
+- Continuous-world legacy delta serving writes each served frame once into reused storage, where it
+  made three arrays per served slot per tick, and no longer boxes the codec enumerator per emitted
+  entity. Wire bytes and the send commitment are unchanged. The public encoders still return arrays
+  the caller owns. [#1885](https://github.com/APKiwiOrg/KhaozEngine/issues/1885)
 
 **Upgrade order.**
 

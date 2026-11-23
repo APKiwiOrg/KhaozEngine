@@ -31,8 +31,23 @@ public sealed class ReplicationRegistry
     private readonly Dictionary<ushort, ComponentCodec> byId = new();
 
     /// <summary>
-    /// Registers a replicated component. <paramref name="write"/>/<paramref name="read"/> must be symmetric
-    /// (read consumes exactly what write produced). Supplying <paramref name="lerp"/> makes the component
+    /// Registers a replicated component. <paramref name="write"/> and <paramref name="read"/> use the same
+    /// encoding. An unframed receive read must consume its complete component so the next frame stays aligned.
+    /// A framed receive read or a sample read starts at position zero within its bounded payload. Framed reads
+    /// on snapshot and legacy delta receive, and sample reads, may leave trailing bytes unread. Format-2
+    /// projection staging requires full payload consumption. Exact reads throw <see cref="EndOfStreamException"/>
+    /// if too few bytes remain.
+    /// Short-result APIs can report EOF or return fewer bytes or characters.
+    /// The reader and its base stream are synchronous borrows. Do not retain them after the read call.
+    /// Leave disposal to the engine on receive. Closing or disposing either object during sample decoding
+    /// ends that borrow. The engine reuses readers for framed receive and sample decoding to avoid allocating
+    /// a reader for each component read.
+    /// The sample reader supports reads, and its read-only base stream supports synchronous reads, seek,
+    /// position, length, capability queries, and flush. The sample stream's asynchronous, APM, copy, write,
+    /// resize, and timeout members throw <see cref="NotSupportedException"/>. The runtime's
+    /// <c>ReadExactlyAsync</c> and <c>ReadAtLeastAsync</c> helpers report that refusal as an already faulted result.
+    /// Supported operations that access a closed sample throw <see cref="ObjectDisposedException"/>.
+    /// Supplying <paramref name="lerp"/> makes the component
     /// interpolatable (smoothed between snapshots by <see cref="ClientReplicationView.Interpolate"/>).
     /// <paramref name="discreteSample"/> instead makes it fixed-delay <b>nearest-sampled</b> (no blending): the
     /// component is time-buffered like a lerp component, but <see cref="ClientReplicationView.InterpolateAt"/> writes
@@ -129,8 +144,8 @@ public sealed class ReplicationRegistry
         {
             lerpFromBytes = (w, e, prevBytes, curBytes, t) =>
             {
-                T a = read(new BinaryReader(new MemoryStream(prevBytes)));
-                T b = read(new BinaryReader(new MemoryStream(curBytes)));
+                T a = SampleReader.Read(read, prevBytes);
+                T b = SampleReader.Read(read, curBytes);
                 w.Set(e, lerp(a, b, t));
             };
         }
@@ -140,7 +155,7 @@ public sealed class ReplicationRegistry
         // component exactly like a lerp one except for the write.
         Action<World, Entity, byte[]>? setFromBytes = null;
         if (discreteSample)
-            setFromBytes = (w, e, bytes) => w.Set(e, read(new BinaryReader(new MemoryStream(bytes))));
+            setFromBytes = (w, e, bytes) => w.Set(e, SampleReader.Read(read, bytes));
 
         var codec = new ComponentCodec(typeId, typeof(T), lengthPrefixed, channels, TrySerialize, Deserialize, lerpFromBytes, setFromBytes, CaptureInto, RemoveComponent, CopyComponent, HasComponent);
         ordered.Add(codec);

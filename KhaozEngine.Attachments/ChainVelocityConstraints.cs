@@ -107,12 +107,17 @@ internal ref struct ChainVelocityConstraints
 
     private void StopAtCapsules(int parent, float length, Vector3 direction, ChainCapsuleCandidates capsules)
     {
-        var root = _particles.Positions[parent];
+        if (capsules.Count == 0)
+            return;
+
+        var tip = new ChainCapsuleCollision.Tip(_particles.Positions[parent], length, direction);
         ref var velocity = ref _particles.Velocities[parent + 1];
+        ChainCapsuleCollision.Axis scratch = default;
         for (int index = 0; index < capsules.Count; index++)
         {
             ref readonly var capsule = ref capsules[index];
-            if (!ChainCapsuleCollision.TryContact(root, length, direction, _radius, capsule, out var normal, out double along))
+            ref readonly var axis = ref capsules.ReadAxis(index, ref scratch);
+            if (!ChainCapsuleCollision.TryContact(tip, _radius, capsule, axis, out var normal, out double along))
                 continue;
 
             var tangent = ChainMath.Tangent(normal, direction);

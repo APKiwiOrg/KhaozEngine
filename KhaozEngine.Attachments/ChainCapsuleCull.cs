@@ -7,6 +7,7 @@ internal sealed class ChainCapsuleCull
 {
     // Worn motion caps a wearer at 64 colliders. Standalone simulations may supply more.
     private readonly int[] _indices = new int[64];
+    private ChainCapsuleCollision.Axis[]? _axes;
 
     // The squared-length check leaves room for its own float rounding in this upper bound.
     private const double DirectionLengthBound = 1.000002;
@@ -16,9 +17,10 @@ internal sealed class ChainCapsuleCull
     internal static bool DisableForTests;
 
     internal ChainCapsuleCandidates Select(Vector3 root, ReadOnlySpan<float> lengths, float chainRadius,
-        ReadOnlySpan<ColliderCapsule> colliders)
+        ReadOnlySpan<ColliderCapsule> colliders, ChainCapsuleCollision.Axis[]? axes = null)
     {
-        var all = new ChainCapsuleCandidates(colliders);
+        _axes = axes;
+        var all = new ChainCapsuleCandidates(colliders, axes);
         if (colliders.IsEmpty || colliders.Length > _indices.Length || DisableForTests)
             return all;
 
@@ -35,17 +37,20 @@ internal sealed class ChainCapsuleCull
         reach += lengths.Length * PositionRoundingBound * positionScale;
         double contactReach = reach + chainRadius + ChainCapsuleCollision.TouchTolerance;
         int count = 0;
+        ChainCapsuleCollision.Axis scratch = default;
         for (int index = 0; index < colliders.Length; index++)
         {
-            if (!ChainCapsuleCollision.BeyondReach(root, contactReach, colliders[index]))
+            ref readonly var axis = ref all.ReadAxis(index, ref scratch);
+            if (!ChainCapsuleCollision.BeyondReach(root, contactReach, colliders[index], axis))
                 _indices[count++] = index;
         }
 
-        return count == colliders.Length ? all : new ChainCapsuleCandidates(colliders, _indices.AsSpan(0, count));
+        return count == colliders.Length ? all : new ChainCapsuleCandidates(colliders, axes, _indices.AsSpan(0, count));
     }
 
     internal ChainCapsuleCandidates Selected(ReadOnlySpan<ColliderCapsule> colliders, int count) =>
-        count == colliders.Length ? new ChainCapsuleCandidates(colliders) : new ChainCapsuleCandidates(colliders, _indices.AsSpan(0, count));
+        count == colliders.Length ? new ChainCapsuleCandidates(colliders, _axes) :
+            new ChainCapsuleCandidates(colliders, _axes, _indices.AsSpan(0, count));
 
     internal static bool FitsReach(Vector3 direction) => direction.LengthSquared() <= 1.000002f;
 }
@@ -53,24 +58,39 @@ internal sealed class ChainCapsuleCull
 internal readonly ref struct ChainCapsuleCandidates
 {
     private readonly ReadOnlySpan<ColliderCapsule> _colliders;
+    private readonly ReadOnlySpan<ChainCapsuleCollision.Axis> _axes;
     private readonly ReadOnlySpan<int> _indices;
 
-    internal ChainCapsuleCandidates(ReadOnlySpan<ColliderCapsule> colliders)
+    internal ChainCapsuleCandidates(ReadOnlySpan<ColliderCapsule> colliders,
+        ReadOnlySpan<ChainCapsuleCollision.Axis> axes = default)
     {
         _colliders = colliders;
+        _axes = axes;
         Count = colliders.Length;
     }
 
-    internal ChainCapsuleCandidates(ReadOnlySpan<ColliderCapsule> colliders, ReadOnlySpan<int> indices)
+    internal ChainCapsuleCandidates(ReadOnlySpan<ColliderCapsule> colliders,
+        ReadOnlySpan<ChainCapsuleCollision.Axis> axes, ReadOnlySpan<int> indices)
     {
         _colliders = colliders;
+        _axes = axes;
         _indices = indices;
         Count = indices.Length;
     }
 
     internal int Count { get; }
     internal bool IsFiltered => Count != _colliders.Length;
-    internal ChainCapsuleCandidates All => new(_colliders);
+    internal ChainCapsuleCandidates All => new(_colliders, _axes);
     internal int OriginalIndex(int index) => IsFiltered ? _indices[index] : index;
     internal ref readonly ColliderCapsule this[int index] => ref _colliders[OriginalIndex(index)];
+
+    internal ref readonly ChainCapsuleCollision.Axis ReadAxis(int index, ref ChainCapsuleCollision.Axis scratch)
+    {
+        int original = OriginalIndex(index);
+        if (!_axes.IsEmpty)
+            return ref _axes[original];
+
+        scratch = new ChainCapsuleCollision.Axis(_colliders[original]);
+        return ref scratch;
+    }
 }

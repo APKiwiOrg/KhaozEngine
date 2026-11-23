@@ -3,7 +3,7 @@ using System.Numerics;
 
 namespace KhaozEngine.Attachments;
 
-internal static class ChainCapsuleCollision
+internal static partial class ChainCapsuleCollision
 {
     private const int ContactPasses = 8;
     internal const double TouchTolerance = 0.0001;
@@ -14,9 +14,9 @@ internal static class ChainCapsuleCollision
     internal static void SetFirstCorrectionDirectionForTests(Vector3? direction) =>
         _firstCorrectionDirectionForTests = direction;
 
-    internal static bool BeyondReach(Vector3 root, double contactReach, in ColliderCapsule capsule)
+    internal static bool BeyondReach(Vector3 root, double contactReach, in ColliderCapsule capsule, in Axis axis)
     {
-        var residual = CapsuleResidual(new Offset(root), default, capsule, out _);
+        var residual = axis.Residual(new Offset(root), default, out _);
         var coordinates = Vector3.Max(Vector3.Abs(root), Vector3.Max(Vector3.Abs(capsule.Start), Vector3.Abs(capsule.End)));
         // Keep axes within reach plus both radii, contact tolerance and 1e-9 of coordinate scale for ~1e-16 double roundoff.
         double projectionMargin = 1e-9 * Math.Max(coordinates.X, Math.Max(coordinates.Y, coordinates.Z));
@@ -32,7 +32,12 @@ internal static class ChainCapsuleCollision
             capsules = capsules.All;
         var initial = direction;
         var firstCorrectionForTests = _firstCorrectionDirectionForTests;
+        if (capsules.Count == 0)
+            return direction;
+
         var root = new Offset(start);
+        var fromRoot = new Offset(direction) * length;
+        Axis scratch = default;
         // Revisit earlier contacts after a correction moves the particle along its length sphere.
         for (int pass = 0; pass < ContactPasses; pass++)
         {
@@ -40,8 +45,8 @@ internal static class ChainCapsuleCollision
             for (int index = 0; index < capsules.Count; index++)
             {
                 ref readonly var capsule = ref capsules[index];
-                var fromRoot = new Offset(direction) * length;
-                var residual = CapsuleResidual(root, fromRoot, capsule, out _);
+                ref readonly var axis = ref capsules.ReadAxis(index, ref scratch);
+                var residual = axis.Residual(root, fromRoot, out _);
                 double radius = (double)capsule.Radius + chainRadius;
                 if (residual.LengthSquared >= radius * radius)
                     continue;
@@ -56,6 +61,7 @@ internal static class ChainCapsuleCollision
                 }
                 changed |= corrected != direction;
                 direction = corrected;
+                fromRoot = new Offset(direction) * length;
             }
 
             if (!changed)
@@ -65,10 +71,10 @@ internal static class ChainCapsuleCollision
         return direction;
     }
 
-    internal static bool TryContact(Vector3 root, float length, Vector3 direction, float chainRadius,
-        in ColliderCapsule capsule, out Vector3 normal, out double along)
+    internal static bool TryContact(in Tip tip, float chainRadius, in ColliderCapsule capsule, in Axis axis,
+        out Vector3 normal, out double along)
     {
-        var residual = CapsuleResidual(new Offset(root), new Offset(direction) * length, capsule, out along);
+        var residual = axis.Residual(tip.Root, tip.FromRoot, out along);
         double squared = residual.LengthSquared;
         double radius = capsule.Radius + (double)chainRadius + TouchTolerance;
         if (squared == 0 || squared > radius * radius)
@@ -104,37 +110,6 @@ internal static class ChainCapsuleCollision
         return (motion * (1d / seconds)).ToVector3();
     }
 
-    private static Offset CapsuleResidual(Offset root, Offset tipFromRoot, in ColliderCapsule capsule, out double along)
-    {
-        var start = new Offset(capsule.Start);
-        var end = new Offset(capsule.End);
-        var axis = end - start;
-        double squared = axis.LengthSquared;
-        var fromStart = root - start + tipFromRoot;
-        along = 0;
-        if (squared == 0)
-            return fromStart;
-
-        double tipProjection = Offset.Dot(tipFromRoot, axis);
-        double axisProjection = Offset.Dot(root - start, axis) + tipProjection;
-        if (axisProjection <= 0)
-            return fromStart;
-        var rootFromEnd = root - end;
-        if (Offset.Dot(rootFromEnd, axis) + tipProjection >= 0)
-        {
-            along = 1;
-            return rootFromEnd + tipFromRoot;
-        }
-
-        double inverseSquared = 1 / squared;
-        along = axisProjection * inverseSquared;
-
-        // For the barrel use d cross (p - a), expanded as d cross root + a cross b
-        // + d cross tipFromRoot. This retains local offsets even when the axis is very long.
-        var crossed = Offset.Cross(axis, root) + Offset.Cross(start, end) + Offset.Cross(axis, tipFromRoot);
-        return Offset.Cross(crossed, axis) * inverseSquared;
-    }
-
     private static Vector3 ClearSphere(Vector3 direction, float length, Offset center, double radius)
     {
         double distance = Math.Sqrt(center.LengthSquared);
@@ -153,7 +128,7 @@ internal static class ChainCapsuleCollision
         return (float)cosine * axis + (float)sine * tangent;
     }
 
-    private readonly record struct Offset(double X, double Y, double Z)
+    internal readonly record struct Offset(double X, double Y, double Z)
     {
         internal Offset(Vector3 value) : this(value.X, value.Y, value.Z) { }
 

@@ -449,8 +449,10 @@ The wearables limits are 32 wearers, at most 2 ms added CPU preparation, no mana
   particles, chains outside bounded groups get a second pass. Bounded groups always get a second pass by depth.
   Each depth and the tip group run up to eight position sweeps over their bounded pairs, recheck contact and bends
   for moved points, then apply the velocity constraints. A reach test selects candidates once per chain per pass,
-  with a full capsule replay if a contact correction leaves the conservative reach. At the default 120 Hz simulation
-  rate, a 144 Hz frame averages 0.83 steps and a 60 Hz frame averages two. A frame between grid steps rebuilds each
+  with a full capsule replay if a contact correction leaves the conservative reach. The cull and both contact
+  passes share the capsule axis prepared once per step. A segment reuses its tip offset until a position
+  correction changes its direction. Constraint setup extracts the anchor rotation and skips the unused stretch.
+  At the default 120 Hz simulation rate, a 144 Hz frame averages 0.83 steps and a 60 Hz frame averages two. A frame between grid steps rebuilds each
   shown chain from the last two steps. When both sample anchors carry by a positive similarity, the display
   transports and slerps cached swings, then composes each joint on its blended parent without factoring its
   endpoint matrices. An affine fallback reads the endpoint swings for an anchor that changes stretch or shear

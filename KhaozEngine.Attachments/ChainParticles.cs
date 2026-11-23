@@ -5,7 +5,7 @@ namespace KhaozEngine.Attachments;
 
 internal sealed class ChainParticles
 {
-    internal ChainParticles(ChainRig rig)
+    internal ChainParticles(ChainRig rig, int colliderCount = 0)
     {
         Rig = rig;
         int count = checked(rig.JointCount + rig.Chains.Count);
@@ -19,6 +19,7 @@ internal sealed class ChainParticles
         PreviousAnchorRotations = new Quaternion[rig.AnchorCount];
         StepAnchorRotations = new Quaternion[rig.AnchorCount];
         StepCarries = new ChainCarry[rig.Chains.Count];
+        CapsuleAxes = new ChainCapsuleCollision.Axis[colliderCount];
     }
 
     internal ChainRig Rig { get; }
@@ -33,11 +34,12 @@ internal sealed class ChainParticles
     internal Quaternion[] StepAnchorRotations { get; private set; }
     internal ChainCarry[] StepCarries { get; }
     internal ChainCapsuleCull CapsuleCull { get; } = new();
+    internal ChainCapsuleCollision.Axis[] CapsuleAxes { get; }
 
     internal void SetRest(ReadOnlySpan<Matrix4x4> anchors, bool reset)
     {
         for (int anchor = 0; anchor < anchors.Length; anchor++)
-            StepAnchorRotations[anchor] = new ChainPose(anchors[anchor]).Rotation;
+            StepAnchorRotations[anchor] = ChainPose.ReadRotation(anchors[anchor]);
 
         for (int chain = 0; chain < Rig.Chains.Count; chain++)
         {

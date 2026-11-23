@@ -39,7 +39,7 @@ public sealed class ChainSimulation
         Rig = rig;
         ColliderCount = colliderCount;
         Options = options;
-        _particles = new ChainParticles(rig);
+        _particles = new ChainParticles(rig, colliderCount);
         _links = new ChainLinks(rig);
         var hierarchy = new ChainPresentationHierarchy(rig);
         _blend = new ChainPresentationBlend(rig, hierarchy);
@@ -209,7 +209,10 @@ public sealed class ChainSimulation
         float seconds = Options.MaxStepSeconds;
         SampleAnchors(fraction);
         for (int collider = 0; collider < ColliderCount; collider++)
+        {
             _stepColliders[collider] = Interpolate(_previousFrameColliders[collider], colliders[collider], fraction);
+            _particles.CapsuleAxes[collider] = new ChainCapsuleCollision.Axis(_stepColliders[collider]);
+        }
 
         var (position, rotation) = SampleWearer(wearer, fraction);
         var turn = WearerTurn(rotation);

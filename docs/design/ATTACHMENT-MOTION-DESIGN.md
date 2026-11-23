@@ -47,6 +47,13 @@ while the parent never feels the child, so turning rate stacks down a chain and 
 Removing only the child's outward speed relative to the moving wall keeps that stacking, and so does driving the wall
 from velocities alone. Sharing the stop moves momentum between the two instead of creating it.
 
+The length constraint keeps the spring bone's one sided form: the child takes its whole speed along the segment
+relative to the parent, and the parent never feels it. Each joint's spring therefore holds only its own segment,
+which is what `stiffness` means. A length constraint shared with the parent would conserve energy exactly, but every
+joint would then carry the weight of the chain below it, so every piece would hang lower than it was tuned to. The
+cost is that a parent moving along its child's segment hands the child that speed, a small transfer the limits and
+contacts then remove.
+
 A full two sided solver with masses on every constraint is the cloth solver's job
 ([#1870](https://github.com/APKiwiOrg/KhaozEngine/issues/1870)). Chains keep the root to tip pass, their settings and
 their cost.
@@ -197,8 +204,9 @@ frame's poses and this frame's. Within each step of length `h`:
    remove the relative velocity that would leave it, shared equally. Then a second root to tip pass without the
    stiffness spring restores the bend limit, collisions and lengths, which outrank the width bound.
 
-Corrections never add velocity. With a still anchor and no spring or gravity, a chain's kinetic energy never grows.
-The anchored first joint and segment lengths always hold. A collider outranks the bend limit, because a pass through
+Corrections never write velocity. A chain whose one movable joint hangs from a still anchor never gains kinetic
+energy from its limit, contacts or length, and a chain released from a capsule it rested on starts from rest. The
+anchored first joint and segment lengths always hold. A collider outranks the bend limit, because a pass through
 looks worse than an extra bend. Contact solves the capsule locally as a sphere at the closest point of its axis, up to
 eight passes, in double precision. Each chain skips every capsule farther from its first joint than the chain's reach
 plus both radii, which cannot change a result because no particle of the chain leaves that reach. Segment lengths
@@ -462,10 +470,11 @@ All headless, on synthetic skeletons built in code.
   inside a collider. Bends stay within the limit. Trail 0 keeps the chain's shape in the wearer's space while the
   wearer moves steadily, and trail 1 lags it. A hold and a resume move no joint further in a frame than the blend
   allows. Linked chains keep their spacing when a collider pushes one. Nothing allocates once warm.
-- **Velocity rule.** With a still anchor and no spring or gravity, a chain sent into a tight limit and a capsule never
-  gains kinetic energy. A cape of five linked chains with tight limits and stiff springs, on an anchor that runs with
-  a sway and stops, has a lower peak tip speed after the stop than while running, at 30, 60, 144 and 240 Hz. A chain
-  resting on a capsule comes to rest under uneven frame times.
+- **Velocity rule.** A one joint chain on a still anchor, with no spring or gravity, sent into its limit and a capsule
+  never gains kinetic energy. A chain released from a capsule it rested on moves exactly as far as gravity alone
+  moves it from rest. A cape of five linked chains with tight limits and stiff springs, on an anchor that runs with a
+  sway and stops, has a lower peak tip speed after the stop than while running, at 30, 60, 144 and 240 Hz. A capsule
+  that strikes a limp chain and stops never throws it faster than the capsule moved.
 - **Stepping.** A chain driven by a slow anchor stays within a tight bound of its fixed rate path under uneven frame
   times, and a frozen pose in contact stops moving. The first joint sits on the current anchor at every frame. A frame
   equals the grid steps inside it.

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using KhaozEngine.Ecs;
 using KhaozEngine.Replication;
 using Xunit;
@@ -46,6 +47,34 @@ public class ReplicationCaptureAllocationTests
         r.Register<C6>(7, (c, bw) => bw.Write(c.V), br => new C6 { V = br.ReadInt32() });
         r.Register<C7>(8, (c, bw) => bw.Write(c.V), br => new C7 { V = br.ReadInt32() });
         return r;
+    }
+
+    [Fact]
+    public void FlatCaptureReusesScratchAfterAThrowingCodec()
+    {
+        var registry = new ReplicationRegistry();
+        var fault = new IOException();
+        bool fail = false;
+        registry.Register<C0>(1, (payload, writer) =>
+        {
+            if (fail) throw fault;
+            writer.Write(payload.V);
+        }, static reader => new C0 { V = reader.ReadSingle() });
+        var writer = new ServerReplicator(registry);
+        var world = new World();
+        Entity entity = world.Spawn();
+        world.Set(entity, new NetId(1));
+        world.Set(entity, new C0 { V = 32 });
+        Action capture = () => writer.Capture(world);
+        for (int i = 0; i < 4; i++) capture();
+
+        long ordinaryBytes = AllocationMeasurement.Measure("warm flat capture", capture);
+        fail = true;
+        Assert.Same(fault, Record.Exception(capture));
+        fail = false;
+
+        long recoveredBytes = AllocationMeasurement.Measure("flat capture after codec failure", capture);
+        Assert.Equal(ordinaryBytes, recoveredBytes);
     }
 
     [Fact]

@@ -541,9 +541,12 @@ through fast movement. A hitch may drop integration time to stay within the step
 reaching the current pose. `MaxStepSeconds` is greater than zero and at most 1/30 s.
 `MaxStepsPerFrame` is from 1 through 64. Segment lengths use the posed rest scale. Capsule correction keeps the
 root and segment lengths fixed and can exceed the bend limit to clear a collider. Bend, length and capsule
-corrections move positions. Velocity constraints remove motion that would leave the segment length, cross
-the bend limit or enter the capsule. A movable parent shares the reaction at a bend limit. The first step,
-`Reset()`, a teleport or a long gap places the chain at rest with zero velocity. `Held` blends from the
+corrections move positions. Velocity constraints remove motion that would leave the segment length or
+cross the bend limit. Capsule contact removes relative approach along the contact direction within the
+segment's tangent plane. The position solve handles the part of the push along the segment. Both capsule
+surface motion and bend limit turn account for the chain's carried rigid movement. A movable parent shares
+the reaction at a bend limit. The first step, `Reset()`, a teleport or a long gap places the chain at rest
+with zero velocity. `Held` blends from the
 last shape to rest without stepping physics. On resume, physics starts from the held shape with zero
 velocity. The displayed joint swings blend from that shape toward the live solution over
 `HoldBlendSeconds`. Each frame continues from the last displayed swing, so an anchor turning through

@@ -49,23 +49,26 @@ public sealed class ChainVelocityTests(ITestOutputHelper output)
         void Project() => ChainConstraints.FollowChain(particles, 0, Matrix4x4.Identity, [sphere], [sphere], settings, step,
             pullTowardRest: true);
 
-        void Predict(Vector3 gravity) => particles.Predict(0, 1, settings, gravity, step,
+        void Predict(Vector3 gravity) => particles.Predict(0, settings, gravity, step,
             Vector3.Zero, Vector3.Zero, Quaternion.Identity);
 
         // A force-free prediction reads velocity without counting position corrections as motion.
         float SquaredSpeed() => ((particles.Positions[1] - particles.SubstepStarts[1]) / step).LengthSquared();
     }
 
-    [Fact]
-    public void Tip_released_from_sphere_contact_falls_from_rest()
+    [Theory]
+    [InlineData(0, 1)]
+    [InlineData(0.96f, 0.28f)]
+    public void Tip_released_from_sphere_contact_falls_from_rest(float normalX, float normalY)
     {
         // #1882: the gravity held back by a sphere must leave no stored speed on release.
         const float step = 1f / 120;
         var simulation = Create(Chain(Vector3.UnitX, Settings with { Stiffness = 0, Damping = 0 },
             Joint(Vector3.Zero)), colliderCount: 1);
         var anchor = Matrix4x4.Identity;
-        var center = new Vector3(1, -0.25f, 0);
-        ColliderCapsule sphere = new(center, center, 0.25f);
+        const float radius = 0.25f;
+        var center = Vector3.UnitX - radius * new Vector3(normalX, normalY, 0);
+        ColliderCapsule sphere = new(center, center, radius);
         simulation.Step([anchor], [sphere], anchor, 0);
         for (int frame = 0; frame < 30; frame++)
             simulation.Step([anchor], [sphere], anchor, step);
@@ -82,6 +85,62 @@ public sealed class ChainVelocityTests(ITestOutputHelper output)
         var after = Tip();
         output.WriteLine($"Gravity-only travel: {Vector3.Distance(before, expected):F9} m, actual: {Vector3.Distance(before, after):F9} m");
         Assert.InRange(Vector3.Distance(expected, after), 0, 0.00001f);
+
+        Vector3 Tip() => Vector3.Transform(Vector3.UnitX, simulation.JointsFromAnchor[0]);
+    }
+
+    [Fact]
+    public void Trail_zero_tip_stays_put_against_a_sphere_carried_with_the_wearer()
+    {
+        // #1882: rigid wearer motion leaves a touching sphere stationary in the chain's frame.
+        const float step = 1f / 120;
+        var settings = new ChainSettings(0, 0, 0, 0, MathF.PI, 0);
+        var simulation = Create(Chain(Vector3.UnitX, settings, Joint(Vector3.Zero)), colliderCount: 1);
+        var origin = new Vector3(0.75f, -0.45f, 0.2f);
+        var localCenter = new Vector3(1, -0.25f, 0);
+
+        float largestDrift = 0;
+        for (int frame = 0; frame <= 16; frame++)
+        {
+            var wearer = Matrix4x4.CreateRotationZ(frame * 0.02f) *
+                Matrix4x4.CreateTranslation(origin + frame * 0.015f * Vector3.UnitY);
+            var center = Vector3.Transform(localCenter, wearer);
+            ColliderCapsule sphere = new(center, center, 0.25f);
+            simulation.Step([wearer], [sphere], wearer, frame == 0 ? 0 : step);
+            var tip = Vector3.Transform(Vector3.UnitX, simulation.JointsFromAnchor[0]);
+            largestDrift = MathF.Max(largestDrift, Vector3.Distance(Vector3.UnitX, tip));
+        }
+
+        output.WriteLine($"Largest drift from the wearer-relative sphere contact: {largestDrift:F9} m");
+        Assert.InRange(largestDrift, 0, 0.00001f);
+    }
+
+    [Fact]
+    public void Trail_zero_tip_stays_at_its_bend_limit_when_the_wearer_turns()
+    {
+        // #1882: wearer rotation carries the cone with the chain so it cannot kick the tip inward.
+        const float step = 1f / 120;
+        const float angleLimit = 0.16f;
+        var settings = new ChainSettings(0, 0, 1, 0, angleLimit, 0);
+        var simulation = Create(Chain(Vector3.UnitX, settings, Joint(Vector3.Zero)));
+
+        Step(simulation, 0);
+        for (int frame = 0; frame < 40; frame++)
+            Step(simulation, step);
+
+        var atLimit = new Vector3(MathF.Cos(angleLimit), -MathF.Sin(angleLimit), 0);
+        Assert.InRange(Vector3.Distance(atLimit, Tip()), 0, 0.00001f);
+
+        float largestDrift = 0;
+        for (int frame = 1; frame <= 16; frame++)
+        {
+            var wearer = Matrix4x4.CreateRotationZ(frame * 0.02f);
+            simulation.Step([wearer], [], wearer, step);
+            largestDrift = MathF.Max(largestDrift, Vector3.Distance(atLimit, Tip()));
+        }
+
+        output.WriteLine($"Largest drift from the wearer-relative bend limit: {largestDrift:F9} m");
+        Assert.InRange(largestDrift, 0, 0.00001f);
 
         Vector3 Tip() => Vector3.Transform(Vector3.UnitX, simulation.JointsFromAnchor[0]);
     }

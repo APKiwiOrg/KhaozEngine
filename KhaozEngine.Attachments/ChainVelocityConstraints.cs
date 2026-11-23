@@ -5,21 +5,21 @@ namespace KhaozEngine.Attachments;
 
 internal ref struct ChainVelocityConstraints
 {
-    private const float MinimumContactTangentSquared = 0.1f;
-
     private readonly ChainParticles _particles;
     private readonly int _root;
+    private readonly ChainCarry _carry;
     private readonly ReadOnlySpan<ColliderCapsule> _colliders;
     private readonly ReadOnlySpan<ColliderCapsule> _previousColliders;
     private readonly float _radius;
     private readonly float _seconds;
     private Vector3 _frameTurn;
 
-    internal ChainVelocityConstraints(ChainParticles particles, int root, ReadOnlySpan<ColliderCapsule> colliders,
-        ReadOnlySpan<ColliderCapsule> previousColliders, float radius, float seconds)
+    internal ChainVelocityConstraints(ChainParticles particles, int root, in ChainCarry carry,
+        ReadOnlySpan<ColliderCapsule> colliders, ReadOnlySpan<ColliderCapsule> previousColliders, float radius, float seconds)
     {
         _particles = particles;
         _root = root;
+        _carry = carry;
         _colliders = colliders;
         _previousColliders = previousColliders;
         _radius = radius;
@@ -31,6 +31,7 @@ internal ref struct ChainVelocityConstraints
         if (_seconds == 0)
             return;
 
+        previousRest = _carry.TransformDirection(previousRest);
         // A cone's axis determines its angular motion perpendicular to that axis.
         var axis = Vector3.Cross(previousRest, rest);
         float sine = axis.Length();
@@ -95,15 +96,16 @@ internal ref struct ChainVelocityConstraints
             if (!ChainCapsuleCollision.TryContact(root, length, direction, _radius, capsule, out var normal, out double along))
                 continue;
 
-            var tangent = normal - Vector3.Dot(normal, direction) * direction;
-            float tangentSquared = tangent.LengthSquared();
-            if (tangentSquared < MinimumContactTangentSquared)
+            var tangent = ChainMath.Tangent(normal, direction);
+            if (tangent == Vector3.Zero)
                 continue;
 
-            var surface = ChainCapsuleCollision.SurfaceVelocity(capsule, _previousColliders[index], along, _seconds);
-            float approach = Vector3.Dot(velocity - surface, normal);
+            var surface = ChainCapsuleCollision.SurfaceVelocity(capsule, _previousColliders[index], along, _carry, _seconds);
+            // Like length and bend, contact projects velocity along one unit direction.
+            // The position solve handles a push along the segment so it cannot inject swing speed.
+            float approach = Vector3.Dot(velocity - surface, tangent);
             if (approach < 0)
-                velocity -= (approach / tangentSquared) * tangent;
+                velocity -= approach * tangent;
         }
     }
 }

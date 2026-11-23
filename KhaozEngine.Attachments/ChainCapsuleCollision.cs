@@ -53,12 +53,25 @@ internal static class ChainCapsuleCollision
     }
 
     internal static Vector3 SurfaceVelocity(in ColliderCapsule capsule, in ColliderCapsule previous,
-        double along, float seconds)
+        double along, in ChainCarry carry, float seconds)
     {
         // Compare the same material point on the axis. Endpoint deltas avoid cancellation on long axes.
-        var startMotion = new Offset(capsule.Start) - new Offset(previous.Start);
-        var endMotion = new Offset(capsule.End) - new Offset(previous.End);
-        return ((startMotion * (1 - along) + endMotion * along) * (1d / seconds)).ToVector3();
+        var previousStart = new Offset(previous.Start);
+        var previousEnd = new Offset(previous.End);
+        var startMotion = new Offset(capsule.Start) - previousStart;
+        var endMotion = new Offset(capsule.End) - previousEnd;
+        var motion = startMotion * (1 - along) + endMotion * along - new Offset(carry.Offset);
+        if (carry.Turn != Quaternion.Identity)
+        {
+            var pivot = new Offset(carry.Pivot);
+            var fromPivot = (previousStart - pivot) * (1 - along) + (previousEnd - pivot) * along;
+            var axis = new Offset(carry.Turn.X, carry.Turn.Y, carry.Turn.Z);
+            // Subtract the quaternion's displacement without differencing distant rotated points.
+            var twiceCross = Offset.Cross(axis, fromPivot) * 2;
+            motion -= twiceCross * carry.Turn.W + Offset.Cross(axis, twiceCross);
+        }
+
+        return (motion * (1d / seconds)).ToVector3();
     }
 
     private static Offset CapsuleResidual(Offset root, Offset tipFromRoot, in ColliderCapsule capsule, out double along)

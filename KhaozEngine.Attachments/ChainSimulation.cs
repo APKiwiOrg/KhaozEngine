@@ -202,8 +202,7 @@ public sealed class ChainSimulation
             for (int chain = 0; chain < _settings.Length; chain++)
             {
                 var definition = Rig.Chains[chain];
-                int root = Rig.FirstJoint(chain) + chain;
-                _particles.Predict(root, definition.Joints.Count, _settings[chain], Options.Gravity,
+                _particles.Predict(chain, _settings[chain], Options.Gravity,
                     seconds, oldPosition, position, turn);
                 ChainConstraints.FollowChain(_particles, chain, _stepAnchors[definition.Anchor],
                     _stepColliders, _previousStepColliders, _settings[chain], seconds, pullTowardRest: true);

@@ -18,6 +18,7 @@ internal sealed class ChainParticles
         WorldSwings = new Quaternion[rig.JointCount];
         PreviousRestDirections = new Vector3[rig.JointCount];
         StepRestDirections = new Vector3[rig.JointCount];
+        StepCarries = new ChainCarry[rig.Chains.Count];
     }
 
     internal ChainRig Rig { get; }
@@ -30,6 +31,7 @@ internal sealed class ChainParticles
     internal Quaternion[] WorldSwings { get; }
     internal Vector3[] PreviousRestDirections { get; private set; }
     internal Vector3[] StepRestDirections { get; private set; }
+    internal ChainCarry[] StepCarries { get; }
 
     internal void SetRest(ReadOnlySpan<Matrix4x4> anchors, bool reset)
     {
@@ -71,14 +73,17 @@ internal sealed class ChainParticles
     internal void RememberRestDirections() =>
         (PreviousRestDirections, StepRestDirections) = (StepRestDirections, PreviousRestDirections);
 
-    internal void Predict(int root, int jointCount, in ChainSettings settings, Vector3 gravity, float seconds,
+    internal void Predict(int chain, in ChainSettings settings, Vector3 gravity, float seconds,
         Vector3 oldWearer, Vector3 newWearer, Quaternion wearerTurn)
     {
         float carry = 1 - settings.Trail;
         var carriedTurn = carry == 0 ? Quaternion.Identity : Quaternion.Slerp(Quaternion.Identity, wearerTurn, carry);
-        var carriedOffset = carry * (newWearer - oldWearer);
+        var carryMotion = new ChainCarry(oldWearer, carry * (newWearer - oldWearer), carriedTurn);
+        StepCarries[chain] = carryMotion;
 
-        SubstepStarts[root] = Carry(Positions[root]);
+        int root = Rig.FirstJoint(chain) + chain;
+        int jointCount = Rig.Chains[chain].Joints.Count;
+        SubstepStarts[root] = carryMotion.TransformPoint(Positions[root]);
         Positions[root] = RestPositions[root];
         Velocities[root] = seconds > 0 ? (Positions[root] - SubstepStarts[root]) / seconds : Vector3.Zero;
 
@@ -87,7 +92,7 @@ internal sealed class ChainParticles
         var gravityDisplacement = gravityVelocity * (0.5f * seconds);
         for (int particle = root + 1; particle <= root + jointCount; particle++)
         {
-            var current = Carry(Positions[particle]);
+            var current = carryMotion.TransformPoint(Positions[particle]);
             SubstepStarts[particle] = current;
             if (seconds == 0)
             {
@@ -95,16 +100,10 @@ internal sealed class ChainParticles
                 continue;
             }
 
-            var damped = (carriedTurn == Quaternion.Identity
-                ? Velocities[particle]
-                : Vector3.Transform(Velocities[particle], carriedTurn)) * decay;
+            var damped = carryMotion.TransformDirection(Velocities[particle]) * decay;
             Positions[particle] = current + damped * seconds + gravityDisplacement;
             Velocities[particle] = damped + gravityVelocity;
         }
-
-        Vector3 Carry(Vector3 position) => carriedTurn == Quaternion.Identity
-            ? position + carriedOffset
-            : oldWearer + carriedOffset + Vector3.Transform(position - oldWearer, carriedTurn);
     }
 
     internal void ApplySpring(int particle, Vector3 correction, float seconds)

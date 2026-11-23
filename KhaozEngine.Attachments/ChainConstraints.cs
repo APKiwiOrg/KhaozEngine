@@ -15,8 +15,8 @@ internal static class ChainConstraints
         float springWeight = pullTowardRest ? ChainMath.MidpointSpringWeight(settings.Stiffness, seconds) : 0;
         float cosine = settings.AngleLimit == MathF.PI ? -1 : MathF.Cos(settings.AngleLimit);
         var parent = anchor;
-        var velocity = new ChainVelocityConstraints(particles, first + chain, colliders, previousColliders,
-            settings.Radius, seconds);
+        var velocity = new ChainVelocityConstraints(particles, first + chain, particles.StepCarries[chain],
+            colliders, previousColliders, settings.Radius, seconds);
 
         for (int joint = first; joint <= last; joint++)
         {

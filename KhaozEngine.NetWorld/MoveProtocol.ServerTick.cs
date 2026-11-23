@@ -57,18 +57,26 @@ public static partial class MoveProtocol
     public static bool TryDecodeTickedSnapshotFrame(ReadOnlySpan<byte> data, out long serverTick, out long localNetId,
         out int ackSeq, out byte[] snapshot)
     {
+        if (TryReadTickedSnapshotHeader(data, out serverTick, out localNetId, out ackSeq))
+        {
+            snapshot = data[TickedFrameHeader..].ToArray();
+            return true;
+        }
+        snapshot = Array.Empty<byte>();
+        return false;
+    }
+
+    private static bool TryReadTickedSnapshotHeader(ReadOnlySpan<byte> data, out long serverTick, out long localNetId,
+        out int ackSeq)
+    {
         if (data.Length >= TickedFrameHeader)
         {
-            serverTick = BitConverter.ToInt64(data.Slice(0, 8));
-            localNetId = BitConverter.ToInt64(data.Slice(8, 8));
-            ackSeq = BitConverter.ToInt32(data.Slice(16, 4));
-            snapshot = data.Slice(TickedFrameHeader).ToArray();
-            return true;
+            serverTick = BitConverter.ToInt64(data[..8]);
+            return TryReadSnapshotHeader(data[8..], out localNetId, out ackSeq);
         }
         serverTick = -1;
         localNetId = -1;
         ackSeq = -1;
-        snapshot = Array.Empty<byte>();
         return false;
     }
 }

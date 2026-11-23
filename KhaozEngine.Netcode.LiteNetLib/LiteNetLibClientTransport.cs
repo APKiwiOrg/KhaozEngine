@@ -10,7 +10,7 @@ namespace KhaozEngine.Netcode.LiteNetLib;
 /// construction and surfaces the server peer as <see cref="NetConnectionId"/> = <c>peer.Id + 1</c>. Reuses
 /// <see cref="ChannelSplitter.ToDeliveryMethod"/> for the reliability mapping.
 /// </summary>
-public sealed class LiteNetLibClientTransport : INetTransport
+public sealed class LiteNetLibClientTransport : INetTransport, IOwnedReceiveFrames
 {
     private readonly EventBasedNetListener listener = new();
     private readonly NetManager manager;

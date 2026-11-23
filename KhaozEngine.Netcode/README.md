@@ -346,6 +346,17 @@ loopback stages a copy, and the LiteNetLib binding passes the span to `NetPeer.S
 packet before returning (it used to call `payload.ToArray()` first, so a broadcast to N players made N copies of
 identical bytes on top of the frame). A third-party transport must honour the same rule and never stash the span.
 
+## Session receive path
+
+A public `NetClient` copies each Data body while draining the transport. A caller can keep the
+`ClientSessionEvent.Data` array while polling again.
+
+The engine's own `WorldClient` and `TileWorldClient` borrow session bodies internally. The
+`LoopbackTransport`, `InMemoryTransportHub` client endpoint and `LiteNetLibClientTransport` supply
+dedicated receive arrays that stay valid through the session queue and nested dispatch. A Data event
+from any other transport is copied as soon as it is dequeued, even if that transport supplies its
+own dedicated array. Each transport and client has one owner thread for polling and draining.
+
 ## Send commitments and the packet-size query
 
 `NetClient.Send` and `NetServer.SendTo` stay void and still skip a missing connection silently. Beside them,

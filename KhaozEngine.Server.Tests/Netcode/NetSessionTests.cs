@@ -68,6 +68,26 @@ public class NetSessionTests
         Assert.Contains(DrainServer(server), e => e.Kind == ServerSessionEventKind.Data && e.Slot == 0 && e.Data.Length == 2);
     }
 
+    [Fact]
+    public void PublicDequeueReturnsOneStableOwnedDataArray()
+    {
+        var (serverTransport, clientTransport) = LoopbackTransport.CreatePair();
+        using var serverLease = serverTransport;
+        using var clientLease = clientTransport;
+        var server = new NetServer(serverTransport, maxPlayers: 4, new AllowAllAuthenticator());
+        var client = new NetClient(clientTransport);
+        Pump(server, client);
+        Assert.Equal(ClientSessionEventKind.Joined, Assert.Single(DrainClient(client)).Kind);
+
+        server.SendTo(0, [5, 6, 7], NetChannelReliability.ReliableOrdered);
+        client.Poll();
+        ClientSessionEvent received = Assert.Single(DrainClient(client));
+        Assert.Equal(ClientSessionEventKind.Data, received.Kind);
+        byte[] data = received.Data;
+        Assert.Equal(new byte[] { 5, 6, 7 }, data);
+        Assert.Same(data, received.Data);
+    }
+
     private sealed class DenyAll : IConnectionAuthenticator
     {
         public bool TryAuthenticate(ReadOnlySpan<byte> token, out string subject, out string rejectReason)

@@ -140,7 +140,7 @@ public sealed partial class WorldClient : IDisposable
             transport ??= connectFactory!();
             ArgumentNullException.ThrowIfNull(transport);
             ownedTransport = connectFactory is not null ? transport : null;
-            net = new NetClient(transport, this.token);
+            net = new NetClient(transport, this.token, borrowOwnedFrames: true);
             view = new ClientReplicationView(this.registry);
             PredictionSettings settings = config.Prediction ?? (PredictionSettings.Default with { TickSeconds = config.TickSeconds });
             prediction = new ClientPrediction<PlayerMoveState, MoveCommand>(simulator, settings);
@@ -309,7 +309,7 @@ public sealed partial class WorldClient : IDisposable
         world.AdvanceTick();
         net.Poll();
         bool gotFrame = false;
-        while (net.TryDequeueEvent(out ClientSessionEvent ev))
+        while (net.TryDequeueFrame(out ClientSessionFrame ev))
         {
             switch (ev.Kind)
             {
@@ -333,7 +333,7 @@ public sealed partial class WorldClient : IDisposable
                     break;
                 case ClientSessionEventKind.Data:
                     gotFrame |= !RebuildOwnsLiveness;   // a live format 2 stream counts accepted state only
-                    OnServerFrame(ev.Data, ev.Reliability);
+                    OnServerFrame(ev.Payload, ev.Reliability);
                     break;
                 case ClientSessionEventKind.Rejected:
                     if (AttemptEnded) break;   // an ended attempt already holds its reason and retry schedule
@@ -413,7 +413,7 @@ public sealed partial class WorldClient : IDisposable
         DisposeCurrentTransport();
         INetTransport transport = connectFactory!();
         ownedTransport = transport;
-        net = new NetClient(transport, token);
+        net = new NetClient(transport, token, borrowOwnedFrames: true);
         world = new World();
         view = new ClientReplicationView(registry);
         rebuild = NewRebuildStream();        // the stream binds one connection and view: a fresh receiver per attempt
@@ -513,73 +513,6 @@ public sealed partial class WorldClient : IDisposable
         }
     }
 
-    /// <summary>The current renderable set: local player predicted, remotes from the replicated position (smoothly
-    /// interpolated between the last two snapshots when <see cref="WorldClientConfig.InterpolateRemotes"/> is set -
-    /// the default - else the raw latest). Each entry also carries the exact grounded flag + vertical velocity
-    /// (local: predicted; remote: replicated <see cref="MovementState"/>) so an animator bridge reads true air state
-    /// instead of finite-differencing the terrain-following position.</summary>
-    public IReadOnlyList<EntityRenderState> Snapshot()
-    {
-        var list = new List<EntityRenderState>();
-        foreach (KeyValuePair<long, Entity> kv in view.Entities)
-        {
-            if (!world.IsAlive(kv.Value)) continue;
-            bool isLocal = kv.Key == LocalNetId;
-            if (isLocal && !seededPredictionOnce && deferredMovementBasis.HasValue) continue;
-            Vector3 pos;
-            bool grounded;
-            float verticalVelocity;
-            bool swimming;
-            WaterExcursionState waterExcursion;
-            float climbRate;
-            float facingYaw;
-            // Local-only signals: a remote receives neither (see EntityRenderState).
-            float stepCumulativeY = 0f;
-            float landingImpact = 0f;
-            if (isLocal)
-            {
-                // The local avatar's exact movement state is the predicted/reconciled state, converted to ABSOLUTE
-                // world metres like every other entry in this list (see LocalRenderState for why that rule exists).
-                PlayerMoveState rs = LocalRenderState;
-                pos = rs.Position;
-                grounded = rs.Grounded;
-                verticalVelocity = rs.VerticalVelocity;
-                swimming = rs.Swimming;
-                waterExcursion = rs.Move.WaterExcursion;
-                // Local: the predicted publication, before optional render interpolation.
-                climbRate = rs.Move.ClimbRate;
-                landingImpact = rs.Move.LandingImpactSpeed;
-                facingYaw = rs.Move.FacingYaw;
-                // The local step-smoothing accumulator (rides no wire): a mesh smoother diffs it to ease isolated steps
-                // the continuous glide renders raw. Read from the predictor (not the rendered state, whose Move.StepDeltaY
-                // is a per-tick event, not the running sum). Remotes leave it 0 (their singles ride position interpolation).
-                stepCumulativeY = prediction.StepCumulativeY;
-            }
-            else
-            {
-                // Remotes: surface the replicated vertical state (MovementState rides alongside the position) so a
-                // consumer animates jump/fall/swim from the authoritative flags instead of finite-differencing the
-                // terrain-following position (which reads "airborne" the faster a remote moves over a slope, and
-                // cannot tell a swimmer from a walker at all). Default grounded / not-swimming when a remote has no
-                // MovementState yet, so it never spuriously starts airborne or swimming. MovementState is discrete
-                // nearest-sampled to renderTime (E2), so its flags + climb rate ride the SAME delayed timeline as the
-                // interpolated position - no flag/position skew.
-                world.TryGet(kv.Value, out ReplicatedPosition rp);
-                pos = rp.Value;
-                bool hasMs = world.TryGet(kv.Value, out MovementState ms);
-                grounded = hasMs ? ms.Grounded : true;
-                verticalVelocity = ms.VerticalVelocity;
-                swimming = hasMs && ms.Swimming;
-                waterExcursion = ms.WaterExcursion;
-                climbRate = hasMs ? MovementState.DecodeClimbRate(ms.ClimbRateQ) : 0f;
-                facingYaw = hasMs ? MovementState.DecodeFacingYaw(ms.FacingYawQ) : 0f;
-            }
-            string? name = world.TryGet(kv.Value, out PlayerIdentity identity) ? identity.DisplayName : null;
-            list.Add(new EntityRenderState(new NetId(kv.Key), pos, isLocal, name, grounded, verticalVelocity, swimming, climbRate, stepCumulativeY, landingImpact, facingYaw, waterExcursion));
-        }
-        return list;
-    }
-
     /// <summary>
     /// Reads a replicated component off the entity with network id <paramref name="netId"/> (the id carried by
     /// <see cref="EntityRenderState.Id"/>). Returns <c>true</c> and the component when the entity is currently in
@@ -599,9 +532,9 @@ public sealed partial class WorldClient : IDisposable
         return false;
     }
 
-    private void OnServerFrame(byte[] data, NetChannelReliability reliability)
+    private void OnServerFrame(ReadOnlyMemory<byte> data, NetChannelReliability reliability)
     {
-        if (!MoveProtocol.TryDecodeServerFrame(data, out MoveProtocol.ServerFrameKind kind, out byte[] payload)) return;
+        if (!MoveProtocol.TryBorrowServerFrame(data, out MoveProtocol.ServerFrameKind kind, out ReadOnlyMemory<byte> payload)) return;
         if (RouteRebuildFrame(kind, payload, reliability)) return;
         // NetClient.Disconnect leaves frames already drained into its inbox queued, so a terminal end ignores the legacy
         // state frames behind it. Notices and game messages still surface, as before.
@@ -619,14 +552,14 @@ public sealed partial class WorldClient : IDisposable
                 OnDelta(kind, payload);
                 break;
             case MoveProtocol.ServerFrameKind.Notice:
-                ServerNotice notice = MoveProtocol.DecodeNotice(payload);
+                ServerNotice notice = MoveProtocol.DecodeNotice(payload.Span);
                 if (notice.Kind == ServerNoticeKind.Shutdown) sawShutdownNotice = true;
                 else if (notice.Kind == ServerNoticeKind.Banned) sawBanNotice = true;
                 LastNotice = notice;
                 NoticeReceived?.Invoke(notice);
                 break;
             case MoveProtocol.ServerFrameKind.GameMessage:
-                if (MoveProtocol.TryDecodeGameMessageBody(payload, out ushort gameKind, out ReadOnlySpan<byte> gamePayload))
+                if (MoveProtocol.TryDecodeGameMessageBody(payload.Span, out ushort gameKind, out ReadOnlySpan<byte> gamePayload))
                     GameMessageReceived?.Invoke(gameKind, gamePayload);
                 break;
                 // An unknown ServerFrameKind (e.g. a newer server frame this build predates) falls through and is ignored -
@@ -634,13 +567,13 @@ public sealed partial class WorldClient : IDisposable
         }
     }
 
-    private void OnSnapshot(MoveProtocol.ServerFrameKind kind, byte[] data)
+    private void OnSnapshot(MoveProtocol.ServerFrameKind kind, ReadOnlyMemory<byte> data)
     {
-        if (!TryDecodeServedFrame(kind, data, out long serverTick, out long localNetId, out int ackSeq, out byte[] snapshot)) return;
+        if (!MoveProtocol.TryBorrowServedFrame(kind, data, out long serverTick, out long localNetId, out int ackSeq, out ReadOnlyMemory<byte> snapshot)) return;
         // Last-resort backstop: a snapshot we can't decode (e.g. an unregistered component type id from a newer
         // server protocol) must become a clean disconnect, never an unhandled exception in the consumer's frame
         // loop. Surfaced as IncompatibleVersion so the consumer shows "client out of date, please update".
-        if (!view.TryApply(world, snapshot, out string? decodeError))
+        if (!view.TryApplyBorrowed(world, snapshot, delta: false, out string? decodeError))
         {
             OnSnapshotDecodeFailed(decodeError);
             return;
@@ -648,12 +581,12 @@ public sealed partial class WorldClient : IDisposable
         IngestServerState(localNetId, ackSeq, serverTick);
     }
 
-    private void OnDelta(MoveProtocol.ServerFrameKind kind, byte[] data)
+    private void OnDelta(MoveProtocol.ServerFrameKind kind, ReadOnlyMemory<byte> data)
     {
-        if (!TryDecodeServedFrame(kind, data, out long serverTick, out long localNetId, out int ackSeq, out byte[] delta)) return;
+        if (!MoveProtocol.TryBorrowServedFrame(kind, data, out long serverTick, out long localNetId, out int ackSeq, out ReadOnlyMemory<byte> delta)) return;
         // A delta rides the same header as a snapshot (ticked or plain); its body is an AoiDeltaReplicator delta.
         // A decode / baseline failure is terminal, the same clean disconnect as an undecodable snapshot.
-        if (!view.TryApplyDelta(world, delta, out string? decodeError))
+        if (!view.TryApplyBorrowed(world, delta, delta: true, out string? decodeError))
         {
             OnSnapshotDecodeFailed(decodeError);
             return;

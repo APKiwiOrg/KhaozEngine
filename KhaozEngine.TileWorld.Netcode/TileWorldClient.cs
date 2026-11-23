@@ -115,7 +115,7 @@ public sealed partial class TileWorldClient : IDisposable
         Presenter = new TilePresenter(1f, TileWorldDocument.DefaultPlaneHeight);
         clock = new FixedTickHost(config.TickSeconds);
         onCommandTick = OnCommandTick;
-        net = new NetClient(transport, connectToken);
+        net = new NetClient(transport, connectToken, borrowOwnedFrames: true);
     }
 
     /// <summary>The local player's prediction. <see cref="LocalPose"/> is what to DRAW, and

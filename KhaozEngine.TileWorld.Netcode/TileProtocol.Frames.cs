@@ -139,28 +139,42 @@ public static partial class TileProtocol
     /// <summary>Splits a snapshot frame back into its header and the replication bytes. False (never throws) when
     /// the frame is shorter than the header, carries another tag, is exactly <see cref="EncodeCommand"/>'s fixed
     /// size (which the pad rule means this encoder never emits), or claims a pad byte it has no room for. The
-    /// snapshot is COPIED out rather than sliced, because <c>ClientReplicationView.Apply</c> takes an array and the
-    /// copy is one allocation per snapshot on a path that already allocated the frame.</summary>
+    /// caller owns the returned snapshot bytes.</summary>
     public static bool TryDecodeSnapshotFrame(ReadOnlySpan<byte> data, out long localNetId, out int ackSeq,
         out long serverTick, out byte[] snapshot)
+    {
+        bool valid = TryReadSnapshotHeader(data, out localNetId, out ackSeq, out serverTick, out int length);
+        snapshot = valid ? data.Slice(SnapshotHeader, length).ToArray() : Array.Empty<byte>();
+        return valid;
+    }
+
+    internal static bool TryBorrowSnapshotFrame(ReadOnlyMemory<byte> data, out long localNetId, out int ackSeq,
+        out long serverTick, out ReadOnlyMemory<byte> snapshot)
+    {
+        bool valid = TryReadSnapshotHeader(data.Span, out localNetId, out ackSeq, out serverTick, out int length);
+        snapshot = valid ? data.Slice(SnapshotHeader, length) : default;
+        return valid;
+    }
+
+    static bool TryReadSnapshotHeader(ReadOnlySpan<byte> data, out long localNetId, out int ackSeq,
+        out long serverTick, out int length)
     {
         localNetId = -1;
         ackSeq = -1;
         serverTick = -1;
-        snapshot = Array.Empty<byte>();
+        length = 0;
         if (data.Length < SnapshotHeader || data.Length == CommandFrameSize || data[0] != ServerFrameSnapshot)
             return false;
 
         int end = data.Length;
         if ((data[SnapshotHeader - 1] & SnapshotFlagPadded) != 0) end--;
-        // An all-header frame claiming a trailing pad byte would slice a negative length and throw out of the
-        // receive loop, the same cheapest denial of service the game-message decoder refuses.
+        // A frame claiming a trailing pad still needs a complete header.
         if (end < SnapshotHeader) return false;
 
         localNetId = BitConverter.ToInt64(data.Slice(1, 8));
         ackSeq = BitConverter.ToInt32(data.Slice(9, 4));
         serverTick = BitConverter.ToInt64(data.Slice(13, 8));
-        snapshot = data.Slice(SnapshotHeader, end - SnapshotHeader).ToArray();
+        length = end - SnapshotHeader;
         return true;
     }
 

@@ -13,7 +13,7 @@ internal sealed class SampleReader
     private static SampleReader? available;
 
     private readonly SamplePayloadStream stream = new();
-    private readonly SampleEncoding encoding = new();
+    private readonly ResettableReadEncoding encoding = new();
     private readonly BinaryReader reader;
     private SampleReader? next;
 
@@ -99,16 +99,5 @@ internal sealed class SampleReader
             stream.EnsureOpen();
             base.ReadExactly(buffer);
         }
-    }
-
-    // This encoding belongs to one reader. Keep its lazily created decoder so incomplete UTF-8
-    // at the end of this sample cannot affect the next sample the reader borrows.
-    private sealed class SampleEncoding : UTF8Encoding
-    {
-        private Decoder? decoder;
-
-        public override Decoder GetDecoder() => decoder ??= base.GetDecoder();
-
-        internal void ResetDecoder() => decoder?.Reset();
     }
 }

@@ -30217,7 +30217,18 @@ Pass real frame dt to `Poll` so the timeout and reconnect timers advance:
 // per frame:
 client.Poll(dt);          // dt = 0 pumps the net only (no timeout/reconnect); pass real frame seconds normally
 client.AdvancePresentation(dt);
-EntityRenderState[] snapshot = client.Snapshot();
+IReadOnlyList<EntityRenderState> snapshot = client.Snapshot();
+```
+
+`Snapshot()` returns a list the caller can retain. To reuse a list, create it once and fill it after polling
+and advancing presentation each frame.
+
+```csharp
+// Once, alongside the client.
+var renderStates = new List<EntityRenderState>();
+
+// Each frame after Poll and AdvancePresentation.
+client.CopySnapshotTo(renderStates);
 ```
 
 `ConnectionState` (a `WorldConnectionState`) is one of: `Connecting` (initial handshake), `Connected` (in-session), `Reconnecting` (between drop and re-join), `Disconnected` (terminal - bad token or explicit give-up). `DisconnectReason` values: `None`, `RejectedToken`, `Unreachable`, `ServerShutdown`, `Timeout`, `IncompatibleVersion` (the client is out of date - see "Version skew resilience" below), `SignedInElsewhere` and `AlreadySignedIn` (the duplicate-session gate, below), `Banned` (the `ke:banned` connect refusal or the drop after a `ServerNoticeKind.Banned` notice, see "Bans" below), `ContentMismatch` (the client was built against different content than the server, see "Content identity" under "Version skew resilience" below), and the catalog content door's two refusals, `ContentVersionMismatch` and `ContentClientTooOld` (see "The connect door, and the client's catch-up", which parses `DisconnectReasonDetail` with `ContentRefusal`). The last two were appended after every shipped value, so no numeric value moved. The single-transport ctor `WorldClient(INetTransport, ...)` has no reconnect and leaves transport disposal to the caller.

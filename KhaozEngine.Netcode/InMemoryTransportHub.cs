@@ -163,7 +163,7 @@ public sealed class InMemoryTransportHub : IDisposable
         }
     }
 
-    private sealed class ClientEndpoint : INetTransport
+    private sealed class ClientEndpoint : INetTransport, IOwnedReceiveFrames
     {
         private static readonly NetConnectionId ServerId = new(1);
         private readonly InMemoryTransportHub hub;

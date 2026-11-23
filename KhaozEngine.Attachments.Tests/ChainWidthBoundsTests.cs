@@ -176,7 +176,7 @@ public sealed class ChainWidthBoundsTests(ITestOutputHelper output)
                 Vector3.Zero, movement, turn);
             var anchor = Matrix4x4.CreateTranslation(0.5f * chain, 0, 0);
             ChainConstraints.PlaceJoint(particles, chain, rig.FirstJoint(chain), anchor,
-                0, -1, 0, StepSeconds, []);
+                0, -1, 0, StepSeconds, new ChainCapsuleCandidates([]));
         }
     }
 

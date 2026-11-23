@@ -6,7 +6,7 @@ namespace KhaozEngine.Attachments;
 internal static class ChainConstraints
 {
     internal readonly record struct JointStep(int Joint, int Particle, Vector3 Start, float Length,
-        Matrix4x4 Unswung, Vector3 Rest, Vector3 Direction, bool Clamped, Vector3 End);
+        Matrix4x4 Unswung, Vector3 Rest, Vector3 Direction, bool Clamped, Vector3 End, bool ReplayedAll);
 
     internal static void FollowChain(ChainParticles particles, int chain, in Matrix4x4 anchor,
         ReadOnlySpan<ColliderCapsule> colliders, ReadOnlySpan<ColliderCapsule> previousColliders,
@@ -18,24 +18,35 @@ internal static class ChainConstraints
         float springWeight = pullTowardRest ? ChainMath.MidpointSpringWeight(settings.Stiffness, seconds) : 0;
         float cosine = BendCosine(settings);
         var parent = anchor;
+        var capsules = SelectCapsules(particles.CapsuleCull, particles, chain, settings.Radius, colliders);
         var velocity = new ChainVelocityConstraints(particles, first + chain, particles.StepCarries[chain],
-            colliders, previousColliders, settings.Radius, seconds);
+            previousColliders, settings.Radius, seconds);
 
         for (int joint = first; joint <= last; joint++)
         {
-            var step = PlaceJoint(particles, chain, joint, parent, springWeight, cosine, settings.Radius, seconds, colliders);
+            var step = PlaceJoint(particles, chain, joint, parent, springWeight, cosine, settings.Radius, seconds, capsules);
+            if (step.ReplayedAll)
+                capsules = capsules.All;
             if (joint == first)
                 velocity.Start(particles.PreviousRestDirections[joint], step.Rest);
-            velocity.Apply(step.Particle, step.Length, step.Direction, step.Rest, step.Clamped);
+            velocity.Apply(step.Particle, step.Length, step.Direction, step.Rest, step.Clamped, capsules);
             parent = WriteSwing(particles, step);
         }
+    }
+
+    internal static ChainCapsuleCandidates SelectCapsules(ChainCapsuleCull cull, ChainParticles particles,
+        int chain, float radius, ReadOnlySpan<ColliderCapsule> colliders)
+    {
+        int first = particles.Rig.FirstJoint(chain);
+        return cull.Select(particles.Positions[first + chain],
+            particles.Lengths.AsSpan(first, particles.Rig.Chains[chain].Joints.Count), radius, colliders);
     }
 
     internal static float BendCosine(in ChainSettings settings) =>
         settings.AngleLimit == MathF.PI ? -1 : MathF.Cos(settings.AngleLimit);
 
     internal static JointStep PlaceJoint(ChainParticles particles, int chain, int joint, in Matrix4x4 parent,
-        float springWeight, float cosine, float radius, float seconds, ReadOnlySpan<ColliderCapsule> colliders)
+        float springWeight, float cosine, float radius, float seconds, ChainCapsuleCandidates capsules)
     {
         var rig = particles.Rig;
         int particle = joint + chain;
@@ -56,30 +67,30 @@ internal static class ChainConstraints
             predicted += correction;
         }
 
-        var step = new JointStep(joint, particle, start, length, world, rest, default, false, default);
-        return PlaceOnSphere(particles, step, predicted, cosine, radius, colliders);
+        var step = new JointStep(joint, particle, start, length, world, rest, default, false, default, false);
+        return PlaceOnSphere(particles, step, predicted, cosine, radius, capsules);
     }
 
     internal static JointStep ReapplyLimits(ChainParticles particles, in JointStep step,
-        float cosine, float radius, ReadOnlySpan<ColliderCapsule> colliders) =>
-        PlaceOnSphere(particles, step, particles.Positions[step.Particle + 1] - step.Start, cosine, radius, colliders);
+        float cosine, float radius, ChainCapsuleCandidates capsules) =>
+        PlaceOnSphere(particles, step, particles.Positions[step.Particle + 1] - step.Start, cosine, radius, capsules);
 
     private static JointStep PlaceOnSphere(ChainParticles particles, in JointStep step, Vector3 predicted,
-        float cosine, float radius, ReadOnlySpan<ColliderCapsule> colliders)
+        float cosine, float radius, ChainCapsuleCandidates capsules)
     {
         var direction = ChainMath.Direction(predicted, step.Rest);
-        bool clamped = false;
+        bool clamped = false, replayedAll = false;
         if (step.Length > 0)
         {
             var limited = ClampBend(direction, step.Rest, cosine);
             clamped = limited != direction;
             direction = limited;
-            direction = ChainCapsuleCollision.Clear(direction, step.Start, step.Length, radius, colliders);
+            direction = ChainCapsuleCollision.Clear(direction, step.Start, step.Length, radius, capsules, out replayedAll);
         }
 
         var end = step.Start + step.Length * direction;
         particles.Positions[step.Particle + 1] = end;
-        return step with { Direction = direction, Clamped = clamped, End = end };
+        return step with { Direction = direction, Clamped = clamped, End = end, ReplayedAll = replayedAll };
     }
 
     internal static Matrix4x4 WriteSwing(ChainParticles particles, in JointStep step)

@@ -30,6 +30,7 @@ internal sealed class ChainParticles
     internal Vector3[] PreviousRestDirections { get; private set; }
     internal Vector3[] StepRestDirections { get; private set; }
     internal ChainCarry[] StepCarries { get; }
+    internal ChainCapsuleCull CapsuleCull { get; } = new();
 
     internal void SetRest(ReadOnlySpan<Matrix4x4> anchors, bool reset)
     {

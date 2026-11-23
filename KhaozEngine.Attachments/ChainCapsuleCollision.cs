@@ -6,25 +6,54 @@ namespace KhaozEngine.Attachments;
 internal static class ChainCapsuleCollision
 {
     private const int ContactPasses = 8;
-    private const double TouchTolerance = 0.0001;
+    internal const double TouchTolerance = 0.0001;
+
+    [ThreadStatic]
+    private static Vector3? _firstCorrectionDirectionForTests;
+
+    internal static void SetFirstCorrectionDirectionForTests(Vector3? direction) =>
+        _firstCorrectionDirectionForTests = direction;
+
+    internal static bool BeyondReach(Vector3 root, double contactReach, in ColliderCapsule capsule)
+    {
+        var residual = CapsuleResidual(new Offset(root), default, capsule, out _);
+        var coordinates = Vector3.Max(Vector3.Abs(root), Vector3.Max(Vector3.Abs(capsule.Start), Vector3.Abs(capsule.End)));
+        // Keep axes within reach plus both radii, contact tolerance and 1e-9 of coordinate scale for ~1e-16 double roundoff.
+        double projectionMargin = 1e-9 * Math.Max(coordinates.X, Math.Max(coordinates.Y, coordinates.Z));
+        double limit = contactReach + capsule.Radius + projectionMargin;
+        return residual.LengthSquared > limit * limit;
+    }
 
     internal static Vector3 Clear(Vector3 direction, Vector3 start, float length,
-        float chainRadius, ReadOnlySpan<ColliderCapsule> colliders)
+        float chainRadius, ChainCapsuleCandidates capsules, out bool replayedAll)
     {
+        replayedAll = capsules.IsFiltered && !ChainCapsuleCull.FitsReach(direction);
+        if (replayedAll)
+            capsules = capsules.All;
+        var initial = direction;
+        var firstCorrectionForTests = _firstCorrectionDirectionForTests;
         var root = new Offset(start);
         // Revisit earlier contacts after a correction moves the particle along its length sphere.
         for (int pass = 0; pass < ContactPasses; pass++)
         {
             bool changed = false;
-            foreach (ref readonly var capsule in colliders)
+            for (int index = 0; index < capsules.Count; index++)
             {
+                ref readonly var capsule = ref capsules[index];
                 var fromRoot = new Offset(direction) * length;
                 var residual = CapsuleResidual(root, fromRoot, capsule, out _);
                 double radius = (double)capsule.Radius + chainRadius;
                 if (residual.LengthSquared >= radius * radius)
                     continue;
 
-                var corrected = ClearSphere(direction, length, fromRoot - residual, radius);
+                var corrected = firstCorrectionForTests ?? ClearSphere(direction, length, fromRoot - residual, radius);
+                firstCorrectionForTests = null;
+                // A correction outside padded reach requires a full replay before the next position test.
+                if (capsules.IsFiltered && !ChainCapsuleCull.FitsReach(corrected))
+                {
+                    replayedAll = true;
+                    return Clear(initial, start, length, chainRadius, capsules.All, out _);
+                }
                 changed |= corrected != direction;
                 direction = corrected;
             }

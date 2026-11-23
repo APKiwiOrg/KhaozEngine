@@ -55,28 +55,6 @@ internal sealed class OutfitLiftCellHeights : IDisposable
         return height == NoHeight ? null : height;
     }
 
-    internal void IncludeFaceHeights(LiftFootprintTriangle triangle, OutfitLiftSections sections,
-        ReadOnlySpan<int> corners)
-    {
-        // All cells on a face have the same projection factor for a given section.
-        int face = -1;
-        float height = NoHeight;
-        foreach (int key in triangle.CellKeys)
-        {
-            int nextFace = key / BodyCell.CellsPerTriangle;
-            if (nextFace != face)
-            {
-                if (height != NoHeight)
-                    sections.IncludeFaceHeight(corners, face, height);
-                face = nextFace;
-                height = NoHeight;
-            }
-            height = MathF.Max(height, below[key]);
-        }
-        if (height != NoHeight)
-            sections.IncludeFaceHeight(corners, face, height);
-    }
-
     internal void AddTriangle(LiftFootprintTriangle triangle, float lift, Span<float?> effective)
     {
         ReadOnlySpan<int> keys = triangle.CellKeys;

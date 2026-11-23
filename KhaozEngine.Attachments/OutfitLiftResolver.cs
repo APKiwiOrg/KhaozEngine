@@ -69,7 +69,6 @@ internal static class OutfitLiftResolver
         RegionSet hidden = coverage.HiddenFor(wornIndex);
         ReadOnlySpan<(int Region, float Metres)> standoff = coverage.StandoffFor(wornIndex);
         float[] largestLift = footprint is null && !standoff.IsEmpty ? new float[effective.Length] : [];
-        LiftFootprint? normalFootprint = footprint is { BodyNormals.Count: > 0 } ? footprint : null;
 
         foreach (OutfitCoverage.SkinnedPart part in coverage.SkinnedPartsFor(wornIndex))
         {
@@ -81,7 +80,7 @@ internal static class OutfitLiftResolver
                     throw new ArgumentException($"worn[{wornIndex}] part {part.Id} is missing its lifting mesh.", nameof(meshes));
 
                 var placement = OutfitPartLift.Resolve(mesh, clearance, part.Regions, belowByRegion, cells,
-                    partFootprint, normalFootprint, largestLift, nameof(meshes));
+                    partFootprint, largestLift, nameof(meshes));
                 if (placement.Positions is { } positions)
                     lifted.Add((wornIndex, part.Id), positions);
                 triangleLifts = placement.TriangleLifts;

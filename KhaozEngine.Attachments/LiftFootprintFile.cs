@@ -45,15 +45,6 @@ public static class LiftFootprintFile
             }
         }
 
-        writer.Write((uint)footprint.BodyNormals.Count);
-        foreach (LiftFootprintBodyNormal entry in footprint.BodyNormals)
-        {
-            writer.Write((uint)entry.BodyTriangleIndex);
-            writer.Write(entry.Normal.X);
-            writer.Write(entry.Normal.Y);
-            writer.Write(entry.Normal.Z);
-        }
-
         return stream.ToArray();
     }
 

@@ -48,59 +48,6 @@ public class OutfitLiftFootprintTests
         AssertHeight(panelHeight + clearance, RestHeight(lift, 1, 1));
     }
 
-    [Theory]
-    [InlineData(0.6f, 0.8f, true, 0.078125f, 0.078125f)]
-    [InlineData(0f, 1f, true, 0.0625f, 0.078125f)]
-    [InlineData(0.96f, 0.28f, true, 0.125f, 0.050625f)]
-    [InlineData(0.6f, 0.8f, false, 0.0625f, 0.065625f)]
-    public void A_measured_section_lifts_in_the_body_face_height_frame(float x, float z, bool hasNormals,
-        float expectedDistance, float expectedHeight)
-    {
-        // Review T4 finding 2 (#1891): an oblique section used to rise by less than the clearance required in the cell.
-        const float restHeight = 0.015625f;
-        AttachmentSetDefinition armour = new([AttachmentFixtures.TaggedSkinned(new NamedRegionRun("a", 1))
-            with { Lift = new(restHeight) }], AttachmentLayer.Armour, []);
-        OutfitCoverage coverage = OutfitCoverage.Resolve(Body, [Garment(new NamedRegionRun("a", 1)), armour]);
-        LiftFootprint shirt = Footprint(SkinnedId, Fixed(HemCell, 0.0625));
-        LiftFootprintPart strapPart = new(SkinnedId, [Fixed(HemCell, restHeight)]);
-        LiftFootprint strap = hasNormals
-            ? new(Body.Sha256, 2, [strapPart], [new(0, Vector3.UnitZ)])
-            : new(Body.Sha256, 2, [strapPart]);
-        Vector3 direction = new(x, 0, z);
-        Vector3 origin = new(0, 0, restHeight);
-        LiftMaterialMesh mesh = Triangle(origin, restHeight) with { Directions = new[] { direction, direction, direction } };
-
-        OutfitLift lift = Resolve(coverage, [new(1, SkinnedId, [mesh])], [shirt, strap]);
-
-        IReadOnlyList<ReadOnlyMemory<Vector3>>? positions = lift.LiftedPositions(1, SkinnedId);
-        Assert.NotNull(positions);
-        Vector3 lifted = Assert.Single(positions).Span[0];
-        AssertHeight(expectedDistance, Vector3.Distance(origin, lifted));
-        AssertHeight(expectedHeight, lifted.Z);
-        AssertHeight((float)strapPart.Triangles[0].HeightMetres(0) + expectedDistance, lift.EffectiveStandoff(1, 0)!.Value);
-    }
-
-    [Fact]
-    public void The_largest_face_frame_requirement_lifts_every_weld_in_a_section()
-    {
-        const float restHeight = 0.015625f;
-        AttachmentSetDefinition armour = new([AttachmentFixtures.TaggedSkinned(new NamedRegionRun("a", 2))
-            with { Lift = new(restHeight) }], AttachmentLayer.Armour, []);
-        OutfitCoverage coverage = OutfitCoverage.Resolve(Body, [Garment(new NamedRegionRun("a", 2)), armour]);
-        LiftFootprint shirt = Footprint(SkinnedId, Fixed(HemCell, 0.09375), Fixed(BackCell, 0.0625));
-        LiftFootprint strap = new(Body.Sha256, 2,
-            [new(SkinnedId, [Fixed(HemCell, restHeight), Fixed(BackCell, restHeight)])],
-            [new(0, Vector3.UnitZ), new(1, Vector3.UnitX)]);
-        LiftMaterialMesh front = Triangle(new(0, 0, restHeight), restHeight);
-        LiftMaterialMesh back = Triangle(new(2, 0, restHeight), restHeight);
-
-        OutfitLift lift = Resolve(coverage, [new(1, SkinnedId, [front, back])], [shirt, strap]);
-
-        // The lower back cell needs twice its height difference. The two triangles share one section basis.
-        AssertHeight(0.140625f, RestHeight(lift, 1, 0));
-        AssertHeight(0.140625f, RestHeight(lift, 1, 1));
-    }
-
     [Fact]
     public void Outerwear_clears_the_lifted_strap_over_its_cells_and_the_panel_beside_it()
     {

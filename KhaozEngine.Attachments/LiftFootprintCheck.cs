@@ -1,7 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Numerics;
 
 namespace KhaozEngine.Attachments;
 
@@ -12,7 +10,6 @@ public static class LiftFootprintCheck
     /// Re-measure the footprint using the mesh contract of <see cref="LiftFootprintMeasure.Measure"/>.
     /// Compare cells on triangles present in both footprints when the body matches. Report heights below
     /// the measurement where both triangles are fixed. Extra cells and higher heights are permitted.
-    /// Compare every stored normal with the face normal of its triangle when the body matches.
     /// </summary>
     /// <exception cref="ArgumentException">A nonempty swinging mask differs in length from its mesh's positions.</exception>
     /// <exception cref="CoverageClaimDataException">The geometry or claim input breaks a measurement rule.</exception>
@@ -21,7 +18,7 @@ public static class LiftFootprintCheck
         AttachmentSetDefinition piece, IReadOnlyList<CoverageClaimMesh> pieceMeshes, LiftFootprint declared)
     {
         ArgumentNullException.ThrowIfNull(declared);
-        LiftFootprint measured = LiftFootprintMeasure.MeasureWithBodyIndex(bodyMeshes, body, piece, pieceMeshes, out BodyTriangleIndex index);
+        LiftFootprint measured = LiftFootprintMeasure.Measure(bodyMeshes, body, piece, pieceMeshes);
         bool bodyMatches = declared.BodyRegionMapSha256 == measured.BodyRegionMapSha256
             && declared.BodyTriangleCount == measured.BodyTriangleCount;
         var mismatches = new List<LiftFootprintPartMismatch>();
@@ -58,22 +55,7 @@ public static class LiftFootprintCheck
             if (measured.PartById(claim.PartId) is null)
                 mismatches.Add(new(claim.PartId, LiftFootprintPartMismatchReason.ExtraPart, null));
 
-        var normalMismatches = new List<LiftFootprintNormalMismatch>();
-        if (bodyMatches && declared.BodyNormals.Count != 0)
-            CompareNormals(declared, index, normalMismatches);
-
-        return new LiftFootprintReport(bodyMatches, mismatches, uncovered, understated, normalMismatches);
-    }
-
-    static void CompareNormals(LiftFootprint declared, BodyTriangleIndex index, List<LiftFootprintNormalMismatch> mismatches)
-    {
-        Dictionary<int, Vector3> normals = index.FaceNormals(declared.BodyNormals.Select(entry => entry.BodyTriangleIndex).ToHashSet());
-        foreach (LiftFootprintBodyNormal entry in declared.BodyNormals)
-        {
-            Vector3? measured = normals.TryGetValue(entry.BodyTriangleIndex, out Vector3 normal) ? normal : null;
-            if (entry.Normal != measured)
-                mismatches.Add(new(entry.BodyTriangleIndex, measured, entry.Normal));
-        }
+        return new LiftFootprintReport(bodyMatches, mismatches, uncovered, understated);
     }
 
     static void CompareCells(uint partId, int triangle, LiftFootprintTriangle actual, LiftFootprintTriangle stated,

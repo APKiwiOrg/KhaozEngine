@@ -45,18 +45,6 @@ internal sealed class BodyTriangleIndex
 
     internal bool HasTriangles => root is not null;
 
-    internal Dictionary<int, Vector3> FaceNormals(IReadOnlySet<int> requested)
-    {
-        var normals = new Dictionary<int, Vector3>(requested.Count);
-        if (requested.Count == 0)
-            return normals;
-
-        foreach (ref readonly ClaimBodyTriangle face in triangles.AsSpan())
-            if (requested.Contains(face.Index))
-                normals.Add(face.Index, face.UnitNormal);
-        return normals;
-    }
-
     internal BodyTriangleHit Nearest(ClaimPoint point)
     {
         Node tree = root ?? throw new InvalidOperationException("The body has no nondegenerate triangles.");

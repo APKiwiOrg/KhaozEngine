@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using System.Collections.Immutable;
-using System.Numerics;
 
 namespace KhaozEngine.Attachments;
 
@@ -44,24 +43,16 @@ public readonly record struct LiftFootprintUncoveredCell(uint PartId, int Triang
 public readonly record struct LiftFootprintUnderstatedCell(uint PartId, int TriangleIndex, BodyCell Cell,
     double MeasuredHeightMetres, double DeclaredHeightMetres);
 
-/// <summary>A declared body face normal that differs from its measurement.</summary>
-/// <param name="BodyTriangleIndex">The zero-based triangle index across the body map's parts.</param>
-/// <param name="MeasuredNormal">The measured face normal, or null for a degenerate triangle.</param>
-/// <param name="DeclaredNormal">The face normal stored in the footprint.</param>
-public readonly record struct LiftFootprintNormalMismatch(int BodyTriangleIndex, Vector3? MeasuredNormal, Vector3 DeclaredNormal);
-
 /// <summary>The findings from re-measuring a declared lift footprint over its body at rest.</summary>
 public sealed class LiftFootprintReport
 {
     internal LiftFootprintReport(bool bodyMatches, List<LiftFootprintPartMismatch> partMismatches,
-        List<LiftFootprintUncoveredCell> uncoveredCells, List<LiftFootprintUnderstatedCell> understatedCells,
-        List<LiftFootprintNormalMismatch> normalMismatches)
+        List<LiftFootprintUncoveredCell> uncoveredCells, List<LiftFootprintUnderstatedCell> understatedCells)
     {
         BodyMatches = bodyMatches;
         PartMismatches = ImmutableArray.CreateRange(partMismatches);
         UncoveredCells = ImmutableArray.CreateRange(uncoveredCells);
         UnderstatedCells = ImmutableArray.CreateRange(understatedCells);
-        NormalMismatches = ImmutableArray.CreateRange(normalMismatches);
     }
 
     /// <summary>Whether the declaration names the measured body's map digest and triangle count.</summary>
@@ -76,10 +67,6 @@ public sealed class LiftFootprintReport
     /// <summary>Every shared cell whose declared fixed height is too low. Empty if the body differs.</summary>
     public IReadOnlyList<LiftFootprintUnderstatedCell> UnderstatedCells { get; }
 
-    /// <summary>Every stored face normal that differs from measurement. Empty if the body differs.</summary>
-    public IReadOnlyList<LiftFootprintNormalMismatch> NormalMismatches { get; }
-
     /// <summary>Whether the body matches and the check found no mismatches, missing cells or understated heights.</summary>
-    public bool IsHonest => BodyMatches && PartMismatches.Count == 0 && UncoveredCells.Count == 0 &&
-        UnderstatedCells.Count == 0 && NormalMismatches.Count == 0;
+    public bool IsHonest => BodyMatches && PartMismatches.Count == 0 && UncoveredCells.Count == 0 && UnderstatedCells.Count == 0;
 }

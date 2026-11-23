@@ -47,6 +47,27 @@ public class ReplicationCaptureReentrancyTests
     }
 
     [Fact]
+    public void FlatCaptureThatLosesTheLastSequenceToANestedCaptureDoesNotPublish()
+    {
+        Action? callback = null;
+        var writer = new ServerReplicator(Registry(_ => callback?.Invoke()));
+        World outer = NewWorld((11, 11));
+        World inner = NewWorld((22, 22));
+        writer.SeedLegacySequenceForTest(int.MaxValue - 1);
+        callback = () =>
+        {
+            callback = null;
+            Assert.Equal(int.MaxValue, writer.Capture(inner));
+        };
+
+        Assert.Throws<InvalidOperationException>(() => writer.Capture(outer));
+
+        Assert.Equal(int.MaxValue, writer.CurrentSeq);
+        Assert.True(writer.LegacySequenceExhausted);
+        Assert.Equal(ExpectedBody(int.MaxValue, null, (22, 22)), writer.WriteFor(0));
+    }
+
+    [Fact]
     public void NestedFlatCaptureKeepsBothBodiesIntact()
     {
         Action? captureNested = null;

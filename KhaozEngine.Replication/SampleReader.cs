@@ -52,6 +52,12 @@ internal sealed class SampleReader
         internal BorrowedReader(SamplePayloadStream stream, Encoding encoding)
             : base(stream, encoding) => this.stream = stream;
 
+        // End this loan without permanently disposing the BinaryReader kept in the pool.
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) stream.Release();
+        }
+
         public override int PeekChar()
         {
             stream.EnsureOpen();

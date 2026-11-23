@@ -25,10 +25,12 @@ area-of-interest deltas over a reliable channel, and opt-in format 2 acknowledge
   snapshot and legacy delta receive, and sample reads, may leave trailing bytes unread. Format-2 projection staging
   requires full payload consumption. Exact reads throw `EndOfStreamException` if too few bytes remain. Short-result
   APIs can report EOF or return fewer bytes or characters.
-  The reader and its base stream are synchronous borrows valid only during the read call. Do not retain or
-  dispose them. The engine reuses readers for framed receive and sample decoding to avoid allocating a reader
-  for each component read. The sample stream is read only. A retained sample reader or stream throws
-  `ObjectDisposedException` on reads while no decode is active.
+  The reader and its base stream are synchronous borrows. Do not retain them after the read call. Leave disposal
+  to the engine on receive. Closing or disposing either object during sample decoding ends that borrow. The engine
+  reuses readers for framed receive and sample decoding to avoid allocating a reader for each component read.
+  The sample reader supports reads, and its read-only base stream supports synchronous reads, seek, position,
+  length, capability queries, and flush. Its asynchronous, APM, copy, write, resize, and timeout members throw
+  `NotSupportedException`. Supported operations that access a closed sample throw `ObjectDisposedException`.
   `IsRegistered(ushort)` (since 17.38.0) asks whether this registry has a codec for an id, for a caller judging
   whether an id it read out of STORED bytes is one this build knows: cell-blob persistence uses it to retire a
   candidate parse of a blob whose wire generation was never recorded. `IsRegistered<T>(id, expectedChannels)`

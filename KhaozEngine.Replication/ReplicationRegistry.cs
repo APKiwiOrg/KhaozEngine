@@ -38,10 +38,14 @@ public sealed class ReplicationRegistry
     /// projection staging requires full payload consumption. Exact reads throw <see cref="EndOfStreamException"/>
     /// if too few bytes remain.
     /// Short-result APIs can report EOF or return fewer bytes or characters.
-    /// The reader and its base stream are synchronous borrows valid only during the read call. Do not retain
-    /// or dispose them. The engine reuses readers for framed receive and sample decoding to avoid allocating
-    /// a reader for each component read. The sample stream is read only. A retained sample reader or stream
-    /// throws <see cref="ObjectDisposedException"/> on reads while no decode is active.
+    /// The reader and its base stream are synchronous borrows. Do not retain them after the read call.
+    /// Leave disposal to the engine on receive. Closing or disposing either object during sample decoding
+    /// ends that borrow. The engine reuses readers for framed receive and sample decoding to avoid allocating
+    /// a reader for each component read.
+    /// The sample reader supports reads, and its read-only base stream supports synchronous reads, seek,
+    /// position, length, capability queries, and flush. The sample stream's asynchronous, APM, copy, write,
+    /// resize, and timeout members throw <see cref="NotSupportedException"/>.
+    /// Supported operations that access a closed sample throw <see cref="ObjectDisposedException"/>.
     /// Supplying <paramref name="lerp"/> makes the component
     /// interpolatable (smoothed between snapshots by <see cref="ClientReplicationView.Interpolate"/>).
     /// <paramref name="discreteSample"/> instead makes it fixed-delay <b>nearest-sampled</b> (no blending): the

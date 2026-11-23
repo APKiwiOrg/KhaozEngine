@@ -10,7 +10,6 @@ internal sealed class SamplePayloadStream : Stream
 {
     private byte[]? sample;
     private int position;
-    private Task<int>? lastArrayRead;
 
     private byte[] ActiveSample => sample ?? throw new ObjectDisposedException(nameof(SamplePayloadStream));
 
@@ -86,52 +85,58 @@ internal sealed class SamplePayloadStream : Stream
         return position < bytes.Length ? bytes[position++] : -1;
     }
 
-    public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+    public override void Flush() => EnsureOpen();
+
+    // A sample borrow has no deferred operations. Refuse at the entry point before any stream work starts.
+    public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException();
+
+    public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+        throw new NotSupportedException();
+
+    public override IAsyncResult BeginRead(byte[] buffer, int offset, int count, AsyncCallback? callback, object? state) =>
+        throw new NotSupportedException();
+
+    public override int EndRead(IAsyncResult asyncResult) => throw new NotSupportedException();
+
+    public override void CopyTo(Stream destination, int bufferSize) => throw new NotSupportedException();
+
+    public override Task CopyToAsync(Stream destination, int bufferSize, CancellationToken cancellationToken) =>
+        throw new NotSupportedException();
+
+    public override Task FlushAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
+
+    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    public override void Write(ReadOnlySpan<byte> buffer) => throw new NotSupportedException();
+    public override void WriteByte(byte value) => throw new NotSupportedException();
+
+    public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException();
+
+    public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+        throw new NotSupportedException();
+
+    public override IAsyncResult BeginWrite(byte[] buffer, int offset, int count, AsyncCallback? callback, object? state) =>
+        throw new NotSupportedException();
+
+    public override void EndWrite(IAsyncResult asyncResult) => throw new NotSupportedException();
+
+    public override void SetLength(long value) => throw new NotSupportedException();
+
+    public override int ReadTimeout
     {
-        if (cancellationToken.IsCancellationRequested) return ValueTask.FromCanceled<int>(cancellationToken);
-        try
-        {
-            EnsureOpen();
-            return ValueTask.FromResult(Read(buffer.Span));
-        }
-        catch (Exception exception)
-        {
-            return ValueTask.FromException<int>(exception);
-        }
+        get => throw new NotSupportedException();
+        set => throw new NotSupportedException();
     }
 
-    public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+    public override int WriteTimeout
     {
-        ValidateBufferArguments(buffer, offset, count);
-        if (cancellationToken.IsCancellationRequested) return Task.FromCanceled<int>(cancellationToken);
-        try
-        {
-            int read = Read(buffer.AsSpan(offset, count));
-            // Keep the last completed count across borrows. The task holds no reference to the payload.
-            if (lastArrayRead is { } cached && cached.Result == read) return cached;
-            return lastArrayRead = Task.FromResult(read);
-        }
-        catch (Exception exception)
-        {
-            return Task.FromException<int>(exception);
-        }
-    }
-
-    public override IAsyncResult BeginRead(byte[] buffer, int offset, int count, AsyncCallback? callback, object? state)
-    {
-        EnsureOpen();
-        return base.BeginRead(buffer, offset, count, callback, state);
+        get => throw new NotSupportedException();
+        set => throw new NotSupportedException();
     }
 
     protected override void Dispose(bool disposing)
     {
         if (disposing) Release();
-        base.Dispose(disposing);
     }
-
-    public override void Flush() { }
-    public override void SetLength(long value) => throw new NotSupportedException();
-    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
-    public override void Write(ReadOnlySpan<byte> buffer) => throw new NotSupportedException();
-    public override void WriteByte(byte value) => throw new NotSupportedException();
 }

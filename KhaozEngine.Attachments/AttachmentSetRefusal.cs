@@ -191,4 +191,19 @@ public enum AttachmentSetRefusal
 
     /// <summary>Refuses a rig link stretch bound on an individual link in a set definition.</summary>
     ChainLinkStretchInDefinition,
+
+    /// <summary>Refuses a lift footprint in a set with no layer, identifying the footprint key.</summary>
+    FootprintWithoutLayer,
+
+    /// <summary>Refuses an invalid lift footprint asset key, identifying the key when decodable.</summary>
+    FootprintKeyInvalid,
+
+    /// <summary>Refuses a lift footprint hash that is not lowercase SHA-256, identifying the key and decodable hash.</summary>
+    FootprintHashInvalid,
+
+    /// <summary>Refuses a lift footprint key that matches a part mesh key, identifying the shared key.</summary>
+    FootprintKeyUsedByMesh,
+
+    /// <summary>Refuses a missing or mismatched lift footprint asset, identifying its key and the expected and actual hashes.</summary>
+    FootprintReferenceMissingOrHashMismatch,
 }

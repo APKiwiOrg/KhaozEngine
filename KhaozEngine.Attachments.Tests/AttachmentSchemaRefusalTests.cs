@@ -374,6 +374,33 @@ public sealed class AttachmentSchemaRefusalTests
     static string JsonStandoff(int count) => "[" + string.Join(",", Enumerable.Range(0, count).Select(i => $$"""["region{{i}}",0]""")) + "]";
 
     [Theory]
+    [InlineData(AttachmentSetRefusal.JsonObjectRequired, "$.footprint", null, AttachmentFixtures.FootprintJson, "null")]
+    [InlineData(AttachmentSetRefusal.JsonPropertyUnknown, "$.footprint", "extra", "\"key\":", "\"extra\":0,\"key\":")]
+    [InlineData(AttachmentSetRefusal.JsonPropertyDuplicate, "$.footprint", "key", "\"key\":", "\"key\":\"extra.khlf\",\"key\":")]
+    [InlineData(AttachmentSetRefusal.JsonPropertyDuplicate, "$", "footprint", "\"footprint\":", "\"footprint\":" + AttachmentFixtures.FootprintJson + ",\"footprint\":")]
+    [InlineData(AttachmentSetRefusal.JsonPropertyMissing, "$.footprint", "key", "\"key\":\"" + AttachmentFixtures.FootprintKey + "\",", "")]
+    [InlineData(AttachmentSetRefusal.JsonPropertyMissing, "$.footprint", "sha256", ",\"sha256\":\"" + AttachmentFixtures.FootprintHash + "\"", "")]
+    [InlineData(AttachmentSetRefusal.JsonStringRequired, "$.footprint.key", "key", "\"" + AttachmentFixtures.FootprintKey + "\"", "123")]
+    [InlineData(AttachmentSetRefusal.JsonStringRequired, "$.footprint.sha256", "sha256", "\"" + AttachmentFixtures.FootprintHash + "\"", "123")]
+    [InlineData(AttachmentSetRefusal.FootprintKeyInvalid, "$.footprint.key", null, "\"" + AttachmentFixtures.FootprintKey + "\"", "\"\\uD800\"")]
+    [InlineData(AttachmentSetRefusal.FootprintHashInvalid, "$.footprint.sha256", null, "\"" + AttachmentFixtures.FootprintHash + "\"", "\"\\uD800\"")]
+    public void Format_7_footprint_members_report_the_rule_and_location(AttachmentSetRefusal reason, string path, string? property,
+        string oldValue, string newValue)
+    {
+        const string source = "format7.json";
+        string control = AttachmentFixtures.WithFootprintFormat(AttachmentFixtures.RegionsSetJson(), 3);
+        string json = Replace(control, oldValue, newValue, firstOnly: true);
+        Assert.Equal(AttachmentFixtures.Footprint, AttachmentSetJson.Parse(Encoding.UTF8.GetBytes(control), source).Footprint);
+        Assert.NotEqual(control, json);
+
+        var error = Assert.Throws<AttachmentSetDataException>(() => AttachmentSetJson.Parse(Encoding.UTF8.GetBytes(json), source));
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal((source, path, property), (error.SourceName, error.JsonPath, error.PropertyName));
+        Assert.Equal(reason == AttachmentSetRefusal.FootprintHashInvalid ? AttachmentFixtures.FootprintKey : null, error.FootprintKey);
+        Assert.Null(error.DeclaredHash);
+    }
+
+    [Theory]
     [InlineData("0", AttachmentSetRefusal.LinkStretchOutOfRange)]
     [InlineData("-0.25", AttachmentSetRefusal.LinkStretchOutOfRange)]
     [InlineData("1.00000001", AttachmentSetRefusal.LinkStretchOutOfRange)]
@@ -416,6 +443,12 @@ public sealed class AttachmentSchemaRefusalTests
     [InlineData(5, "lift", "$.parts[0]")]
     [InlineData(4, "linkStretch", "$.parts[0].motion")]
     [InlineData(5, "linkStretch", "$.parts[0].motion")]
+    [InlineData(1, "footprint", "$")]
+    [InlineData(2, "footprint", "$")]
+    [InlineData(3, "footprint", "$")]
+    [InlineData(4, "footprint", "$")]
+    [InlineData(5, "footprint", "$")]
+    [InlineData(6, "footprint", "$")]
     public void AttachmentSet_members_are_unknown_to_older_formats_and_unsupported_part_kinds(int version, string member, string path)
     {
         string rigid = AttachmentFixtures.PartJson().TrimEnd();
@@ -427,10 +460,11 @@ public sealed class AttachmentSchemaRefusalTests
             3 => $$"""{"formatVersion":3,"layer":"garment","covers":[],"parts":[{"id":1,"kind":"skinned","mesh":{"key":"parts/garment.glb","sha256":"{{AttachmentFixtures.Hash}}"},"regions":[["a",1]]}]}""",
             4 when member is "lift" or "linkStretch" => AttachmentFixtures.MotionSetJson(),
             5 when member == "linkStretch" => AttachmentFixtures.LiftSetJson(lift: AttachmentFixtures.LiftJson, chains: true),
-            4 or 5 => $$"""{"formatVersion":{{version}},"layer":"garment","covers":[],"parts":[{{taggedRigid}}]}""",
+            4 or 5 or 6 => $$"""{"formatVersion":{{version}},"layer":"garment","covers":[],"parts":[{{taggedRigid}}]}""",
             _ => throw new ArgumentOutOfRangeException(nameof(version)),
         };
-        string json = member == "linkStretch" ? AttachmentFixtures.WithLinkStretch(control, version, version, "1")
+        string json = member == "footprint" ? AttachmentFixtures.AddFootprint(control)
+            : member == "linkStretch" ? AttachmentFixtures.WithLinkStretch(control, version, version, "1")
             : path == "$"
             ? Replace(control, "\"parts\":", $"\"{member}\":" + (member == "colliders"
                 ? "[" + AttachmentFixtures.Collider0Json + "]" : AttachmentFixtures.StandoffJson) + ",\"parts\":")

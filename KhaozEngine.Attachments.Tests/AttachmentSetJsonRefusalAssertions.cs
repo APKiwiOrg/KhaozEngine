@@ -98,7 +98,7 @@ internal static class AttachmentSetJsonRefusalAssertions
             case "case-changed-kind": Assert.Equal("Rigid", error.Kind); break;
             case "duplicate-id-across-kinds": Part(error, 1); Assert.Equal(1, error.PartIndex); break;
             case "zero-id": Part(error, 0); Assert.Equal(0, error.PartIndex); break;
-            case "unsupported-version": Assert.Equal(7, error.FormatVersion); break;
+            case "unsupported-version": Assert.Equal(8, error.FormatVersion); break;
             case "conflicting-hashes":
                 Part(error, 2);
                 Assert.Equal("parts/plate.glb", error.MeshKey);

@@ -30,7 +30,10 @@ public sealed class AttachmentSetArgumentException : ArgumentException, IAttachm
     /// <summary>The refused mesh asset key.</summary>
     public string? MeshKey { get; init; }
 
-    /// <summary>The hash declared for the refused mesh.</summary>
+    /// <summary>The refused lift footprint asset key when available.</summary>
+    public string? FootprintKey { get; init; }
+
+    /// <summary>The hash declared for the refused mesh or lift footprint.</summary>
     public string? DeclaredHash { get; init; }
 
     /// <summary>The previously declared hash for a conflicting mesh key.</summary>
@@ -79,11 +82,13 @@ public sealed class AttachmentSetArgumentException : ArgumentException, IAttachm
     public int? ExpectedCount { get; init; }
 
     internal string? JsonPath { get; init; }
+    internal string? PropertyName { get; init; }
 
     MalformedDataException IAttachmentDataException.WithSource(string sourceName) => new AttachmentSetDataException(Reason, $"{sourceName}: {Message}", this)
     {
         SourceName = sourceName,
         JsonPath = JsonPath,
+        PropertyName = PropertyName,
         ActualCount = ActualCount,
         ExpectedCount = ExpectedCount,
         ChainIndex = ChainIndex,
@@ -98,6 +103,7 @@ public sealed class AttachmentSetArgumentException : ArgumentException, IAttachm
         PartId = PartId,
         ActualType = ActualType,
         MeshKey = MeshKey,
+        FootprintKey = FootprintKey,
         DeclaredHash = DeclaredHash,
         ExistingHash = ExistingHash,
         JointName = JointName,

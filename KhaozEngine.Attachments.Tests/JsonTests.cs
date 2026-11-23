@@ -155,6 +155,9 @@ public class JsonTests
     [InlineData(true, null, null, 6, .25f)]
     [InlineData(true, null, AttachmentFixtures.LiftJson, 6, .25f)]
     [InlineData(true, null, AttachmentFixtures.LiftJson, 5, null, 6)]
+    [InlineData(false, null, null, 3, null, 7)]
+    [InlineData(true, null, null, 4, null, 7)]
+    [InlineData(false, AttachmentFixtures.StandoffJson, null, 5, null, 7)]
     public void AttachmentSet_writes_the_lowest_format_for_lift_and_link_stretch(bool chains, string? standoff, string? lift,
         int expectedVersion, float? linkStretch = null, int inputVersion = 5)
     {
@@ -179,16 +182,26 @@ public class JsonTests
     [InlineData(true, null, null)]
     [InlineData(true, "1", 1f)]
     [InlineData(true, "0.0001", .0001f)]
-    public void AttachmentSet_round_trips_standoff_and_lifting_parts_with_optional_link_stretch(bool chains,
-        string? linkStretch, float? expectedStretch)
+    [InlineData(false, null, null, true)]
+    [InlineData(true, "1", 1f, true)]
+    [InlineData(true, "1", 1f, false, 7)]
+    public void AttachmentSet_round_trips_lift_link_stretch_and_footprint(bool chains,
+        string? linkStretch, float? expectedStretch, bool footprint = false, int? inputVersion = null)
     {
         string json = chains ? AttachmentFixtures.LiftSetJson(lift: AttachmentFixtures.LiftJson, chains: true,
                 standoff: linkStretch is null ? null : AttachmentFixtures.StandoffJson)
             : AttachmentFixtures.LiftSetJson(standoff: AttachmentFixtures.StandoffJson);
         if (linkStretch is not null)
             json = AttachmentFixtures.WithLinkStretch(json, 5, 6, linkStretch);
-        AttachmentSetDefinition parsed = Parse(json);
+        int version = linkStretch is null ? 5 : 6;
+        if (footprint)
+            json = AttachmentFixtures.WithFootprintFormat(json, version);
+        AttachmentSetDefinition parsed = Parse(inputVersion is { } authoredVersion
+            ? json.Replace($"\"formatVersion\":{version},", $"\"formatVersion\":{authoredVersion},", StringComparison.Ordinal)
+            : json);
+        Assert.Equal(footprint ? AttachmentFixtures.Footprint : (LiftFootprintRef?)null, parsed.Footprint);
         var part = Assert.IsType<SkinnedAttachmentPartDefinition>(Assert.Single(parsed.Parts));
+        Assert.Equal(part.Mesh, Assert.Single(parsed.Meshes));
         if (chains)
         {
             Assert.Equal(AttachmentLayer.Armour, parsed.Layer);
@@ -206,10 +219,12 @@ public class JsonTests
 
         byte[] written = AttachmentSetJson.Write(parsed);
         Assert.Equal(Encoding.UTF8.GetBytes(json), written);
+        Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(json))), parsed.SemanticSha256);
         AttachmentSetDefinition roundTrip = AttachmentSetJson.Parse(written, "round-trip.json");
         Assert.Equal(parsed.SemanticSha256, roundTrip.SemanticSha256);
         Assert.Equal(part, Assert.Single(roundTrip.Parts));
         Assert.Equal(parsed.Standoff, roundTrip.Standoff);
+        Assert.Equal(parsed.Footprint, roundTrip.Footprint);
     }
 
     [Theory]
@@ -230,9 +245,12 @@ public class JsonTests
     [Theory]
     [InlineData("0.008", "0.009")]
     [InlineData("0.001", "0.002")]
-    public void Format_5_revision_tracks_standoff_and_clearance(string original, string changed)
+    [InlineData(AttachmentFixtures.FootprintKey, "parts/revised.khlf", true)]
+    [InlineData(AttachmentFixtures.FootprintHash, AttachmentFixtures.Hash, true)]
+    public void Semantic_revision_tracks_standoff_clearance_and_footprint(string original, string changed, bool footprint = false)
     {
         string control = AttachmentFixtures.LiftSetJson(AttachmentFixtures.StandoffJson, AttachmentFixtures.LiftJson);
+        if (footprint) control = AttachmentFixtures.WithFootprintFormat(control, 5);
 
         Assert.NotEqual(Parse(control).SemanticSha256, Parse(control.Replace(original, changed, StringComparison.Ordinal)).SemanticSha256);
     }
@@ -495,7 +513,7 @@ public class JsonTests
             "unknown-mesh" => V2(skinned.Replace("\"key\":", "\"extra\":0,\"key\":", StringComparison.Ordinal)),
             "duplicate-id-across-kinds" => V2(rigid + "," + skinned.Replace("\"id\":2", "\"id\":1", StringComparison.Ordinal)),
             "missing-mesh" => V2("{\"id\":1,\"kind\":\"skinned\"}"),
-            "unsupported-version" => V2(skinned).Replace("\"formatVersion\":2", "\"formatVersion\":7", StringComparison.Ordinal),
+            "unsupported-version" => V2(skinned).Replace("\"formatVersion\":2", "\"formatVersion\":8", StringComparison.Ordinal),
             "zero-id" => V2(skinned.Replace("\"id\":2", "\"id\":0", StringComparison.Ordinal)),
             "conflicting-hashes" => V2(rigid + "," + skinned.Replace(AttachmentFixtures.Hash, new string('b', 64), StringComparison.Ordinal)),
             _ => throw new ArgumentException(name),

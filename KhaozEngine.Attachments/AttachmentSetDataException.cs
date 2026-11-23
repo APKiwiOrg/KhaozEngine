@@ -62,7 +62,10 @@ public sealed class AttachmentSetDataException : MalformedDataException, IAttach
     /// <summary>The refused mesh asset key.</summary>
     public string? MeshKey { get; init; }
 
-    /// <summary>The hash declared for the refused mesh.</summary>
+    /// <summary>The refused lift footprint asset key when available.</summary>
+    public string? FootprintKey { get; init; }
+
+    /// <summary>The hash declared for the refused mesh or lift footprint when available.</summary>
     public string? DeclaredHash { get; init; }
 
     /// <summary>The previously declared hash for a conflicting mesh key.</summary>
@@ -71,10 +74,10 @@ public sealed class AttachmentSetDataException : MalformedDataException, IAttach
     /// <summary>The rigid, chain or collider joint name involved in the refusal when it can be decoded.</summary>
     public string? JointName { get; init; }
 
-    /// <summary>The mesh hash required by the set reference closure.</summary>
+    /// <summary>The asset hash required by the set reference closure.</summary>
     public string? ExpectedHash { get; init; }
 
-    /// <summary>The mesh hash supplied by the reference closure, or null when missing.</summary>
+    /// <summary>The asset hash supplied by the reference closure, or null when missing.</summary>
     public string? ActualHash { get; init; }
 
     /// <summary>The undefined layer value given to the constructor.</summary>
@@ -135,6 +138,7 @@ public sealed class AttachmentSetDataException : MalformedDataException, IAttach
         PartId = PartId,
         ActualType = ActualType,
         MeshKey = MeshKey,
+        FootprintKey = FootprintKey,
         DeclaredHash = DeclaredHash,
         ExistingHash = ExistingHash,
         JointName = JointName,

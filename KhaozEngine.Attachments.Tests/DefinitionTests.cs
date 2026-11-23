@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Text;
 using KhaozEngine.Attachments;
 using Xunit;
 
@@ -159,6 +160,29 @@ public class DefinitionTests
         meshes.Clear();
         meshes["PARTS/PLATE.GLB"] = AttachmentFixtures.Hash;
         AttachmentSetReferenceAssertions.Mesh(() => set.ValidateReferences(joints, meshes), 1, "parts/plate.glb", null);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(AttachmentFixtures.Hash)]
+    public void References_require_the_footprint_file_with_its_declared_hash(string? actualHash)
+    {
+        var part = AttachmentFixtures.TaggedSkinned();
+        LiftFootprintRef footprint = AttachmentFixtures.Footprint;
+        var set = new AttachmentSetDefinition([part], AttachmentLayer.Garment, [], [], [], footprint);
+        var joints = new HashSet<string>();
+        var assets = new Dictionary<string, string>
+        {
+            [part.Mesh.Key] = part.Mesh.Sha256,
+            [footprint.Key] = footprint.Sha256,
+        };
+        set.ValidateReferences(joints, assets);
+        if (actualHash is null) assets.Remove(footprint.Key);
+        else assets[footprint.Key] = actualHash;
+
+        var error = Assert.Throws<AttachmentSetDataException>(() => set.ValidateReferences(joints, assets));
+        Assert.Equal(AttachmentSetRefusal.FootprintReferenceMissingOrHashMismatch, error.Reason);
+        Assert.Equal((footprint.Key, footprint.Sha256, actualHash), (error.FootprintKey, error.ExpectedHash, error.ActualHash));
     }
 
     [Fact]
@@ -410,6 +434,39 @@ public class DefinitionTests
     }
 
     [Theory]
+    [InlineData(AttachmentSetRefusal.FootprintWithoutLayer, AttachmentFixtures.FootprintKey, AttachmentFixtures.FootprintHash, "$")]
+    [InlineData(AttachmentSetRefusal.FootprintKeyInvalid, "../garment.khlf", AttachmentFixtures.FootprintHash, "$.footprint.key")]
+    [InlineData(AttachmentSetRefusal.FootprintHashInvalid, AttachmentFixtures.FootprintKey, "abc", "$.footprint.sha256")]
+    [InlineData(AttachmentSetRefusal.FootprintHashInvalid, AttachmentFixtures.FootprintKey, "Abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789", "$.footprint.sha256")]
+    [InlineData(AttachmentSetRefusal.FootprintKeyUsedByMesh, "parts/garment.glb", AttachmentFixtures.Hash, "$.footprint.key")]
+    public void Footprint_definition_refusals_identify_the_rule_and_value(AttachmentSetRefusal reason, string key, string hash, string path)
+    {
+        bool noLayer = reason == AttachmentSetRefusal.FootprintWithoutLayer;
+        var part = AttachmentFixtures.TaggedSkinned();
+        var footprint = new LiftFootprintRef(key, hash);
+        LiftFootprintRef? validFootprint = noLayer ? null : AttachmentFixtures.Footprint;
+        AttachmentLayer? layer = noLayer ? null : AttachmentLayer.Garment;
+        if (noLayer) part = part with { Regions = [] };
+        Assert.Equal(validFootprint, new AttachmentSetDefinition([part], layer, [], [], [], validFootprint).Footprint);
+
+        var argumentError = Assert.Throws<AttachmentSetArgumentException>(() => new AttachmentSetDefinition([part], layer, [], [], [], footprint));
+        string? declaredHash = reason == AttachmentSetRefusal.FootprintHashInvalid ? hash : null;
+        Assert.Equal((reason, "footprint", key, declaredHash), (argumentError.Reason, argumentError.ParamName, argumentError.FootprintKey, argumentError.DeclaredHash));
+
+        const string source = "footprint.json";
+        string control = AttachmentFixtures.WithFootprintFormat(AttachmentFixtures.RegionsSetJson(), 3);
+        string json = noLayer ? control.Replace("\"layer\":\"garment\",", "", StringComparison.Ordinal) : control
+            .Replace(AttachmentFixtures.FootprintKey, key, StringComparison.Ordinal)
+            .Replace(AttachmentFixtures.FootprintHash, hash, StringComparison.Ordinal);
+        Assert.Equal(AttachmentFixtures.Footprint, Parse(control).Footprint);
+        var dataError = Assert.Throws<AttachmentSetDataException>(() => Parse(json));
+        Assert.Equal((reason, "footprint", key, declaredHash), (dataError.Reason, dataError.ParamName, dataError.FootprintKey, dataError.DeclaredHash));
+        Assert.Equal((source, path, noLayer ? "layer" : null), (dataError.SourceName, dataError.JsonPath, dataError.PropertyName));
+
+        static AttachmentSetDefinition Parse(string value) => AttachmentSetJson.Parse(Encoding.UTF8.GetBytes(value), source);
+    }
+
+    [Theory]
     [InlineData(AttachmentSetRefusal.MotionKindUnsupported)]
     [InlineData(AttachmentSetRefusal.ChainsEmpty)]
     [InlineData(AttachmentSetRefusal.TooManyChains)]
@@ -565,6 +622,10 @@ public class DefinitionTests
 internal static class AttachmentFixtures
 {
     internal const string Hash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    internal const string FootprintKey = "parts/garment.khlf";
+    internal const string FootprintHash = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    internal const string FootprintJson = "{\"key\":\"" + FootprintKey + "\",\"sha256\":\"" + FootprintHash + "\"}";
+    internal static LiftFootprintRef Footprint => new(FootprintKey, FootprintHash);
     internal const string Identity = "[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]";
     internal static RigidAttachmentPartDefinition Part(uint id) => new(id, new("parts/plate.glb", Hash), "hip", Matrix4x4.Identity);
     internal static string PartJson(uint id = 1) => $$"""{"id":{{id}},"mesh":{"key":"parts/plate.glb","sha256":"{{Hash}}"},"joint":"hip","local":{{Identity}}} """;
@@ -629,4 +690,10 @@ internal static class AttachmentFixtures
     internal static string WithLinkStretch(string json, int oldVersion, int newVersion, string value) => json
         .Replace($"\"formatVersion\":{oldVersion},", $"\"formatVersion\":{newVersion},", StringComparison.Ordinal)
         .Replace("\"links\":[[0,1],[1,2]]", $"\"links\":[[0,1],[1,2]],\"linkStretch\":{value}", StringComparison.Ordinal);
+
+    internal static string AddFootprint(string json, string footprint = FootprintJson) => json.Replace(
+        "\"parts\":", $"\"footprint\":{footprint},\"parts\":", StringComparison.Ordinal);
+
+    internal static string WithFootprintFormat(string json, int oldVersion) => AddFootprint(
+        json.Replace($"\"formatVersion\":{oldVersion},", "\"formatVersion\":7,", StringComparison.Ordinal));
 }

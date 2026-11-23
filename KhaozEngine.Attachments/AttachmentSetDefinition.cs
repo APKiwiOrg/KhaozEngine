@@ -6,6 +6,7 @@ using System.Security.Cryptography;
 
 namespace KhaozEngine.Attachments;
 
+/// <summary>An admitted attachment set and the asset references that define its revision.</summary>
 public sealed class AttachmentSetDefinition
 {
     /// <summary>The maximum number of colliders a worn set can add.</summary>
@@ -38,6 +39,14 @@ public sealed class AttachmentSetDefinition
     /// <remarks>A set without a layer requires all three lists to be empty. Its parts carry no region tags, motion or lift.</remarks>
     public AttachmentSetDefinition(IEnumerable<AttachmentPartDefinition> parts, AttachmentLayer? layer, IEnumerable<string>? covers,
         IEnumerable<ColliderDefinition> colliders, IEnumerable<RegionStandoff> standoff)
+        : this(parts, layer, covers, colliders, standoff, null)
+    {
+    }
+
+    /// <summary>Admit a set with the given layer, covered regions, colliders, standoff and optional lift footprint.</summary>
+    /// <remarks>A footprint requires a layer and an asset key distinct from every part mesh key.</remarks>
+    public AttachmentSetDefinition(IEnumerable<AttachmentPartDefinition> parts, AttachmentLayer? layer, IEnumerable<string>? covers,
+        IEnumerable<ColliderDefinition> colliders, IEnumerable<RegionStandoff> standoff, LiftFootprintRef? footprint)
     {
         ArgumentNullException.ThrowIfNull(parts);
         AttachmentPartDefinition[] owned = parts.ToArray();
@@ -94,6 +103,8 @@ public sealed class AttachmentSetDefinition
         Layer = layer;
         Covers = Array.AsReadOnly(coveredRegions);
         Colliders = AttachmentSetMotion.Colliders(colliders, layer is not null);
+        AttachmentSetFootprint.CheckDefinition(footprint, layer, meshes);
+        Footprint = footprint;
         Parts = Array.AsReadOnly(owned);
         Meshes = Array.AsReadOnly(meshes.Values.OrderBy(mesh => mesh.Key, StringComparer.Ordinal).ToArray());
         SemanticSha256 = Convert.ToHexStringLower(SHA256.HashData(AttachmentSetJson.Write(this)));
@@ -111,28 +122,40 @@ public sealed class AttachmentSetDefinition
     /// <summary>The set's owned standoff entries, in ordinal region order. Empty when no standoff is declared.</summary>
     public IReadOnlyList<RegionStandoff> Standoff { get; }
 
+    /// <summary>The measured lift footprint file declared by the set, or null when absent.</summary>
+    public LiftFootprintRef? Footprint { get; }
+
+    /// <summary>The set's owned parts in ascending part ID order.</summary>
     public IReadOnlyList<AttachmentPartDefinition> Parts { get; }
+
+    /// <summary>The distinct part mesh references in ordinal asset key order.</summary>
     public IReadOnlyList<AttachmentMeshRef> Meshes { get; }
+
+    /// <summary>The lowercase SHA-256 of the set's canonical JSON bytes.</summary>
     public string SemanticSha256 { get; }
 
+    /// <summary>Verify that every rigid joint and every declared asset reference resolves.</summary>
+    /// <param name="joints">The known joint names.</param>
+    /// <param name="meshSha256">The known asset hashes by key, including meshes and the footprint file.</param>
     public void ValidateReferences(IReadOnlySet<string> joints, IReadOnlyDictionary<string, string> meshSha256)
     {
         ArgumentNullException.ThrowIfNull(joints);
         ArgumentNullException.ThrowIfNull(meshSha256);
         // Reference names stay ordinal even if the caller supplies a case-insensitive collection.
         var knownJoints = new HashSet<string>(joints, StringComparer.Ordinal);
-        var knownMeshes = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (KeyValuePair<string, string> mesh in meshSha256)
-            knownMeshes.Add(mesh.Key, mesh.Value);
+        var knownAssets = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (KeyValuePair<string, string> asset in meshSha256)
+            knownAssets.Add(asset.Key, asset.Value);
         foreach (AttachmentPartDefinition part in Parts)
         {
             if (part is RigidAttachmentPartDefinition rigid && !knownJoints.Contains(rigid.Joint))
                 throw new AttachmentSetDataException(AttachmentSetRefusal.JointReferenceUnresolved, $"Attachment part {part.Id}: joint '{rigid.Joint}' is unresolved.")
                 { PartId = part.Id, JointName = rigid.Joint };
-            if (!knownMeshes.TryGetValue(part.Mesh.Key, out string? actual) || actual != part.Mesh.Sha256)
+            if (!knownAssets.TryGetValue(part.Mesh.Key, out string? actual) || actual != part.Mesh.Sha256)
                 throw new AttachmentSetDataException(AttachmentSetRefusal.MeshReferenceMissingOrHashMismatch, $"Attachment part {part.Id}: mesh '{part.Mesh.Key}' is missing or its SHA-256 differs.")
                 { PartId = part.Id, MeshKey = part.Mesh.Key, ExpectedHash = part.Mesh.Sha256, ActualHash = actual };
         }
+        AttachmentSetFootprint.CheckReference(Footprint, knownAssets);
     }
 
     internal static bool ValidHash(string? hash) => hash is { Length: 64 } && hash.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f');

@@ -92,6 +92,38 @@ public class LegacyDeltaServeReentrancyTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public void RetiringTheSlotDuringTheBorrowLeavesTheLentFrameIntact(bool reset)
+    {
+        using var server = new LegacyDeltaServeFixture(useShards: true, 1);
+        server.Tick();
+        server.Tick(); // Warm both projections before retiring the slot.
+        server.Observe = (slot, world, set, owner) =>
+        {
+            server.Transport.Observe = (_, frame, _) =>
+            {
+                byte[] original = frame.ToArray();
+                if (reset)
+                {
+                    server.Writer.SeedLegacySequenceForTest(int.MaxValue);
+                    server.Writer.ResetAfterLegacySequenceExhaustion();
+                    server.Writer.BeginTick();
+                }
+                else server.Writer.Forget(slot);
+
+                byte[] fresh = server.Writer.WriteFor(slot, world, set, owner);
+                Assert.Equal(-1, BinaryPrimitives.ReadInt32LittleEndian(fresh));
+                Assert.Equal(reset ? 1 : 3, BinaryPrimitives.ReadInt32LittleEndian(fresh.AsSpan(4)));
+                Assert.Equal(1, BinaryPrimitives.ReadInt32LittleEndian(fresh.AsSpan(12)));
+                Assert.True(frame.SequenceEqual(original));
+            };
+        };
+
+        server.Tick();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void OrdinarySessionSendDuringTheBorrowKeepsBothFramesIntact(bool sharded)
     {
         using var server = new LegacyDeltaServeFixture(sharded, 1);

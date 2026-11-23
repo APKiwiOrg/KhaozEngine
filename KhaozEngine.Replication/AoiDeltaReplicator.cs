@@ -78,6 +78,9 @@ public sealed class AoiDeltaReplicator
 
     internal int LegacyHistoryCount => captureByWorld.Count;
 
+    internal (WeakReference<Comps> Source, WeakReference<Comps>? Public, WeakReference<byte[]> Payload)
+        CaptureReferencesForTests(World world, long netId) => captureByWorld[world][netId].ReferencesForTests();
+
     internal LegacyDeltaAllocationProbe? LegacyAllocationsForTests { get; set; }
     internal void FailNextLegacyBodyCompletionForTests(Exception failure) =>
         legacyBodyFailureForTests = failure ?? throw new ArgumentNullException(nameof(failure));

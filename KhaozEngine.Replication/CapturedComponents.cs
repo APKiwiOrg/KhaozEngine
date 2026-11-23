@@ -91,6 +91,10 @@ internal sealed class CapturedComponents
     // replicator reads it from one thread.
     private CapturedComponents? publicView;
 
+    internal (WeakReference<CapturedComponents> Source, WeakReference<CapturedComponents>? Public,
+        WeakReference<byte[]> Payload) ReferencesForTests() =>
+        (new(this), publicView is null ? null : new(publicView), new(buffer.Bytes));
+
     /// <summary>
     /// This entity's components minus every <see cref="ReplicationChannels.OwnerOnly"/> one: exactly what any viewer
     /// other than the owner may see. Computed once per capture and shared across every non-owning client, so an

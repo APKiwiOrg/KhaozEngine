@@ -181,22 +181,25 @@ internal sealed class ChainWidthBounds(ChainWidthBounds.Pair[] pairs)
         float spacing = offset.Length();
         var (minimum, maximum) = _bands[index];
         bool stretching = spacing - minimum >= maximum - spacing;
-        if (stretching ? spacing < maximum - VelocityTolerance : spacing > minimum + VelocityTolerance)
+        float clearance = stretching ? maximum - spacing : spacing - minimum;
+        if (clearance >= VelocityTolerance)
             return;
 
+        // Ramp the stop from zero at the margin to a full stop at the band.
+        float strength = MathF.Min(1, (VelocityTolerance - clearance) / (VelocityTolerance - PositionTolerance));
         var rest = particles.RestPositions[pair.Second.Particle] - particles.RestPositions[pair.First.Particle];
         var axis = ChainMath.Direction(offset, ChainMath.Direction(rest, Vector3.UnitX));
-        StopEscape(particles, pair, axis, seconds, stretching);
+        StopEscape(particles, pair, axis, seconds, stretching, strength);
     }
 
-    private static void StopEscape(ChainParticles particles, in Pair pair, Vector3 axis, float seconds, bool stretching)
+    private static void StopEscape(ChainParticles particles, in Pair pair, Vector3 axis, float seconds, bool stretching, float strength)
     {
         var relative = WorldVelocity(particles, pair.Second, seconds) - WorldVelocity(particles, pair.First, seconds);
         float separating = Vector3.Dot(relative, axis);
         if (stretching ? separating <= 0 : separating >= 0)
             return;
 
-        var correction = separating * axis;
+        var correction = separating * strength * axis;
         if (!pair.First.Anchored)
             particles.Velocities[pair.First.Particle] += (pair.Second.Anchored ? 1 : 0.5f) * correction;
         if (!pair.Second.Anchored)

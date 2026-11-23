@@ -9,15 +9,20 @@ namespace KhaozEngine.Tests.Attachments;
 
 public sealed class ChainWidthRestTests(ITestOutputHelper output)
 {
-    [Fact]
-    public void Soft_bounded_cape_at_a_frozen_capsule_stops_moving()
+    [Theory]
+    [InlineData(5f, 9f, 1.1f, 4)]
+    [InlineData(7.5f, 5.5f, MathF.PI, 8)]
+    [InlineData(7.5f, 3.5f, MathF.PI, 8)]
+    public void Soft_bounded_cape_at_a_frozen_capsule_stops_moving(
+        float stiffness, float damping, float angleLimit, int settleSeconds)
     {
         // #1884: contact can keep a soft cape pressed against its width band after the pose stops.
+        // #1883: the lower damping rows also require rest with the bend limit disabled.
         const int stepsPerSecond = 128;
         const float stepSeconds = 1f / stepsPerSecond;
         var fixture = ChainSwingFixture.CreateRig(0.14f);
         var chains = fixture.Chains.Take(ChainSwingFixture.CapeChains)
-            .Select(chain => chain with { Settings = new ChainSettings(5, 9, 1, 1, 1.1f, 0.015f) }).ToArray();
+            .Select(chain => chain with { Settings = new ChainSettings(stiffness, damping, 1, 1, angleLimit, 0.015f) }).ToArray();
         var rig = new ChainRig(fixture.AnchorCount, chains, fixture.Links);
         var center = new Vector3(0.025f, -0.52f, -0.2f);
         ColliderCapsule[] colliders = [new(center, center, 0.15f)];
@@ -25,7 +30,7 @@ public sealed class ChainWidthRestTests(ITestOutputHelper output)
         var previous = new Vector3[chains.Length];
 
         At(0);
-        for (int step = 0; step < 4 * stepsPerSecond; step++)
+        for (int step = 0; step < settleSeconds * stepsPerSecond; step++)
             At(stepSeconds);
 
         float contactError = float.PositiveInfinity;

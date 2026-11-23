@@ -565,9 +565,10 @@ surface motion and bend limit turn account for the chain's carried rigid movemen
 the reaction at a bend limit. The first step, `Reset()`, a teleport or a long gap places the chain at rest
 with zero velocity and resets the grid. `Held` blends from the last displayed shape to rest without
 stepping physics. On resume, physics starts from the held shape with zero velocity on a fresh grid.
-The displayed joint frames blend from that shape toward the live solution over `HoldBlendSeconds`.
-Each frame continues from the last displayed shape, so an anchor turning through a half turn keeps a
-continuous blend. During the blend, display can still intersect a collider the live solution clears.
+The displayed joints blend from that shape toward the live solution over `HoldBlendSeconds`.
+During hold and resume, each joint's swing blends from the last displayed shape and its position follows
+its blended parent to keep the segment length. An anchor turning through a half turn keeps a continuous
+blend. During the blend, display can still intersect a collider the live solution clears.
 Use `MotionLevels.Assign` to select the nearest wearers within a range and budget, with ties in input order.
 
 Read `JointsFromAnchor` in rig joint order or call `ComposeJointWorlds` with the latest anchors and an

@@ -171,6 +171,59 @@ public sealed class ChainFixedStepTests(ITestOutputHelper output)
         Assert.InRange(Vector3.Distance(before, Tip(simulation)), 0.0001f, maximumTravel + 0.00001f);
     }
 
+    [Fact]
+    public void Holding_and_resuming_a_swung_chain_preserve_every_segment_length()
+    {
+        // #1883: blending positions independently shortens segments during a large swing.
+        var segment = -Vector3.UnitY;
+        var chain = Chain(segment, Settings with { Gravity = 0 },
+            Joint(Vector3.Zero), Joint(segment), Joint(segment));
+        var options = new ChainSimulationOptions { MaxStepSeconds = StepSeconds, HoldBlendSeconds = 8 * StepSeconds };
+        var simulation = new ChainSimulation(new ChainRig(1, [chain], []), 0, options);
+        var turned = Matrix4x4.CreateRotationZ(MathF.PI / 2);
+        var worlds = new Matrix4x4[3];
+
+        Step(simulation, 0);
+        At(turned, MotionLevel.Simulated);
+        At(turned, MotionLevel.Simulated);
+        Assert.True(Vector3.Distance(3 * segment, Tip(simulation)) > 2);
+        Assert.InRange(LargestLengthError(turned), 0, 0.00001f);
+
+        float heldError = 0;
+        for (int frame = 0; frame < 4; frame++)
+        {
+            At(turned, MotionLevel.Held);
+            heldError = MathF.Max(heldError, LargestLengthError(turned));
+        }
+        var held = Tip(simulation);
+
+        float resumedError = 0;
+        for (int frame = 0; frame < 8; frame++)
+        {
+            At(Matrix4x4.Identity, MotionLevel.Simulated);
+            resumedError = MathF.Max(resumedError, LargestLengthError(Matrix4x4.Identity));
+        }
+
+        Assert.True(Vector3.Distance(held, Tip(simulation)) > 0.1f);
+        output.WriteLine($"Largest segment length error: held {heldError:F9} m, resumed {resumedError:F9} m");
+        Assert.InRange(heldError, 0, 0.00001f);
+        Assert.InRange(resumedError, 0, 0.00001f);
+
+        void At(Matrix4x4 anchor, MotionLevel level) => simulation.Step([anchor], [], Matrix4x4.Identity, StepSeconds, level);
+
+        float LargestLengthError(Matrix4x4 anchor)
+        {
+            simulation.ComposeJointWorlds([anchor], worlds);
+            float maximum = 0;
+            for (int joint = 0; joint < worlds.Length; joint++)
+            {
+                var end = joint + 1 < worlds.Length ? worlds[joint + 1].Translation : Vector3.Transform(chain.Tip, worlds[joint]);
+                maximum = MathF.Max(maximum, MathF.Abs(Vector3.Distance(worlds[joint].Translation, end) - segment.Length()));
+            }
+            return maximum;
+        }
+    }
+
     private static int UnevenTicks(Random random, int frame) =>
         frame % 23 == 0 ? 69 : random.Next(5, 28);
 

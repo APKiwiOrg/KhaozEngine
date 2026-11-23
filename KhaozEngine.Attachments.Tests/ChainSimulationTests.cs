@@ -298,20 +298,25 @@ public class ChainSimulationTests
         Assert.InRange(Vector3.Dot(first, next), MathF.Cos(limit) - 0.00001f, 1.00001f);
     }
 
-    [Fact]
-    public void Trail_zero_follows_wearer_movement_and_full_trail_lags()
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void Trail_zero_follows_wearer_movement_and_full_trail_lags(int framesPerStep)
     {
+        // #1883: carry across a grid boundary starts at the previous step, including half-step frames.
         var settings = Settings with { Gravity = 0 };
         var carried = Create(Chain(-Vector3.UnitY, settings with { Trail = 0 }, Joint(Vector3.Zero)));
         var lagging = Create(Chain(-Vector3.UnitY, settings, Joint(Vector3.Zero)));
-        for (var frame = 0; frame <= 12; frame++)
+        for (int frame = 0; frame <= 12 * framesPerStep; frame++)
         {
-            var pose = Matrix4x4.CreateRotationZ(frame * 0.025f) * Matrix4x4.CreateTranslation(frame * 0.03f, 0, 0);
-            carried.Step([pose], [], pose, 1f / 120);
-            lagging.Step([pose], [], pose, 1f / 120);
+            float steps = (float)frame / framesPerStep;
+            var pose = Matrix4x4.CreateRotationZ(steps * 0.025f) * Matrix4x4.CreateTranslation(steps * 0.03f, 0, 0);
+            float seconds = frame == 0 ? 0 : carried.Options.MaxStepSeconds / framesPerStep;
+            carried.Step([pose], [], pose, seconds);
+            lagging.Step([pose], [], pose, seconds);
+            AssertNear(-Vector3.UnitY, Tip(carried));
         }
 
-        AssertNear(-Vector3.UnitY, Tip(carried));
         Assert.True(Tip(lagging).X < -0.2f);
     }
 
@@ -345,19 +350,26 @@ public class ChainSimulationTests
     [Fact]
     public void Resuming_during_the_hold_starts_from_the_blended_shape_with_no_velocity()
     {
-        var simulation = Create(Chain(-Vector3.UnitY, Settings with { Gravity = 0 },
-            Joint(Vector3.Zero), Joint(-Vector3.UnitY)));
+        const float step = 1f / 64;
+        var options = new ChainSimulationOptions { MaxStepSeconds = step, HoldBlendSeconds = 2 * step };
+        var settings = Settings with { Stiffness = 0, Damping = 0 };
+        var chain = Chain(Vector3.UnitX, settings, Joint(Vector3.Zero));
+        var simulation = new ChainSimulation(new ChainRig(1, [chain], []), 0, options);
+
+        // Give the tip speed before holding, then remove gravity to isolate the resume state.
         Step(simulation, 0);
-        var pose = Matrix4x4.CreateTranslation(1, 0, 0);
-        simulation.Step([pose], [], pose, 1f / 120);
-        simulation.Step([pose], [], pose, 1f / 120);
+        for (int frame = 0; frame < 18; frame++)
+            Step(simulation, step);
         var simulated = Tip(simulation);
-        simulation.Step([pose], [], pose, 1f / 8, MotionLevel.Held);
+        simulation.Tune(0, settings with { Gravity = 0 });
+        simulation.Step([Matrix4x4.Identity], [], Matrix4x4.Identity, step, MotionLevel.Held);
         var held = Tip(simulation);
         Assert.True(Vector3.Distance(simulated, held) > 0.1f);
-        Assert.True(Vector3.Distance(-2 * Vector3.UnitY, held) > 0.1f);
+        Assert.True(Vector3.Distance(Vector3.UnitX, held) > 0.1f);
 
-        simulation.Step([pose], [], pose, 1f / 120);
+        Step(simulation, step);
+        // The second boundary ends the blend and displays the first simulated sample.
+        Step(simulation, step);
         AssertNear(held, Tip(simulation));
     }
 

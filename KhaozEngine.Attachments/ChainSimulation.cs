@@ -41,7 +41,7 @@ public sealed class ChainSimulation
         Options = options;
         _particles = new ChainParticles(rig);
         _links = new ChainLinks(rig);
-        _blend = new ChainPresentationBlend(rig.JointCount);
+        _blend = new ChainPresentationBlend(rig);
         _stepPresentation = new ChainStepPresentation(rig.JointCount);
         _clock = new ChainStepClock(options.MaxStepSeconds, options.MaxStepsPerFrame);
         _settings = new ChainSettings[rig.Chains.Count];
@@ -91,7 +91,7 @@ public sealed class ChainSimulation
             _resuming = false;
             if (!_held)
                 _blend.Begin();
-            _blend.Advance(_jointsFromAnchor, Rig.RestFromAnchor, deltaSeconds, Options.HoldBlendSeconds);
+            _blend.Advance(_jointsFromAnchor, anchorWorlds, _anchorInverses, deltaSeconds, Options.HoldBlendSeconds, toRest: true);
         }
         else
         {
@@ -108,7 +108,8 @@ public sealed class ChainSimulation
             if (_resuming)
             {
                 _stepPresentation.Show(_clock.Interpolation, _blend.LiveTarget);
-                _resuming = _blend.Advance(_jointsFromAnchor, _blend.LiveTarget, deltaSeconds, Options.HoldBlendSeconds);
+                _resuming = _blend.Advance(_jointsFromAnchor, anchorWorlds, _anchorInverses,
+                    deltaSeconds, Options.HoldBlendSeconds, toRest: false);
             }
             else
                 _stepPresentation.Show(_clock.Interpolation, _jointsFromAnchor);

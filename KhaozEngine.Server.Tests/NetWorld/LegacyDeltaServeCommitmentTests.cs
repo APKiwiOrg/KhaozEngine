@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using KhaozEngine.Ecs;
 using KhaozEngine.Netcode;
+using KhaozEngine.NetWorld;
 using KhaozEngine.Replication;
 using Xunit;
 using static KhaozEngine.Tests.NetWorld.LegacyDeltaServeFixture;
@@ -45,23 +46,52 @@ public class LegacyDeltaServeCommitmentTests
             interest.UnionWith(set);
         };
 
+        void AssertNextBaseline()
+        {
+            // This writer-only probe observes the immediate commitment. An undelivered frame needs a fresh receiver.
+            server.Writer.BeginTick();
+            byte[] next = server.Writer.WriteFor(slot, Assert.IsType<World>(servedWorld), interest, owner);
+            Assert.Equal(failure == Failure.Body ? 1 : 2, BinaryPrimitives.ReadInt32LittleEndian(next));
+            Assert.Equal(3, BinaryPrimitives.ReadInt32LittleEndian(next.AsSpan(4)));
+            Assert.Contains(actorId, interest);
+            Assert.Equal(failure == Failure.Body ? 1 : 0, BinaryPrimitives.ReadInt32LittleEndian(next.AsSpan(12)));
+        }
+
+        observed = null;
+        world.Set(actor, new Payload(2));
+        if (failure == Failure.MissingSlot)
+        {
+            bool servedFromMessage = false;
+            server.OnGameMessage((_, _, _) =>
+            {
+                // NetServer already detached the connection while polling, but the host has yet to drain Left.
+                server.Tick();
+                Assert.Null(observed);
+                AssertNextBaseline();
+                servedFromMessage = true;
+            });
+            Seat seat = server.Clients[0];
+            seat.Send(MoveProtocol.EncodeGameMessage(1, new byte[] { 91 }));
+            server.Disconnect(seat);
+            server.Poll();
+            Assert.True(servedFromMessage);
+            return;
+        }
+
         var fault = new IOException();
         switch (failure)
         {
             case Failure.Body:
                 server.Writer.BeforeLegacyBodyCompletedForTests = () => throw fault;
                 break;
-            case Failure.MissingSlot:
             case Failure.SilentDrop:
-                server.Disconnect(server.Clients[0], readInSessionLayer: failure == Failure.MissingSlot);
+                server.Disconnect(server.Clients[0]);
                 break;
             case Failure.ThrowingTransport:
                 server.Transport.Observe = (_, _, _) => throw fault;
                 break;
         }
 
-        observed = null;
-        world.Set(actor, new Payload(2));
         Exception? raised = Record.Exception(server.Tick);
         if (failure is Failure.Body or Failure.ThrowingTransport) Assert.Same(fault, raised);
         else Assert.Null(raised);
@@ -76,14 +106,7 @@ public class LegacyDeltaServeCommitmentTests
         else Assert.Null(observed);
 
         server.Writer.BeforeLegacyBodyCompletedForTests = null;
-        // Read which projection the failed serve left behind. This is a writer-only probe.
-        // A receiver that missed an already committed delta would need a new world and view.
-        server.Writer.BeginTick();
-        byte[] next = server.Writer.WriteFor(slot, Assert.IsType<World>(servedWorld), interest, owner);
-        Assert.Equal(failure == Failure.Body ? 1 : 2, BinaryPrimitives.ReadInt32LittleEndian(next));
-        Assert.Equal(3, BinaryPrimitives.ReadInt32LittleEndian(next.AsSpan(4)));
-        Assert.Contains(actorId, interest);
-        Assert.Equal(failure == Failure.Body ? 1 : 0, BinaryPrimitives.ReadInt32LittleEndian(next.AsSpan(12)));
+        AssertNextBaseline();
     }
 
     private static int Sequence(byte[] frame) => BinaryPrimitives.ReadInt32LittleEndian(frame.AsSpan(18));

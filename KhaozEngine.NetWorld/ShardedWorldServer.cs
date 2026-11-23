@@ -588,9 +588,12 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
             if (replication.Serve(slot, world, interestScratch, netId, lastAckBySlot[slot])) continue;   // format 2 owns it
             if (deltaReplicator is not null && deltaCapableSlots.Contains(slot))
             {
+                LegacyDeltaAllocationProbe? probe = deltaReplicator.LegacyAllocationsForTests;
+                long serveStart = LegacyDeltaAllocationProbe.Start(probe);
                 Span<byte> delta = legacyFrames.Build(deltaReplicator, slot, world, interestScratch, netId);
                 LegacyDeltaFrameSender.Send(net, deltaReplicator, slot, delta, netId, lastAckBySlot[slot],
                     tickedSlots.Contains(slot) ? ServerTick : null);
+                probe?.Record(LegacyDeltaPhase.Serve, serveStart);
                 continue;
             }
             byte[] body = host.SnapshotForClient(slot, world, interestScratch, serveEpoch);

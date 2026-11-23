@@ -23,16 +23,19 @@ internal sealed class LegacyDeltaServeFixture : IDisposable
     private readonly WorldServer? flat;
     private readonly ShardedWorldServer? sharded;
 
-    internal LegacyDeltaServeFixture(bool useShards, int sessions, Func<int, long, bool>? visible = null)
+    internal LegacyDeltaServeFixture(bool useShards, int sessions, Func<int, long, bool>? visible = null,
+        bool legacy = true, bool allTicked = false, long firstNetId = 1, long previousTick = 0,
+        Action? onPayloadCapture = null)
     {
         Transport = new LegacyDeltaServeTransport(hub.Server);
         Registry.Register<Secret>(SecretType, static (s, bw) => bw.Write(s.Value),
             static br => new Secret(br.ReadInt32()), channels: ReplicationChannels.Replicate | ReplicationChannels.OwnerOnly);
-        Registry.Register<Payload>(PayloadType, static (p, bw) =>
+        Action<Payload, System.IO.BinaryWriter> writePayload = onPayloadCapture is null ? WritePayload : (p, bw) =>
         {
-            bw.Write(p.Words);
-            for (int i = 0; i < p.Words; i++) bw.Write(p.Value);
-        }, static br =>
+            onPayloadCapture();
+            WritePayload(p, bw);
+        };
+        Registry.Register(PayloadType, writePayload, static br =>
         {
             int words = br.ReadInt32();
             int value = 0;
@@ -59,11 +62,18 @@ internal sealed class LegacyDeltaServeFixture : IDisposable
                 },
                 static (_, _) => 0f, MoveTuning.Default, registry: Registry);
 
+        if (firstNetId != 1 || previousTick != 0)
+        {
+            if (flat is not null) flat.SeedLegacyHeaderForTests(firstNetId, previousTick);
+            else sharded!.SeedLegacyHeaderForTests(firstNetId, previousTick);
+        }
+
         Clients = new Seat[sessions];
         for (int i = 0; i < sessions; i++)
         {
             INetTransport endpoint = hub.CreateClient();
-            Clients[i] = new Seat(endpoint, new NetClient(endpoint, TestHandshake.Wire($"viewer{i}")), (i & 1) != 0);
+            Clients[i] = new Seat(endpoint, new NetClient(endpoint, TestHandshake.Wire($"viewer{i}")),
+                new NetConnectionId(i + 1), allTicked || (i & 1) != 0);
             Clients[i].Net.Poll();
         }
 
@@ -72,13 +82,19 @@ internal sealed class LegacyDeltaServeFixture : IDisposable
         {
             seat.Drain();
             Assert.True(seat.Net.Slot >= 0);
-            seat.Send(MoveProtocol.EncodeClientControl(MoveProtocol.ClientControlKind.DeltaCapable));
+            if (legacy) seat.Send(MoveProtocol.EncodeClientControl(MoveProtocol.ClientControlKind.DeltaCapable));
             if (seat.Ticked) seat.Send(MoveProtocol.EncodeClientControl(MoveProtocol.ClientControlKind.ServerTickCapable));
         }
         Poll();
     }
 
-    internal sealed record Seat(INetTransport Endpoint, NetClient Net, bool Ticked)
+    private static void WritePayload(Payload payload, System.IO.BinaryWriter writer)
+    {
+        writer.Write(payload.Words);
+        for (int i = 0; i < payload.Words; i++) writer.Write(payload.Value);
+    }
+
+    internal sealed record Seat(INetTransport Endpoint, NetClient Net, NetConnectionId Connection, bool Ticked)
     {
         internal void Send(byte[] payload) => Net.Send(payload, NetChannelReliability.ReliableOrdered);
 
@@ -116,12 +132,41 @@ internal sealed class LegacyDeltaServeFixture : IDisposable
         else sharded!.Tick(Dt);
     }
 
-    internal void Disconnect(Seat seat, bool readInSessionLayer)
+    internal void AfterTick(Action action)
     {
-        hub.DisconnectClient(seat.Endpoint);
-        if (!readInSessionLayer) return;
-        if (flat is not null) flat.PollLegacySessionForTests();
-        else sharded!.PollLegacySessionForTests();
+        void Once(float _)
+        {
+            if (flat is not null) flat.OnAfterTick -= Once;
+            else sharded!.OnAfterTick -= Once;
+            action();
+        }
+
+        if (flat is not null) flat.OnAfterTick += Once;
+        else sharded!.OnAfterTick += Once;
+    }
+
+    internal void OnGameMessage(ServerGameMessageHandler action)
+    {
+        if (flat is not null) flat.OnGameMessage += action;
+        else sharded!.OnGameMessage += action;
+    }
+
+    internal void SendOrdinaryMessage(int slot)
+    {
+        if (flat is not null)
+            flat.SendGameMessageTo(slot, 1, new byte[] { 53, 71 }, NetChannelReliability.ReliableOrdered);
+        else
+            sharded!.SendGameMessageTo(slot, 1, new byte[] { 53, 71 }, NetChannelReliability.ReliableOrdered);
+    }
+
+    internal void Disconnect(Seat seat) => hub.DisconnectClient(seat.Endpoint);
+
+    internal long OwnerOf(Seat seat)
+    {
+        bool found = flat is not null ? flat.TryGetPlayerNetId(seat.Net.Slot, out long id)
+            : sharded!.TryGetPlayerNetId(seat.Net.Slot, out id);
+        Assert.True(found);
+        return id;
     }
 
     internal (World World, Entity Entity) Spawn(Payload payload)
@@ -140,9 +185,7 @@ internal sealed class LegacyDeltaServeFixture : IDisposable
 
     internal void SetPlayerSecret(Seat seat, int secret)
     {
-        bool found = flat is not null ? flat.TryGetPlayerNetId(seat.Net.Slot, out long id)
-            : sharded!.TryGetPlayerNetId(seat.Net.Slot, out id);
-        Assert.True(found);
+        long id = OwnerOf(seat);
         if (flat is not null)
         {
             Entity entity = DeltaReliabilityRig.FindEntity(flat.World, id);
@@ -169,16 +212,18 @@ internal sealed class LegacyDeltaServeTransport(INetTransport inner) : INetTrans
     internal delegate void ObserveSend(NetConnectionId target, ReadOnlySpan<byte> frame, NetChannelReliability reliability);
 
     internal ObserveSend? Observe { get; set; }
+    internal ObserveSend? ObserveAll { get; set; }
     internal bool Meter { get; set; }
     internal long TransportBytes { get; set; }
 
     public void Send(NetConnectionId target, ReadOnlySpan<byte> payload, NetChannelReliability reliability)
     {
-        if (payload.Length > 1 && payload[0] == (byte)SessionOpcode.Data
-            && payload[1] is (byte)MoveProtocol.ServerFrameKind.Delta or (byte)MoveProtocol.ServerFrameKind.TickedDelta)
-            Observe?.Invoke(target, payload, reliability);
+        ObserveAll?.Invoke(target, payload, reliability);
+        bool legacy = payload.Length > 1 && payload[0] == (byte)SessionOpcode.Data
+            && payload[1] is (byte)MoveProtocol.ServerFrameKind.Delta or (byte)MoveProtocol.ServerFrameKind.TickedDelta;
+        if (legacy) Observe?.Invoke(target, payload, reliability);
 
-        if (Meter)
+        if (Meter && legacy)
         {
             long start = GC.GetAllocatedBytesForCurrentThread();
             inner.Send(target, payload, reliability);

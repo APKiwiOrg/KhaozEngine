@@ -589,9 +589,12 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
             if (replication.Serve(slot, world, set, netId, lastAckBySlot[slot])) continue;   // format 2 owns it
             if (deltaReplicator is not null && deltaCapableSlots.Contains(slot))
             {
+                LegacyDeltaAllocationProbe? probe = deltaReplicator.LegacyAllocationsForTests;
+                long serveStart = LegacyDeltaAllocationProbe.Start(probe);
                 Span<byte> delta = legacyFrames.Build(deltaReplicator, slot, world, set, netId);
                 LegacyDeltaFrameSender.Send(net, deltaReplicator, slot, delta, netId, lastAckBySlot[slot],
                     tickedSlots.Contains(slot) ? ServerTick : null);
+                probe?.Record(LegacyDeltaPhase.Serve, serveStart);
                 continue;
             }
             // Indexed path: resolves the interest set off a netId -> entity index without a per-viewer world scan.

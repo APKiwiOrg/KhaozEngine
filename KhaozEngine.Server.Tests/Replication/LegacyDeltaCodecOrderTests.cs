@@ -42,6 +42,22 @@ public class LegacyDeltaCodecOrderTests
             Assert.Equal((ushort)0, full.ReadUInt16());
         }
 
+        world.Set(entity, new First(33));
+        world.Set(entity, new Second(44));
+        writer.BeginTick();
+        using (var changed = new BinaryReader(new MemoryStream(writer.WriteFor(0, world, interest))))
+        {
+            changed.BaseStream.Position = 25;
+            Assert.Equal(0, changed.ReadInt32());
+            Assert.Equal(first, changed.ReadUInt16());
+            Assert.Equal(4, changed.Read7BitEncodedInt());
+            Assert.Equal(33, changed.ReadInt32());
+            Assert.Equal(second, changed.ReadUInt16());
+            Assert.Equal(4, changed.Read7BitEncodedInt());
+            Assert.Equal(44, changed.ReadInt32());
+            Assert.Equal((ushort)0, changed.ReadUInt16());
+        }
+
         world.Remove<First>(entity);
         world.Remove<Second>(entity);
         writer.BeginTick();

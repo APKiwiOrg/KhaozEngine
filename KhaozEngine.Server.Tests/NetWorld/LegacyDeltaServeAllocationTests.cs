@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using KhaozEngine.Ecs;
 using KhaozEngine.Replication;
 using Xunit;
@@ -34,22 +35,65 @@ public class LegacyDeltaServeAllocationTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void ACompletedSmallTickReleasesAnOversizeOutlierBuffer()
+    public void AlternatingLargeAndSmallFramesStayWarm()
     {
         using var rig = new Workload(sharded: true, sessions: 8);
-        const int oversizeWords = 20 * 1024;
+        const int largeWords = 20 * 1024;
         for (int i = 0; i < WarmTicks; i++) rig.Tick();
+        rig.Tick(largeWords);
 
-        _ = AllocationMeasurement.Measure("oversize served frame", () => rig.Tick(oversizeWords));
+        long largest = 0;
+        _ = AllocationMeasurement.Measure("alternating large and small served frames", () =>
+        {
+            for (int i = 0; i < 8; i++)
+            {
+                rig.Tick(i % 2 == 0 ? 4 : largeWords);
+                largest = Math.Max(largest, Math.Abs(rig.EngineBytes));
+            }
+        }, budget: 16L * 1024 * 1024);
+        Assert.Equal(0, largest);
+    }
+
+    [Fact]
+    public void SustainedSmallFramesReleaseAnOversizeOutlierBuffer()
+    {
+        using var rig = new Workload(sharded: true, sessions: 8);
+        const int largeWords = 20 * 1024;
+        for (int i = 0; i < WarmTicks; i++) rig.Tick();
+        _ = AllocationMeasurement.Measure("oversize served frame", () => rig.Tick(largeWords));
         Assert.True(rig.EngineBytes > 0);
-        _ = AllocationMeasurement.Measure("small tick after oversize frame", () => rig.Tick());
-        Assert.Equal(0, rig.EngineBytes);
 
-        // Rewarm the moderate capacity once the outlier is released, then verify that the same outlier needs growth.
-        rig.Tick();
+        // The first small tick cannot evict the buffer. Continued small work eventually does.
+        _ = AllocationMeasurement.Measure("first two small ticks after the outlier", () =>
+        {
+            rig.Tick();
+            long first = rig.EngineBytes;
+            rig.Tick();
+            Assert.Equal(0, first + rig.EngineBytes);
+        });
+        for (int i = 0; i < WarmTicks; i++) rig.Tick();
         MeasureFixedFrames(rig, "small after release");
-        _ = AllocationMeasurement.Measure("oversize served frame after release", () => rig.Tick(oversizeWords));
+
+        _ = AllocationMeasurement.Measure("oversize served frame after release", () => rig.Tick(largeWords));
         Assert.True(rig.EngineBytes > 0);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void TheNextTickAfterAFailedBuildOrSendUsesTheWarmBuffer(bool sharded, bool bodyFailure)
+    {
+        using var rig = new Workload(sharded, 1);
+        for (int i = 0; i < WarmTicks; i++) rig.Tick();
+        var fault = new IOException();
+
+        Assert.Same(fault, Record.Exception(() => rig.FaultOneTick(fault, bodyFailure)));
+        AllocationMeasurement.Measure("next serve after an exception", () => rig.Tick());
+
+        Assert.True(rig.LoopbackBytes > 0);
+        Assert.Equal(0, rig.EngineBytes);
     }
 
     [Theory]
@@ -86,7 +130,7 @@ public class LegacyDeltaServeAllocationTests(ITestOutputHelper output)
             for (int i = 0; i < MeasuredTicks; i++)
             {
                 rig.Tick(words);
-                most = Math.Max(most, rig.EngineBytes);
+                most = Math.Max(most, Math.Abs(rig.EngineBytes));
             }
         }, budget: 32L * 1024 * 1024);
         Assert.Equal(0, most);
@@ -110,7 +154,30 @@ public class LegacyDeltaServeAllocationTests(ITestOutputHelper output)
         internal LegacyDeltaAllocationProbe Probe { get; } = new();
         internal long LoopbackBytes => server.Transport.TransportBytes;
         internal long EngineSendBytes => Probe[LegacyDeltaPhase.Send] - LoopbackBytes;
-        internal long EngineBytes => Probe[LegacyDeltaPhase.Body] + Probe[LegacyDeltaPhase.Framing] + EngineSendBytes;
+        internal long EngineBytes => Probe[LegacyDeltaPhase.Serve] - Probe[LegacyDeltaPhase.Capture]
+            - Probe[LegacyDeltaPhase.Projection] - LoopbackBytes;
+
+        internal void FaultOneTick(Exception fault, bool bodyFailure)
+        {
+            if (bodyFailure)
+            {
+                server.Writer.BeforeLegacyBodyCompletedForTests = () =>
+                {
+                    server.Writer.BeforeLegacyBodyCompletedForTests = null;
+                    throw fault;
+                };
+            }
+            else
+            {
+                server.Transport.Observe = (_, _, _) =>
+                {
+                    server.Transport.Observe = null;
+                    throw fault;
+                };
+            }
+
+            Tick();
+        }
 
         internal void Tick(int words = 4)
         {

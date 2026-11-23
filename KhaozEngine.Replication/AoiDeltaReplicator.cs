@@ -81,6 +81,9 @@ public sealed class AoiDeltaReplicator
 
     internal int LegacyHistoryCount => captureByWorld.Count;
 
+    internal LegacyDeltaAllocationProbe? LegacyAllocationsForTests { get; set; }
+    internal Action? BeforeLegacyBodyCompletedForTests { get; set; }
+
     /// <summary>Creates an area-of-interest legacy delta writer.</summary>
     /// <param name="registry">The replicated component registry.</param>
     /// <param name="historyDepth">Kept for source compatibility and still validated as positive. The legacy diff
@@ -179,8 +182,14 @@ public sealed class AoiDeltaReplicator
         // each entity's components filtered to the Replicate channel owner-scoped to this slot. An OwnerOnly component
         // on another player's entity is stripped here (never sent), so this slot's state holds only what it was
         // actually sent and owner-only visibility falls out of the diff.
+        LegacyDeltaAllocationProbe? probe = LegacyAllocationsForTests;
+        long phaseStart = LegacyDeltaAllocationProbe.Start(probe);
         AoiBaseline capture = CaptureFor(world);
+        probe?.Record(LegacyDeltaPhase.Capture, phaseStart);
+        phaseStart = LegacyDeltaAllocationProbe.Start(probe);
         AoiBaseline projected = Project(capture, interestSet, ownerNetId);
+        probe?.Record(LegacyDeltaPhase.Projection, phaseStart);
+        phaseStart = LegacyDeltaAllocationProbe.Start(probe);
 
         LegacyDeltaSlot? previous = slots.GetValueOrDefault(slot);
         AoiBaseline? baseline = previous?.Projection;
@@ -214,11 +223,13 @@ public sealed class AoiDeltaReplicator
             DeltaEncoding.WriteChangedEntity(bw, registry, netId, isNew, isNew ? null : baseline![netId], projected[netId]);
         }
 
+        BeforeLegacyBodyCompletedForTests?.Invoke();
         bw.Flush();
         byte[] payload = wireStream.ToArray(); // fresh exact-size array, the caller owns it
         // Only a completely built payload becomes the slot's last sent state.
         if (previous is null) slots[slot] = new LegacyDeltaSlot(currentSeq, projected);
         else previous.Sent(currentSeq, projected);
+        probe?.Record(LegacyDeltaPhase.Body, phaseStart);
         return payload;
     }
 

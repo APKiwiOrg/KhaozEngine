@@ -587,21 +587,27 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
             World world = host.HomeInterest(slot, config.InterestRadius, interestScratch, serveEpoch);
             InterestVisibility.Filter(interestScratch, slot, netId, config.EntityVisibleToSlot);
             if (replication.Serve(slot, world, interestScratch, netId, lastAckBySlot[slot])) continue;   // format 2 owns it
+            LegacyDeltaAllocationProbe? probe = null;
             if (deltaReplicator is not null && deltaCapableSlots.Contains(slot))
             {
                 // Owner-scope the Replicate channel to this client's own player (netId is stable across handoff), so an
                 // OwnerOnly component is served only on the client's own entity, never on another player it observes.
                 body = deltaReplicator.WriteFor(slot, world, interestScratch, netId);
                 kind = MoveProtocol.ServerFrameKind.Delta;
+                probe = deltaReplicator.LegacyAllocationsForTests;
             }
             else
             {
                 body = host.SnapshotForClient(slot, world, interestScratch, serveEpoch);
                 kind = MoveProtocol.ServerFrameKind.Snapshot;
             }
+            long phaseStart = LegacyDeltaAllocationProbe.Start(probe);
             (kind, byte[] frame) = ServedFrame(slot, kind, netId, lastAckBySlot[slot], body);
             byte[] envelope = MoveProtocol.EncodeServerFrame(kind, frame);
+            probe?.Record(LegacyDeltaPhase.Framing, phaseStart);
+            phaseStart = LegacyDeltaAllocationProbe.Start(probe);
             net.SendTo(slot, envelope, NetChannelReliability.ReliableOrdered);
+            probe?.Record(LegacyDeltaPhase.Send, phaseStart);
         }
         replication.EndServe();
 

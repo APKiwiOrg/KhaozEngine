@@ -588,12 +588,14 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
             if (replication.Serve(slot, world, set, netId, lastAckBySlot[slot])) continue;   // format 2 owns it
             MoveProtocol.ServerFrameKind kind;
             byte[] body;
+            LegacyDeltaAllocationProbe? probe = null;
             if (deltaReplicator is not null && deltaCapableSlots.Contains(slot))
             {
                 // Owner-scope the Replicate channel to this client's own player, so an OwnerOnly component is served
                 // only on the client's own entity, never on another player it observes.
                 body = deltaReplicator.WriteFor(slot, world, set, netId);
                 kind = MoveProtocol.ServerFrameKind.Delta;
+                probe = deltaReplicator.LegacyAllocationsForTests;
             }
             else
             {
@@ -605,9 +607,13 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
                 body = SnapshotWriter.WriteFiltered(snapshotIndex, snapshotScratch, world, registry, set, ReplicationChannels.Replicate, netId);
                 kind = MoveProtocol.ServerFrameKind.Snapshot;
             }
+            long phaseStart = LegacyDeltaAllocationProbe.Start(probe);
             (kind, byte[] frame) = ServedFrame(slot, kind, netId, lastAckBySlot[slot], body);
             byte[] envelope = MoveProtocol.EncodeServerFrame(kind, frame);
+            probe?.Record(LegacyDeltaPhase.Framing, phaseStart);
+            phaseStart = LegacyDeltaAllocationProbe.Start(probe);
             net.SendTo(slot, envelope, NetChannelReliability.ReliableOrdered);
+            probe?.Record(LegacyDeltaPhase.Send, phaseStart);
         }
         replication.EndServe();
 

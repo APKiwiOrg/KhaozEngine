@@ -138,13 +138,14 @@ internal sealed class CapturedComponents
 /// Reusable scratch that captures a world's <see cref="ReplicationChannels.Replicate"/>-channel components into one
 /// consolidated <see cref="CaptureBuffer"/> per capture, keyed per entity by <see cref="NetId"/>. The scratch stream
 /// is reused across ticks (its capacity is retained), so a steady-state capture allocates only the final exact-size
-/// buffer plus the per-entity <see cref="CapturedComponents"/> - never a <c>byte[]</c> per component. Single-threaded:
-/// a replicator instance owns one scratch and drives it on its own server-tick thread, so there is no locking.
+/// buffer plus the per-entity <see cref="CapturedComponents"/> - never a <c>byte[]</c> per component. An instance
+/// runs on the writer's server-tick thread. A nested scan takes its own scratch stream.
 /// </summary>
 internal sealed class CaptureScratch
 {
     private readonly MemoryStream stream = new();
     private readonly BinaryWriter writer;
+    private bool inUse;
 
     public CaptureScratch() => writer = new BinaryWriter(stream);
 
@@ -156,6 +157,16 @@ internal sealed class CaptureScratch
     /// non-owning client at projection time.
     /// </summary>
     public Dictionary<long, CapturedComponents> CaptureReplicate(World world, ReplicationRegistry registry)
+    {
+        // A codec can reenter this writer while the stream holds earlier entity bytes.
+        if (inUse) return new CaptureScratch().Scan(world, registry);
+
+        inUse = true;
+        try { return Scan(world, registry); }
+        finally { inUse = false; }
+    }
+
+    private Dictionary<long, CapturedComponents> Scan(World world, ReplicationRegistry registry)
     {
         int replicateCount = 0;
         IReadOnlyList<ComponentCodec> codecs = registry.Ordered;

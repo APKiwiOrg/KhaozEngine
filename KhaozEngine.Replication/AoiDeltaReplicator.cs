@@ -226,8 +226,8 @@ public sealed class AoiDeltaReplicator
         ulong generation = resetGeneration;
         LegacyDeltaAllocationProbe? probe = LegacyAllocationsForTests;
         long phaseStart = LegacyDeltaAllocationProbe.Start(probe);
-        AoiBaseline capture = CaptureFor(world, out bool cacheHit);
-        probe?.Record(cacheHit ? LegacyDeltaPhase.CaptureCacheHit : LegacyDeltaPhase.Capture, phaseStart);
+        AoiBaseline capture = CaptureFor(world, out bool cacheHit, probe);
+        if (cacheHit) probe?.Record(LegacyDeltaPhase.CaptureCacheHit, phaseStart);
 
         phaseStart = LegacyDeltaAllocationProbe.Start(probe);
         bool recycle = ReferenceEquals(destination, wire);
@@ -268,7 +268,7 @@ public sealed class AoiDeltaReplicator
     /// every later <see cref="WriteFor"/> in the same tick. Insertion order is the world's <c>ForEach</c> order, which
     /// the per-client projection preserves so the changed-entity wire order is unchanged.
     /// </summary>
-    private AoiBaseline CaptureFor(World world, out bool cacheHit)
+    private AoiBaseline CaptureFor(World world, out bool cacheHit, LegacyDeltaAllocationProbe? probe = null)
     {
         if (captureSeq != currentSeq)
         {
@@ -287,7 +287,9 @@ public sealed class AoiDeltaReplicator
         // again or forgotten - each capture's payload buffer is a fresh array, so it is never reused while a slot
         // still references it.
         ulong generation = resetGeneration;
+        long scanStart = LegacyDeltaAllocationProbe.Start(probe);
         AoiBaseline state = captureScratch.CaptureReplicate(world, registry);
+        probe?.Record(LegacyDeltaPhase.Capture, scanStart);
         // Codecs can reset the writer during capture. Keep that scan out of the new generation's cache.
         ThrowIfReset(generation);
         captureByWorld[world] = state;

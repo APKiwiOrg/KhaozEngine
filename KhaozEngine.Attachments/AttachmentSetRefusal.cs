@@ -182,4 +182,13 @@ public enum AttachmentSetRefusal
 
     /// <summary>Refuses non-finite lift clearance or clearance outside zero to 0.05 metres, identifying the part and its input index.</summary>
     LiftClearanceOutOfRange,
+
+    /// <summary>Refuses a part's link stretch unless it is finite, greater than zero and at most one.</summary>
+    LinkStretchOutOfRange,
+
+    /// <summary>Refuses a link stretch bound on a part that has no links.</summary>
+    LinkStretchWithoutLinks,
+
+    /// <summary>Refuses a rig link stretch bound on an individual link in a set definition.</summary>
+    ChainLinkStretchInDefinition,
 }

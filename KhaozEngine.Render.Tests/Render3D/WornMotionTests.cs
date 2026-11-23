@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
@@ -261,6 +262,28 @@ public sealed class WornMotionTests
         Assert.Throws<ArgumentOutOfRangeException>(() => noChain.Tune(0, ChainPartId, 0, FallSettings));
         Assert.Throws<ArgumentOutOfRangeException>(() => motion.Tune(2, ChainPartId, 0, FallSettings));
         Assert.Throws<ArgumentOutOfRangeException>(() => motion.Tune(1, ChainPartId, 1, FallSettings));
+    }
+
+    [Fact]
+    public void Motion_binding_copies_link_stretch_only_to_links_of_the_declaring_part()
+    {
+        using var rig = new OutfitRig();
+        AttachmentMeshRef mesh = rig.Source.Mesh("linked.glb", SkinnedAttachmentGlbFixture.LinkedChains().Build());
+        var motion = new ChainMotionDefinition(
+            [new(["left0"], Vector3.UnitX, FallSettings), new(["right0"], Vector3.UnitX, FallSettings),
+                new(["rear0"], Vector3.UnitX, FallSettings)],
+            [new(0, 1), new(1, 2)]) { LinkStretch = .25f };
+        var bounded = new SkinnedAttachmentPartDefinition(1, mesh) { Regions = [new("alpha", 1)], Motion = motion };
+        var unbounded = bounded with { Id = 2, Motion = motion with { LinkStretch = null } };
+        BoundAttachmentSet set = rig.Wear("linked.json", new([bounded, unbounded], AttachmentLayer.Garment, []));
+
+        IReadOnlyList<ChainLink> links = set.CreateMotion(null).RigLinksForTests;
+
+        Assert.Equal(4, links.Count);
+        Assert.Contains(new ChainLink(0, 1) { Stretch = .25f }, links);
+        Assert.Contains(new ChainLink(1, 2) { Stretch = .25f }, links);
+        Assert.Contains(new ChainLink(3, 4), links);
+        Assert.Contains(new ChainLink(4, 5), links);
     }
 
     [Fact]

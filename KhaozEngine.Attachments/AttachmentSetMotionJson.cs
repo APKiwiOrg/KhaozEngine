@@ -33,7 +33,7 @@ internal static class AttachmentSetMotionJson
             new AttachmentSetDataException(AttachmentSetJson.StrictReason(fault), message) { JsonPath = jsonPath, PropertyName = property, ColliderIndex = index };
     }
 
-    internal static PartMotionDefinition? ReadMotion(JsonElement part, uint partId, int partIndex)
+    internal static PartMotionDefinition? ReadMotion(JsonElement part, uint partId, int partIndex, bool linkStretchFormat)
     {
         if (!part.TryGetProperty("motion", out JsonElement motion)) return null;
         string path = AttachmentSetMotion.MotionPath(partIndex);
@@ -54,7 +54,8 @@ internal static class AttachmentSetMotionJson
             throw new AttachmentSetDataException(AttachmentSetRefusal.MotionKindUnsupported, $"{path}: unsupported motion kind '{kind}'.")
             { JsonPath = path + ".kind", PartId = partId, PartIndex = partIndex, Kind = kind };
 
-        StrictAttachmentJson.Members(motion, path, Refuse, "kind", "chains", "links");
+        StrictAttachmentJson.Members(motion, path, Refuse,
+            linkStretchFormat ? ["kind", "chains", "links", "linkStretch"] : ["kind", "chains", "links"]);
         JsonElement chains = StrictAttachmentJson.ArrayValue(
             StrictAttachmentJson.Required(motion, "chains", path, Refuse), path + ".chains", Refuse);
         int count = chains.GetArrayLength();
@@ -64,7 +65,18 @@ internal static class AttachmentSetMotionJson
             definitions[chainIndex] = ReadChain(chains[chainIndex], partId, partIndex, chainIndex);
         ChainLink[] links = motion.TryGetProperty("links", out JsonElement linksValue)
             ? ReadLinks(StrictAttachmentJson.ArrayValue(linksValue, path + ".links", Refuse), partId, partIndex) : [];
-        return new ChainMotionDefinition(definitions, links);
+        float? linkStretch = motion.TryGetProperty("linkStretch", out JsonElement stretchValue)
+            ? ReadLinkStretch(stretchValue) : null;
+        return new ChainMotionDefinition(definitions, links) { LinkStretch = linkStretch };
+
+        float ReadLinkStretch(JsonElement value)
+        {
+            // Validate before an authored value just above one can round to 1f.
+            if (value.ValueKind == JsonValueKind.Number
+                && (!value.TryGetDouble(out double authored) || authored is not (> 0d and <= 1d)))
+                throw AttachmentSetMotion.LinkStretchRangeRefusal(partId, partIndex);
+            return StrictAttachmentJson.Number(value, path + ".linkStretch", Refuse);
+        }
 
         Exception Refuse(StrictAttachmentJson.Fault fault, string jsonPath, string message, string? property) =>
             new AttachmentSetDataException(AttachmentSetJson.StrictReason(fault), message)
@@ -158,6 +170,9 @@ internal static class AttachmentSetMotionJson
     internal static bool HasAdditions(AttachmentSetDefinition set) => set.Colliders.Count > 0
         || set.Parts.Any(part => part is SkinnedAttachmentPartDefinition { Motion: not null });
 
+    internal static bool HasLinkStretch(AttachmentSetDefinition set) =>
+        set.Parts.Any(part => part is SkinnedAttachmentPartDefinition { Motion: ChainMotionDefinition { LinkStretch: not null } });
+
     internal static void WriteColliders(Utf8JsonWriter writer, IReadOnlyList<ColliderDefinition> colliders)
     {
         if (colliders.Count == 0) return;
@@ -186,6 +201,7 @@ internal static class AttachmentSetMotionJson
             }
             writer.WriteEndArray();
         }
+        if (chains.LinkStretch is { } stretch) writer.WriteNumber("linkStretch", stretch);
         writer.WriteEndObject();
     }
 

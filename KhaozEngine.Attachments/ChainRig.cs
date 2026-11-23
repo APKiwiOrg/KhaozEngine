@@ -7,7 +7,13 @@ using System.Numerics;
 namespace KhaozEngine.Attachments;
 
 /// <summary>Two chains whose corresponding movable joints and virtual tips are coupled by soft spacing springs.</summary>
-public readonly record struct ChainLink(int First, int Second);
+public readonly record struct ChainLink(int First, int Second)
+{
+    /// <summary>The maximum fractional departure from rest spacing for a rig link, or null for no bound.</summary>
+    public float? Stretch { get; init; }
+
+    internal static bool IsValidStretch(float stretch) => stretch is > 0f and <= 1f;
+}
 
 /// <summary>A joint's local transform relative to its parent at rest.</summary>
 public readonly record struct ChainJointRest(Vector3 Translation, Quaternion Rotation, Vector3 Scale)
@@ -97,6 +103,8 @@ public sealed class ChainRig
         {
             if ((uint)link.First >= (uint)snapshot.Length || (uint)link.Second >= (uint)snapshot.Length || link.First == link.Second)
                 throw new ArgumentException("A link must name two distinct existing chains.", nameof(links));
+            if (link.Stretch is { } stretch && !ChainLink.IsValidStretch(stretch))
+                throw new ArgumentException("A link's stretch must be finite, greater than zero and at most one.", nameof(links));
             if (!pairs.Add((Math.Min(link.First, link.Second), Math.Max(link.First, link.Second))))
                 throw new ArgumentException("A pair of chains can be linked only once.", nameof(links));
         }

@@ -29,7 +29,11 @@ public class ChainRigTests
     [InlineData("self link")]
     [InlineData("duplicate link")]
     [InlineData("reversed link")]
-    public void Rig_refuses_one_invalid_argument_at_a_time(string invalid)
+    [InlineData("link stretch", 0f)]
+    [InlineData("link stretch", 1.25f)]
+    [InlineData("link stretch", float.NaN)]
+    [InlineData("link stretch", float.PositiveInfinity)]
+    public void Rig_refuses_one_invalid_argument_at_a_time(string invalid, float? stretch = null)
     {
         var joint = Joint(Vector3.Zero);
         var chain = Chain(Vector3.UnitY, Settings, joint);
@@ -54,13 +58,14 @@ public class ChainRigTests
                 "radius" => chain with { Settings = Settings with { Radius = -1 } },
                 _ => chain,
             };
+            var firstLink = new ChainLink(0, 1) { Stretch = invalid == "link stretch" ? (change ? stretch : 1f) : null };
             ChainLink[] links = chosen switch
             {
                 "missing chain" => [new(0, 1), new(1, 3)],
                 "self link" => [new(0, 1), new(1, 1)],
                 "duplicate link" => [new(0, 1), new(0, 1)],
                 "reversed link" => [new(0, 1), new(1, 0)],
-                _ => [new(0, 1), new(1, 2)],
+                _ => [firstLink, new(1, 2)],
             };
             return invalid == "anchor count"
                 ? new(chosen == "anchor count" ? -1 : 0, [], [])
@@ -68,7 +73,8 @@ public class ChainRigTests
         }
 
         Assert.Equal(invalid == "anchor count" ? 0 : 3, Build(false).JointCount);
-        Assert.ThrowsAny<ArgumentException>(() => Build(true));
+        var error = Assert.ThrowsAny<ArgumentException>(() => Build(true));
+        if (invalid == "link stretch") Assert.Equal("links", error.ParamName);
     }
 
     [Fact]

@@ -78,6 +78,18 @@ internal sealed class SkinnedAttachmentGlbFixture
         return fixture;
     }
 
+    /// <summary>Three single-joint chains on hip, with their original world-space inverse binds.</summary>
+    internal static SkinnedAttachmentGlbFixture LinkedChains()
+    {
+        SkinnedAttachmentGlbFixture fixture = Chained();
+        fixture.Nodes[0]!["children"] = new JsonArray(1, 2, 3);
+        fixture.Nodes[1]!["name"] = "right0";
+        fixture.Nodes[2]!.AsObject().Remove("children");
+        fixture.Nodes[3]!["name"] = "rear0";
+        fixture.Nodes[3]!["translation"] = new JsonArray(.75f, 0, 0);
+        return fixture;
+    }
+
     internal void SetIndexedMaterialParts(ReadOnlySpan<ushort> triangles, int materials)
     {
         byte[] indices = new byte[triangles.Length * sizeof(ushort)];

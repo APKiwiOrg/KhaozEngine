@@ -29,7 +29,15 @@ internal static class AttachmentSetMotion
         for (int chainIndex = 0; chainIndex < definitions.Count; chainIndex++)
             owned.Add(OwnChain(definitions[chainIndex], jointNames, partId, partIndex, chainIndex));
         ImmutableArray<ChainLink> links = OwnLinks(chains.Links ?? [], definitions.Count, partId, partIndex);
-        return skinned with { Motion = new ChainMotionDefinition(owned.MoveToImmutable(), links) };
+        if (chains.LinkStretch is { } linkStretch)
+        {
+            if (!ChainLink.IsValidStretch(linkStretch))
+                throw LinkStretchRangeRefusal(partId, partIndex);
+            if (links.IsEmpty)
+                throw PartRefusal(AttachmentSetRefusal.LinkStretchWithoutLinks, partId, partIndex,
+                    "linkStretch requires at least one link.", ".linkStretch", settingName: "linkStretch");
+        }
+        return skinned with { Motion = chains with { Chains = owned.MoveToImmutable(), Links = links } };
     }
 
     static ChainDefinition OwnChain(ChainDefinition? chain, HashSet<string> jointNames, uint partId, int partIndex, int chainIndex)
@@ -78,6 +86,9 @@ internal static class AttachmentSetMotion
             if ((uint)link.First >= (uint)chainCount || (uint)link.Second >= (uint)chainCount || link.First == link.Second)
                 throw PartRefusal(AttachmentSetRefusal.ChainLinkInvalid, partId, partIndex, "a link must name two distinct chains of the part.",
                     $".links[{linkIndex}]", linkIndex: linkIndex);
+            if (link.Stretch is not null)
+                throw PartRefusal(AttachmentSetRefusal.ChainLinkStretchInDefinition, partId, partIndex,
+                    "a set definition declares linkStretch on the part's motion.", $".links[{linkIndex}]", linkIndex: linkIndex);
             if (link.First > link.Second) link = new ChainLink(link.Second, link.First);
             if (!seen.Add(link))
                 throw PartRefusal(AttachmentSetRefusal.ChainLinkDuplicate, partId, partIndex, "a link already names this pair of chains.",
@@ -155,6 +166,10 @@ internal static class AttachmentSetMotion
     }
 
     internal static string MotionPath(int partIndex) => $"$.parts[{partIndex}].motion";
+
+    internal static AttachmentSetArgumentException LinkStretchRangeRefusal(uint partId, int partIndex) =>
+        PartRefusal(AttachmentSetRefusal.LinkStretchOutOfRange, partId, partIndex,
+            "linkStretch must be finite, greater than zero and at most one.", ".linkStretch", settingName: "linkStretch");
 
     static AttachmentSetArgumentException PartRefusal(AttachmentSetRefusal reason, uint partId, int partIndex, string message,
         string suffix, int? chainIndex = null, int? jointIndex = null, int? linkIndex = null, string? jointName = null,

@@ -7749,6 +7749,9 @@ During motion it follows the largest axis scale of the composed rest-to-world tr
 The [format 4 reference](../KhaozEngine.Attachments/README.md#format-4)
 gives the schema and limits.
 
+Use the [format 6 `linkStretch` setting](../KhaozEngine.Attachments/README.md#format-6) to declare a width
+bound for all links in a skinned part's chain motion. Publish a set using it once every reader supports format 6.
+
 Publish format 4 after every reader moves to 24.5.0 or later. A 24.4.0 reader raises
 `AttachmentSetDataException` with `JsonPropertyUnknown` for root `colliders` if the member is present,
 even when empty. Without `colliders` it raises `FormatVersionUnsupported` for version 4.

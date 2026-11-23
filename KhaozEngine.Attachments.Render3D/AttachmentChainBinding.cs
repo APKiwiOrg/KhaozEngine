@@ -16,6 +16,7 @@ internal sealed class AttachmentChainBinding
         for (int bone = 0; bone < names.Count; bone++) bonesByName.TryAdd(names[bone], bone);
         Chains = new BoundAttachmentChain[motion.Chains.Count];
         Links = motion.Links;
+        LinkStretch = motion.LinkStretch;
         for (int chainIndex = 0; chainIndex < Chains.Length; chainIndex++)
         {
             ChainDefinition chain = motion.Chains[chainIndex];
@@ -68,6 +69,7 @@ internal sealed class AttachmentChainBinding
 
     internal BoundAttachmentChain[] Chains { get; }
     internal IReadOnlyList<ChainLink> Links { get; }
+    internal float? LinkStretch { get; }
 
     static int ResolveAnchor(ContractJointMap map, SkinnedAttachmentPartDefinition part, int chain, string joint, string? parentName)
     {

@@ -75,6 +75,9 @@ internal sealed class CapturedComponents
     /// <summary>The captured component type ids, in capture (registration) order.</summary>
     public Dictionary<ushort, Segment>.KeyCollection TypeIds => segments.Keys;
 
+    // Delta writing walks the dictionary directly to avoid lazily creating its Keys wrapper.
+    public Dictionary<ushort, Segment>.Enumerator GetEnumerator() => segments.GetEnumerator();
+
     /// <summary>Records that component <paramref name="typeId"/> occupies <paramref name="length"/> bytes at
     /// <paramref name="offset"/> in the shared buffer.</summary>
     internal void Add(ushort typeId, int offset, int length) => segments[typeId] = new Segment(offset, length);
@@ -150,8 +153,9 @@ internal sealed class CaptureScratch
     public Dictionary<long, CapturedComponents> CaptureReplicate(World world, ReplicationRegistry registry)
     {
         int replicateCount = 0;
-        foreach (ComponentCodec codec in registry.Ordered)
-            if ((codec.Channels & ReplicationChannels.Replicate) != 0) replicateCount++;
+        IReadOnlyList<ComponentCodec> codecs = registry.Ordered;
+        for (int i = 0; i < codecs.Count; i++)
+            if ((codecs[i].Channels & ReplicationChannels.Replicate) != 0) replicateCount++;
 
         stream.SetLength(0); // reset position + length, keep the buffer capacity for reuse next tick
         var buffer = new CaptureBuffer();
@@ -160,12 +164,17 @@ internal sealed class CaptureScratch
         world.ForEach<NetId>((Entity e, ref NetId id) =>
         {
             var comps = new CapturedComponents(buffer, replicateCount) { Order = order++ }; // world ForEach position
-            foreach (ComponentCodec codec in registry.Ordered)
+            int codecCount = codecs.Count;
+            for (int i = 0; i < codecCount; i++)
             {
+                ComponentCodec codec = codecs[i];
                 if ((codec.Channels & ReplicationChannels.Replicate) == 0) continue;
                 int offset = (int)stream.Position;
-                if (codec.CaptureInto(world, e, writer))
-                    comps.Add(codec.TypeId, offset, (int)stream.Position - offset);
+                if (!codec.CaptureInto(world, e, writer)) continue;
+                // As with the previous enumerator, registration from a codec aborts the capture.
+                if (codecs.Count != codecCount)
+                    throw new InvalidOperationException("The replication registry changed during capture.");
+                comps.Add(codec.TypeId, offset, (int)stream.Position - offset);
             }
             state[id.Value] = comps;
         });

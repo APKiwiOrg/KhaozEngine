@@ -1729,7 +1729,19 @@ same version-skew bar as 9.16.0.
   **true**; set false to force full snapshots for every client) and **`WorldClientConfig.RequestDeltaReplication`**
   (default **true**). Delivery is reliable-ordered and each delta is built from the projection last sent to that
   client, so reliable order guarantees the client holds the baseline every delta names. Acknowledgements never move
-  the diff basis. The legacy contract, and what a custom host owes it, is in the Replication README.
+  the diff basis. See the [legacy reliable delta contract](../KhaozEngine.Replication/README.md#legacy-reliable-delta-contract).
+- **Serving storage.** Both continuous-world hosts write the legacy delta body into their writer's reusable stream,
+  reserving space for the session opcode, world kind, and ticked header. After the body commits, they fill the prefix
+  for the negotiated kind, skipping the unused tick field for a plain frame. The transport borrows the written span
+  for its synchronous send. A missing slot skips the transport call. A silent transport drop returns normally.
+  A transport exception propagates. Each outcome leaves the completed body's commitment in place. A known lost
+  commitment requires a fresh receiver.
+- **Serving lifetime.** Each host with a delta writer has an exclusive tick scope. A recursive or overlapping tick
+  fails before changing tick state, so a transport callback cannot replace bytes it still borrows. Independent
+  hosts own separate buffers, and successive ticks can run on different threads. The stream grows as needed,
+  normally doubling capacity. At tick exit, the writer releases a buffer above 64 KiB when the largest completed
+  frame with its reserved prefix fits in a quarter of that capacity, including an idle tick. Checking the entire tick
+  avoids reallocating for differently sized viewers in the same pass. The next serve grows from empty after a release.
 - **Handshake.** On join a delta-capable `WorldClient` sends a **`MoveProtocol.ClientControlKind.DeltaCapable`**
   hello (a 2-byte control an older server decodes as an unknown control and harmlessly ignores). The server upgrades
   that slot to **`ServerFrameKind.Delta`** frames; the client applies them with `ClientReplicationView.ApplyDelta`,
@@ -1740,7 +1752,7 @@ same version-skew bar as 9.16.0.
   a new client against an older server never receives a `Delta` frame, so it keeps applying full snapshots and sends
   no acks. The 9.16.0 skip-unknown-extension + malformed-length guards are unchanged on the delta wire.
 - **Server tick.** **`WorldServer.ServerTick`** / **`ShardedWorldServer.ServerTick`** (`long`) counts `Tick` calls.
-  It is 0 before the first call and increments as the first statement of `Tick`, before `OnBeforeTick`, whether or
+  It is 0 before the first call and increments at the start of `Tick`, before `OnBeforeTick`, whether or
   not a cell stepped, so a host reads it in its tick hooks instead of keeping its own frame count. It is always
   counted and changes nothing on the wire by itself. A client that sends the
   **`MoveProtocol.ClientControlKind.ServerTickCapable`** (4) hello after `DeltaCapable` is served

@@ -33,6 +33,25 @@ public class LegacyDeltaServeAllocationTests(ITestOutputHelper output)
         Assert.Equal(0, rig.EngineBytes);
     }
 
+    [Fact]
+    public void ACompletedSmallTickReleasesAnOversizeOutlierBuffer()
+    {
+        using var rig = new Workload(sharded: true, sessions: 8);
+        const int oversizeWords = 20 * 1024;
+        for (int i = 0; i < WarmTicks; i++) rig.Tick();
+
+        _ = AllocationMeasurement.Measure("oversize served frame", () => rig.Tick(oversizeWords));
+        Assert.True(rig.EngineBytes > 0);
+        _ = AllocationMeasurement.Measure("small tick after oversize frame", () => rig.Tick());
+        Assert.Equal(0, rig.EngineBytes);
+
+        // Rewarm the moderate capacity once the outlier is released, then verify that the same outlier needs growth.
+        rig.Tick();
+        MeasureFixedFrames(rig, "small after release");
+        _ = AllocationMeasurement.Measure("oversize served frame after release", () => rig.Tick(oversizeWords));
+        Assert.True(rig.EngineBytes > 0);
+    }
+
     [Theory]
     [Trait("Category", "Diagnostic")]
     [InlineData(8)]

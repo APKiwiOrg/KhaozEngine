@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using KhaozEngine.Ecs;
@@ -50,5 +51,38 @@ public class LegacyDeltaCodecOrderTests
         Assert.Equal(first, delta.ReadUInt16());
         Assert.Equal(second, delta.ReadUInt16());
         Assert.Equal((ushort)0, delta.ReadUInt16());
+    }
+
+    [Fact]
+    public void RegisteringDuringACodecWriteAbortsCaptureBeforeCommit()
+    {
+        const ushort first = ReplicationRegistry.FirstExtensionTypeId;
+        var registry = new ReplicationRegistry();
+        bool registerDuringCapture = false;
+        registry.Register<First>(first, (component, bw) =>
+        {
+            bw.Write(component.Value);
+            if (registerDuringCapture)
+                registry.Register<Second>(first + 1, static (c, writer) => writer.Write(c.Value),
+                    static reader => new Second(reader.ReadInt32()));
+        }, static br => new First(br.ReadInt32()));
+
+        var world = new World();
+        Entity entity = world.Spawn();
+        world.Set(entity, new NetId(1L));
+        world.Set(entity, new First(11));
+        var interest = new HashSet<long> { 1L };
+        var writer = new AoiDeltaReplicator(registry);
+        writer.BeginTick();
+        writer.WriteFor(0, world, interest);
+
+        registerDuringCapture = true;
+        writer.BeginTick();
+        Assert.Throws<InvalidOperationException>(() => writer.WriteFor(0, world, interest));
+
+        registerDuringCapture = false;
+        writer.BeginTick();
+        using var next = new BinaryReader(new MemoryStream(writer.WriteFor(0, world, interest)));
+        Assert.Equal(1, next.ReadInt32());
     }
 }

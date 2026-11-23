@@ -152,8 +152,10 @@ every change since the last acknowledgement. That is a header and bandwidth diff
 
 The obligations a standalone owner takes on:
 
-- **Send commitment.** Every returned `WriteFor` payload is shipped exactly once, in order, over a reliable-ordered
-  channel to the receiver it was built for.
+- **Send commitment.** Completing a body commits its projection and sequence before framing or delivery. A failed
+  body build leaves the previous projection in place. Both public `WriteFor` methods return caller-owned arrays.
+  Ship each committed payload exactly once, in order, over a reliable-ordered channel to the receiver it was built
+  for.
 - **Discarded or failed send.** A caller that discards a payload, sends it unreliably, changes session, replaces the
   receiver, or sees the send throw calls `Forget(slot)` and serves a fresh receiver world and
   `ClientReplicationView`, or disconnects. `Forget` alone cannot repair an old receiver: the legacy reader ignores

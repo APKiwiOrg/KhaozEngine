@@ -558,8 +558,7 @@ public static partial class MoveProtocol
     {
         if (snapshot is null) throw new ArgumentNullException(nameof(snapshot));
         var b = new byte[FrameHeader + snapshot.Length];
-        BitConverter.TryWriteBytes(b.AsSpan(0, 8), localNetId);
-        BitConverter.TryWriteBytes(b.AsSpan(8, 4), ackSeq);
+        WriteSnapshotHeader(b, localNetId, ackSeq);
         snapshot.CopyTo(b.AsSpan(FrameHeader));
         return b;
     }

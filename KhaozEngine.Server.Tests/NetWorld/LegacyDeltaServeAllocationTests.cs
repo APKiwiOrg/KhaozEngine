@@ -87,6 +87,19 @@ public class LegacyDeltaServeAllocationTests(ITestOutputHelper output)
         Assert.True(rig.EngineBytes > 0);
     }
 
+    [Fact]
+    public void SmallFramesServeFromWarmStorageAgainAfterTheOutlierIsReleased()
+    {
+        using var rig = new Workload(sharded: true, sessions: 8);
+        PrimeOversizeBuffer(rig);
+        for (int i = 0; i < 4; i++) rig.Tick(4);
+
+        // The fourth low-use pass released the outlier, so the next small frame grows storage once.
+        _ = AllocationMeasurement.Measure("first small frame after release", () => rig.Tick(4));
+        Assert.True(rig.EngineBytes > 0);
+        MeasureFixedFrames(rig, "smaller");
+    }
+
     private static void PrimeOversizeBuffer(Workload rig)
     {
         for (int i = 0; i < WarmTicks; i++) rig.Tick();

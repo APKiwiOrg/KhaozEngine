@@ -32,7 +32,10 @@ public sealed class ReplicationRegistry
 
     /// <summary>
     /// Registers a replicated component. <paramref name="write"/>/<paramref name="read"/> must be symmetric
-    /// (read consumes exactly what write produced). Supplying <paramref name="lerp"/> makes the component
+    /// (read consumes exactly what write produced). The reader and its base stream are synchronous borrows valid
+    /// only during the read call. Do not retain or dispose them. The engine reuses readers for framed receive
+    /// and sample decoding to avoid allocating a reader for each component read.
+    /// Supplying <paramref name="lerp"/> makes the component
     /// interpolatable (smoothed between snapshots by <see cref="ClientReplicationView.Interpolate"/>).
     /// <paramref name="discreteSample"/> instead makes it fixed-delay <b>nearest-sampled</b> (no blending): the
     /// component is time-buffered like a lerp component, but <see cref="ClientReplicationView.InterpolateAt"/> writes
@@ -129,8 +132,8 @@ public sealed class ReplicationRegistry
         {
             lerpFromBytes = (w, e, prevBytes, curBytes, t) =>
             {
-                T a = read(new BinaryReader(new MemoryStream(prevBytes)));
-                T b = read(new BinaryReader(new MemoryStream(curBytes)));
+                T a = SampleReader.Read(read, prevBytes);
+                T b = SampleReader.Read(read, curBytes);
                 w.Set(e, lerp(a, b, t));
             };
         }
@@ -140,7 +143,7 @@ public sealed class ReplicationRegistry
         // component exactly like a lerp one except for the write.
         Action<World, Entity, byte[]>? setFromBytes = null;
         if (discreteSample)
-            setFromBytes = (w, e, bytes) => w.Set(e, read(new BinaryReader(new MemoryStream(bytes))));
+            setFromBytes = (w, e, bytes) => w.Set(e, SampleReader.Read(read, bytes));
 
         var codec = new ComponentCodec(typeId, typeof(T), lengthPrefixed, channels, TrySerialize, Deserialize, lerpFromBytes, setFromBytes, CaptureInto, RemoveComponent, CopyComponent, HasComponent);
         ordered.Add(codec);

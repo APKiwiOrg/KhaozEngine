@@ -21,6 +21,9 @@ area-of-interest deltas over a reliable channel, and opt-in format 2 acknowledge
   a codec that carries a declared length of its own can check it against `BaseStream.Length - Position` and a lying
   length cannot be satisfied out of the bytes of the components behind it. A built-in frame is unframed and has no
   such bound, so it still reads through the stream itself.
+  The reader and its base stream are synchronous borrows valid only during the read call. Do not retain or
+  dispose them. The engine reuses readers for framed receive and sample decoding to avoid allocating a reader
+  for each component read.
   `IsRegistered(ushort)` (since 17.38.0) asks whether this registry has a codec for an id, for a caller judging
   whether an id it read out of STORED bytes is one this build knows: cell-blob persistence uses it to retire a
   candidate parse of a blob whose wire generation was never recorded. `IsRegistered<T>(id, expectedChannels)`
@@ -99,7 +102,12 @@ area-of-interest deltas over a reliable channel, and opt-in format 2 acknowledge
   timestamped history, and `InterpolateAt(world, renderTime, excludeNetId?)` renders every component at `renderTime` by
   lerping the two buffered samples bracketing it by their true timestamps (clamp to the oldest before the buffer; HOLD
   at the newest past it, flagged via `WasHeldAtLastInterpolation(netId)`; single-sample renders that sample). This
-  decouples presentation from the tick cadence and the render fps. The optional `excludeNetId` skips one entity in both
+  decouples presentation from the tick cadence and the render fps. Both interpolation paths reuse a sample reader
+  on the calling thread. Each sample starts at position zero with its exact byte length and a clean UTF-8 decoder.
+  A nested decode borrows a separate reader. The engine releases the backing array when the callback exits, including
+  when it throws. Reads on an idle sample reader or stream throw. Using a retained reader or stream while a later
+  callback is active is unsupported.
+  The optional `excludeNetId` skips one entity in both
   calls (the local, predicted avatar): it renders from prediction, so its client-world position must stay the
   last-received authoritative value (the reconcile basis), never a fixed-delay interpolated one - passing the local net
   id keeps a post-teleport static local player from feeding a stale basis back into reconcile. When it changes (a

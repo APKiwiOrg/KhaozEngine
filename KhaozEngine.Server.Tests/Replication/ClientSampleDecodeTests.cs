@@ -143,6 +143,50 @@ public sealed class ClientSampleDecodeTests
         Assert.Equal(new Characters(-1, '\u00a2'), world.Get<Characters>(entity));
     }
 
+    [Theory]
+    [InlineData(1)]
+    [InlineData(16)]
+    public void ThrowingCharacterReadDoesNotChangeTheNextSample(ushort typeId)
+    {
+        var registry = new ReplicationRegistry();
+        registry.Register<Characters>(typeId, static (value, writer) => writer.Write((char)value.Older),
+            static reader => new Characters(reader.ReadChar(), 0), discreteSample: true);
+        Assert.True(registry.TryGet(typeId, out ComponentCodec codec));
+        var world = new World();
+        Entity entity = world.Spawn();
+
+        Assert.Throws<EndOfStreamException>(() => codec.SetFromBytes!(world, entity, [0xe2, 0x82]));
+        codec.SetFromBytes!(world, entity, [0xc2, 0xa2]);
+
+        Assert.Equal(new Characters('\u00a2', 0), world.Get<Characters>(entity));
+    }
+
+    [Fact]
+    public void OuterSampleCanFinishAfterCaughtNestedCharacterFailure()
+    {
+        const ushort innerType = ReplicationRegistry.FirstExtensionTypeId;
+        var registry = new ReplicationRegistry();
+        registry.Register<Characters>(innerType, static (value, writer) => writer.Write((char)value.Older),
+            static reader => new Characters(reader.ReadChar(), 0), discreteSample: true);
+        Assert.True(registry.TryGet(innerType, out ComponentCodec innerCodec));
+        var world = new World();
+        Entity outer = world.Spawn();
+        Entity inner = world.Spawn();
+        registry.Register<Characters>(1, static (value, writer) => writer.Write(value.Older), reader =>
+        {
+            byte first = reader.ReadByte();
+            Assert.Throws<EndOfStreamException>(() => innerCodec.SetFromBytes!(world, inner, [0xe2, 0x82]));
+            innerCodec.SetFromBytes!(world, inner, [0xc2, 0xa2]);
+            return new Characters(first, reader.ReadByte());
+        }, discreteSample: true);
+        Assert.True(registry.TryGet(1, out ComponentCodec outerCodec));
+
+        outerCodec.SetFromBytes!(world, outer, [37, 53]);
+
+        Assert.Equal(new Characters(37, 53), world.Get<Characters>(outer));
+        Assert.Equal(new Characters('\u00a2', 0), world.Get<Characters>(inner));
+    }
+
     [Fact]
     public void SeekPastSampleCannotReadEarlierSamplesBytes()
     {

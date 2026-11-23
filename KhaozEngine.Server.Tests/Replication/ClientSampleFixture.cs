@@ -14,6 +14,11 @@ internal sealed class ClientSampleFixture
     private readonly Entity first;
 
     internal ClientSampleFixture(ReplicationRegistry registry, float older, float newer, int entityCount = 1)
+        : this(registry, [older, newer], entityCount)
+    {
+    }
+
+    internal ClientSampleFixture(ReplicationRegistry registry, ReadOnlySpan<float> samples, int entityCount)
     {
         view = new ClientReplicationView(registry);
         var server = new World();
@@ -22,26 +27,23 @@ internal sealed class ClientSampleFixture
         {
             entities[i] = server.Spawn();
             server.Set(entities[i], new NetId(i + 1));
-            server.Set(entities[i], new Sample(older));
         }
 
-        Apply(0);
-        foreach (Entity entity in entities)
-            server.Set(entity, new Sample(newer));
-        Apply(1);
-        first = view.Entities[1];
-
-        void Apply(double time)
+        for (int time = 0; time < samples.Length; time++)
         {
+            foreach (Entity entity in entities)
+                server.Set(entity, new Sample(samples[time]));
             client.AdvanceTick();
             view.Apply(client, SnapshotWriter.Write(server, registry));
             view.RecordInterpolationSample(time);
         }
+
+        first = view.Entities[1];
     }
 
     internal float Value => client.Get<Sample>(first).Value;
 
-    internal void Interpolate(float factor) => view.InterpolateAt(client, factor);
+    internal void Interpolate(float renderTime) => view.InterpolateAt(client, renderTime);
 
     internal static ReplicationRegistry Registry(ushort typeId, bool discrete, Func<BinaryReader, Sample> read)
     {

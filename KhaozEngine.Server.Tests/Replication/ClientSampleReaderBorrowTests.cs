@@ -18,8 +18,31 @@ public sealed class ClientSampleReaderBorrowTests
     {
         (BinaryReader reader, _) = Decode(fail);
 
-        Assert.Throws<EndOfStreamException>(() => reader.ReadByte());
-        Assert.Equal(-1, reader.BaseStream.ReadByte());
+        Stream stream = reader.BaseStream;
+        byte[] bytes = new byte[1];
+        char[] chars = new char[1];
+
+        Assert.Throws<ObjectDisposedException>(() => reader.ReadByte());
+        Assert.Throws<ObjectDisposedException>(() => reader.Read());
+        Assert.Throws<ObjectDisposedException>(() => reader.PeekChar());
+        Assert.Throws<ObjectDisposedException>(() => reader.ReadBytes(1));
+        Assert.Throws<ObjectDisposedException>(() => reader.ReadBytes(0));
+        Assert.Throws<ObjectDisposedException>(() => reader.ReadChars(0));
+        Assert.Throws<ObjectDisposedException>(() => reader.Read(bytes.AsSpan()));
+        Assert.Throws<ObjectDisposedException>(() => reader.Read(Span<byte>.Empty));
+        Assert.Throws<ObjectDisposedException>(() => reader.Read(chars.AsSpan()));
+        Assert.Throws<ObjectDisposedException>(() => reader.Read(Span<char>.Empty));
+        Assert.Throws<ObjectDisposedException>(() => reader.Read(bytes, 0, bytes.Length));
+        Assert.Throws<ObjectDisposedException>(() => reader.Read(chars, 0, chars.Length));
+        Assert.Throws<ObjectDisposedException>(() => reader.Read(chars, 0, 0));
+        Assert.Throws<ObjectDisposedException>(() => reader.ReadExactly(Span<byte>.Empty));
+        Assert.Throws<ObjectDisposedException>(() => stream.ReadByte());
+        Assert.Throws<ObjectDisposedException>(() => stream.Read(bytes.AsSpan()));
+        Assert.Throws<ObjectDisposedException>(() => stream.Read(bytes, 0, bytes.Length));
+        Assert.Throws<ObjectDisposedException>(() => stream.Seek(0, SeekOrigin.Begin));
+        Assert.Throws<ObjectDisposedException>(() => stream.Position);
+        Assert.Throws<ObjectDisposedException>(() => { stream.Position = 0; });
+        Assert.Throws<ObjectDisposedException>(() => stream.Length);
     }
 
     [Theory]

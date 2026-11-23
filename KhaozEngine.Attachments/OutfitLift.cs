@@ -23,12 +23,14 @@ public sealed class OutfitLift
 {
     readonly WornHeights[] heights;
     readonly int regionCount;
-    readonly Dictionary<(int WornIndex, uint PartId), IReadOnlyList<ReadOnlyMemory<Vector3>>> lifted = new();
+    readonly Dictionary<(int WornIndex, uint PartId), IReadOnlyList<ReadOnlyMemory<Vector3>>> lifted;
 
-    OutfitLift(int wornCount, int regionCount)
+    internal OutfitLift(int regionCount, WornHeights[] heights,
+        Dictionary<(int WornIndex, uint PartId), IReadOnlyList<ReadOnlyMemory<Vector3>>> lifted)
     {
-        heights = new WornHeights[wornCount];
         this.regionCount = regionCount;
+        this.heights = heights;
+        this.lifted = lifted;
     }
 
     /// <summary>
@@ -36,77 +38,31 @@ public sealed class OutfitLift
     /// skinned part that declares lift. The result retains only its own positions and heights.
     /// </summary>
     /// <exception cref="ArgumentException">A lifting mesh is missing, extra or has the wrong shape.</exception>
-    public static OutfitLift Resolve(OutfitCoverage coverage, IReadOnlyList<LiftingPartMesh> meshes)
+    public static OutfitLift Resolve(OutfitCoverage coverage, IReadOnlyList<LiftingPartMesh> meshes) =>
+        OutfitLiftResolver.Resolve(coverage, meshes, null);
+
+    /// <summary>
+    /// Resolve lift with one optional footprint per worn set. A layered set uses its footprint when the body map
+    /// digest and triangle count match, and uses its regional standoff otherwise.
+    /// </summary>
+    /// <exception cref="ArgumentException">The meshes or footprints do not match the worn sets.</exception>
+    public static OutfitLift Resolve(OutfitCoverage coverage, IReadOnlyList<LiftingPartMesh> meshes,
+        IReadOnlyList<LiftFootprint?> footprints)
     {
-        ArgumentNullException.ThrowIfNull(coverage);
-        ArgumentNullException.ThrowIfNull(meshes);
-
-        var ordered = new List<(int WornIndex, AttachmentLayer Layer)>();
-        for (int wornIndex = 0; wornIndex < coverage.WornCount; wornIndex++)
-            if (coverage.LayerFor(wornIndex) is { } layer)
-                ordered.Add((wornIndex, layer));
-        ordered.Sort((left, right) => left.Layer.CompareTo(right.Layer));
-
-        var remaining = new Dictionary<(int WornIndex, uint PartId), LiftingPartMesh>(meshes.Count);
-        foreach (LiftingPartMesh mesh in meshes)
-        {
-            ArgumentNullException.ThrowIfNull(mesh, nameof(meshes));
-            if (!remaining.TryAdd((mesh.WornIndex, mesh.PartId), mesh))
-                throw new ArgumentException($"worn[{mesh.WornIndex}] part {mesh.PartId} has more than one lifting mesh.", nameof(meshes));
-        }
-
-        var result = new OutfitLift(coverage.WornCount, coverage.RegionCount);
-        var highest = new float?[result.regionCount];
-        float?[] below = highest;
-        AttachmentLayer? currentLayer = null;
-        foreach ((int wornIndex, AttachmentLayer layer) in ordered)
-        {
-            // All sets on this layer share a frozen snapshot of the strictly lower layers.
-            if (layer != currentLayer)
-            {
-                below = (float?[])highest.Clone();
-                currentLayer = layer;
-            }
-
-            RegionSet hidden = coverage.HiddenFor(wornIndex);
-            ReadOnlySpan<(int Region, float Metres)> standoff = coverage.StandoffFor(wornIndex);
-            var effective = new float?[result.regionCount];
-            foreach ((int region, float metres) in standoff)
-                if (!hidden.Contains(region))
-                    effective[region] = metres;
-
-            var largestLift = new float[result.regionCount];
-            foreach (OutfitCoverage.SkinnedPart part in coverage.SkinnedPartsFor(wornIndex))
-            {
-                if (part.LiftClearanceMetres is not { } clearance)
-                    continue;
-                if (!remaining.Remove((wornIndex, part.Id), out LiftingPartMesh? mesh))
-                    throw new ArgumentException($"worn[{wornIndex}] part {part.Id} is missing its lifting mesh.", nameof(meshes));
-
-                IReadOnlyList<ReadOnlyMemory<Vector3>>? positions = OutfitPartLift.Resolve(mesh, clearance,
-                    part.Regions, below, effective, largestLift, nameof(meshes));
-                if (positions is not null)
-                    result.lifted.Add((wornIndex, part.Id), positions);
-            }
-
-            foreach ((int region, float _) in standoff)
-            {
-                if (effective[region] is not { } declared)
-                    continue;
-                float height = declared + largestLift[region];
-                effective[region] = height;
-                highest[region] = MathF.Max(highest[region] ?? 0, height);
-            }
-            result.heights[wornIndex] = new(below, effective);
-        }
-
-        if (remaining.Count != 0)
-            throw new ArgumentException("A lifting mesh has no corresponding worn part that declares lift.", nameof(meshes));
-        return result;
+        ArgumentNullException.ThrowIfNull(footprints);
+        return OutfitLiftResolver.Resolve(coverage, meshes, footprints);
     }
 
     /// <summary>True when at least one part has lifted vertices.</summary>
     public bool HasLift => lifted.Count != 0;
+
+    /// <summary>Whether the worn set used its measured body-cell footprint.</summary>
+    /// <exception cref="ArgumentOutOfRangeException">The worn index is outside the outfit.</exception>
+    public bool FootprintApplied(int wornIndex)
+    {
+        CheckWornIndex(wornIndex);
+        return heights[wornIndex].FootprintApplied;
+    }
 
     /// <summary>The highest effective standoff in metres from strictly lower layers, or null without a contributor.</summary>
     public float? HeightBelow(int wornIndex, int region) => At(wornIndex, region).Below?[region];
@@ -135,5 +91,5 @@ public sealed class OutfitLift
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(wornIndex, heights.Length);
     }
 
-    readonly record struct WornHeights(float?[]? Below, float?[]? Effective);
+    internal readonly record struct WornHeights(float?[]? Below, float?[]? Effective, bool FootprintApplied);
 }

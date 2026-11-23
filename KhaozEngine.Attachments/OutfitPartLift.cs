@@ -7,9 +7,9 @@ namespace KhaozEngine.Attachments;
 /// <summary>Welds a lifting part across material seams and scatters the lifted positions back to upload order.</summary>
 internal static class OutfitPartLift
 {
-    internal static IReadOnlyList<ReadOnlyMemory<Vector3>>? Resolve(LiftingPartMesh mesh, float clearance,
-        IReadOnlyList<RegionRun> runs, ReadOnlySpan<float?> below, ReadOnlySpan<float?> standoff,
-        Span<float> largestLift, string parameterName)
+    internal static (IReadOnlyList<ReadOnlyMemory<Vector3>>? Positions, float[]? TriangleLifts) Resolve(
+        LiftingPartMesh mesh, float clearance, IReadOnlyList<RegionRun> runs, ReadOnlySpan<float?> belowByRegion,
+        OutfitLiftCellHeights? cellHeights, LiftFootprintPart? footprint, Span<float> largestLift, string parameterName)
     {
         IReadOnlyList<LiftMaterialMesh> materials = mesh.Materials;
         ArgumentNullException.ThrowIfNull(materials, parameterName);
@@ -24,16 +24,18 @@ internal static class OutfitPartLift
         }
 
         var welded = new WeldedVertex[vertexCount];
-        var weldByPosition = new Dictionary<PositionBits, int>();
+        var weldByPosition = new Dictionary<LiftVectorBits, int>();
+        var sections = new OutfitLiftSections(vertexCount);
         var weldIndices = new int[materials.Count][];
         int runIndex = 0;
         int trianglesLeft = 0;
-        float? heightBelow = null;
+        int partTriangle = 0;
+        float? regionalBelow = null;
         UInt128 standoffBit = UInt128.Zero;
         for (int materialIndex = 0; materialIndex < materials.Count; materialIndex++)
         {
             LiftMaterialMesh material = materials[materialIndex];
-            int[] materialWelds = WeldVertices(material, weldByPosition, welded);
+            int[] materialWelds = WeldVertices(material, weldByPosition, welded, sections);
             weldIndices[materialIndex] = materialWelds;
 
             ReadOnlySpan<uint> indices = material.Indices.Span;
@@ -45,28 +47,37 @@ internal static class OutfitPartLift
                         throw RunCountMismatch(parameterName);
                     RegionRun run = runs[runIndex++];
                     trianglesLeft = run.TriangleCount;
-                    heightBelow = below[run.Region];
-                    standoffBit = standoff[run.Region].HasValue ? UInt128.One << run.Region : UInt128.Zero;
+                    regionalBelow = belowByRegion[run.Region];
+                    standoffBit = largestLift.IsEmpty ? UInt128.Zero : UInt128.One << run.Region;
                 }
 
+                float? heightBelow = footprint is null ? regionalBelow : cellHeights!.HeightBelow(footprint.Triangles[partTriangle]);
                 for (int corner = 0; corner < 3; corner++)
                 {
                     uint vertex = indices[triangle + corner];
                     if (vertex >= materialWelds.Length)
                         throw new ArgumentException("A triangle index is outside its material's positions.", parameterName);
-                    welded[materialWelds[(int)vertex]].Touch(heightBelow, standoffBit);
+                    ref WeldedVertex weld = ref welded[materialWelds[(int)vertex]];
+                    weld.StandoffRegions |= standoffBit;
+                    if (heightBelow is { } height)
+                        sections.Include(weld.Section, height);
                 }
                 trianglesLeft--;
+                partTriangle++;
             }
         }
         if (trianglesLeft != 0 || runIndex != runs.Count)
             throw RunCountMismatch(parameterName);
 
+        sections.ResolveDistances(clearance);
         bool moved = false;
         for (int index = 0; index < weldByPosition.Count; index++)
-            moved |= welded[index].Lift(clearance, largestLift);
+        {
+            ref WeldedVertex weld = ref welded[index];
+            moved |= weld.Lift(sections.Distance(weld.Section), largestLift);
+        }
         if (!moved)
-            return null;
+            return default;
 
         var lifted = new ReadOnlyMemory<Vector3>[materials.Count];
         for (int materialIndex = 0; materialIndex < lifted.Length; materialIndex++)
@@ -77,10 +88,12 @@ internal static class OutfitPartLift
                 positions[vertex] = welded[materialWelds[vertex]].Position;
             lifted[materialIndex] = positions;
         }
-        return Array.AsReadOnly(lifted);
+        float[]? triangleLifts = footprint is null ? null : TriangleLifts(materials, weldIndices, welded, partTriangle);
+        return (Array.AsReadOnly(lifted), triangleLifts);
     }
 
-    static int[] WeldVertices(LiftMaterialMesh material, Dictionary<PositionBits, int> byPosition, Span<WeldedVertex> welded)
+    static int[] WeldVertices(LiftMaterialMesh material, Dictionary<LiftVectorBits, int> byPosition,
+        Span<WeldedVertex> welded, OutfitLiftSections sections)
     {
         var mapping = new int[material.Positions.Length];
         ReadOnlySpan<Vector3> positions = material.Positions.Span;
@@ -89,13 +102,13 @@ internal static class OutfitPartLift
         for (int vertex = 0; vertex < positions.Length; vertex++)
         {
             Vector3 position = positions[vertex];
-            var key = new PositionBits(position);
+            var key = new LiftVectorBits(position);
             if (!byPosition.TryGetValue(key, out int index))
             {
                 index = byPosition.Count;
                 byPosition.Add(key, index);
                 // Validated bases can differ within tolerance. Use the first vertex's basis for the whole weld.
-                welded[index] = new WeldedVertex(position, directions[vertex], bearings[vertex]);
+                welded[index] = new WeldedVertex(position, directions[vertex], sections.GetOrAdd(directions[vertex], bearings[vertex]));
             }
             mapping[vertex] = index;
         }
@@ -105,34 +118,35 @@ internal static class OutfitPartLift
     static ArgumentException RunCountMismatch(string parameterName) =>
         new("The part's region runs must cover exactly the triangles in its material meshes.", parameterName);
 
-    readonly record struct PositionBits(int X, int Y, int Z)
+    static float[] TriangleLifts(IReadOnlyList<LiftMaterialMesh> materials, int[][] weldIndices,
+        ReadOnlySpan<WeldedVertex> welded, int triangleCount)
     {
-        internal PositionBits(Vector3 position) : this(Bits(position.X), Bits(position.Y), Bits(position.Z)) { }
-
-        // Negative zero is the same point as zero, so it joins the same weld, as the GLB policy keys it.
-        static int Bits(float coordinate) => BitConverter.SingleToInt32Bits(coordinate == 0f ? 0f : coordinate);
+        var lifts = new float[triangleCount];
+        int partTriangle = 0;
+        for (int materialIndex = 0; materialIndex < materials.Count; materialIndex++)
+        {
+            ReadOnlySpan<uint> indices = materials[materialIndex].Indices.Span;
+            int[] materialWelds = weldIndices[materialIndex];
+            for (int triangle = 0; triangle < indices.Length; triangle += 3)
+            {
+                float a = welded[materialWelds[(int)indices[triangle]]].Distance;
+                float b = welded[materialWelds[(int)indices[triangle + 1]]].Distance;
+                float c = welded[materialWelds[(int)indices[triangle + 2]]].Distance;
+                lifts[partTriangle++] = MathF.Max(a, MathF.Max(b, c));
+            }
+        }
+        return lifts;
     }
 
-    struct WeldedVertex(Vector3 position, Vector3 direction, float bearing)
+    struct WeldedVertex(Vector3 position, Vector3 direction, int section)
     {
-        float? below;
-        // The body admits at most 128 regions. Track only touched regions with a visible standoff to update.
-        UInt128 standoffRegions;
-
+        internal UInt128 StandoffRegions;
         internal Vector3 Position { get; private set; } = position;
+        internal int Section { get; } = section;
+        internal float Distance { get; private set; }
 
-        internal void Touch(float? heightBelow, UInt128 standoffBit)
+        internal bool Lift(float distance, Span<float> largestLift)
         {
-            if (heightBelow is { } height)
-                below = MathF.Max(below ?? 0, height);
-            standoffRegions |= standoffBit;
-        }
-
-        internal bool Lift(float clearance, Span<float> largestLift)
-        {
-            if (below is not { } height)
-                return false;
-            float distance = MathF.Max(0, height + clearance - bearing);
             if (distance == 0)
                 return false;
 
@@ -142,11 +156,12 @@ internal static class OutfitPartLift
             Vector3 liftedPosition = new((float)(Position.X + x * scale), (float)(Position.Y + y * scale),
                 (float)(Position.Z + z * scale));
             // A positive lift can round away when added to the source position.
-            if (new PositionBits(liftedPosition) == new PositionBits(Position))
+            if (new LiftVectorBits(liftedPosition) == new LiftVectorBits(Position))
                 return false;
             Position = liftedPosition;
-            // Visit only the standoff regions this weld touches, clearing the lowest bit each time.
-            for (UInt128 regions = standoffRegions; regions != UInt128.Zero; regions &= regions - UInt128.One)
+            Distance = distance;
+            // Visit only the regions this weld touches, clearing the lowest bit each time.
+            for (UInt128 regions = StandoffRegions; regions != UInt128.Zero; regions &= regions - UInt128.One)
             {
                 int region = (int)UInt128.TrailingZeroCount(regions);
                 largestLift[region] = MathF.Max(largestLift[region], distance);

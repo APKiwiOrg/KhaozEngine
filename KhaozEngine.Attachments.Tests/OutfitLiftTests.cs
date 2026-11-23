@@ -189,7 +189,9 @@ public class OutfitLiftTests
     public void A_hem_ramps_one_triangle_across_material_parts_at_coincident_positions(
         string seamKind, float? backHeight, float seamLift, float backStandoff)
     {
-        LiftMaterialMesh inside = Triangle(Vector3.Zero);
+        // Bitwise equal lift data forms one cross section. A ramp exists only between sections.
+        Vector3 adjacentDirection = Vector3.UnitZ * MathF.BitDecrement(1f);
+        LiftMaterialMesh inside = Triangle(Vector3.Zero) with { Directions = new[] { Vector3.UnitZ, adjacentDirection, adjacentDirection } };
         // Negative zero is the same point as zero and must weld with it, or the seam would crack.
         bool coincident = seamKind != "apart";
         Vector3 seam = seamKind switch

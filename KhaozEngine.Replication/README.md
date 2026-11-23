@@ -30,7 +30,8 @@ area-of-interest deltas over a reliable channel, and opt-in format 2 acknowledge
   reuses readers for framed receive and sample decoding to avoid allocating a reader for each component read.
   The sample reader supports reads, and its read-only base stream supports synchronous reads, seek, position,
   length, capability queries, and flush. Its asynchronous, APM, copy, write, resize, and timeout members throw
-  `NotSupportedException`. Supported operations that access a closed sample throw `ObjectDisposedException`.
+  `NotSupportedException`. The runtime's `ReadExactlyAsync` and `ReadAtLeastAsync` helpers report that refusal as
+  an already faulted result. Supported operations that access a closed sample throw `ObjectDisposedException`.
   `IsRegistered(ushort)` (since 17.38.0) asks whether this registry has a codec for an id, for a caller judging
   whether an id it read out of STORED bytes is one this build knows: cell-blob persistence uses it to retire a
   candidate parse of a blob whose wire generation was never recorded. `IsRegistered<T>(id, expectedChannels)`

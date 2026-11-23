@@ -18,6 +18,7 @@ public sealed class ClientSampleBaseStreamTests
     [InlineData(SeekOrigin.Current, long.MinValue, 1)]
     [InlineData(SeekOrigin.Current, -1L, 1)]
     [InlineData(SeekOrigin.End, 2L, 0)]
+    [InlineData((SeekOrigin)3, 0L, 1)]
     public void SeekMatchesReadOnlyMemoryStream(SeekOrigin origin, long offset, int start)
     {
         byte[] payload = [37, 53, 89];
@@ -31,6 +32,7 @@ public sealed class ClientSampleBaseStreamTests
             stream.Position = start;
             Exception? actual = Record.Exception(() => { stream.Seek(offset, origin); });
             Assert.Equal(expected?.GetType(), actual?.GetType());
+            AssertSameArgumentFields(expected, actual);
             Assert.Equal(oracle.Position, stream.Position);
             Assert.Equal(oracle.ReadByte(), stream.ReadByte());
         });
@@ -52,9 +54,18 @@ public sealed class ClientSampleBaseStreamTests
             Stream stream = reader.BaseStream;
             Exception? actual = Record.Exception(() => { stream.Position = position; });
             Assert.Equal(expected?.GetType(), actual?.GetType());
+            AssertSameArgumentFields(expected, actual);
             Assert.Equal(oracle.Position, stream.Position);
             Assert.Equal(oracle.ReadByte(), stream.ReadByte());
         });
+    }
+
+    // A codec may filter a refusal by the structured fields of the argument exception, so those match too.
+    private static void AssertSameArgumentFields(Exception? expected, Exception? actual)
+    {
+        Assert.Equal((expected as ArgumentException)?.ParamName, (actual as ArgumentException)?.ParamName);
+        Assert.Equal((expected as ArgumentOutOfRangeException)?.ActualValue,
+            (actual as ArgumentOutOfRangeException)?.ActualValue);
     }
 
     [Theory]

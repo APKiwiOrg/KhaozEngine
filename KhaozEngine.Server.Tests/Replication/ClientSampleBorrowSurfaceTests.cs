@@ -40,6 +40,13 @@ public sealed class ClientSampleBorrowSurfaceTests
         SetWriteTimeout,
     }
 
+    public enum AsyncReadHelper
+    {
+        ReadExactlyAsyncMemory,
+        ReadExactlyAsyncArray,
+        ReadAtLeastAsync,
+    }
+
     public enum CloseMember
     {
         ReaderClose,
@@ -85,6 +92,37 @@ public sealed class ClientSampleBorrowSurfaceTests
             Assert.Throws<NotSupportedException>(() => Invoke(member, reader.BaseStream, buffer, destination));
             Assert.Equal(new byte[] { 101, 113 }, buffer);
             Assert.Equal(0L, destination.Length);
+        }
+
+        CheckBorrowAndReuse(reader =>
+        {
+            Refuses(reader);
+            Assert.Equal((byte)37, reader.ReadByte());
+        }, Refuses);
+    }
+
+    // The runtime's exact and minimum async helpers are not virtual. They reach the refused ReadAsync and
+    // hand its refusal back as a completed fault, with nothing read and nothing left pending.
+    [Theory]
+    [InlineData(AsyncReadHelper.ReadExactlyAsyncMemory)]
+    [InlineData(AsyncReadHelper.ReadExactlyAsyncArray)]
+    [InlineData(AsyncReadHelper.ReadAtLeastAsync)]
+    public void AsyncReadHelperReportsTheRefusalAsACompletedFaultWithoutConsumingSample(AsyncReadHelper helper)
+    {
+        byte[] buffer = [101, 113];
+
+        void Refuses(BinaryReader reader)
+        {
+            Stream stream = reader.BaseStream;
+            Task result = helper switch
+            {
+                AsyncReadHelper.ReadExactlyAsyncMemory => stream.ReadExactlyAsync(buffer.AsMemory()).AsTask(),
+                AsyncReadHelper.ReadExactlyAsyncArray => stream.ReadExactlyAsync(buffer, 0, buffer.Length).AsTask(),
+                _ => stream.ReadAtLeastAsync(buffer.AsMemory(), 1).AsTask(),
+            };
+            Assert.True(result.IsFaulted);
+            Assert.IsType<NotSupportedException>(Assert.Single(result.Exception!.InnerExceptions));
+            Assert.Equal(new byte[] { 101, 113 }, buffer);
         }
 
         CheckBorrowAndReuse(reader =>

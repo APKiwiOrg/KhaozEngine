@@ -44,7 +44,8 @@ public sealed class ReplicationRegistry
     /// a reader for each component read.
     /// The sample reader supports reads, and its read-only base stream supports synchronous reads, seek,
     /// position, length, capability queries, and flush. The sample stream's asynchronous, APM, copy, write,
-    /// resize, and timeout members throw <see cref="NotSupportedException"/>.
+    /// resize, and timeout members throw <see cref="NotSupportedException"/>. The runtime's
+    /// <c>ReadExactlyAsync</c> and <c>ReadAtLeastAsync</c> helpers report that refusal as an already faulted result.
     /// Supported operations that access a closed sample throw <see cref="ObjectDisposedException"/>.
     /// Supplying <paramref name="lerp"/> makes the component
     /// interpolatable (smoothed between snapshots by <see cref="ClientReplicationView.Interpolate"/>).

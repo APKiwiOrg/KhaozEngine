@@ -39,7 +39,8 @@ internal sealed class SamplePayloadStream : Stream
         {
             EnsureOpen();
             ArgumentOutOfRangeException.ThrowIfNegative(value);
-            ArgumentOutOfRangeException.ThrowIfGreaterThan(value, (long)int.MaxValue);
+            if (value > int.MaxValue)
+                throw new ArgumentOutOfRangeException(nameof(value), "The position exceeds the stream length limit.");
             position = (int)value;
         }
     }
@@ -52,11 +53,12 @@ internal sealed class SamplePayloadStream : Stream
             SeekOrigin.Begin => 0,
             SeekOrigin.Current => position,
             SeekOrigin.End => bytes.Length,
-            _ => throw new ArgumentException("Invalid seek origin.", nameof(origin)),
+            _ => throw new ArgumentException("Invalid seek origin."),
         };
 
         // Check the upper bound before adding. The nonnegative start cannot underflow a long.
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(offset, (long)int.MaxValue - start);
+        if (offset > (long)int.MaxValue - start)
+            throw new ArgumentOutOfRangeException(nameof(offset), "The seek target exceeds the stream length limit.");
         long target = start + offset;
         if (target < 0) throw new IOException("Cannot seek before the sample.");
         position = (int)target;

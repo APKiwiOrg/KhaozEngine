@@ -88,7 +88,7 @@ public sealed partial class WorldClient
 
     // True when the frame belongs to the format 2 stream. A live stream also swallows legacy state frames, so the
     // world it built is never overlaid by the legacy reader. Without a stream every kind takes the legacy demux.
-    private bool RouteRebuildFrame(MoveProtocol.ServerFrameKind kind, byte[] payload, NetChannelReliability reliability)
+    private bool RouteRebuildFrame(MoveProtocol.ServerFrameKind kind, ReadOnlyMemory<byte> payload, NetChannelReliability reliability)
     {
         if (rebuild is null) return false;
         bool owned = kind is MoveProtocol.ServerFrameKind.ReplicationMode or MoveProtocol.ServerFrameKind.RebuildDelta
@@ -100,7 +100,7 @@ public sealed partial class WorldClient
         switch (kind)
         {
             case MoveProtocol.ServerFrameKind.ReplicationMode:
-                if (!rebuild.ReceiveOffer(payload, reliability, out error)) EndRebuild(error);
+                if (!rebuild.ReceiveOffer(payload.Span, reliability, out error)) EndRebuild(error);
                 break;
             case MoveProtocol.ServerFrameKind.RebuildDelta:
                 OnRebuildResult(rebuild.ReceiveDelta(world, payload, reliability, out long deltaNetId, out int deltaAck,

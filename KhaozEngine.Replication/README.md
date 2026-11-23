@@ -104,6 +104,12 @@ area-of-interest deltas over a reliable channel, and opt-in format 2 acknowledge
   boundary's batch, then read changes and events before the next boundary. `WorldClient` does this internally for
   its private world. `TileWorldClient` does it by default for its public world, with an explicit caller-owned opt-out.
   Format-2 reconstruction clears its separate private staging world on every reset, including failed decoding.
+  Legacy apply reuses the outer reader, the bounded extension reader and the full-state bookkeeping
+  on the view's owner thread. A nested apply checks out separate scratch while the outer apply is active.
+  Each decode window is bounded to its input and drops its backing before apply returns, including after
+  a failed decode. Sampled components keep independent copies because the presentation history can
+  outlive the receive frame and direct callers can reuse their input arrays. History stamping stores
+  references to those copies.
   Two render-smoothing paths: `Interpolate(world, alpha)` lerps registered components between the
   last two snapshots (the legacy estimate-and-ramp path), and the preferred **fixed-delay buffer** (since 9.23.0):
   `RecordInterpolationSample(t, excludeNetId?)` stamps each applied snapshot's interpolatable bytes into a per-component

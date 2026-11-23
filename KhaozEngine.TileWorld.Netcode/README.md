@@ -606,6 +606,9 @@ always keep the constructor map.
   per render frame create multiple boundaries, while skipping polls leaves the window open. Set
   `TileWorldClientConfig.AdvanceWorldTick = false` only when calling `World.AdvanceTick()` at your own boundary.
   Remove any extra advance or opt out, since a second advance can clear observations before their readers run.
+  The snapshot dispatcher passes a bounded slice of the received frame to replication, excluding
+  the tile header and any trailing pad. The slice is valid through apply. The public
+  `TileProtocol.TryDecodeSnapshotFrame` returns a copy that its caller owns.
   `LocalPose` and `TryGetRemotePose` are the BODIES to draw. `Prediction.PredictedState` (its `Tile` and
   its `Route`) is the RULES for the local player, which is what the true-tile overlay reads. A REMOTE has two tile
   reads and they answer different questions: `TryGetRemoteTile` is on the delayed render timeline, so it agrees

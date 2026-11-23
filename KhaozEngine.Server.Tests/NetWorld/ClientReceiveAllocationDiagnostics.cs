@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
 using KhaozEngine.Ecs;
@@ -34,11 +35,12 @@ public sealed class ClientReceiveAllocationDiagnostics(ITestOutputHelper output)
         (LoopbackTransport source, LoopbackTransport receiver) = LoopbackTransport.CreatePair();
         using var sourceLease = source;
         using var receiverLease = receiver;
-        var session = new NetClient(receiver);
+        var session = new NetClient(receiver, token: null, borrowOwnedFrames: true);
         using var client = new WorldClient(receiver, static (_, _) => 0f, MoveTuning.Default, registry: registry);
         World world = client.WorldForTest;
         ClientReplicationView view = client.ViewForTest;
-        Span<long> counts = stackalloc long[6];
+        var reusedRenderSnapshot = new List<EntityRenderState>(entityCount);
+        Span<long> counts = stackalloc long[7];
         for (int i = 0; i < frames.Length; i++)
         {
             if (i == WarmupFrames) counts.Clear();
@@ -47,19 +49,20 @@ public sealed class ClientReceiveAllocationDiagnostics(ITestOutputHelper output)
 
             long start = GC.GetAllocatedBytesForCurrentThread();
             session.Poll();
-            if (!session.TryDequeueEvent(out ClientSessionEvent ev) || ev.Kind != ClientSessionEventKind.Data)
+            if (!session.TryDequeueFrame(out ClientSessionEvent ev) || ev.Kind != ClientSessionEventKind.Data)
                 throw new UnreachableException("The diagnostic queued one data frame.");
             counts[0] += GC.GetAllocatedBytesForCurrentThread() - start;
 
             start = GC.GetAllocatedBytesForCurrentThread();
-            if (!MoveProtocol.TryDecodeServerFrame(ev.Data, out MoveProtocol.ServerFrameKind kind, out byte[] payload)
-                || !MoveProtocol.TryDecodeSnapshotFrame(payload, out _, out _, out byte[] body))
+            if (!MoveProtocol.TryBorrowServerFrame(ev.Payload, out MoveProtocol.ServerFrameKind kind,
+                    out ReadOnlyMemory<byte> payload)
+                || !MoveProtocol.TryBorrowServedFrame(kind, payload, out _, out _, out _, out ReadOnlyMemory<byte> body))
                 throw new UnreachableException("The diagnostic sent a valid world frame.");
             counts[1] += GC.GetAllocatedBytesForCurrentThread() - start;
 
             start = GC.GetAllocatedBytesForCurrentThread();
-            if (kind == MoveProtocol.ServerFrameKind.Delta) view.ApplyDelta(world, body);
-            else view.Apply(world, body);
+            if (kind == MoveProtocol.ServerFrameKind.Delta) view.ApplyDeltaBorrowed(world, body);
+            else view.ApplyBorrowed(world, body);
             counts[2] += GC.GetAllocatedBytesForCurrentThread() - start;
 
             start = GC.GetAllocatedBytesForCurrentThread();
@@ -73,12 +76,20 @@ public sealed class ClientReceiveAllocationDiagnostics(ITestOutputHelper output)
             start = GC.GetAllocatedBytesForCurrentThread();
             var snapshot = client.Snapshot();
             counts[5] += GC.GetAllocatedBytesForCurrentThread() - start;
+            start = GC.GetAllocatedBytesForCurrentThread();
+            client.CopySnapshotTo(reusedRenderSnapshot);
+            counts[6] += GC.GetAllocatedBytesForCurrentThread() - start;
             Assert.Equal(entityCount, snapshot.Count);
+            Assert.Equal(entityCount, reusedRenderSnapshot.Count);
         }
 
         output.WriteLine($"{entityCount} remotes, 2 sampled components each, {MeasuredFrames} warmed "
             + $"{(delta ? "delta" : "snapshot")} frames and updates");
-        string[] names = ["Session receive/decode", "World dispatch", "Apply", "History stamp", "Interpolation", "Render snapshot"];
+        string[] names =
+        [
+            "Session receive/decode", "World dispatch", "Apply", "History stamp", "Interpolation",
+            "Render snapshot", "Render snapshot into caller storage"
+        ];
         for (int i = 0; i < names.Length; i++)
             output.WriteLine($"{names[i]}: {counts[i] / (double)MeasuredFrames:F2} B/{(i < 4 ? "frame" : "update")}");
     }

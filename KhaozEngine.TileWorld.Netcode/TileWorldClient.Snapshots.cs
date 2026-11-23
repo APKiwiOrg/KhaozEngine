@@ -60,7 +60,7 @@ public sealed partial class TileWorldClient
     {
         if (config.AdvanceWorldTick) World.AdvanceTick();
         net.Poll();
-        while (net.TryDequeueEvent(out ClientSessionEvent ev))
+        while (net.TryDequeueFrame(out ClientSessionEvent ev))
         {
             switch (ev.Kind)
             {
@@ -81,7 +81,7 @@ public sealed partial class TileWorldClient
                     Disconnected?.Invoke();
                     break;
                 case ClientSessionEventKind.Data:
-                    OnServerFrame(ev.Data);
+                    OnServerFrame(ev.Payload);
                     break;
             }
         }
@@ -90,14 +90,16 @@ public sealed partial class TileWorldClient
     // Demux by TAG, never by length, which is the wire's own rule (see TileProtocol). A frame whose decoder refuses
     // it is dropped silently: every byte here came off a socket, and a client that threw on a malformed frame would
     // hand anything on the path between it and the server a way to kill its render loop.
-    void OnServerFrame(byte[] data)
+    void OnServerFrame(ReadOnlyMemory<byte> frame)
     {
-        CheckPreparationInterruption(TileProtocol.ServerFrameTag(data));
-        switch (TileProtocol.ServerFrameTag(data))
+        ReadOnlySpan<byte> data = frame.Span;
+        byte tag = TileProtocol.ServerFrameTag(data);
+        CheckPreparationInterruption(tag);
+        switch (tag)
         {
             case TileProtocol.ServerFrameSnapshot:
-                if (TileProtocol.TryDecodeSnapshotFrame(data, out long localNetId, out int ackSeq,
-                        out long serverTick, out byte[] snapshot))
+                if (TileProtocol.TryBorrowSnapshotFrame(frame, out long localNetId, out int ackSeq,
+                        out long serverTick, out ReadOnlyMemory<byte> snapshot))
                     OnSnapshot(localNetId, ackSeq, serverTick, snapshot);
                 else DroppedSnapshotCount++;
                 return;
@@ -148,7 +150,7 @@ public sealed partial class TileWorldClient
     }
 
     // One snapshot: the remote timeline gets a sample, and the local player gets a reconciliation basis.
-    void OnSnapshot(long localNetId, int ackSeq, long serverTick, byte[] snapshot)
+    void OnSnapshot(long localNetId, int ackSeq, long serverTick, ReadOnlyMemory<byte> snapshot)
     {
         LocalNetId = localNetId;
         ServerTick = serverTick;
@@ -159,7 +161,7 @@ public sealed partial class TileWorldClient
         // snapshot is a FULL one: this server serves SnapshotWriter.WriteFiltered every tick, so the next serve
         // overwrites every component of every entity in interest. The day the serve moves to AoiDeltaReplicator,
         // which Replication already offers, a dropped frame leaves a hole no later delta fills.
-        if (!View.TryApply(World, snapshot, out _))
+        if (!View.TryApplyBorrowed(World, snapshot, delta: false, out _))
         {
             DroppedSnapshotCount++;
             return;

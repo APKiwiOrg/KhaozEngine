@@ -8,11 +8,19 @@ public enum ClientSessionEventKind { Joined, Rejected, Data, Disconnected }
 /// <summary>One client-side session event: join accepted (with slot), rejected (with reason), data, or dropped.</summary>
 public readonly struct ClientSessionEvent
 {
+    private readonly byte[] data;
+    private readonly bool hasSessionHeader;
+
     public ClientSessionEvent(ClientSessionEventKind kind, int slot, byte[] data, NetChannelReliability reliability, string rejectReason)
+        : this(kind, slot, data, reliability, rejectReason, hasSessionHeader: false) { }
+
+    private ClientSessionEvent(ClientSessionEventKind kind, int slot, byte[] data, NetChannelReliability reliability,
+        string rejectReason, bool hasSessionHeader)
     {
         Kind = kind;
         Slot = slot;
-        Data = data ?? Array.Empty<byte>();
+        this.data = data ?? Array.Empty<byte>();
+        this.hasSessionHeader = hasSessionHeader;
         Reliability = reliability;
         RejectReason = rejectReason ?? string.Empty;
     }
@@ -24,7 +32,10 @@ public readonly struct ClientSessionEvent
     public int Slot { get; }
 
     /// <summary>Game payload for a <see cref="ClientSessionEventKind.Data"/> event; empty otherwise.</summary>
-    public byte[] Data { get; }
+    public byte[] Data => hasSessionHeader ? SessionFrame.ReadBody(data) : data;
+
+    internal ReadOnlyMemory<byte> Payload => hasSessionHeader ? data.AsMemory(1) : data;
+    internal ClientSessionEvent OwnData() => hasSessionHeader ? FromData(Data, Reliability) : this;
 
     /// <summary>The channel a <see cref="ClientSessionEventKind.Data"/> event arrived on.</summary>
     public NetChannelReliability Reliability { get; }
@@ -40,6 +51,9 @@ public readonly struct ClientSessionEvent
 
     public static ClientSessionEvent FromData(byte[] data, NetChannelReliability r) =>
         new(ClientSessionEventKind.Data, -1, data, r, string.Empty);
+
+    internal static ClientSessionEvent FromFrame(byte[] frame, NetChannelReliability reliability) =>
+        new(ClientSessionEventKind.Data, -1, frame, reliability, string.Empty, hasSessionHeader: true);
 
     public static ClientSessionEvent Disconnected() =>
         new(ClientSessionEventKind.Disconnected, -1, Array.Empty<byte>(), NetChannelReliability.ReliableOrdered, string.Empty);

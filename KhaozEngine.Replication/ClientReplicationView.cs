@@ -49,25 +49,23 @@ public sealed partial class ClientReplicationView
     // consumers pass no id). Kept in sync from RecordInterpolationSample, whose caller owns the local id per ingest.
     private long? excludedFromInterpolation;
 
-    // The window an extension codec actually reads through: re-pointed at each component's own length-prefixed
-    // payload so a codec cannot reach the bytes of whatever rides behind it (see FramedPayloadStream for why that
-    // matters). One pair per view rather than one per component, so bounding a payload allocates nothing.
-    private readonly FramedPayloadStream framedPayload = new();
-    private readonly BinaryReader framedReader;
+    // The world and view have one owner thread. A nested receive on that thread checks out
+    // a different slot until the outer codec finishes with its readers and full-state bookkeeping.
+    private LegacyApplyScratch? availableApplyScratch;
 
-    // Test seam (InternalsVisibleTo): how many bytes of a snapshot buffer this view's framed window still points at.
-    // Zero is the only value an apply may leave behind, a FAILED apply included, because a non-zero one means the
-    // view is holding that snapshot's byte[] alive until the next Retarget.
-    internal long FramedWindowLength => framedPayload.Length;
+    // Friend-test diagnostics for the two windows, which must detach on every exit.
+    internal long FramedWindowLength => availableApplyScratch?.Framed.Length ?? 0;
+    internal bool HasBorrowedFrameForTest => availableApplyScratch?.Frame.CanRead ?? false;
 
     public ClientReplicationView(ReplicationRegistry registry)
     {
         this.registry = registry ?? throw new ArgumentNullException(nameof(registry));
-        framedReader = new BinaryReader(framedPayload);
     }
 
     /// <summary>The live NetId→Entity map.</summary>
     public IReadOnlyDictionary<long, Entity> Entities => entityByNetId;
+
+    internal Dictionary<long, Entity>.Enumerator EnumerateEntities() => entityByNetId.GetEnumerator();
 
     /// <summary>Looks up the local entity for a network id.</summary>
     public bool TryGetEntity(long netId, out Entity entity) => entityByNetId.TryGetValue(netId, out entity);
@@ -79,42 +77,37 @@ public sealed partial class ClientReplicationView
     /// Applies a snapshot: spawn-if-new + update every netId present, despawn every netId absent. Captures
     /// interpolatable components' raw bytes (shifting the prior snapshot's into the interpolation "previous").
     /// </summary>
-    public void Apply(World world, byte[] snapshot) => ApplyInternal(world, snapshot, unknownExtensionSink: null);
+    public void Apply(World world, byte[] snapshot) =>
+        ApplyInternal(world, RequireArray(world, snapshot, nameof(snapshot)), unknownExtensionSink: null);
 
-    private void ApplyInternal(World world, byte[] snapshot, Action<long, ushort, byte[]>? unknownExtensionSink)
+    internal void ApplyBorrowed(World world, ReadOnlyMemory<byte> snapshot) =>
+        ApplyInternal(world, snapshot, unknownExtensionSink: null);
+
+    private void ApplyInternal(World world, ReadOnlyMemory<byte> snapshot, Action<long, ushort, byte[]>? unknownExtensionSink)
     {
-        if (world is null) throw new ArgumentNullException(nameof(world));
-        if (snapshot is null) throw new ArgumentNullException(nameof(snapshot));
-
-        // Shift current -> previous for interpolation.
-        previousBytes.Clear();
-        foreach (KeyValuePair<(long, ushort), byte[]> kv in currentBytes) previousBytes[kv.Key] = kv.Value;
-        currentBytes.Clear();
-
-        using var ms = new MemoryStream(snapshot);
-        using var br = new BinaryReader(ms);
-        int count = br.ReadInt32();
-        var seen = new HashSet<long>();
-        for (int i = 0; i < count; i++)
+        ArgumentNullException.ThrowIfNull(world);
+        LegacyApplyScratch scratch = RentApplyScratch(snapshot);
+        try
         {
-            long netId = br.ReadInt64();
-            seen.Add(netId);
-            Entity entity = GetOrSpawn(world, netId);
-            ReadEntityComponents(world, entity, netId, ms, br, snapshot, "Snapshot", unknownExtensionSink);
-        }
+            // Shift current -> previous for interpolation.
+            ShiftPresentationBuffers();
+            currentBytes.Clear();
 
-        // Full-state: anything we still track but didn't see is gone.
-        List<long>? gone = null;
-        foreach (KeyValuePair<long, Entity> kv in entityByNetId)
-            if (!seen.Contains(kv.Key)) (gone ??= new List<long>()).Add(kv.Key);
-        if (gone is not null)
-        {
-            foreach (long netId in gone)   // long, not int: a full-snapshot despawn must not truncate a 64-bit id
+            BinaryReader reader = scratch.Reader;
+            int count = reader.ReadInt32();
+            for (int i = 0; i < count; i++)
             {
-                if (world.IsAlive(entityByNetId[netId])) world.Despawn(entityByNetId[netId]);
-                entityByNetId.Remove(netId);
-                RemoveEntityBuffers(netId);   // also drop the fixed-delay sample history for the departed entity
+                long netId = reader.ReadInt64();
+                scratch.Seen.Add(netId);
+                Entity entity = GetOrSpawn(world, netId);
+                ReadEntityComponents(world, entity, netId, scratch, snapshot, "Snapshot", unknownExtensionSink);
             }
+
+            DespawnOmitted(world, scratch);
+        }
+        finally
+        {
+            ReturnApplyScratch(scratch);
         }
     }
 
@@ -155,7 +148,7 @@ public sealed partial class ClientReplicationView
         var collected = new List<RetainedComponent>();
         try
         {
-            ApplyInternal(world, snapshot,
+            ApplyInternal(world, RequireArray(world, snapshot, nameof(snapshot)),
                 (netId, typeId, payload) => collected.Add(new RetainedComponent(netId, typeId, payload)));
             retained = collected;
             error = null;
@@ -207,82 +200,126 @@ public sealed partial class ClientReplicationView
     /// <see cref="LastAppliedSeq"/> is a gap and throws. A <c>baseline -1</c> delta is a full snapshot: entities the
     /// client still tracks but the delta omits are despawned (the same full-state semantics as <see cref="Apply"/>).
     /// </summary>
-    public void ApplyDelta(World world, byte[] delta)
+    public void ApplyDelta(World world, byte[] delta) =>
+        ApplyDeltaBorrowed(world, RequireArray(world, delta, nameof(delta)));
+
+    internal void ApplyDeltaBorrowed(World world, ReadOnlyMemory<byte> delta)
     {
-        if (world is null) throw new ArgumentNullException(nameof(world));
-        if (delta is null) throw new ArgumentNullException(nameof(delta));
-
-        using var ms = new MemoryStream(delta);
-        using var br = new BinaryReader(ms);
-        int baselineSeq = br.ReadInt32();
-        int snapshotSeq = br.ReadInt32();
-        if (baselineSeq > LastAppliedSeq)
-            throw new InvalidOperationException(
-                $"Delta baseline {baselineSeq} is ahead of last applied {LastAppliedSeq}; a full snapshot is needed.");
-
-        // Interpolation: the pre-delta state becomes 'previous'; changed components below refresh 'current'.
-        previousBytes.Clear();
-        foreach (KeyValuePair<(long netId, ushort typeId), byte[]> kv in currentBytes) previousBytes[kv.Key] = kv.Value;
-
-        int removedCount = br.ReadInt32();
-        for (int i = 0; i < removedCount; i++)
+        ArgumentNullException.ThrowIfNull(world);
+        LegacyApplyScratch scratch = RentApplyScratch(delta);
+        try
         {
-            long netId = br.ReadInt64();
-            if (entityByNetId.TryGetValue(netId, out Entity e))
+            BinaryReader br = scratch.Reader;
+            int baselineSeq = br.ReadInt32();
+            int snapshotSeq = br.ReadInt32();
+            if (baselineSeq > LastAppliedSeq)
+                throw new InvalidOperationException(
+                    $"Delta baseline {baselineSeq} is ahead of last applied {LastAppliedSeq}; a full snapshot is needed.");
+
+            // Interpolation: the pre-delta state becomes 'previous'; changed components below refresh 'current'.
+            ShiftPresentationBuffers();
+
+            int removedCount = br.ReadInt32();
+            for (int i = 0; i < removedCount; i++)
             {
-                if (world.IsAlive(e)) world.Despawn(e);
-                entityByNetId.Remove(netId);
+                long netId = br.ReadInt64();
+                if (entityByNetId.TryGetValue(netId, out Entity e))
+                {
+                    if (world.IsAlive(e)) world.Despawn(e);
+                    entityByNetId.Remove(netId);
+                }
+                RemoveEntityBuffers(netId);
             }
+
+            // A baseline -1 delta is a full snapshot; track what it carries so anything else can be despawned below.
+            bool full = baselineSeq == -1;
+            int changedCount = br.ReadInt32();
+            for (int i = 0; i < changedCount; i++)
+            {
+                long netId = br.ReadInt64();
+                if (full) scratch.Seen.Add(netId);
+                br.ReadByte(); // isNew flag: GetOrSpawn handles both; read only to stay byte-aligned
+                Entity entity = GetOrSpawn(world, netId);
+
+                int removedCompCount = br.ReadInt32();
+                for (int r = 0; r < removedCompCount; r++)
+                {
+                    ushort rtid = br.ReadUInt16();
+                    if (registry.TryGet(rtid, out ComponentCodec rcodec))
+                    {
+                        if (world.IsAlive(entity)) rcodec.RemoveComponent(world, entity);
+                        currentBytes.Remove((netId, rtid));
+                        previousBytes.Remove((netId, rtid));
+                        // Also drop the fixed-delay sample history, else InterpolateAt keeps lerping the stale samples and
+                        // world.Set re-adds the component the server just removed, every frame (resurrection).
+                        sampleHistory.Remove((netId, rtid));
+                        // All three lost the key, so the index may lose it too. Only a tightening: leaving it would be
+                        // correct as well, since the index is allowed to name typeIds no dictionary still holds.
+                        if (typeIdsByNetId.TryGetValue(netId, out HashSet<ushort>? tracked)) tracked.Remove(rtid);
+                    }
+                }
+
+                ReadEntityComponents(world, entity, netId, scratch, delta, "Delta", unknownExtensionSink: null);
+            }
+
+            if (full) DespawnOmitted(world, scratch);
+            LastAppliedSeq = snapshotSeq;
+        }
+        finally
+        {
+            ReturnApplyScratch(scratch);
+        }
+    }
+
+    internal bool TryApplyBorrowed(World world, ReadOnlyMemory<byte> body, bool delta, out string? error)
+    {
+        try
+        {
+            if (delta) ApplyDeltaBorrowed(world, body);
+            else ApplyBorrowed(world, body);
+            error = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            return false;
+        }
+    }
+
+    private static byte[] RequireArray(World world, byte[]? bytes, string parameter)
+    {
+        ArgumentNullException.ThrowIfNull(world);
+        ArgumentNullException.ThrowIfNull(bytes, parameter);
+        return bytes;
+    }
+
+    private LegacyApplyScratch RentApplyScratch(ReadOnlyMemory<byte> body)
+    {
+        LegacyApplyScratch scratch = availableApplyScratch ?? new LegacyApplyScratch();
+        availableApplyScratch = scratch.Next;
+        scratch.Next = null;
+        scratch.Frame.Retarget(body);
+        return scratch;
+    }
+
+    private void ReturnApplyScratch(LegacyApplyScratch scratch)
+    {
+        scratch.Reset();
+        scratch.Next = availableApplyScratch;
+        availableApplyScratch = scratch;
+    }
+
+    private void DespawnOmitted(World world, LegacyApplyScratch scratch)
+    {
+        foreach (KeyValuePair<long, Entity> kv in entityByNetId)
+            if (!scratch.Seen.Contains(kv.Key)) scratch.Gone.Add(kv.Key);
+        foreach (long netId in scratch.Gone)
+        {
+            if (world.IsAlive(entityByNetId[netId])) world.Despawn(entityByNetId[netId]);
+            entityByNetId.Remove(netId);
             RemoveEntityBuffers(netId);
         }
-
-        // A baseline -1 delta is a full snapshot; track what it carries so anything else can be despawned below.
-        HashSet<long>? seen = baselineSeq == -1 ? new HashSet<long>() : null;
-        int changedCount = br.ReadInt32();
-        for (int i = 0; i < changedCount; i++)
-        {
-            long netId = br.ReadInt64();
-            seen?.Add(netId);
-            br.ReadByte(); // isNew flag: GetOrSpawn handles both; read only to stay byte-aligned
-            Entity entity = GetOrSpawn(world, netId);
-
-            int removedCompCount = br.ReadInt32();
-            for (int r = 0; r < removedCompCount; r++)
-            {
-                ushort rtid = br.ReadUInt16();
-                if (registry.TryGet(rtid, out ComponentCodec rcodec))
-                {
-                    if (world.IsAlive(entity)) rcodec.RemoveComponent(world, entity);
-                    currentBytes.Remove((netId, rtid));
-                    previousBytes.Remove((netId, rtid));
-                    // Also drop the fixed-delay sample history, else InterpolateAt keeps lerping the stale samples and
-                    // world.Set re-adds the component the server just removed, every frame (resurrection).
-                    sampleHistory.Remove((netId, rtid));
-                    // All three lost the key, so the index may lose it too. Only a tightening: leaving it would be
-                    // correct as well, since the index is allowed to name typeIds no dictionary still holds.
-                    if (typeIdsByNetId.TryGetValue(netId, out HashSet<ushort>? tracked)) tracked.Remove(rtid);
-                }
-            }
-
-            ReadEntityComponents(world, entity, netId, ms, br, delta, "Delta", unknownExtensionSink: null);
-        }
-
-        // Full snapshot (baseline -1): anything we still track but the snapshot didn't carry is gone.
-        if (seen is not null)
-        {
-            List<long>? gone = null;
-            foreach (KeyValuePair<long, Entity> kv in entityByNetId)
-                if (!seen.Contains(kv.Key)) (gone ??= new List<long>()).Add(kv.Key);
-            if (gone is not null)
-                foreach (long netId in gone)
-                {
-                    if (world.IsAlive(entityByNetId[netId])) world.Despawn(entityByNetId[netId]);
-                    entityByNetId.Remove(netId);
-                    RemoveEntityBuffers(netId);
-                }
-        }
-
-        LastAppliedSeq = snapshotSeq;
     }
 
     /// <summary>
@@ -297,9 +334,11 @@ public sealed partial class ClientReplicationView
     /// the components behind it. A built-in frame is unframed and has no such bound to give: it reads through the
     /// stream reader as before.</para>
     /// </summary>
-    private void ReadEntityComponents(World world, Entity entity, long netId, MemoryStream ms, BinaryReader br,
-        byte[] backing, string streamKind, Action<long, ushort, byte[]>? unknownExtensionSink)
+    private void ReadEntityComponents(World world, Entity entity, long netId, LegacyApplyScratch scratch,
+        ReadOnlyMemory<byte> backing, string streamKind, Action<long, ushort, byte[]>? unknownExtensionSink)
     {
+        BorrowedPayloadStream ms = scratch.Frame;
+        BinaryReader br = scratch.Reader;
         // The finally is the point: every exit from this loop has to drop the window, an ABORTED apply included. A
         // lying length and an unregistered built-in id both throw from inside here, TryApply turns that into a false,
         // and the caller drops the frame and carries on, so without the finally the view kept the failed snapshot's
@@ -324,8 +363,8 @@ public sealed partial class ClientReplicationView
                         // Bounded to this component's own payload. Unbounded, a codec that reads a declared length out
                         // of its payload has the WHOLE remaining snapshot to satisfy it, so a lie is caught only when it
                         // runs off the end of the stream and is otherwise served out of the following components' bytes.
-                        framedPayload.Retarget(backing, (int)posBefore, len);
-                        codec.Deserialize(world, entity, framedReader);
+                        scratch.Framed.Retarget(backing.Slice((int)posBefore, len));
+                        codec.Deserialize(world, entity, scratch.FramedReader);
                     }
                     else
                     {
@@ -336,7 +375,7 @@ public sealed partial class ClientReplicationView
                     if (codec.FixedDelaySampled)   // interpolated OR discrete nearest-sampled: both need the timestamped bytes
                     {
                         var slice = new byte[end - posBefore];
-                        Array.Copy(backing, (int)posBefore, slice, 0, slice.Length);
+                        backing.Span.Slice((int)posBefore, slice.Length).CopyTo(slice);
                         SetCurrent(netId, typeId, slice);
                     }
                 }
@@ -347,7 +386,7 @@ public sealed partial class ClientReplicationView
                         // Retain the raw frame (retain-and-rewrite) instead of dropping it, so a registry downgrade does
                         // not destroy data at rest. The caller re-emits it verbatim on the next save.
                         var payload = new byte[len];
-                        Array.Copy(backing, (int)posBefore, payload, 0, len);
+                        backing.Span.Slice((int)posBefore, len).CopyTo(payload);
                         unknownExtensionSink(netId, typeId, payload);
                     }
                     ms.Position = posBefore + len;   // unknown extension: skip its framed payload (forward-compat)
@@ -360,7 +399,7 @@ public sealed partial class ClientReplicationView
         }
         finally
         {
-            framedPayload.Release();   // do not keep this snapshot's buffer alive until the next apply re-points it
+            scratch.Framed.Release();   // do not keep this snapshot's buffer alive until the next apply re-points it
         }
     }
 

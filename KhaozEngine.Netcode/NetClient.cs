@@ -14,6 +14,7 @@ public sealed class NetClient
 {
     private readonly INetTransport transport;
     private readonly byte[] token;
+    private readonly bool borrowOwnedFrames;
     private readonly Queue<ClientSessionEvent> inbox = new();
     // The connection id the transport actually gave the server peer, captured off the Connected event rather than
     // assumed. Both current transports happen to number that peer 1 (LoopbackTransport pins it, and a client-role
@@ -24,9 +25,13 @@ public sealed class NetClient
     private bool helloSent;
 
     public NetClient(INetTransport transport, byte[]? token = null)
+        : this(transport, token, borrowOwnedFrames: false) { }
+
+    internal NetClient(INetTransport transport, byte[]? token, bool borrowOwnedFrames)
     {
         this.transport = transport ?? throw new ArgumentNullException(nameof(transport));
         this.token = token ?? Array.Empty<byte>();
+        this.borrowOwnedFrames = borrowOwnedFrames && transport is IOwnedReceiveFrames;
     }
 
     /// <summary>The assigned slot while this session holds one: set by the Welcome that admitted it, and reset to
@@ -91,13 +96,22 @@ public sealed class NetClient
                 inbox.Enqueue(ClientSessionEvent.Rejected(Encoding.UTF8.GetString(SessionFrame.ReadBody(ev.Data))));
                 break;
             case SessionOpcode.Data:
-                inbox.Enqueue(ClientSessionEvent.FromData(SessionFrame.ReadBody(ev.Data), ev.Reliability));
+                inbox.Enqueue(borrowOwnedFrames
+                    ? ClientSessionEvent.FromFrame(ev.Data, ev.Reliability)
+                    : ClientSessionEvent.FromData(SessionFrame.ReadBody(ev.Data), ev.Reliability));
                 break;
         }
     }
 
     /// <summary>Drains one session event. False when none remain this poll.</summary>
     public bool TryDequeueEvent(out ClientSessionEvent ev)
+    {
+        if (!TryDequeueFrame(out ev)) return false;
+        ev = ev.OwnData();
+        return true;
+    }
+
+    internal bool TryDequeueFrame(out ClientSessionEvent ev)
     {
         if (inbox.Count > 0) { ev = inbox.Dequeue(); return true; }
         ev = default;

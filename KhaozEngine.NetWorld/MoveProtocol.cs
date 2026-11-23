@@ -566,16 +566,25 @@ public static partial class MoveProtocol
     /// <summary>Splits a server frame into its header and the replication snapshot. False if too short.</summary>
     public static bool TryDecodeSnapshotFrame(ReadOnlySpan<byte> data, out long localNetId, out int ackSeq, out byte[] snapshot)
     {
+        if (TryReadSnapshotHeader(data, out localNetId, out ackSeq))
+        {
+            snapshot = data[FrameHeader..].ToArray();
+            return true;
+        }
+        snapshot = Array.Empty<byte>();
+        return false;
+    }
+
+    private static bool TryReadSnapshotHeader(ReadOnlySpan<byte> data, out long localNetId, out int ackSeq)
+    {
         if (data.Length >= FrameHeader)
         {
-            localNetId = BitConverter.ToInt64(data.Slice(0, 8));
+            localNetId = BitConverter.ToInt64(data[..8]);
             ackSeq = BitConverter.ToInt32(data.Slice(8, 4));
-            snapshot = data.Slice(FrameHeader).ToArray();
             return true;
         }
         localNetId = -1;
         ackSeq = -1;
-        snapshot = Array.Empty<byte>();
         return false;
     }
 
@@ -681,14 +690,14 @@ public static partial class MoveProtocol
     /// <summary>Splits a server frame into its kind and inner payload. False if empty.</summary>
     public static bool TryDecodeServerFrame(ReadOnlySpan<byte> data, out ServerFrameKind kind, out byte[] payload)
     {
-        if (data.Length >= 1)
-        {
-            kind = (ServerFrameKind)data[0];
-            payload = data.Slice(1).ToArray();
-            return true;
-        }
-        kind = ServerFrameKind.Snapshot;
-        payload = Array.Empty<byte>();
-        return false;
+        bool recognized = TryReadServerFrameKind(data, out kind);
+        payload = recognized ? data[1..].ToArray() : Array.Empty<byte>();
+        return recognized;
+    }
+
+    private static bool TryReadServerFrameKind(ReadOnlySpan<byte> data, out ServerFrameKind kind)
+    {
+        kind = data.IsEmpty ? ServerFrameKind.Snapshot : (ServerFrameKind)data[0];
+        return !data.IsEmpty;
     }
 }

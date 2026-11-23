@@ -88,7 +88,7 @@ public sealed class AttachmentBindingDataException : MalformedDataException
     /// <summary>The triangle count of the uploaded mesh.</summary>
     public int? ExpectedTriangleCount { get; init; }
 
-    /// <summary>The triangle count the region runs cover.</summary>
+    /// <summary>The triangle count the region runs or footprint declare.</summary>
     public int? ActualTriangleCount { get; init; }
 
     /// <summary>The zero-based position of the chain in its garment part.</summary>

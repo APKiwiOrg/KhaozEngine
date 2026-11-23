@@ -17,7 +17,7 @@ namespace KhaozEngine.Tests.Render3D;
 
 [Collection("AllocSensitive")]
 [Trait("Category", "Diagnostic")]
-public sealed class LiftBindCostDiagnostics(ITestOutputHelper output)
+public sealed partial class LiftBindCostDiagnostics(ITestOutputHelper output)
 {
     const int WearerCount = 32;
     const int WarmFrames = 120;
@@ -60,6 +60,7 @@ public sealed class LiftBindCostDiagnostics(ITestOutputHelper output)
             Cost liftedArmourDrawFrames = MeasureDraws(rig, liftedDraws, warmFrames, measuredFrames);
             Cost bareArmourDrawFrames = MeasureDraws(rig, bareDraws, warmFrames, measuredFrames);
             ValidateViews(rig.Scene, liftedDraws, bareDraws);
+            Cost footprintBinds = MeasureFootprintBinds(rig, out int footprintBodyTriangleCount);
 
             output.WriteLine(JsonSerializer.Serialize(new
             {
@@ -76,6 +77,8 @@ public sealed class LiftBindCostDiagnostics(ITestOutputHelper output)
                 liftedBinds,
                 liftedArmourDrawFrames,
                 bareArmourDrawFrames,
+                footprintBodyTriangleCount,
+                footprintBinds,
             }, JsonSerializerOptions.Web));
         }
         finally
@@ -183,7 +186,7 @@ public sealed class LiftBindCostDiagnostics(ITestOutputHelper output)
     static LoadedAttachmentSet LoadArmour(OutfitRig rig)
     {
         SkinnedAttachmentGlbFixture panel = OutfitRig.GarmentFixture();
-        ushort[] triangles = PanelTriangles();
+        ushort[] triangles = GridTriangles(PanelSide, PanelSide);
         int vertexCount = PanelSide * PanelSide;
         panel.SetUniformSkinning(0, vertexCount, new Vector4(0, 1, 0, 0), new Vector4(.5f, .5f, 0, 0));
         panel.SetIndexedMaterialParts(triangles, PanelMaterialCount);
@@ -215,24 +218,6 @@ public sealed class LiftBindCostDiagnostics(ITestOutputHelper output)
             .ChainSet(rig.Source.Mesh("chain.glb", chain.Build())).Parts[0];
         return rig.Load("armour.json",
             new AttachmentSetDefinition([shell, chainPart with { Lift = new(Clearance) }], AttachmentLayer.Armour, []));
-    }
-
-    static ushort[] PanelTriangles()
-    {
-        var triangles = new ushort[(PanelSide - 1) * (PanelSide - 1) * 6];
-        int index = 0;
-        for (int row = 0; row < PanelSide - 1; row++)
-            for (int column = 0; column < PanelSide - 1; column++)
-            {
-                int start = row * PanelSide + column;
-                triangles[index++] = (ushort)start;
-                triangles[index++] = (ushort)(start + 1);
-                triangles[index++] = (ushort)(start + PanelSide);
-                triangles[index++] = (ushort)(start + 1);
-                triangles[index++] = (ushort)(start + PanelSide + 1);
-                triangles[index++] = (ushort)(start + PanelSide);
-            }
-        return triangles;
     }
 
     sealed record Cost(double MeanMs, double P50Ms, double P95Ms, double MaxMs, double TotalMs, long ManagedBytesAllocated);

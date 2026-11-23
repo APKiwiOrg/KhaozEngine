@@ -11,15 +11,17 @@ public sealed class LoadedAttachmentSet
     readonly AttachmentSetDefinition _definition;
     readonly string _definitionSha256;
     readonly IReadOnlyList<AttachmentPartResources> _resources;
+    readonly LiftFootprint? _footprint;
 
     internal LoadedAttachmentSet(AttachmentSetCache owner, string key, AttachmentSetDefinition definition,
-        string definitionSha256, AttachmentPartResources[] resources)
+        string definitionSha256, AttachmentPartResources[] resources, LiftFootprint? footprint)
     {
         _owner = owner;
         _key = key;
         _definition = definition;
         _definitionSha256 = definitionSha256;
         _resources = System.Array.AsReadOnly(resources);
+        _footprint = footprint;
     }
 
     public AttachmentSetDefinition Definition
@@ -42,7 +44,7 @@ public sealed class LoadedAttachmentSet
     public BoundAttachmentSet Bind(ContractJointMap map)
     {
         _owner.ThrowIfDisposed();
-        return new BoundAttachmentSet(_owner, _key, _definition, _resources, new AttachmentSetBinding(_definition, map));
+        return new BoundAttachmentSet(_owner, _key, _definition, _resources, new AttachmentSetBinding(_definition, map), _footprint);
     }
 
     /// <summary>Bind garment metadata to the explicit host skin and snapshot every joint index once.</summary>
@@ -51,6 +53,6 @@ public sealed class LoadedAttachmentSet
         _owner.ThrowIfDisposed();
         System.ArgumentNullException.ThrowIfNull(hostMesh);
         return new BoundAttachmentSet(_owner, _key, _definition, _resources,
-            new AttachmentSetBinding(_definition, map, hostMesh, _resources, _owner));
+            new AttachmentSetBinding(_definition, map, hostMesh, _resources, _owner), _footprint);
     }
 }

@@ -11,13 +11,17 @@ internal sealed class AttachmentPartResources
 {
     internal bool IsSkinned { get; }
     internal IReadOnlyList<MeshHandle> RigidHandles { get; } = Array.Empty<MeshHandle>();
+    internal int RigidTriangleCount { get; }
     internal IReadOnlyList<SkinnedMeshHandle> SkinnedHandles { get; } = Array.Empty<SkinnedMeshHandle>();
     internal IReadOnlyList<string> JointNames { get; } = Array.Empty<string>();
     internal IReadOnlyList<Matrix4x4> InverseBind { get; } = Array.Empty<Matrix4x4>();
     internal IReadOnlyList<Matrix4x4> RestPose { get; } = Array.Empty<Matrix4x4>();
 
-    internal AttachmentPartResources(IReadOnlyList<MeshHandle> handles) =>
+    internal AttachmentPartResources(IReadOnlyList<MeshHandle> handles, int triangleCount)
+    {
         RigidHandles = Array.AsReadOnly(handles.ToArray());
+        RigidTriangleCount = triangleCount;
+    }
 
     internal AttachmentPartResources(IReadOnlyList<SkinnedMeshHandle> handles, SkinnedGltfMesh skin)
     {

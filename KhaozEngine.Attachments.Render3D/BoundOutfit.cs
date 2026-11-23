@@ -22,13 +22,14 @@ public sealed partial class BoundOutfit : IDisposable
     readonly SkinnedMeshHandle[] _body;
     readonly bool[] _bodyVisible;
     readonly ViewKey[] _used;
+    readonly bool[]? _footprintApplied;
     readonly string _bodyRigIdentity;
     readonly Skeleton? _hostSkeleton;
     object? _motionIdentity;
     bool _disposed;
 
     internal BoundOutfit(AttachmentSetCache owner, OutfitViewCache views, BoundAttachmentSet[] worn, OutfitDraw[][] draws,
-        SkinnedMeshHandle[] body, bool[] bodyVisible, ViewKey[] used, LoadedBodyRegions bodyRegions)
+        SkinnedMeshHandle[] body, bool[] bodyVisible, ViewKey[] used, LoadedBodyRegions bodyRegions, bool[]? footprintApplied)
     {
         _owner = owner;
         _views = views;
@@ -37,6 +38,7 @@ public sealed partial class BoundOutfit : IDisposable
         _body = body;
         _bodyVisible = bodyVisible;
         _used = used;
+        _footprintApplied = footprintApplied;
         _bodyRigIdentity = bodyRegions.Map.RigIdentity;
         _hostSkeleton = bodyRegions.HostSkeleton;
     }
@@ -166,9 +168,14 @@ public sealed partial class BoundOutfit : IDisposable
 
     OutfitDraw[] Draws(int wornIndex)
     {
+        CheckWornIndex(wornIndex);
+        return _draws[wornIndex];
+    }
+
+    void CheckWornIndex(int wornIndex)
+    {
         ArgumentOutOfRangeException.ThrowIfNegative(wornIndex);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(wornIndex, _draws.Length);
-        return _draws[wornIndex];
     }
 
     void ThrowIfDisposed()

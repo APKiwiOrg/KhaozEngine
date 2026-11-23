@@ -114,4 +114,8 @@ public enum AttachmentBindingRefusal
     /// <summary>Refuses a worn part that needs a displaced view over a scene without
     /// <see cref="IAttachmentDisplacedViewScene"/>. Identifies the set's cache key, worn index and part ID.</summary>
     OutfitLiftUnsupported,
+
+    /// <summary>A footprint for this body has a part with a different triangle count from its mesh.
+    /// Identifies the set's cache key, worn index, part ID and both triangle counts.</summary>
+    FootprintTriangleCountMismatch,
 }

@@ -29,18 +29,20 @@ public sealed partial class BoundAttachmentSet
     /// <summary>The cache key the set was loaded under, so an outfit refusal can name the piece.</summary>
     internal string SourceName { get; }
     internal AttachmentSetDefinition Definition => _definition;
+    internal LiftFootprint? Footprint { get; }
     internal IReadOnlyList<AttachmentPartResources> Resources => _resources;
     internal IReadOnlyList<CoverageConfigurationPart> ConfigurationParts => _binding.ConfigurationParts;
     internal bool MatchesHostSkin(SkinnedHostCoverage host) => _binding.MatchesHostSkin(host);
 
     internal BoundAttachmentSet(AttachmentSetCache owner, string sourceName, AttachmentSetDefinition definition,
-        IReadOnlyList<AttachmentPartResources> resources, AttachmentSetBinding binding)
+        IReadOnlyList<AttachmentPartResources> resources, AttachmentSetBinding binding, LiftFootprint? footprint)
     {
         _owner = owner;
         SourceName = sourceName;
         _binding = binding;
         _definition = definition;
         _resources = resources;
+        Footprint = footprint;
         foreach (AttachmentPartResources part in resources)
         {
             if (part.IsSkinned) _skinnedPartCount++;

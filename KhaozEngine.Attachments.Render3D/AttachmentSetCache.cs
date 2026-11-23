@@ -49,6 +49,7 @@ public sealed partial class AttachmentSetCache : IDisposable
         Dictionary<AttachmentMeshRef, MeshIdentity> requested = Classify(definition, key);
         if (cached is not null) return cached.View;
 
+        LiftFootprint? footprint = ReadFootprint(definition);
         var pending = new List<PendingMesh>();
         Dictionary<AttachmentMeshRef, uint>? liftRequests = UncachedLiftRequests(definition);
         Dictionary<MeshIdentity, LiftBasis>? stagedLift = null;
@@ -84,7 +85,7 @@ public sealed partial class AttachmentSetCache : IDisposable
                     && upload.Lease is SkinnedAttachmentUpload skinned)
                     skinned.GrowChainBounds(motion, upload.Resources);
             }
-            var loaded = new LoadedAttachmentSet(this, key, definition, expectedSha256, resources);
+            var loaded = new LoadedAttachmentSet(this, key, definition, expectedSha256, resources, footprint);
             foreach (KeyValuePair<MeshIdentity, CachedMesh> mesh in staged) _meshes.Add(mesh.Key, mesh.Value);
             _definitions.Add(identity, new CachedDefinition(definitionBytes, loaded));
             if (stagedLift is not null)
@@ -126,9 +127,11 @@ public sealed partial class AttachmentSetCache : IDisposable
             }
             else
             {
-                IAttachmentMeshLease upload = Scene.UploadAttachment(mesh.RigidParts!);
+                IReadOnlyList<GltfMeshPart> rigid = mesh.RigidParts!;
+                int triangleCount = rigid.Sum(part => part.Mesh.TriangleCount);
+                IAttachmentMeshLease upload = Scene.UploadAttachment(rigid);
                 lease = upload;
-                resources = new AttachmentPartResources(upload.Handles);
+                resources = new AttachmentPartResources(upload.Handles, triangleCount);
             }
             return new CachedMesh(mesh.Bytes, lease, resources);
         }

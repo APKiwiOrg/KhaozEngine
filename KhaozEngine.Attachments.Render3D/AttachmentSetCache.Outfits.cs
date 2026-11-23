@@ -66,7 +66,9 @@ public sealed partial class AttachmentSetCache
     /// <see cref="IAttachmentViewScene"/>, <see cref="AttachmentBindingRefusal.OutfitLiftUnsupported"/> when a part
     /// needs a displaced view over a plain view scene, <see cref="AttachmentBindingRefusal.PartRegionTagsMismatch"/> for a skinned
     /// part whose runs miss its triangles, and <see cref="AttachmentBindingRefusal.OutfitRegionUnknown"/> for a region
-    /// the body lacks. Dispose the outfit before this cache and before the body's meshes unload.</remarks>
+    /// the body lacks. A footprint for this body whose part triangle count differs from its mesh refuses with
+    /// <see cref="AttachmentBindingRefusal.FootprintTriangleCountMismatch"/>. Dispose the outfit before this cache
+    /// and before the body's meshes unload.</remarks>
     public BoundOutfit BindOutfit(LoadedBodyRegions body, IReadOnlyList<BoundAttachmentSet> worn)
     {
         ThrowIfDisposed();
@@ -91,7 +93,9 @@ public sealed partial class AttachmentSetCache
         var tagged = new ReadOnlyMemory<uint>[]?[sets.Length][];
         for (int index = 0; index < sets.Length; index++) tagged[index] = TaggedIndices(sets[index], liftingMeshes, read);
         OutfitCoverage coverage = ResolveOutfit(body.Map, sets, definitions);
-        OutfitLift? lift = ResolveOutfitLift(coverage, sets, read);
+        LiftFootprint?[]? footprints = ReadOutfitFootprints(body, sets, tagged);
+        OutfitLift? lift = ResolveOutfitLift(coverage, sets, read, footprints);
+        bool[]? footprintApplied = footprints is null ? null : FootprintApplications(lift!, sets.Length);
 
         var pending = new List<(int Worn, int Slot, ViewKey Key)>();
         var draws = new OutfitDraw[sets.Length][];
@@ -133,7 +137,7 @@ public sealed partial class AttachmentSetCache
             }
             throw;
         }
-        return new BoundOutfit(this, views, sets, draws, bodyMeshes, bodyVisible, used, body);
+        return new BoundOutfit(this, views, sets, draws, bodyMeshes, bodyVisible, used, body, footprintApplied);
     }
 
     // The index lists of every skinned part that carries region runs, read when an outfit is bound so a cache that
@@ -148,9 +152,9 @@ public sealed partial class AttachmentSetCache
             if (set.Definition.Parts[part] is not SkinnedAttachmentPartDefinition { Regions.Count: > 0 } skinned) continue;
             bool needsVertices = liftingMeshes?.Contains(skinned.Mesh) == true;
             ReadOnlyMemory<uint>[] indices = ReadOutfitGeometry(skinned.Mesh, needsVertices, read).Indices;
-            int runs = 0, triangles = 0;
+            int runs = 0;
             foreach (NamedRegionRun run in skinned.Regions) runs += run.TriangleCount;
-            foreach (ReadOnlyMemory<uint> handle in indices) triangles += handle.Length / 3;
+            int triangles = TriangleCount(indices);
             if (runs != triangles)
                 throw new AttachmentBindingDataException(AttachmentBindingRefusal.PartRegionTagsMismatch,
                     $"{set.SourceName}: part {skinned.Id} tags {runs} triangles, its mesh '{skinned.Mesh.Key}' has {triangles}.")

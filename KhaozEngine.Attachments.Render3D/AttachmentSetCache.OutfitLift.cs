@@ -9,7 +9,7 @@ namespace KhaozEngine.Attachments.Render3D;
 public sealed partial class AttachmentSetCache
 {
     OutfitLift? ResolveOutfitLift(OutfitCoverage coverage, BoundAttachmentSet[] sets,
-        Dictionary<MeshIdentity, OutfitMeshGeometry> geometry)
+        Dictionary<MeshIdentity, OutfitMeshGeometry> geometry, LiftFootprint?[]? footprints)
     {
         List<LiftingPartMesh>? meshes = null;
         for (int wornIndex = 0; wornIndex < sets.Length; wornIndex++)
@@ -23,7 +23,10 @@ public sealed partial class AttachmentSetCache
                 (meshes ??= []).Add(new LiftingPartMesh(wornIndex, part.Id, geometry[identity].LiftMaterials(basis)));
             }
         }
-        return meshes is null ? null : OutfitLift.Resolve(coverage, meshes);
+        if (footprints is null)
+            return meshes is null ? null : OutfitLift.Resolve(coverage, meshes);
+        IReadOnlyList<LiftingPartMesh> lifting = meshes is null ? [] : meshes;
+        return OutfitLift.Resolve(coverage, lifting, footprints);
     }
 
     ViewKey DisplacedViewKey(BoundAttachmentSet set, int wornIndex, uint partId, SkinnedMeshHandle source,

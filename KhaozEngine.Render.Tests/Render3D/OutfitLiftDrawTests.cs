@@ -11,7 +11,7 @@ using static KhaozEngine.Tests.Render3D.SkinnedAttachmentBindingTests;
 
 namespace KhaozEngine.Tests.Render3D;
 
-public sealed class OutfitLiftDrawTests
+public sealed partial class OutfitLiftDrawTests
 {
     const uint ArmourPartId = 3;
     const float Standoff = .125f, Clearance = .03125f, Bearing = .0625f;
@@ -48,18 +48,22 @@ public sealed class OutfitLiftDrawTests
         }
     }
 
-    [Fact]
-    public void Identical_lifts_share_a_view_until_the_last_outfit_releases_it()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Identical_lifts_share_a_view_until_the_last_outfit_releases_it(bool withFootprint)
     {
         using var rig = new OutfitRig();
         LoadedBodyRegions body = Body(rig);
-        BoundAttachmentSet garment = Garment(rig);
+        BoundAttachmentSet garment = withFootprint ? FootprintGarment(rig, body) : Garment(rig);
         BoundAttachmentSet armour = Armour(rig);
         int before = rig.Scene.LiveSkinnedMeshCount;
         using BoundOutfit first = rig.Cache.BindOutfit(body, [garment, armour]);
         using BoundOutfit second = rig.Cache.BindOutfit(body, [garment, armour]);
         SkinnedMeshHandle mesh = ArmourDraw(rig, first);
 
+        Assert.Equal(withFootprint, first.FootprintApplied(0));
+        Assert.Equal(withFootprint, second.FootprintApplied(0));
         Assert.Equal(mesh, ArmourDraw(rig, second));
         Assert.True(first.SharesDisplacedViewPositionsForTests(second, 0));
         Assert.Equal(before + 1, rig.Scene.LiveSkinnedMeshCount);
@@ -229,7 +233,8 @@ public sealed class OutfitLiftDrawTests
         glb.Primitives[0]!["material"] = splitMaterials ? 1 : 0;
         glb.Primitives[1]!["material"] = 0;
         glb.SetLiftAttributes(0, [Vector3.UnitZ, Vector3.UnitY, Vector3.UnitX], [Bearing, .25f, Bearing]);
-        glb.SetLiftAttributes(1, [Vector3.UnitX, Vector3.UnitX, Vector3.UnitX], [Bearing, Bearing, Bearing]);
+        // Vertices with equal lift data form one section, so give the back its own data.
+        glb.SetLiftAttributes(1, [Vector3.UnitY, Vector3.UnitY, Vector3.UnitY], [Bearing, Bearing, Bearing]);
         var part = new SkinnedAttachmentPartDefinition(ArmourPartId, rig.Source.Mesh("shell.glb", glb.Build()))
         {
             Regions = [new("alpha", 1), new("beta", 1)],

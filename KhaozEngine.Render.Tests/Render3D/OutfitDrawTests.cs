@@ -311,13 +311,15 @@ public sealed class OutfitDrawTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Frame_calls_allocate_nothing_once_warm(bool lifted)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void Frame_calls_allocate_nothing_once_warm(bool lifted, bool withFootprint)
     {
         using var rig = new OutfitRig(recordOutlines: false);
         LoadedBodyRegions body = rig.BodyRegions(BodyRuns);
-        BoundAttachmentSet garment = lifted ? OutfitLiftDrawTests.Garment(rig)
+        BoundAttachmentSet garment = withFootprint ? OutfitLiftDrawTests.FootprintGarment(rig, body)
+            : lifted ? OutfitLiftDrawTests.Garment(rig)
             : rig.Wear("garment.json", OutfitRig.Skinned(AttachmentLayer.Garment, ["alpha"],
                 rig.Garment("garment.glb", materials: 2), new NamedRegionRun("alpha", 3), new NamedRegionRun("beta", 3), new NamedRegionRun("gamma", 2)));
         BoundAttachmentSet armour = lifted ? OutfitLiftDrawTests.Armour(rig)
@@ -325,6 +327,7 @@ public sealed class OutfitDrawTests
                 rig.Garment("armour.glb", seed: .5f), new NamedRegionRun("beta", 4)));
         using BoundOutfit outfit = rig.Cache.BindOutfit(body, [garment, armour]);
         if (lifted) Assert.True(rig.Scene.IsSkinnedMeshView(Assert.Single(rig.Draws(outfit, 1)).Skinned.Mesh));
+        Assert.Equal(withFootprint, outfit.FootprintApplied(0));
         var draws = new AttachmentDraw[4];
         RigidInstanceDraw template = new(default, Matrix4x4.Identity);
         // One frame queues each worn set's outline once into a fresh group, as a game frame does. Only the outfit's
@@ -470,7 +473,7 @@ public sealed class OutfitDrawTests
 }
 
 /// <summary>A synthetic two bone body of four triangles in one material part, its region map and the worn sets.</summary>
-internal sealed class OutfitRig : IDisposable
+internal sealed partial class OutfitRig : IDisposable
 {
     internal static readonly string Rig = "rig-v1:" + new string('a', 64);
     static readonly string[] Regions = ["alpha", "beta", "gamma"];

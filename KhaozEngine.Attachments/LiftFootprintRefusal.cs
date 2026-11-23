@@ -71,4 +71,7 @@ public enum LiftFootprintRefusal
 
     /// <summary>The file must end after the last part.</summary>
     TrailingBytes,
+
+    /// <summary>The footprint lists different part IDs from the set definition that names it.</summary>
+    PartIdsMismatch,
 }

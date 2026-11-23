@@ -20,7 +20,7 @@ public sealed class LiftFootprintDataException : MalformedDataException, IAttach
     /// <summary>The stable reason the data was refused.</summary>
     public LiftFootprintRefusal Reason { get; }
 
-    /// <summary>The caller-supplied name added at the public file boundary.</summary>
+    /// <summary>The source file name supplied at the file boundary.</summary>
     public string? SourceName { get; init; }
 
     /// <summary>The zero-based file offset where the refused or incomplete field starts.</summary>
@@ -32,7 +32,7 @@ public sealed class LiftFootprintDataException : MalformedDataException, IAttach
     /// <summary>The grid level declared by the file when refused.</summary>
     public int? Level { get; init; }
 
-    /// <summary>The ID of the part containing the refusal, when available.</summary>
+    /// <summary>The part ID involved in the refusal, including an ID missing from the file.</summary>
     public uint? PartId { get; init; }
 
     /// <summary>The zero-based position of the part containing the refusal.</summary>

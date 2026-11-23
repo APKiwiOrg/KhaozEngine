@@ -555,8 +555,8 @@ the chain with the wearer's rigid movement, to 1, giving the chain full inertia.
 greater than zero and at most pi radians. The nonnegative chain radius adds clearance against capsules.
 `Tune` applies settings starting at the next simulation step.
 
-Chains advance on a fixed grid. `MaxStepSeconds` is the fixed step length, greater than zero and at
-most 1/30 s. Each step interpolates anchors, capsules and the wearer between the previous and current
+Chains advance on a fixed grid. `MaxStepSeconds` is the fixed step duration, from 0.0001 s through
+1/30 s. Each step interpolates anchors, capsules and the wearer between the previous and current
 frame poses at its grid boundary. `MaxStepsPerFrame` limits the number of steps to a value from 1
 through 64. A hitch drops the oldest steps above that limit and carries any fractional remainder into
 the next frame.

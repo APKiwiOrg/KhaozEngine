@@ -15,8 +15,8 @@ internal sealed class ChainParticles
         RestPositions = new Vector3[count];
         Lengths = new float[rig.JointCount];
         JointWorlds = new Matrix4x4[rig.JointCount];
-        PreviousRestDirections = new Vector3[rig.JointCount];
-        StepRestDirections = new Vector3[rig.JointCount];
+        PreviousAnchorRotations = new Quaternion[rig.AnchorCount];
+        StepAnchorRotations = new Quaternion[rig.AnchorCount];
         StepCarries = new ChainCarry[rig.Chains.Count];
     }
 
@@ -27,13 +27,16 @@ internal sealed class ChainParticles
     internal Vector3[] SubstepStarts { get; }
     internal float[] Lengths { get; }
     internal Matrix4x4[] JointWorlds { get; }
-    internal Vector3[] PreviousRestDirections { get; private set; }
-    internal Vector3[] StepRestDirections { get; private set; }
+    internal Quaternion[] PreviousAnchorRotations { get; private set; }
+    internal Quaternion[] StepAnchorRotations { get; private set; }
     internal ChainCarry[] StepCarries { get; }
     internal ChainCapsuleCull CapsuleCull { get; } = new();
 
     internal void SetRest(ReadOnlySpan<Matrix4x4> anchors, bool reset)
     {
+        for (int anchor = 0; anchor < anchors.Length; anchor++)
+            StepAnchorRotations[anchor] = new ChainPose(anchors[anchor]).Rotation;
+
         for (int chain = 0; chain < Rig.Chains.Count; chain++)
         {
             var definition = Rig.Chains[chain];
@@ -50,10 +53,7 @@ internal sealed class ChainParticles
                 var offset = Vector3.TransformNormal(Rig.SegmentOffset(joint), world);
                 Lengths[joint] = (float)Math.Sqrt(ChainMath.DistanceSquared(offset, Vector3.Zero));
                 if (reset)
-                {
                     JointWorlds[joint] = world;
-                    PreviousRestDirections[joint] = ChainMath.Direction(offset, Vector3.UnitY);
-                }
             }
 
             RestPositions[particle + definition.Joints.Count] = Vector3.Transform(definition.Tip, world);
@@ -62,12 +62,16 @@ internal sealed class ChainParticles
         if (reset)
         {
             RestPositions.CopyTo(Positions, 0);
+            StepAnchorRotations.CopyTo(PreviousAnchorRotations, 0);
             Array.Clear(Velocities);
         }
     }
 
     internal void SeedFromShown(ReadOnlySpan<ChainPose> anchors, ReadOnlySpan<Matrix4x4> frames)
     {
+        for (int anchor = 0; anchor < anchors.Length; anchor++)
+            PreviousAnchorRotations[anchor] = anchors[anchor].Rotation;
+
         for (int chain = 0; chain < Rig.Chains.Count; chain++)
         {
             var definition = Rig.Chains[chain];
@@ -77,9 +81,6 @@ internal sealed class ChainParticles
             int end = first + definition.Joints.Count;
             for (int joint = first; joint < end; joint++)
             {
-                var unswung = Rig.RestLocal(joint) * parent;
-                var offset = Vector3.TransformNormal(Rig.SegmentOffset(joint), unswung);
-                PreviousRestDirections[joint] = ChainMath.Direction(offset, Vector3.UnitY);
                 parent = frames[joint] * anchor;
                 Positions[joint + chain] = parent.Translation;
             }
@@ -89,15 +90,23 @@ internal sealed class ChainParticles
         Array.Clear(Velocities);
     }
 
-    internal void RememberRestDirections() =>
-        (PreviousRestDirections, StepRestDirections) = (StepRestDirections, PreviousRestDirections);
+    internal void RememberAnchorRotations() =>
+        (PreviousAnchorRotations, StepAnchorRotations) = (StepAnchorRotations, PreviousAnchorRotations);
+
+    internal void CarryAcrossDroppedTime(int chain, float trail, Vector3 oldWearer, Vector3 newWearer, Quaternion wearerTurn)
+    {
+        var carry = ChainCarry.Between(trail, oldWearer, newWearer, wearerTurn);
+        int root = Rig.FirstJoint(chain) + chain;
+        Positions[root] = RestPositions[root];
+        int end = root + Rig.Chains[chain].Joints.Count;
+        for (int particle = root + 1; particle <= end; particle++)
+            Positions[particle] = carry.TransformPoint(Positions[particle]);
+    }
 
     internal void Predict(int chain, in ChainSettings settings, Vector3 gravity, float seconds,
         Vector3 oldWearer, Vector3 newWearer, Quaternion wearerTurn)
     {
-        float carry = 1 - settings.Trail;
-        var carriedTurn = carry == 0 ? Quaternion.Identity : Quaternion.Slerp(Quaternion.Identity, wearerTurn, carry);
-        var carryMotion = new ChainCarry(oldWearer, carry * (newWearer - oldWearer), carriedTurn);
+        var carryMotion = ChainCarry.Between(settings.Trail, oldWearer, newWearer, wearerTurn);
         StepCarries[chain] = carryMotion;
 
         int root = Rig.FirstJoint(chain) + chain;

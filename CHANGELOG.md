@@ -32,8 +32,9 @@ which `KhaozEngine.Attachments.Render3D` applies when it binds wearer motion.
 **Changed.**
 
 - `ChainSimulationOptions.MaxStepSeconds` now sets the fixed simulation step and `MaxStepsPerFrame`
-  caps the steps processed in one frame. The displayed shape is one step late relative to the anchor
-  and follows the body's current pose.
+  caps the steps processed in one frame. The step duration must be at least 0.0001 s and at most
+  1/30 s. The displayed shape is one step late relative to the anchor and follows the body's current
+  pose.
 - Every chained piece moves differently. Review existing pieces after upgrading, especially chains
   tuned with tight bend limits and stiff springs that may now look calmer than intended. For example,
   try lower damping on a short tail or wider bend limits with `linkStretch` on a cloak.

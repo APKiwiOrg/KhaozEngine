@@ -28,7 +28,7 @@ internal static class ChainConstraints
             if (step.ReplayedAll)
                 capsules = capsules.All;
             if (joint == first)
-                velocity.Start(particles.PreviousRestDirections[joint], step.Rest);
+                velocity.Start(rig.Chains[chain].Anchor);
             velocity.Apply(step.Particle, step.Length, step.Direction, step.Rest, step.Clamped, capsules);
             parent = WriteSwing(particles, step);
         }
@@ -55,7 +55,6 @@ internal static class ChainConstraints
         var world = rig.RestLocal(joint) * parent;
         var restOffset = Vector3.TransformNormal(rig.SegmentOffset(joint), world);
         var rest = ChainMath.Direction(restOffset, Vector3.UnitY);
-        particles.StepRestDirections[joint] = rest;
 
         int end = particle + 1;
         var predicted = particles.Positions[end] - start;

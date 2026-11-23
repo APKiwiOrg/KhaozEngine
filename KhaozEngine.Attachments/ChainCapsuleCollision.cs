@@ -82,7 +82,7 @@ internal static class ChainCapsuleCollision
     }
 
     internal static Vector3 SurfaceVelocity(in ColliderCapsule capsule, in ColliderCapsule previous,
-        double along, in ChainCarry carry, float seconds)
+        double along, Vector3 normal, in ChainCarry carry, float seconds)
     {
         // Compare the same material point on the axis. Endpoint deltas avoid cancellation on long axes.
         var previousStart = new Offset(previous.Start);
@@ -100,6 +100,7 @@ internal static class ChainCapsuleCollision
             motion -= twiceCross * carry.Turn.W + Offset.Cross(axis, twiceCross);
         }
 
+        motion += new Offset(normal) * ((double)capsule.Radius - previous.Radius);
         return (motion * (1d / seconds)).ToVector3();
     }
 

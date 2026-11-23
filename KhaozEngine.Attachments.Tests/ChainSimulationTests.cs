@@ -177,25 +177,27 @@ public class ChainSimulationTests
     public void A_frame_matches_the_retained_grid_steps_inside_it(int completeSteps, float remainder)
     {
         const float stepSeconds = 1f / 64;
-        var chain = Chain(-Vector3.UnitY, Settings with { Trail = 0.4f, Stiffness = 4, Radius = 0.02f },
-            Joint(Vector3.Zero), Joint(-Vector3.UnitY));
         var options = new ChainSimulationOptions { MaxStepSeconds = stepSeconds };
+        bool capped = completeSteps > options.MaxStepsPerFrame;
+        var chain = Chain(-Vector3.UnitY, Settings with { Trail = capped ? 0 : 0.4f, Stiffness = 4, Radius = 0.02f },
+            Joint(Vector3.Zero), Joint(-Vector3.UnitY));
         var rig = new ChainRig(1, [chain], []);
         var wholeFrame = new ChainSimulation(rig, 1, options);
         var sampled = new ChainSimulation(rig, 1, options);
         void At(ChainSimulation simulation, float fraction, float seconds)
         {
             var wearer = Matrix4x4.CreateRotationY(0.8f * fraction) * Matrix4x4.CreateTranslation(fraction, 0, 0);
-            var anchor = Matrix4x4.CreateRotationZ(fraction) * Matrix4x4.CreateTranslation(fraction, 0, 0);
+            var anchor = capped ? wearer : Matrix4x4.CreateRotationZ(fraction) * Matrix4x4.CreateTranslation(fraction, 0, 0);
             var collider = new ColliderCapsule(new(1.5f - fraction, -1, 0), new(1.5f - fraction, -2, 0), 0.3f);
             simulation.Step([anchor], [collider], wearer, seconds);
         }
 
         float frameSteps = completeSteps + remainder;
         At(wholeFrame, 0, 0);
-        At(sampled, 0, 0);
-        At(wholeFrame, 1, frameSteps * stepSeconds);
         int first = Math.Max(1, completeSteps - options.MaxStepsPerFrame + 1);
+        // With full carry the capped run arrives at rest on its first retained boundary.
+        At(sampled, (first - 1) / frameSteps, 0);
+        At(wholeFrame, 1, frameSteps * stepSeconds);
         for (int step = first; step <= completeSteps; step++)
             At(sampled, step / frameSteps, stepSeconds);
         At(sampled, 1, remainder * stepSeconds);

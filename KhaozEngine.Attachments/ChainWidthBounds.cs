@@ -67,7 +67,8 @@ internal sealed class ChainWidthBounds(ChainWidthBounds.Pair[] pairs)
         var rest = particles.RestPositions[second] - particles.RestPositions[first];
         var axis = ChainMath.Direction(offset, ChainMath.Direction(rest, Vector3.UnitX));
         var left = new SphereMove(particles, pair.First, 0.5f * axis, axis);
-        var right = new SphereMove(particles, pair.Second, -0.5f * axis, axis);
+        // Coincident radial endpoints must swing to opposite sides to create a gap.
+        var right = new SphereMove(particles, pair.Second, -0.5f * axis, spacing == 0 ? -axis : axis);
         if (left.Tangent == Vector3.Zero && right.Tangent == Vector3.Zero)
             return;
 

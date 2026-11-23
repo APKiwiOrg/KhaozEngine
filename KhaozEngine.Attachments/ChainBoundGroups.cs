@@ -163,7 +163,7 @@ internal sealed class ChainBoundGroups
                 previousColliders, setting.Radius, seconds);
             velocity.FrameTurn = _incomingTurns[chain];
             if (step.Joint == first)
-                velocity.Start(particles.PreviousRestDirections[step.Joint], step.Rest);
+                velocity.Start(rig.Chains[chain].Anchor);
             _incomingTurns[chain] = velocity.FrameTurn;
             velocity.ApplyLocal(step.Particle, step.Length, step.Direction, step.Rest, step.Clamped, Capsules(chain, colliders));
             ChainConstraints.WriteSwing(particles, step);

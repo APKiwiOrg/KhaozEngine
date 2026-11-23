@@ -26,20 +26,26 @@ internal ref struct ChainVelocityConstraints
 
     internal Vector3 FrameTurn { get => _frameTurn; set => _frameTurn = value; }
 
-    internal void Start(Vector3 previousRest, Vector3 rest)
+    internal void Start(int anchor)
     {
         if (_seconds == 0)
             return;
 
-        previousRest = _carry.TransformDirection(previousRest);
-        // A cone's axis determines its angular motion perpendicular to that axis.
-        var axis = Vector3.Cross(previousRest, rest);
+        var previous = _particles.PreviousAnchorRotations[anchor];
+        var carried = _carry.Turn == Quaternion.Identity ? previous : _carry.Turn * previous;
+        var current = _particles.StepAnchorRotations[anchor];
+        if (current == carried || current == -carried)
+            return;
+
+        // Keep the full carried-relative turn so downstream cones inherit twist.
+        var turn = current * Quaternion.Conjugate(carried);
+        var axis = new Vector3(turn.X, turn.Y, turn.Z);
         float sine = axis.Length();
-        float cosine = Vector3.Dot(previousRest, rest);
         if (sine > 0)
-            _frameTurn = axis / sine * (MathF.Atan2(sine, cosine) / _seconds);
-        else if (cosine < 0)
-            _frameTurn = ChainMath.Perpendicular(previousRest) * (MathF.PI / _seconds);
+        {
+            float angle = 2 * MathF.Atan2(sine, MathF.Abs(turn.W));
+            _frameTurn = (turn.W < 0 ? -axis : axis) / sine * (angle / _seconds);
+        }
     }
 
     internal void Apply(int parent, float length, Vector3 direction, Vector3 rest, bool clamped, ChainCapsuleCandidates capsules)
@@ -114,7 +120,7 @@ internal ref struct ChainVelocityConstraints
                 continue;
 
             var surface = ChainCapsuleCollision.SurfaceVelocity(capsule,
-                _previousColliders[capsules.OriginalIndex(index)], along, _carry, _seconds);
+                _previousColliders[capsules.OriginalIndex(index)], along, normal, _carry, _seconds);
             // Like length and bend, contact projects velocity along one unit direction.
             // The position solve handles a push along the segment so it cannot inject swing speed.
             float approach = Vector3.Dot(velocity - surface, tangent);

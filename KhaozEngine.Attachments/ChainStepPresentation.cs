@@ -5,13 +5,13 @@ namespace KhaozEngine.Attachments;
 
 internal sealed class ChainStepPresentation(int jointCount)
 {
-    private ChainPose[] _previous = new ChainPose[jointCount];
-    private ChainPose[] _current = new ChainPose[jointCount];
+    private Matrix4x4[] _previous = new Matrix4x4[jointCount];
+    private Matrix4x4[] _current = new Matrix4x4[jointCount];
 
     internal void Reset(ReadOnlySpan<Matrix4x4> frames)
     {
-        for (int joint = 0; joint < frames.Length; joint++)
-            _previous[joint] = _current[joint] = new ChainPose(frames[joint]);
+        frames.CopyTo(_previous);
+        frames.CopyTo(_current);
     }
 
     internal void Capture(ChainRig rig, ReadOnlySpan<Matrix4x4> worlds, ReadOnlySpan<Matrix4x4> anchorInverses)
@@ -26,15 +26,20 @@ internal sealed class ChainStepPresentation(int jointCount)
             var root = worlds[first] * inverse;
             // The root is anchored exactly even when inverse composition rounds its offset.
             root.Translation = rig.RestFromAnchor[first].Translation;
-            _current[first] = new ChainPose(root);
+            _current[first] = root;
             for (int joint = first + 1; joint < end; joint++)
-                _current[joint] = new ChainPose(worlds[joint] * inverse);
+                _current[joint] = worlds[joint] * inverse;
         }
     }
 
-    internal void Show(float amount, Span<Matrix4x4> frames)
+    internal void Show(float amount, ChainRig rig, ReadOnlySpan<Matrix4x4> anchors,
+        ReadOnlySpan<Matrix4x4> inverses, Span<Matrix4x4> frames)
     {
-        for (int joint = 0; joint < frames.Length; joint++)
-            frames[joint] = amount == 0 ? _previous[joint].Matrix : _previous[joint].Interpolate(_current[joint], amount);
+        if (amount == 0)
+            _previous.CopyTo(frames);
+        else if (amount == 1)
+            _current.CopyTo(frames);
+        else
+            ChainPresentationHierarchy.Interpolate(rig, _previous, _current, frames, anchors, inverses, amount);
     }
 }

@@ -12,12 +12,13 @@ internal struct ChainStepClock(float stepSeconds, int maximumSteps)
 
     internal void Reset() => _remainder = 0;
 
-    internal int Advance(float frameSeconds)
+    internal int Advance(float frameSeconds, out bool droppedTime)
     {
         double elapsed = _remainder + frameSeconds;
         _remainder = elapsed % _step;
         // Use the same remainder to count steps and place the grid inside the frame.
         double complete = Math.Round((elapsed - _remainder) / _step);
+        droppedTime = complete > _maximumSteps;
         return (int)Math.Min(complete, _maximumSteps);
     }
 

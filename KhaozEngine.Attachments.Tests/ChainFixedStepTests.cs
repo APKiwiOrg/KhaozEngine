@@ -126,11 +126,12 @@ public sealed class ChainFixedStepTests(ITestOutputHelper output)
         var earlier = simulation.JointsFromAnchor[1];
         At(5, StepSeconds / 2);
         var midway = simulation.JointsFromAnchor[1];
+        var midwayParent = simulation.JointsFromAnchor[0];
         At(6, StepSeconds / 2);
         var later = simulation.JointsFromAnchor[1];
 
         Assert.True(Vector3.Distance(earlier.Translation, later.Translation) > 0.0001f);
-        var expectedTranslation = Vector3.Lerp(earlier.Translation, later.Translation, 0.5f);
+        var expectedTranslation = Vector3.Transform(Vector3.UnitX, midwayParent);
         var expectedRotation = Quaternion.Slerp(Quaternion.CreateFromRotationMatrix(earlier),
             Quaternion.CreateFromRotationMatrix(later), 0.5f);
         Assert.InRange(Vector3.Distance(expectedTranslation, midway.Translation), 0, 0.00001f);

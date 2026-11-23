@@ -105,14 +105,14 @@ public sealed class ChainSimulation
             }
 
             Advance(colliders, frameWearer, deltaSeconds);
-            if (_resuming)
+            if (_resuming && (deltaSeconds > 0 || Options.HoldBlendSeconds == 0))
             {
-                _stepPresentation.Show(_clock.Interpolation, _blend.LiveTarget);
+                _stepPresentation.Show(_clock.Interpolation, Rig, anchorWorlds, _anchorInverses, _blend.LiveTarget);
                 _resuming = _blend.Advance(_jointsFromAnchor, anchorWorlds, _anchorInverses,
                     deltaSeconds, Options.HoldBlendSeconds, toRest: false);
             }
-            else
-                _stepPresentation.Show(_clock.Interpolation, _jointsFromAnchor);
+            else if (deltaSeconds > 0)
+                _stepPresentation.Show(_clock.Interpolation, Rig, anchorWorlds, _anchorInverses, _jointsFromAnchor);
         }
 
         (_previousAnchors, _frameAnchors) = (_frameAnchors, _previousAnchors);
@@ -194,7 +194,10 @@ public sealed class ChainSimulation
 
     private void Advance(ReadOnlySpan<ColliderCapsule> colliders, in ChainPose wearer, float deltaSeconds)
     {
-        int count = _clock.Advance(deltaSeconds);
+        int count = _clock.Advance(deltaSeconds, out bool droppedTime);
+        if (droppedTime)
+            SkipToRetainedStep(colliders, wearer, _clock.StepFraction(-1, count, deltaSeconds));
+
         for (int step = 0; step < count; step++)
             Substep(colliders, wearer, _clock.StepFraction(step, count, deltaSeconds));
     }
@@ -202,24 +205,12 @@ public sealed class ChainSimulation
     private void Substep(ReadOnlySpan<ColliderCapsule> colliders, in ChainPose wearer, float fraction)
     {
         float seconds = Options.MaxStepSeconds;
-        for (int anchor = 0; anchor < _stepAnchors.Length; anchor++)
-        {
-            var current = _frameAnchors[anchor].Matrix;
-            var pose = _previousAnchors[anchor].Interpolate(_frameAnchors[anchor], fraction);
-            if (pose == current || !ChainMath.TryInvert(pose, out _stepAnchorInverses[anchor]))
-            {
-                // A change in handedness can make an intermediate pose singular.
-                pose = current;
-                _stepAnchorInverses[anchor] = _anchorInverses[anchor];
-            }
-            _stepAnchors[anchor] = pose;
-        }
+        SampleAnchors(fraction);
         for (int collider = 0; collider < ColliderCount; collider++)
             _stepColliders[collider] = Interpolate(_previousFrameColliders[collider], colliders[collider], fraction);
 
-        var position = fraction == 1 ? wearer.Matrix.Translation : Vector3.Lerp(_previousWearer.Matrix.Translation, wearer.Matrix.Translation, fraction);
-        var rotation = fraction == 1 ? wearer.Rotation : Quaternion.Slerp(_previousWearer.Rotation, wearer.Rotation, fraction);
-        var turn = rotation == _stepWearerRotation ? Quaternion.Identity : rotation * Quaternion.Conjugate(_stepWearerRotation);
+        var (position, rotation) = SampleWearer(wearer, fraction);
+        var turn = WearerTurn(rotation);
         _particles.SetRest(_stepAnchors, reset: false);
 
         for (int chain = 0; chain < _settings.Length; chain++)
@@ -234,10 +225,51 @@ public sealed class ChainSimulation
 
         _stepWearerPosition = position;
         _stepWearerRotation = rotation;
-        _particles.RememberRestDirections();
+        _particles.RememberAnchorRotations();
         (_previousStepColliders, _stepColliders) = (_stepColliders, _previousStepColliders);
         _stepPresentation.Capture(Rig, _particles.JointWorlds, _stepAnchorInverses);
     }
+
+    private void SkipToRetainedStep(ReadOnlySpan<ColliderCapsule> colliders, in ChainPose wearer, float fraction)
+    {
+        SampleAnchors(fraction);
+        var (position, rotation) = SampleWearer(wearer, fraction);
+        var turn = WearerTurn(rotation);
+        _particles.SetRest(_stepAnchors, reset: false);
+        for (int chain = 0; chain < _settings.Length; chain++)
+            _particles.CarryAcrossDroppedTime(chain, _settings[chain].Trail, _stepWearerPosition, position, turn);
+
+        // Seed the first retained step from its actual opening poses without taking a physics step.
+        _stepWearerPosition = position;
+        _stepWearerRotation = rotation;
+        _particles.RememberAnchorRotations();
+        for (int collider = 0; collider < ColliderCount; collider++)
+            _previousStepColliders[collider] = Interpolate(_previousFrameColliders[collider], colliders[collider], fraction);
+    }
+
+    private void SampleAnchors(float fraction)
+    {
+        for (int anchor = 0; anchor < _stepAnchors.Length; anchor++)
+        {
+            var current = _frameAnchors[anchor].Matrix;
+            var pose = _previousAnchors[anchor].Interpolate(_frameAnchors[anchor], fraction);
+            if (pose == current || !ChainMath.TryInvert(pose, out _stepAnchorInverses[anchor]))
+            {
+                // A change in handedness can make an intermediate pose singular.
+                pose = current;
+                _stepAnchorInverses[anchor] = _anchorInverses[anchor];
+            }
+            _stepAnchors[anchor] = pose;
+        }
+    }
+
+    private (Vector3 Position, Quaternion Rotation) SampleWearer(in ChainPose wearer, float fraction) =>
+        fraction == 1 ? (wearer.Matrix.Translation, wearer.Rotation) :
+            (Vector3.Lerp(_previousWearer.Matrix.Translation, wearer.Matrix.Translation, fraction),
+            Quaternion.Slerp(_previousWearer.Rotation, wearer.Rotation, fraction));
+
+    private Quaternion WearerTurn(Quaternion rotation) =>
+        rotation == _stepWearerRotation ? Quaternion.Identity : rotation * Quaternion.Conjugate(_stepWearerRotation);
 
     private static ColliderCapsule Interpolate(in ColliderCapsule previous, in ColliderCapsule current, float amount) =>
         amount == 1 ? current : new ColliderCapsule(

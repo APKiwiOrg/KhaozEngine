@@ -9,6 +9,7 @@ public readonly record struct ColliderCapsule(Vector3 Start, Vector3 End, float 
 /// <summary>World forces, resets and substep budget for a chain simulation.</summary>
 public sealed record ChainSimulationOptions
 {
+    /// <summary>Fixed step duration, from 0.0001 s through 1/30 s.</summary>
     public float MaxStepSeconds { get; init; } = 1f / 120;
     public int MaxStepsPerFrame { get; init; } = 8;
     public float TeleportDistance { get; init; } = 2;
@@ -18,7 +19,7 @@ public sealed record ChainSimulationOptions
 
     internal void Validate()
     {
-        if (!(MaxStepSeconds > 0 && MaxStepSeconds <= 1f / 30))
+        if (!(MaxStepSeconds is >= 0.0001f and <= 1f / 30))
             throw new ArgumentOutOfRangeException(nameof(MaxStepSeconds));
         if (MaxStepsPerFrame is < 1 or > 64)
             throw new ArgumentOutOfRangeException(nameof(MaxStepsPerFrame));

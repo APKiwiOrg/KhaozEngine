@@ -115,19 +115,20 @@ public class PathPlanWorkspacesTests
     public void PoolCanMoveThreadsButRefusesOverlappingCalls()
     {
         var planner = Incremental(Corridor());
-        using var pool = planner.CreateWorkspaces(1, PathQueryBudget.Default);
-        using var entered = new ManualResetEventSlim();
-        using var exit = new ManualResetEventSlim();
-        using var contenderFinished = new ManualResetEventSlim();
+        var pool = planner.CreateWorkspaces(1, PathQueryBudget.Default);
+        var entered = new ManualResetEventSlim();
+        var exit = new ManualResetEventSlim();
+        var contenderFinished = new ManualResetEventSlim();
         var goal = new NavGoalRegion(End().Anchor, 0f, _ =>
         {
             entered.Set();
             exit.Wait();
             return true;
         });
-        using var request = planner.BeginPath(Start, goal, 0f, PathQueryBudget.Default, pool);
+        var request = planner.BeginPath(Start, goal, 0f, PathQueryBudget.Default, pool);
         var advance = BoundedThread.Start(() => request.Advance(new PathWorkBudget(int.MaxValue)));
         BoundedThread? contender = null;
+        Exception? coordination = null;
         try
         {
             BoundedThread.Await(entered);
@@ -144,15 +145,21 @@ public class PathPlanWorkspacesTests
             });
             BoundedThread.Await(contenderFinished);
         }
-        finally
+        catch (Exception error) { coordination = error; }
+        exit.Set();
+        // A thread that outlives its join can still use the request, the pool and the signals,
+        // so they are released only after both threads stopped without a failure.
+        BoundedThread.JoinAll(coordination, advance, contender);
+        using (pool)
+        using (entered)
+        using (exit)
+        using (contenderFinished)
+        using (request)
         {
-            exit.Set();
-            try { advance.Join(); }
-            finally { contender?.Join(); }
+            Assert.Equal(PathPlanState.Ready, request.State);
+            using var later = Begin(planner, pool);
+            Finish(later, 7);
         }
-        Assert.Equal(PathPlanState.Ready, request.State);
-        using var later = Begin(planner, pool);
-        Finish(later, 7);
     }
 
     [Fact]

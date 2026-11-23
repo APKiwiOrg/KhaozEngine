@@ -31,9 +31,10 @@ public sealed class ChainCapsuleCullTests
     }
 
     [Theory]
-    [InlineData(4)]
-    [InlineData(65)] // Standalone simulations also accept more than the wearer cap.
-    public void Cull_preserves_joint_frame_bits_across_linked_passes_and_moving_colliders(int colliderCount)
+    [InlineData(4, 4f, 30f)]
+    [InlineData(65, 0.5f, 0.25f)] // Every capsule is in reach of both chains in the crowded case.
+    public void Cull_preserves_joint_frame_bits_across_linked_passes_and_moving_colliders(
+        int colliderCount, float chainSpacing, float fillerX)
     {
         var chain = Chain(-Vector3.UnitY, Settings with { Radius = 0.0625f, Stiffness = 4 },
             Joint(Vector3.Zero), Joint(-Vector3.UnitY));
@@ -41,11 +42,11 @@ public sealed class ChainCapsuleCullTests
         var culled = new ChainSimulation(rig, colliderCount);
         var all = new ChainSimulation(rig, colliderCount);
         var noContact = new ChainSimulation(rig, 0);
-        var separation = 4 * Vector3.UnitX;
+        var separation = chainSpacing * Vector3.UnitX;
         Matrix4x4[] anchors = new Matrix4x4[2];
         ColliderCapsule[] capsules = new ColliderCapsule[colliderCount];
-        var distant = new Vector3(30, -1, 0);
-        Array.Fill(capsules, new(distant, distant, 0.125f));
+        var filler = new Vector3(fillerX, 0, 0.5f);
+        Array.Fill(capsules, new(filler, filler, 0.125f));
         noContact.Step([Matrix4x4.Identity, Matrix4x4.CreateTranslation(separation)], [], Matrix4x4.Identity, 0);
 
         for (int frame = 0; frame <= 48; frame++)
@@ -68,6 +69,48 @@ public sealed class ChainCapsuleCullTests
                 noContact.Step(anchors, [], wearer, delta);
                 Assert.NotEqual(noContact.JointsFromAnchor[^1], all.JointsFromAnchor[^1]);
             }
+        }
+    }
+
+    [Fact]
+    public void Correction_outside_padded_reach_replays_with_the_culled_capsule()
+    {
+        // The unit tip starts 0.125 from the near center. A correction to (1.5, 0, 0)
+        // puts it 0.125 from the far center, whose X alone is beyond the nominal reach of 1.25.
+        var chain = Chain(Vector3.UnitX, Settings with { Gravity = 0 }, Joint(Vector3.Zero));
+        var near = new Vector3(0.875f, 0, 0);
+        var far = new Vector3(1.5f, 0.125f, 0);
+        ColliderCapsule[] capsules = [new(near, near, 0.25f), new(far, far, 0.25f)];
+        var kept = new ChainCapsuleCull().Select(Vector3.Zero, [chain.Tip.Length()], chain.Settings.Radius, capsules);
+        Assert.Equal(1, kept.Count);
+        Assert.Equal(0, kept.OriginalIndex(0));
+
+        Matrix4x4[] anchors = [Matrix4x4.Identity];
+        ColliderCapsule[] nearOnly = [capsules[0]];
+        var all = AtRest(capsules);
+        var culled = AtRest(capsules);
+        var withoutFarCapsule = AtRest(nearOnly);
+        const float step = 1f / 120;
+        ChainCapsuleCollision.SetFirstCorrectionDirectionForTests(new Vector3(1.5f, 0, 0));
+        try
+        {
+            StepWithAllCapsules(all, anchors, capsules, Matrix4x4.Identity, step);
+            culled.Step(anchors, capsules, Matrix4x4.Identity, step);
+            withoutFarCapsule.Step(anchors, nearOnly, Matrix4x4.Identity, step);
+        }
+        finally
+        {
+            ChainCapsuleCollision.SetFirstCorrectionDirectionForTests(null);
+        }
+
+        Assert.NotEqual(withoutFarCapsule.JointsFromAnchor[0], all.JointsFromAnchor[0]);
+        AssertSameFrames(1, all, culled);
+
+        ChainSimulation AtRest(ColliderCapsule[] colliders)
+        {
+            var simulation = Create(chain, colliders.Length);
+            simulation.Step(anchors, colliders, Matrix4x4.Identity, 0);
+            return simulation;
         }
     }
 

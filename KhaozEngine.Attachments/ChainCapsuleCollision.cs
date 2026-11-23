@@ -8,13 +8,19 @@ internal static class ChainCapsuleCollision
     private const int ContactPasses = 8;
     internal const double TouchTolerance = 0.0001;
 
+    [ThreadStatic]
+    private static Vector3? _firstCorrectionDirectionForTests;
+
+    internal static void SetFirstCorrectionDirectionForTests(Vector3? direction) =>
+        _firstCorrectionDirectionForTests = direction;
+
     internal static bool BeyondReach(Vector3 root, double contactReach, in ColliderCapsule capsule)
     {
         var residual = CapsuleResidual(new Offset(root), default, capsule, out _);
         var coordinates = Vector3.Max(Vector3.Abs(root), Vector3.Max(Vector3.Abs(capsule.Start), Vector3.Abs(capsule.End)));
-        // Allow for double roundoff in the axis projection, including on very long axes.
-        double projectionRounding = (1d / (1L << 47)) * Math.Max(coordinates.X, Math.Max(coordinates.Y, coordinates.Z));
-        double limit = contactReach + capsule.Radius + projectionRounding;
+        // Keep axes within reach plus both radii, contact tolerance and 1e-9 of coordinate scale for ~1e-16 double roundoff.
+        double projectionMargin = 1e-9 * Math.Max(coordinates.X, Math.Max(coordinates.Y, coordinates.Z));
+        double limit = contactReach + capsule.Radius + projectionMargin;
         return residual.LengthSquared > limit * limit;
     }
 
@@ -24,6 +30,7 @@ internal static class ChainCapsuleCollision
         if (capsules.IsFiltered && !ChainCapsuleCull.FitsReach(direction))
             capsules = capsules.All;
         var initial = direction;
+        var firstCorrectionForTests = _firstCorrectionDirectionForTests;
         var root = new Offset(start);
         // Revisit earlier contacts after a correction moves the particle along its length sphere.
         for (int pass = 0; pass < ContactPasses; pass++)
@@ -38,8 +45,9 @@ internal static class ChainCapsuleCollision
                 if (residual.LengthSquared >= radius * radius)
                     continue;
 
-                var corrected = ClearSphere(direction, length, fromRoot - residual, radius);
-                // A poorly conditioned direction can leave the padded reach. Replay this joint in original order.
+                var corrected = firstCorrectionForTests ?? ClearSphere(direction, length, fromRoot - residual, radius);
+                firstCorrectionForTests = null;
+                // A correction outside padded reach requires a full replay before the next position test.
                 if (capsules.IsFiltered && !ChainCapsuleCull.FitsReach(corrected))
                     return Clear(initial, start, length, chainRadius, capsules.All);
                 changed |= corrected != direction;

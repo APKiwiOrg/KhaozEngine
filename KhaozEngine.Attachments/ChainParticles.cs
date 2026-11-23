@@ -15,6 +15,7 @@ internal sealed class ChainParticles
         RestPositions = new Vector3[count];
         Lengths = new float[rig.JointCount];
         JointWorlds = new Matrix4x4[rig.JointCount];
+        JointSwings = new Quaternion[rig.JointCount];
         PreviousAnchorRotations = new Quaternion[rig.AnchorCount];
         StepAnchorRotations = new Quaternion[rig.AnchorCount];
         StepCarries = new ChainCarry[rig.Chains.Count];
@@ -27,6 +28,7 @@ internal sealed class ChainParticles
     internal Vector3[] SubstepStarts { get; }
     internal float[] Lengths { get; }
     internal Matrix4x4[] JointWorlds { get; }
+    internal Quaternion[] JointSwings { get; }
     internal Quaternion[] PreviousAnchorRotations { get; private set; }
     internal Quaternion[] StepAnchorRotations { get; private set; }
     internal ChainCarry[] StepCarries { get; }

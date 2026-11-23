@@ -563,8 +563,11 @@ the next frame. Dropped time moves chains only with the wearer's trail carry, so
 measures speeds from its own start.
 
 Presentation interpolates the last two simulated joint frames in anchor space through the chain
-hierarchy, so segment lengths hold, and composes the result on the current anchor. The displayed shape is one step late relative to the anchor and follows the
-current body pose, even on frames that run no simulation step. A fast collider can overlap the
+hierarchy, so segment lengths hold, and composes the result on the current anchor. Cached swings follow a
+rigid or uniformly scaled change between a sample and the current anchor. When the change includes
+non-uniform stretch or shear, presentation reads the swings in the current anchor's frame. The displayed
+shape is one step late relative to the anchor and follows the current body pose, even on frames that run no
+simulation step. A fast collider can overlap the
 displayed chain while the simulated shape already clears it.
 
 Segment lengths use the posed rest scale. Capsule correction keeps the root and segment lengths fixed

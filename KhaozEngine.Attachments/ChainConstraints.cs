@@ -98,6 +98,7 @@ internal static class ChainConstraints
         var world = step.Unswung * Matrix4x4.CreateFromQuaternion(swing);
         world.Translation = step.Start;
         particles.JointWorlds[step.Joint] = world;
+        particles.JointSwings[step.Joint] = swing;
         return world;
     }
 

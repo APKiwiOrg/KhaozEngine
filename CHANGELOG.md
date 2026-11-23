@@ -42,6 +42,8 @@ which `KhaozEngine.Attachments.Render3D` applies when it binds wearer motion.
 **Performance.**
 
 - Each chain skips capsules beyond its reach while preserving the simulation result.
+- Chain display reuses cached swings when each sample anchor maps to the current anchor by a rotation,
+  positive uniform scale and translation.
 
 **Upgrade order.**
 

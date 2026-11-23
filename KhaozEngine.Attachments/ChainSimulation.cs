@@ -12,7 +12,7 @@ public sealed class ChainSimulation
     private readonly ChainStepPresentation _stepPresentation;
     private ChainStepClock _clock;
     private readonly ChainSettings[] _settings;
-    private readonly Matrix4x4[] _jointsFromAnchor;
+    private readonly ChainPresentationFrame _shown;
     private readonly Matrix4x4[] _anchorInverses;
     private readonly Matrix4x4[] _stepAnchors;
     private readonly Matrix4x4[] _stepAnchorInverses;
@@ -41,13 +41,15 @@ public sealed class ChainSimulation
         Options = options;
         _particles = new ChainParticles(rig);
         _links = new ChainLinks(rig);
-        _blend = new ChainPresentationBlend(rig);
-        _stepPresentation = new ChainStepPresentation(rig.JointCount);
+        var hierarchy = new ChainPresentationHierarchy(rig);
+        _blend = new ChainPresentationBlend(rig, hierarchy);
+        _stepPresentation = new ChainStepPresentation(rig, hierarchy);
         _clock = new ChainStepClock(options.MaxStepSeconds, options.MaxStepsPerFrame);
         _settings = new ChainSettings[rig.Chains.Count];
         for (int chain = 0; chain < _settings.Length; chain++)
             _settings[chain] = rig.Chains[chain].Settings;
-        _jointsFromAnchor = rig.RestFromAnchor.ToArray();
+        _shown = new ChainPresentationFrame(rig);
+        rig.RestFromAnchor.CopyTo(_shown.Frames);
         _anchorInverses = new Matrix4x4[rig.AnchorCount];
         _stepAnchors = new Matrix4x4[rig.AnchorCount];
         _stepAnchorInverses = new Matrix4x4[rig.AnchorCount];
@@ -63,7 +65,7 @@ public sealed class ChainSimulation
     public ChainSimulationOptions Options { get; }
 
     /// <summary>The displayed joint frames relative to their current anchors.</summary>
-    public ReadOnlySpan<Matrix4x4> JointsFromAnchor => _jointsFromAnchor;
+    public ReadOnlySpan<Matrix4x4> JointsFromAnchor => _shown.Frames;
 
     /// <summary>Advances to the supplied pose, or blends toward rest while held.</summary>
     public void Step(ReadOnlySpan<Matrix4x4> anchorWorlds, ReadOnlySpan<ColliderCapsule> colliders,
@@ -81,25 +83,25 @@ public sealed class ChainSimulation
         {
             _particles.SetRest(anchorWorlds, reset: true);
             _clock.Reset();
-            _stepPresentation.Reset(Rig.RestFromAnchor);
+            _shown.SetRest(_frameAnchors, _anchorInverses);
+            _stepPresentation.Reset(_shown);
             _blend.Begin();
             _resuming = false;
-            Rig.RestFromAnchor.CopyTo(_jointsFromAnchor);
         }
         else if (level == MotionLevel.Held)
         {
             _resuming = false;
             if (!_held)
                 _blend.Begin();
-            _blend.Advance(_jointsFromAnchor, anchorWorlds, _anchorInverses, deltaSeconds, Options.HoldBlendSeconds, toRest: true);
+            _blend.Advance(_shown, _frameAnchors, _anchorInverses, deltaSeconds, Options.HoldBlendSeconds, toRest: true);
         }
         else
         {
             if (_held)
             {
-                _particles.SeedFromShown(_previousAnchors, _jointsFromAnchor);
+                _particles.SeedFromShown(_previousAnchors, _shown.Frames);
                 _clock.Reset();
-                _stepPresentation.Reset(_jointsFromAnchor);
+                _stepPresentation.Reset(_shown);
                 _blend.Begin();
                 _resuming = true;
             }
@@ -107,12 +109,12 @@ public sealed class ChainSimulation
             Advance(colliders, frameWearer, deltaSeconds);
             if (_resuming && (deltaSeconds > 0 || Options.HoldBlendSeconds == 0))
             {
-                _stepPresentation.Show(_clock.Interpolation, Rig, anchorWorlds, _anchorInverses, _blend.LiveTarget);
-                _resuming = _blend.Advance(_jointsFromAnchor, anchorWorlds, _anchorInverses,
+                _stepPresentation.Show(_clock.Interpolation, _frameAnchors, _anchorInverses, _blend.LiveTarget);
+                _resuming = _blend.Advance(_shown, _frameAnchors, _anchorInverses,
                     deltaSeconds, Options.HoldBlendSeconds, toRest: false);
             }
             else if (deltaSeconds > 0)
-                _stepPresentation.Show(_clock.Interpolation, Rig, anchorWorlds, _anchorInverses, _jointsFromAnchor);
+                _stepPresentation.Show(_clock.Interpolation, _frameAnchors, _anchorInverses, _shown);
         }
 
         (_previousAnchors, _frameAnchors) = (_frameAnchors, _previousAnchors);
@@ -154,7 +156,7 @@ public sealed class ChainSimulation
             int first = Rig.FirstJoint(chain);
             var anchor = anchorWorlds[definition.Anchor];
             for (int joint = first; joint < first + definition.Joints.Count; joint++)
-                destination[joint] = _jointsFromAnchor[joint] * anchor;
+                destination[joint] = _shown.Frames[joint] * anchor;
         }
     }
 
@@ -225,9 +227,9 @@ public sealed class ChainSimulation
 
         _stepWearerPosition = position;
         _stepWearerRotation = rotation;
+        _stepPresentation.Capture(_particles, _stepAnchorInverses);
         _particles.RememberAnchorRotations();
         (_previousStepColliders, _stepColliders) = (_stepColliders, _previousStepColliders);
-        _stepPresentation.Capture(Rig, _particles.JointWorlds, _stepAnchorInverses);
     }
 
     private void SkipToRetainedStep(ReadOnlySpan<ColliderCapsule> colliders, in ChainPose wearer, float fraction)

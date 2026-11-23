@@ -243,7 +243,11 @@ chain can overlap a capsule for at most the blend time, while the live chain alr
 Each chain joint's result is kept relative to its anchor, and drawing composes it on the anchor's current world
 transform. The shown result interpolates the last two steps' anchor relative frames at the frame time's place between
 them, through the hierarchy. Each joint's swing from its unswung frame is slerped, and each child attaches to its
-blended parent, with the first joint pinned to its anchor. Interpolating each frame's translation on its own
+blended parent, with the first joint pinned to its anchor. At a grid sample the captured frames are copied.
+Between samples, the solver's cached swings follow the current anchor when each sample-to-current transform
+is a rotation with positive uniform scale and any translation. A changing non-uniform stretch or shear changes
+the endpoint bases differently, so the display reads their swings after applying the current anchor. Near an
+ambiguous half turn it also reads the endpoint frames to preserve the choice of arc. Interpolating each frame's translation on its own
 shortened a segment to about 0.71 of its length halfway through a quarter turn in one step. A frame that ends before
 the next step shows that interpolation, and a zero time frame keeps its shown frames, both composed on the current
 anchor, so the chain never falls behind the body.
@@ -257,7 +261,8 @@ anchor, so the chain never falls behind the body.
   hang over the hold blend time and stay there. A later simulated step starts the live chain from the held shape with
   no velocity and blends the shown chain to it over the same time. Each blend continues from the last shown swing, so
   an anchor turning through a half turn during a blend never switches arcs, and neither switch pops. A blend rebuilds
-  the chain through the hierarchy as the step interpolation does, so lengths hold mid blend. With a hold blend time of
+  the chain through the hierarchy as the step interpolation does, so lengths hold mid blend. It carries the
+  last shown swings with the same transform check, and copies the target when it finishes. With a hold blend time of
   0 a switch completes on its first frame, even one with no elapsed time.
 - **Picking who swings.** `MotionLevels.Assign` sets the nearest wearers within a distance to simulated, up to a
   count, and the rest to held, writing into caller spans without allocating.
@@ -446,7 +451,10 @@ The wearables limits are 32 wearers, at most 2 ms added CPU preparation, no mana
   for moved points, then apply the velocity constraints. A reach test selects candidates once per chain per pass,
   with a full capsule replay if a contact correction leaves the conservative reach. At the default 120 Hz simulation
   rate, a 144 Hz frame averages 0.83 steps and a 60 Hz frame averages two. A frame between grid steps rebuilds each
-  shown chain from the last two steps, with one swing read and slerp per joint.
+  shown chain from the last two steps. When both sample anchors carry by a positive similarity, the display
+  transports and slerps cached swings, then composes each joint on its blended parent without factoring its
+  endpoint matrices. An affine fallback reads the endpoint swings for an anchor that changes stretch or shear
+  between a sample and the current frame.
 - GPU: no shader, pass or draw count changes. A chained part adds palette entries within the 128 joint limit.
 - Allocation is tested per call, as outfit draws are.
 

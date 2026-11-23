@@ -3,20 +3,24 @@ using System.Numerics;
 
 namespace KhaozEngine.Attachments;
 
-internal sealed class ChainStepPresentation(int jointCount)
+internal sealed class ChainStepPresentation(ChainRig rig, ChainPresentationHierarchy hierarchy)
 {
-    private Matrix4x4[] _previous = new Matrix4x4[jointCount];
-    private Matrix4x4[] _current = new Matrix4x4[jointCount];
+    private ChainPresentationFrame _previous = new(rig);
+    private ChainPresentationFrame _current = new(rig);
 
-    internal void Reset(ReadOnlySpan<Matrix4x4> frames)
+    internal void Reset(ChainPresentationFrame shown)
     {
-        frames.CopyTo(_previous);
-        frames.CopyTo(_current);
+        _previous.CopyFrom(shown);
+        _current.CopyFrom(shown);
     }
 
-    internal void Capture(ChainRig rig, ReadOnlySpan<Matrix4x4> worlds, ReadOnlySpan<Matrix4x4> anchorInverses)
+    internal void Capture(ChainParticles particles, ReadOnlySpan<Matrix4x4> anchorInverses)
     {
         (_previous, _current) = (_current, _previous);
+        for (int anchor = 0; anchor < anchorInverses.Length; anchor++)
+            _current.Anchors[anchor] = new ChainPresentationAnchor(anchorInverses[anchor], particles.StepAnchorRotations[anchor]);
+
+        var worlds = particles.JointWorlds;
         for (int chain = 0; chain < rig.Chains.Count; chain++)
         {
             var definition = rig.Chains[chain];
@@ -26,20 +30,21 @@ internal sealed class ChainStepPresentation(int jointCount)
             var root = worlds[first] * inverse;
             // The root is anchored exactly even when inverse composition rounds its offset.
             root.Translation = rig.RestFromAnchor[first].Translation;
-            _current[first] = root;
+            _current.Frames[first] = root;
             for (int joint = first + 1; joint < end; joint++)
-                _current[joint] = worlds[joint] * inverse;
+                _current.Frames[joint] = worlds[joint] * inverse;
         }
+        particles.JointSwings.CopyTo(_current.Swings, 0);
     }
 
-    internal void Show(float amount, ChainRig rig, ReadOnlySpan<Matrix4x4> anchors,
-        ReadOnlySpan<Matrix4x4> inverses, Span<Matrix4x4> frames)
+    internal void Show(float amount, ReadOnlySpan<ChainPose> anchors, ReadOnlySpan<Matrix4x4> inverses,
+        ChainPresentationFrame shown)
     {
         if (amount == 0)
-            _previous.CopyTo(frames);
+            shown.CopyFrom(_previous);
         else if (amount == 1)
-            _current.CopyTo(frames);
+            shown.CopyFrom(_current);
         else
-            ChainPresentationHierarchy.Interpolate(rig, _previous, _current, frames, anchors, inverses, amount);
+            hierarchy.Interpolate(_previous, _current, shown, anchors, inverses, amount);
     }
 }

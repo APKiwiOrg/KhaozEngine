@@ -66,8 +66,17 @@ internal static class AttachmentSetMotionJson
         ChainLink[] links = motion.TryGetProperty("links", out JsonElement linksValue)
             ? ReadLinks(StrictAttachmentJson.ArrayValue(linksValue, path + ".links", Refuse), partId, partIndex) : [];
         float? linkStretch = motion.TryGetProperty("linkStretch", out JsonElement stretchValue)
-            ? StrictAttachmentJson.Number(stretchValue, path + ".linkStretch", Refuse) : null;
+            ? ReadLinkStretch(stretchValue) : null;
         return new ChainMotionDefinition(definitions, links) { LinkStretch = linkStretch };
+
+        float ReadLinkStretch(JsonElement value)
+        {
+            // Validate before an authored value just above one can round to 1f.
+            if (value.ValueKind == JsonValueKind.Number
+                && (!value.TryGetDouble(out double authored) || authored is not (> 0d and <= 1d)))
+                throw AttachmentSetMotion.LinkStretchRangeRefusal(partId, partIndex);
+            return StrictAttachmentJson.Number(value, path + ".linkStretch", Refuse);
+        }
 
         Exception Refuse(StrictAttachmentJson.Fault fault, string jsonPath, string message, string? property) =>
             new AttachmentSetDataException(AttachmentSetJson.StrictReason(fault), message)

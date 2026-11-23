@@ -31,7 +31,7 @@ identity. The [outfit resolver](#outfit-coverage) checks those names against the
 
 ## Attachment set JSON
 
-`AttachmentSetJson.Parse(utf8, sourceName)` accepts formats 1 through 5. Format 1 contains only rigid parts
+`AttachmentSetJson.Parse(utf8, sourceName)` accepts formats 1 through 6. Format 1 contains only rigid parts
 and has no `kind` member:
 
 ```json
@@ -653,7 +653,7 @@ Every JSON refusal also carries `SourceName`. Direct constructor and reference c
 | `TooManyStandoffEntries` | a set with more than 128 standoff entries. | `ActualCount`, `ExpectedCount` |
 | `LiftClearanceOutOfRange` | a lift clearance outside its finite range. | `PartId`, `PartIndex` |
 
-Format 4 and 5 JSON refusals above include `JsonPath`. Chain, joint, link, collider and standoff indices are
+JSON refusals above for formats 4 through 6 include `JsonPath`. Chain, joint, link, collider and standoff indices are
 zero-based and refer to input order. Counts report the supplied size and the required minimum or allowed maximum.
 For a collider or standoff sequence without a known count, construction stops at the first item past the cap,
 so `ActualCount` is the number read, one more than the cap, and a lower bound on the sequence's length.

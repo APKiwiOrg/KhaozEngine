@@ -154,10 +154,13 @@ public class JsonTests
     [InlineData(true, null, AttachmentFixtures.LiftJson, 5)]
     [InlineData(true, null, null, 6, .25f)]
     [InlineData(true, null, AttachmentFixtures.LiftJson, 6, .25f)]
+    [InlineData(true, null, AttachmentFixtures.LiftJson, 5, null, 6)]
     public void AttachmentSet_writes_the_lowest_format_for_lift_and_link_stretch(bool chains, string? standoff, string? lift,
-        int expectedVersion, float? linkStretch = null)
+        int expectedVersion, float? linkStretch = null, int inputVersion = 5)
     {
-        AttachmentSetDefinition set = Parse(AttachmentFixtures.LiftSetJson(standoff, lift, chains));
+        string json = AttachmentFixtures.LiftSetJson(standoff, lift, chains)
+            .Replace("\"formatVersion\":5,", $"\"formatVersion\":{inputVersion},", StringComparison.Ordinal);
+        AttachmentSetDefinition set = Parse(json);
         if (linkStretch is { } stretch)
         {
             var part = Assert.IsType<SkinnedAttachmentPartDefinition>(Assert.Single(set.Parts));

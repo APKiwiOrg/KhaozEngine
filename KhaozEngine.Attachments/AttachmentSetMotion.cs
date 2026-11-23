@@ -32,8 +32,7 @@ internal static class AttachmentSetMotion
         if (chains.LinkStretch is { } linkStretch)
         {
             if (!ChainLink.IsValidStretch(linkStretch))
-                throw PartRefusal(AttachmentSetRefusal.LinkStretchOutOfRange, partId, partIndex,
-                    "linkStretch must be finite, greater than zero and at most one.", ".linkStretch", settingName: "linkStretch");
+                throw LinkStretchRangeRefusal(partId, partIndex);
             if (links.IsEmpty)
                 throw PartRefusal(AttachmentSetRefusal.LinkStretchWithoutLinks, partId, partIndex,
                     "linkStretch requires at least one link.", ".linkStretch", settingName: "linkStretch");
@@ -167,6 +166,10 @@ internal static class AttachmentSetMotion
     }
 
     internal static string MotionPath(int partIndex) => $"$.parts[{partIndex}].motion";
+
+    internal static AttachmentSetArgumentException LinkStretchRangeRefusal(uint partId, int partIndex) =>
+        PartRefusal(AttachmentSetRefusal.LinkStretchOutOfRange, partId, partIndex,
+            "linkStretch must be finite, greater than zero and at most one.", ".linkStretch", settingName: "linkStretch");
 
     static AttachmentSetArgumentException PartRefusal(AttachmentSetRefusal reason, uint partId, int partIndex, string message,
         string suffix, int? chainIndex = null, int? jointIndex = null, int? linkIndex = null, string? jointName = null,

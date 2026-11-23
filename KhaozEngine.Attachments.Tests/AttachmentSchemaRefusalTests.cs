@@ -376,6 +376,7 @@ public sealed class AttachmentSchemaRefusalTests
     [Theory]
     [InlineData("0", AttachmentSetRefusal.LinkStretchOutOfRange)]
     [InlineData("-0.25", AttachmentSetRefusal.LinkStretchOutOfRange)]
+    [InlineData("1.00000001", AttachmentSetRefusal.LinkStretchOutOfRange)]
     [InlineData("1.25", AttachmentSetRefusal.LinkStretchOutOfRange)]
     [InlineData("1e100", AttachmentSetRefusal.LinkStretchOutOfRange)]
     [InlineData("1", AttachmentSetRefusal.LinkStretchWithoutLinks)]

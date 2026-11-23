@@ -105,7 +105,11 @@ public sealed class ClientReceiveReuseTests(ITestOutputHelper output)
         output.WriteLine($"B/frame: transport staging {staged / (double)measured}, ACK control {acknowledgements / (double)measured}, poll {polled / (double)measured}");
         Assert.True(allAcknowledged);
         Assert.True(client.TryGetComponent(47, out Marker marker) && marker.Value == frames.Length - 1);
-        Assert.Equal(acknowledgements, polled);
+        // An upper bound, not an equality. The JIT can keep one of the acknowledgement's short lived arrays on
+        // the stack at the client's call site once that code is hot, and never at this test's own cold call
+        // site. In a whole assembly run the poll measured 64 B/frame against the control's 96, and 96 again
+        // with DOTNET_JitObjectStackAllocation=0. An owning copy of the delta body is larger than that gap.
+        Assert.InRange(polled, 0, acknowledgements);
     }
 
     private static long MeasureAcknowledgements(int warmup, int measured)

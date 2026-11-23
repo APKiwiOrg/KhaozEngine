@@ -48,9 +48,7 @@ public readonly record struct LiftFootprintTriangle
                 throw new LiftFootprintDataException(LiftFootprintRefusal.HeightMetresOutsideRange, "A height must be finite and in [0, 0.25] metres.")
                 { EntryIndex = index, CellKey = key, HeightMetres = metres };
 
-            // Compare with the decoded value to keep already-quantized heights on their original unit.
-            int floor = (int)(metres * UnitsPerMetre);
-            units[index] = (ushort)(ToMetres(floor) < metres ? floor + 1 : floor);
+            units[index] = RoundHeightUp(metres);
         }
 
         entries = keys.Length == 0 ? null : new Entries(keys, units);
@@ -90,6 +88,13 @@ public readonly record struct LiftFootprintTriangle
     }
 
     internal static double ToMetres(int units) => units / (double)UnitsPerMetre;
+
+    internal static ushort RoundHeightUp(double metres)
+    {
+        // Compare with the decoded value to keep already-quantized heights on their original unit.
+        int floor = (int)(metres * UnitsPerMetre);
+        return (ushort)(ToMetres(floor) < metres ? floor + 1 : floor);
+    }
 
     internal sealed class Entries(int[] cellKeys, ushort[] heightUnits)
     {

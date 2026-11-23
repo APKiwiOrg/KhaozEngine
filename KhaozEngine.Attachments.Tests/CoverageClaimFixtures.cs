@@ -19,6 +19,45 @@ internal static class CoverageClaimFixtures
     internal static readonly BodyRegionMap FlatMap = new(Rig, ["upper", "lower"], [[new RegionRun(0, 2), new RegionRun(1, 2)]]);
     internal static readonly CoverageClaimMesh[] FlatBody = [new(FlatPositions, FlatIndices)];
 
+    internal static readonly BodyRegionMap FootprintMap = new(Rig, ["upper"], [[new RegionRun(0, 1)]]);
+    internal static readonly CoverageClaimMesh[] FootprintBody =
+        [Triangle(0, Vector3.Zero, new(0.25f, 0, 0), new(0, 0.25f, 0))];
+
+    internal static CoverageClaimMesh Triangle(uint partId, Vector3 a, Vector3 b, Vector3 c) =>
+        new(new[] { a, b, c }, new uint[] { 0, 1, 2 }) { PartId = partId };
+
+    // A part in the first cell of FootprintBody, away from all cell boundaries.
+    internal static CoverageClaimMesh SmallFootprintTriangle(uint partId, float height) =>
+        Triangle(partId, new(0.00390625f, 0.00390625f, height), new(0.0078125f, 0.00390625f, height),
+            new(0.00390625f, 0.0078125f, height));
+
+    // The first triangle is the whole panel. The second is a raised strip beside its bottom edge.
+    internal static CoverageClaimMesh HemGarment() => new(new Vector3[]
+    {
+        new(0, 0, 0.015625f), new(0.25f, 0, 0.015625f), new(0, 0.25f, 0.015625f),
+        new(0.0078125f, 0.0078125f, 0.03125f), new(0.1875f, 0.0078125f, 0.03125f),
+        new(0.0078125f, 0.0234375f, 0.03125f),
+    }, new uint[] { 0, 1, 2, 3, 4, 5 }) { PartId = 1 };
+
+    internal static (CoverageClaimMesh[] Meshes, BodyRegionMap Map) RidgeBody(float offset)
+    {
+        Vector3 otherSide = new(offset, 0, 0);
+        CoverageClaimMesh flat = Triangle(0, Vector3.Zero, Vector3.UnitY, -Vector3.UnitX);
+        CoverageClaimMesh[] ridge =
+        [
+            Triangle(0, Vector3.Zero, Vector3.UnitY, 2 * Vector3.UnitY),
+            flat, flat, Triangle(0, otherSide, otherSide - Vector3.UnitZ, otherSide + Vector3.UnitY),
+        ];
+        CoverageClaimMesh[] meshes = ridge.Concat(Enumerable.Range(-12, 25).Where(x => x != 0).Select(x =>
+        {
+            Vector3 start = new(x * 2, 0, 0);
+            return Triangle(0, start, start + Vector3.UnitY, start - Vector3.UnitX);
+        })).ToArray();
+        BodyRegionMap map = new(Rig, ["upper", "lower"], meshes.Select((_, index) =>
+            new[] { new RegionRun(index == 3 ? 1 : 0, 1) }));
+        return (meshes, map);
+    }
+
     public static TheoryData<string, CoverageClaimRefusal> InvalidGeometry => new()
     {
         { "a second body mesh", CoverageClaimRefusal.BodyMeshCountMismatch },

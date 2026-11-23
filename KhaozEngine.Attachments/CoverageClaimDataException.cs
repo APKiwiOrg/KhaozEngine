@@ -50,4 +50,13 @@ public sealed class CoverageClaimDataException : MalformedDataException
 
     /// <summary>The asset key of the piece part involved in the refusal, when the definition declares that part.</summary>
     public string? MeshKey { get; init; }
+
+    /// <summary>The zero-based position of the refused triangle in the piece part's upload order.</summary>
+    public int? TriangleIndex { get; init; }
+
+    /// <summary>The signed height in metres of the refused footprint sample.</summary>
+    public double? HeightMetres { get; init; }
+
+    /// <summary>The longest edge in metres of a triangle whose sampling grid is too large.</summary>
+    public double? LongestEdgeMetres { get; init; }
 }

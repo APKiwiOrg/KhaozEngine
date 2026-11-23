@@ -35,6 +35,24 @@ public enum CoverageClaimRefusal
 
     /// <summary>Refuses a definition part with no mesh in a piece that declares motion.</summary>
     PiecePartMeshMissing,
+
+    /// <summary>Refuses a footprint mesh without its definition part ID.</summary>
+    FootprintMeshPartIdMissing,
+
+    /// <summary>Refuses a footprint mesh whose part ID the piece definition does not declare.</summary>
+    FootprintMeshPartIdUnknown,
+
+    /// <summary>Refuses a second footprint mesh naming the same definition part.</summary>
+    FootprintMeshPartIdDuplicate,
+
+    /// <summary>Refuses a definition part without a footprint mesh.</summary>
+    FootprintPartMeshMissing,
+
+    /// <summary>Refuses a fixed triangle sample more than 0.25 metres above the body.</summary>
+    FootprintHeightAboveLimit,
+
+    /// <summary>Refuses a triangle whose one-millimetre sampling grid exceeds the index range.</summary>
+    FootprintSamplingGridTooLarge,
 }
 
 /// <summary>Which input list a refused coverage claim mesh belongs to. Members are only ever appended.</summary>

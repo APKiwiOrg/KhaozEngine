@@ -12,11 +12,11 @@ public sealed class OutfitCoverage
 {
     readonly Worn[] worn;
 
-    OutfitCoverage(Worn[] worn, RegionSet bodyHidden, int regionCount)
+    OutfitCoverage(Worn[] worn, RegionSet bodyHidden, BodyRegionMap body)
     {
         this.worn = worn;
         BodyHidden = bodyHidden;
-        RegionCount = regionCount;
+        Body = body;
     }
 
     /// <summary>The number of worn sets the outfit was resolved from.</summary>
@@ -25,7 +25,7 @@ public sealed class OutfitCoverage
     /// <summary>The body regions covered by any worn set that has a layer.</summary>
     public RegionSet BodyHidden { get; }
 
-    internal int RegionCount { get; }
+    internal BodyRegionMap Body { get; }
 
     /// <summary>
     /// Resolve <paramref name="worn"/> against <paramref name="body"/>, refusing with <see cref="OutfitDataException"/>
@@ -55,7 +55,7 @@ public sealed class OutfitCoverage
                     hidden = hidden.Union(other.Covers);
             resolved[index].Hidden = hidden;
         }
-        return new OutfitCoverage(resolved, bodyHidden, body.Regions.Count);
+        return new OutfitCoverage(resolved, bodyHidden, body);
     }
 
     /// <summary>
@@ -91,6 +91,8 @@ public sealed class OutfitCoverage
     internal AttachmentLayer? LayerFor(int wornIndex) => At(wornIndex).Layer;
 
     internal Dictionary<uint, SkinnedPart>.ValueCollection SkinnedPartsFor(int wornIndex) => At(wornIndex).SkinnedParts.Values;
+
+    internal Dictionary<uint, int>.KeyCollection RigidPartIdsFor(int wornIndex) => At(wornIndex).RigidRegions.Keys;
 
     internal ReadOnlySpan<(int Region, float Metres)> StandoffFor(int wornIndex) => At(wornIndex).Standoff;
 

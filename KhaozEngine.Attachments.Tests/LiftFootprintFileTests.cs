@@ -1,6 +1,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Linq;
+using System.Numerics;
 using System.Reflection;
 using KhaozEngine.Attachments;
 using Xunit;
@@ -10,20 +11,30 @@ namespace KhaozEngine.Tests.Attachments;
 public class LiftFootprintFileTests
 {
     const string Source = "garment.khlf";
+    const int NormalCountField = 76;
+    const int FirstNormal = 80;
+    const int SecondNormal = 96;
+    const int ThirdNormal = 112;
+
     static byte[] Golden() => Convert.FromHexString(
         "4b484c4601000800" + LiftFootprintTests.Digest +
         "0400000002000000" +   // Four body triangles, two parts.
         "0700000002000000" +   // Part 7 has two triangles.
         "040181010100a861" +   // Fixed keys 1 and 130. Heights 1 and 25,000 units.
         "03ff01" +             // Swinging key 255.
-        "ffffffff0100000000"); // Part uint.MaxValue has one empty fixed triangle.
+        "ffffffff0100000000" + // Part uint.MaxValue has one empty fixed triangle.
+        "03000000" +           // Normals for body triangles 0, 2 and 3.
+        "0000000000000000000000000000803f" +
+        "020000000000803f0000000000000000" +
+        "0300000000000000000080bf00000000");
 
     [Fact]
     public void Format_one_has_canonical_little_endian_bytes()
     {
         LiftFootprint input = new(LiftFootprintTests.Digest, 4,
             [new(7, [new(false, [1, 130], [0.000004, 0.25]), new(true, [255], [])]),
-             new(uint.MaxValue, [default])]);
+             new(uint.MaxValue, [default])],
+            [new(0, Vector3.UnitZ), new(2, Vector3.UnitX), new(3, new Vector3(0, -1, 0))]);
 
         Assert.Equal(Golden(), LiftFootprintFile.Write(input));
     }
@@ -50,6 +61,10 @@ public class LiftFootprintFileTests
         Assert.False(empty.Swinging);
         Assert.True(empty.CellKeys.IsEmpty);
         Assert.True(empty.HeightUnits.IsEmpty);
+        Assert.Equal(new LiftFootprintBodyNormal[] { new(0, Vector3.UnitZ), new(2, Vector3.UnitX), new(3, new Vector3(0, -1, 0)) },
+            result.BodyNormals);
+        Assert.Equal(Vector3.UnitX, result.NormalForBodyTriangle(2));
+        Assert.Null(result.NormalForBodyTriangle(1));
         Assert.Equal(bytes, LiftFootprintFile.Write(result));
     }
 
@@ -60,8 +75,51 @@ public class LiftFootprintFileTests
         const int key = bodyTriangles * 64 - 1;
         LiftFootprint footprint = new(LiftFootprintTests.Digest, bodyTriangles, [new(7, [new(true, [key], [])])]);
         byte[] bytes = LiftFootprintFile.Write(footprint);
-        Assert.Equal(new byte[] { 0xbf, 0xff, 0xff, 0xff, 0x07 }, bytes[^5..]);
-        Assert.Equal(key, LiftFootprintFile.Parse(bytes, Source).Parts[0].Triangles[0].CellKeys[0]);
+        Assert.Equal(new byte[] { 0xbf, 0xff, 0xff, 0xff, 0x07, 0, 0, 0, 0 }, bytes[^9..]);
+        LiftFootprint parsed = LiftFootprintFile.Parse(bytes, Source);
+        Assert.Equal(key, parsed.Parts[0].Triangles[0].CellKeys[0]);
+        Assert.Empty(parsed.BodyNormals);
+        Assert.Null(parsed.NormalForBodyTriangle(bodyTriangles - 1));
+    }
+
+    [Theory]
+    [InlineData("count", LiftFootprintRefusal.NormalCountExceedsRemainingBytes, NormalCountField, null, null)]
+    [InlineData("descending", LiftFootprintRefusal.BodyNormalTrianglesNotAscending, SecondNormal, 1, 0L)]
+    [InlineData("duplicate", LiftFootprintRefusal.BodyNormalTrianglesNotAscending, SecondNormal, 1, 0L)]
+    [InlineData("outside body", LiftFootprintRefusal.BodyNormalTriangleOutsideRange, 128, 3, (long)uint.MaxValue)]
+    [InlineData("nonfinite", LiftFootprintRefusal.BodyNormalNonFinite, FirstNormal + 4, 0, 0L)]
+    [InlineData("not unit", LiftFootprintRefusal.BodyNormalNotUnit, FirstNormal + 4, 0, 0L)]
+    [InlineData("missing", LiftFootprintRefusal.BodyNormalMissing, NormalCountField, null, 3L)]
+    public void An_invalid_normal_table_names_the_refused_rule_and_field(string fault, LiftFootprintRefusal reason,
+        int byteOffset, int? normalIndex, long? bodyTriangle)
+    {
+        byte[] golden = Golden();
+        Assert.Equal(golden, LiftFootprintFile.Write(LiftFootprintFile.Parse(golden, Source)));
+        byte[] broken = fault switch
+        {
+            "count" => Replace(golden, NormalCountField, [4, 0, 0, 0]),
+            "descending" => [.. golden[..FirstNormal], .. golden[SecondNormal..ThirdNormal],
+                .. golden[FirstNormal..SecondNormal], .. golden[ThirdNormal..]],
+            "duplicate" => [.. Replace(golden, NormalCountField, [4, 0, 0, 0])[..SecondNormal], .. golden[FirstNormal..]],
+            "outside body" => [.. Replace(golden, NormalCountField, [4, 0, 0, 0]),
+                .. Replace(golden[ThirdNormal..], 0, [0xff, 0xff, 0xff, 0xff])],
+            "nonfinite" => Replace(golden, FirstNormal + 4, [0, 0, 0xc0, 0x7f]),
+            "not unit" => Replace(golden, FirstNormal + 12, [0, 0, 0, 0]),
+            "missing" => Replace(golden[..ThirdNormal], NormalCountField, [2, 0, 0, 0]),
+            _ => throw new ArgumentOutOfRangeException(nameof(fault)),
+        };
+
+        var error = Assert.Throws<LiftFootprintDataException>(() => LiftFootprintFile.Parse(broken, Source));
+
+        Assert.Equal((reason, Source, byteOffset, normalIndex, bodyTriangle),
+            (error.Reason, error.SourceName, error.ByteOffset, error.NormalIndex, error.BodyTriangleIndex));
+        if (fault == "count")
+            Assert.Equal(4u, error.NormalCount);
+        if (fault == "outside body")
+            Assert.Equal(4L, error.BodyTriangleCount);
+        if (fault == "missing")
+            Assert.Equal((7u, 0, 1, 0, 255L),
+                (error.PartId, error.PartIndex, error.TriangleIndex, error.EntryIndex, error.CellKey));
     }
 
     [Theory]
@@ -78,7 +136,7 @@ public class LiftFootprintFileTests
     [InlineData("triangle count", LiftFootprintRefusal.TriangleCountExceedsRemainingBytes, 52)]
     [InlineData("entry count", LiftFootprintRefusal.EntryCountExceedsRemainingBytes, 56)]
     [InlineData("truncated magic", LiftFootprintRefusal.Truncated, 0)]
-    [InlineData("truncated varint", LiftFootprintRefusal.Truncated, 57)]
+    [InlineData("truncated varint", LiftFootprintRefusal.Truncated, 62)]
     [InlineData("overflowing varint", LiftFootprintRefusal.VarintOverflow, 57)]
     [InlineData("six byte varint", LiftFootprintRefusal.VarintOverflow, 57)]
     [InlineData("noncanonical varint", LiftFootprintRefusal.VarintNonCanonical, 57)]
@@ -86,7 +144,7 @@ public class LiftFootprintFileTests
     [InlineData("cell outside body", LiftFootprintRefusal.CellKeyOutsideBody, 57)]
     [InlineData("cell delta beyond uint32 key", LiftFootprintRefusal.CellKeyOutsideBody, 58)]
     [InlineData("height above limit", LiftFootprintRefusal.HeightUnitsOutsideRange, 62)]
-    [InlineData("trailing bytes", LiftFootprintRefusal.TrailingBytes, 76)]
+    [InlineData("trailing bytes", LiftFootprintRefusal.TrailingBytes, 128)]
     public void A_noncanonical_file_names_its_rule_and_location(string fault, LiftFootprintRefusal reason, int byteOffset)
     {
         (byte[] control, byte[] broken) = FileCase(fault);
@@ -121,6 +179,8 @@ public class LiftFootprintFileTests
                 Assert.Equal((7u, 0, 0), (error.PartId, error.PartIndex, error.TriangleIndex));
                 break;
             case "truncated varint":
+                Assert.Equal((7u, 0, 0, 1), (error.PartId, error.PartIndex, error.TriangleIndex, error.EntryIndex));
+                break;
             case "overflowing varint":
             case "six byte varint":
             case "noncanonical varint":
@@ -199,7 +259,7 @@ public class LiftFootprintFileTests
             "triangle count" => (golden, Replace(golden, 52, [0xff, 0xff, 0xff, 0xff])),
             "entry count" => (SingleTriangle([2, 1, 0, 0]), SingleTriangle([4, 1, 0, 0])),
             "truncated magic" => (golden, golden[..3]),
-            "truncated varint" => (SingleTriangle([3, 0]), SingleTriangle([3, 0x80])),
+            "truncated varint" => TruncatedDelta(),
             "overflowing varint" => (SingleTriangle([3, 0]), SingleTriangle([3, 0xff, 0xff, 0xff, 0xff, 0x10])),
             "six byte varint" => (SingleTriangle([3, 0]), SingleTriangle([3, 0x80, 0x80, 0x80, 0x80, 0x80, 1])),
             "noncanonical varint" => (SingleTriangle([3, 0]), SingleTriangle([3, 0x80, 0])),
@@ -213,9 +273,17 @@ public class LiftFootprintFileTests
         };
     }
 
-    static byte[] EntryFree() => [.. Golden()[..44], 0, 0, 0, 0];
+    static byte[] EntryFree() => [.. Golden()[..44], 0, 0, 0, 0, 0, 0, 0, 0];
 
-    static byte[] SingleTriangle(byte[] triangle) => [.. Golden()[..44], 1, 0, 0, 0, 7, 0, 0, 0, 1, 0, 0, 0, .. triangle];
+    static byte[] SingleTriangle(byte[] triangle) =>
+        [.. Golden()[..44], 1, 0, 0, 0, 7, 0, 0, 0, 1, 0, 0, 0, .. triangle, 0, 0, 0, 0];
+
+    static (byte[] Control, byte[] Broken) TruncatedDelta()
+    {
+        // The first delta uses five bytes, so the minimum-size checks pass even if the second delta is cut short.
+        byte[] control = Replace(SingleTriangle([5, 0x80, 0x80, 0x80, 0x80, 1, 1]), 40, [1, 0, 0x40, 0]);
+        return (control, Replace(control[..63], 62, [0x80]));
+    }
 
     static byte[] Replace(byte[] input, int offset, ReadOnlySpan<byte> replacement)
     {

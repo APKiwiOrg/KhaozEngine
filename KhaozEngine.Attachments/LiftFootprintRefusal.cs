@@ -69,6 +69,24 @@ public enum LiftFootprintRefusal
     /// <summary>A stored height must be at most 25,000 units.</summary>
     HeightUnitsOutsideRange,
 
-    /// <summary>The file must end after the last part.</summary>
+    /// <summary>The file must end after the body face normal table.</summary>
     TrailingBytes,
+
+    /// <summary>The declared face normals must fit in the bytes left in the file.</summary>
+    NormalCountExceedsRemainingBytes,
+
+    /// <summary>A face normal's triangle must be within the declared body triangles.</summary>
+    BodyNormalTriangleOutsideRange,
+
+    /// <summary>Body triangle indices in the face normal table must increase strictly.</summary>
+    BodyNormalTrianglesNotAscending,
+
+    /// <summary>A stored face normal must be finite.</summary>
+    BodyNormalNonFinite,
+
+    /// <summary>A stored face normal's length must be within 0.001 of one.</summary>
+    BodyNormalNotUnit,
+
+    /// <summary>Every referenced body triangle needs a normal when the footprint carries normals.</summary>
+    BodyNormalMissing,
 }

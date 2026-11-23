@@ -23,7 +23,7 @@ public sealed class LiftFootprintDataException : MalformedDataException, IAttach
     /// <summary>The caller-supplied name added at the public file boundary.</summary>
     public string? SourceName { get; init; }
 
-    /// <summary>The zero-based file offset where the refused or incomplete field starts.</summary>
+    /// <summary>The zero-based file offset of the refused or incomplete field, or the table count for a missing normal.</summary>
     public int? ByteOffset { get; init; }
 
     /// <summary>The format version declared by the file when refused.</summary>
@@ -59,6 +59,15 @@ public sealed class LiftFootprintDataException : MalformedDataException, IAttach
     /// <summary>The refused body region map digest.</summary>
     public string? BodyRegionMapSha256 { get; init; }
 
+    /// <summary>The flattened body triangle index involved in a face normal refusal.</summary>
+    public long? BodyTriangleIndex { get; init; }
+
+    /// <summary>The zero-based position of the refused face normal.</summary>
+    public int? NormalIndex { get; init; }
+
+    /// <summary>The declared face normal count when it cannot fit in the remaining bytes.</summary>
+    public uint? NormalCount { get; init; }
+
     MalformedDataException IAttachmentDataException.WithSource(string sourceName) =>
         new LiftFootprintDataException(Reason, $"{sourceName}: {Message}", this)
         {
@@ -75,5 +84,8 @@ public sealed class LiftFootprintDataException : MalformedDataException, IAttach
             HeightUnits = HeightUnits,
             HeightMetres = HeightMetres,
             BodyRegionMapSha256 = BodyRegionMapSha256,
+            BodyTriangleIndex = BodyTriangleIndex,
+            NormalIndex = NormalIndex,
+            NormalCount = NormalCount,
         };
 }

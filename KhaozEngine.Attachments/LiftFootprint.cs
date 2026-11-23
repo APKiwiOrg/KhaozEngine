@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Numerics;
 
 namespace KhaozEngine.Attachments;
 
@@ -9,17 +10,45 @@ public sealed class LiftFootprint
 {
     internal const int MaxBodyTriangles = int.MaxValue / BodyCell.CellsPerTriangle;
 
-    /// <summary>Admit a footprint measured on the named body, with parts supplied in strictly ascending ID order.</summary>
+    /// <summary>Admit a footprint without face normals, with parts supplied in strictly ascending ID order.</summary>
     /// <exception cref="LiftFootprintDataException">The supplied data breaks a footprint rule.</exception>
     public LiftFootprint(string bodyRegionMapSha256, int bodyTriangleCount, IEnumerable<LiftFootprintPart> parts)
+        : this(bodyRegionMapSha256, bodyTriangleCount, parts, [])
+    {
+    }
+
+    /// <summary>
+    /// Admit a footprint with parts in strictly ascending ID order and normals in strictly ascending body triangle order.
+    /// A nonempty normal list must cover every body triangle referenced by the footprint's cells.
+    /// </summary>
+    /// <exception cref="LiftFootprintDataException">The supplied data breaks a footprint rule.</exception>
+    public LiftFootprint(string bodyRegionMapSha256, int bodyTriangleCount, IEnumerable<LiftFootprintPart> parts,
+        IEnumerable<LiftFootprintBodyNormal> bodyNormals)
+        : this(bodyRegionMapSha256, bodyTriangleCount, parts, bodyNormals, null)
+    {
+    }
+
+    internal LiftFootprint(string bodyRegionMapSha256, int bodyTriangleCount, IEnumerable<LiftFootprintPart> parts,
+        IEnumerable<LiftFootprintBodyNormal> bodyNormals, int? normalCountOffset)
     {
         ArgumentNullException.ThrowIfNull(bodyRegionMapSha256);
         ArgumentNullException.ThrowIfNull(parts);
+        ArgumentNullException.ThrowIfNull(bodyNormals);
         if (!AttachmentSetDefinition.ValidHash(bodyRegionMapSha256))
             throw new LiftFootprintDataException(LiftFootprintRefusal.BodyRegionMapSha256Invalid, "The body region map requires a lowercase SHA-256.")
             { BodyRegionMapSha256 = bodyRegionMapSha256 };
 
         CheckBodyTriangleCount(bodyTriangleCount);
+        BodyNormals = ImmutableArray.CreateRange(bodyNormals);
+        int previousTriangle = -1;
+        for (int normalIndex = 0; normalIndex < BodyNormals.Count; normalIndex++)
+        {
+            LiftFootprintBodyNormal normal = BodyNormals[normalIndex];
+            LiftFootprintBodyNormalRules.CheckTriangleIndex(normal.BodyTriangleIndex, bodyTriangleCount, normalIndex);
+            LiftFootprintBodyNormalRules.CheckEntry(normal, previousTriangle, normalIndex);
+            previousTriangle = normal.BodyTriangleIndex;
+        }
+
         int cellLimit = bodyTriangleCount * BodyCell.CellsPerTriangle;
         var admitted = ImmutableArray.CreateBuilder<LiftFootprintPart>();
         uint previousId = 0;
@@ -44,6 +73,9 @@ public sealed class LiftFootprint
                             EntryIndex = entry, CellKey = key, BodyTriangleCount = bodyTriangleCount,
                         };
                 }
+
+                if (BodyNormals.Count != 0)
+                    CheckNormalCoverage(keys, part.PartId, partIndex, triangle, normalCountOffset);
             }
 
             admitted.Add(part);
@@ -66,6 +98,42 @@ public sealed class LiftFootprint
 
     /// <summary>The measured parts in strictly ascending ID order.</summary>
     public IReadOnlyList<LiftFootprintPart> Parts { get; }
+
+    /// <summary>The stored face normals in strictly ascending body triangle order, or an empty list.</summary>
+    public IReadOnlyList<LiftFootprintBodyNormal> BodyNormals { get; }
+
+    /// <summary>Find a body triangle's stored face normal, or return null if it is absent.</summary>
+    public Vector3? NormalForBodyTriangle(int bodyTriangleIndex)
+    {
+        int lower = 0;
+        int upper = BodyNormals.Count - 1;
+        while (lower <= upper)
+        {
+            int middle = lower + (upper - lower) / 2;
+            LiftFootprintBodyNormal entry = BodyNormals[middle];
+            if (entry.BodyTriangleIndex == bodyTriangleIndex) return entry.Normal;
+            if (entry.BodyTriangleIndex < bodyTriangleIndex) lower = middle + 1;
+            else upper = middle - 1;
+        }
+        return null;
+    }
+
+    void CheckNormalCoverage(ReadOnlySpan<int> keys, uint partId, int partIndex, int triangle, int? normalCountOffset)
+    {
+        int previousFace = -1;
+        for (int entry = 0; entry < keys.Length; entry++)
+        {
+            int face = keys[entry] / BodyCell.CellsPerTriangle;
+            if (face != previousFace && NormalForBodyTriangle(face) is null)
+                throw new LiftFootprintDataException(LiftFootprintRefusal.BodyNormalMissing,
+                    "Each referenced body triangle needs a face normal when the footprint carries normals.")
+                {
+                    PartId = partId, PartIndex = partIndex, TriangleIndex = triangle, EntryIndex = entry,
+                    CellKey = keys[entry], BodyTriangleIndex = face, ByteOffset = normalCountOffset,
+                };
+            previousFace = face;
+        }
+    }
 
     /// <summary>Find the measured part with the given ID, or return null if it is absent.</summary>
     public LiftFootprintPart? PartById(uint id)

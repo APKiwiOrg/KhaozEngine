@@ -9,7 +9,8 @@ internal static class OutfitPartLift
 {
     internal static (IReadOnlyList<ReadOnlyMemory<Vector3>>? Positions, float[]? TriangleLifts) Resolve(
         LiftingPartMesh mesh, float clearance, IReadOnlyList<RegionRun> runs, ReadOnlySpan<float?> belowByRegion,
-        OutfitLiftCellHeights? cellHeights, LiftFootprintPart? footprint, Span<float> largestLift, string parameterName)
+        OutfitLiftCellHeights? cellHeights, LiftFootprintPart? footprint, LiftFootprint? normalFootprint,
+        Span<float> largestLift, string parameterName)
     {
         IReadOnlyList<LiftMaterialMesh> materials = mesh.Materials;
         ArgumentNullException.ThrowIfNull(materials, parameterName);
@@ -25,8 +26,9 @@ internal static class OutfitPartLift
 
         var welded = new WeldedVertex[vertexCount];
         var weldByPosition = new Dictionary<LiftVectorBits, int>();
-        var sections = new OutfitLiftSections(vertexCount);
+        var sections = new OutfitLiftSections(vertexCount, normalFootprint);
         var weldIndices = new int[materials.Count][];
+        Span<int> triangleSections = stackalloc int[3];
         int runIndex = 0;
         int trianglesLeft = 0;
         int partTriangle = 0;
@@ -51,7 +53,8 @@ internal static class OutfitPartLift
                     standoffBit = largestLift.IsEmpty ? UInt128.Zero : UInt128.One << run.Region;
                 }
 
-                float? heightBelow = footprint is null ? regionalBelow : cellHeights!.HeightBelow(footprint.Triangles[partTriangle]);
+                float? heightBelow = footprint is null ? regionalBelow
+                    : normalFootprint is null ? cellHeights!.HeightBelow(footprint.Triangles[partTriangle]) : null;
                 for (int corner = 0; corner < 3; corner++)
                 {
                     uint vertex = indices[triangle + corner];
@@ -59,9 +62,13 @@ internal static class OutfitPartLift
                         throw new ArgumentException("A triangle index is outside its material's positions.", parameterName);
                     ref WeldedVertex weld = ref welded[materialWelds[(int)vertex]];
                     weld.StandoffRegions |= standoffBit;
+                    triangleSections[corner] = weld.Section;
                     if (heightBelow is { } height)
                         sections.Include(weld.Section, height);
                 }
+                if (normalFootprint is not null)
+                    cellHeights!.IncludeFaceHeights(footprint!.Triangles[partTriangle], sections, triangleSections);
+
                 trianglesLeft--;
                 partTriangle++;
             }

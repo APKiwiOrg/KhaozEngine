@@ -160,13 +160,7 @@ public class LegacyDeltaServeAllocationTests(ITestOutputHelper output)
         internal void FaultOneTick(Exception fault, bool bodyFailure)
         {
             if (bodyFailure)
-            {
-                server.Writer.BeforeLegacyBodyCompletedForTests = () =>
-                {
-                    server.Writer.BeforeLegacyBodyCompletedForTests = null;
-                    throw fault;
-                };
-            }
+                server.Writer.FailNextLegacyBodyCompletionForTests(fault);
             else
             {
                 server.Transport.Observe = (_, _, _) =>

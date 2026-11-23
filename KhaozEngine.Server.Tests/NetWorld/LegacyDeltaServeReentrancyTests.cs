@@ -5,6 +5,7 @@ using System.Threading;
 using KhaozEngine.Ecs;
 using KhaozEngine.Netcode;
 using KhaozEngine.NetWorld;
+using KhaozEngine.Replication;
 using Xunit;
 
 namespace KhaozEngine.Tests.NetWorld;
@@ -54,6 +55,34 @@ public class LegacyDeltaServeReentrancyTests
             byte[] nested = server.Writer.WriteFor(7, Assert.IsType<World>(served), interest, owner);
 
             Assert.Equal(original[14..], nested);
+            Assert.True(frame.SequenceEqual(original));
+        };
+
+        server.Tick();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void NestedServeBuildTakesIndependentStorageDuringTheBorrow(bool sharded)
+    {
+        using var server = new LegacyDeltaServeFixture(sharded, 1);
+        long owner = server.OwnerOf(server.Clients[0]);
+        server.SetPlayerSecret(server.Clients[0], 123);
+        World? served = null;
+        var interest = new HashSet<long> { owner };
+        server.Observe = (_, world, _, _) => served = world;
+        server.Transport.Observe = (_, frame, _) =>
+        {
+            byte[] original = frame.ToArray();
+            var nestedPass = new LegacyDeltaFrameSender(server.ServerTick);
+            using (AoiDeltaReplicator.ServeFrame nested = nestedPass.Build(
+                server.Writer, 7, Assert.IsType<World>(served), interest, owner))
+            {
+                Assert.False(frame.Overlaps(nested.Bytes));
+                Assert.Equal(original[14..], nested.Bytes[22..].ToArray());
+            }
+            nestedPass.Complete(server.Writer);
             Assert.True(frame.SequenceEqual(original));
         };
 

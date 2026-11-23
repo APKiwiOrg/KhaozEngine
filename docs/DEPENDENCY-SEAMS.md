@@ -841,6 +841,21 @@ following or action queue.
 `ArchitectureTests.Movement.cs` pins both project-reference sets, the absence of third-party packages,
 and Movement's absence from every umbrella closure. Movement also joins the shared `OptInBackends` guard.
 
+## Continuous-world legacy delta serving
+
+`KhaozEngine.Netcode` grants `InternalsVisibleTo` to `KhaozEngine.NetWorld` for
+`NetServer.SendFramedDataTo`. NetWorld passes the complete session Data frame through the ordinary connection lookup
+and synchronous transport call. The frame uses the delta writer's buffer, which keeps it stable when a transport
+callback sends ordinary session data through NetServer's session scratch.
+
+`KhaozEngine.Replication` grants `InternalsVisibleTo` to NetWorld for `AoiDeltaReplicator.BorrowForServe`,
+the returned `ServeFrame` window and its disposal, and `CompleteLegacyServePass` for buffer retention. The scope
+keeps the frame borrowed through the transport call. A nested build gets independent bytes while the original
+window is lent. NetWorld also reads `LegacyAllocationsForTests` and uses `LegacyDeltaAllocationProbe` and
+`LegacyDeltaPhase` for optional allocation measurements from body build through send. Standalone callers use the
+public owning `WriteFor` contract. These grants add no public borrowed-buffer or raw-send API, project reference
+or third-party dependency. The packages ship together under `KhaozEngineVersion`.
+
 ## Tile world package edges
 
 `KhaozEngine.TileWorld` adds four edges, all acyclic and all onto packages that already sit below it:

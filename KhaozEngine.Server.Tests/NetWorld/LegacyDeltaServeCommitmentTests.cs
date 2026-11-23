@@ -82,7 +82,7 @@ public class LegacyDeltaServeCommitmentTests
         switch (failure)
         {
             case Failure.Body:
-                server.Writer.BeforeLegacyBodyCompletedForTests = () => throw fault;
+                server.Writer.FailNextLegacyBodyCompletionForTests(fault);
                 break;
             case Failure.SilentDrop:
                 server.Disconnect(server.Clients[0]);
@@ -105,7 +105,6 @@ public class LegacyDeltaServeCommitmentTests
         }
         else Assert.Null(observed);
 
-        server.Writer.BeforeLegacyBodyCompletedForTests = null;
         AssertNextBaseline();
     }
 

@@ -58,6 +58,8 @@ public sealed class AoiDeltaReplicator
     // The wire writer reuses its body storage across slots. The owning API copies that body before committing.
     private readonly CaptureScratch captureScratch = new();
     private readonly LegacyDeltaBodyWriter wire = new();
+    private bool wireInUse;
+    private Exception? legacyBodyFailureForTests;
     // Project's reused ordering scratch: the interest-set entities present in the capture, tagged with their capture
     // order, sorted so the projection is built in world ForEach order (byte-identical to the old full-capture walk).
     // Reused across every WriteFor, so a steady-state projection allocates only the exact-size projected baseline.
@@ -77,7 +79,8 @@ public sealed class AoiDeltaReplicator
     internal int LegacyHistoryCount => captureByWorld.Count;
 
     internal LegacyDeltaAllocationProbe? LegacyAllocationsForTests { get; set; }
-    internal Action? BeforeLegacyBodyCompletedForTests { get; set; }
+    internal void FailNextLegacyBodyCompletionForTests(Exception failure) =>
+        legacyBodyFailureForTests = failure ?? throw new ArgumentNullException(nameof(failure));
 
     /// <summary>Creates an area-of-interest legacy delta writer.</summary>
     /// <param name="registry">The replicated component registry.</param>
@@ -167,21 +170,48 @@ public sealed class AoiDeltaReplicator
     /// client's area of interest, not the world population. The wire is byte-identical to capturing per client.
     /// </remarks>
     public byte[] WriteFor(int slot, World world, IReadOnlySet<long> interestSet, long? ownerNetId = null) =>
-        BuildFor(slot, world, interestSet, ownerNetId, prefixLength: 0, owned: true)!;
+        BuildFor(wireInUse ? new LegacyDeltaBodyWriter() : wire, slot, world, interestSet, ownerNetId,
+            prefixLength: 0, owned: true)!;
 
-    // NetWorld owns the exclusive tick scope. It fills the reserved prefix and sends this span synchronously,
-    // before the next build can use the writer. The completed body has already committed the projection.
-    internal Span<byte> BorrowForServe(int slot, World world, IReadOnlySet<long> interestSet, long ownerNetId,
+    // NetWorld fills the reserved prefix and hands these bytes to a synchronous transport call. A nested
+    // build while this writer is in use takes the owning path with independent scratch and an owned frame.
+    internal ServeFrame BorrowForServe(int slot, World world, IReadOnlySet<long> interestSet, long ownerNetId,
         int prefixLength)
     {
-        BuildFor(slot, world, interestSet, ownerNetId, prefixLength, owned: false);
-        return wire.WrittenSpan;
+        if (wireInUse)
+            return new ServeFrame(null, BuildFor(new LegacyDeltaBodyWriter(), slot, world, interestSet, ownerNetId,
+                prefixLength, owned: true)!);
+
+        wireInUse = true;
+        try
+        {
+            BuildFor(wire, slot, world, interestSet, ownerNetId, prefixLength, owned: false);
+            return new ServeFrame(this, wire.WrittenSpan);
+        }
+        catch
+        {
+            wireInUse = false;
+            throw;
+        }
     }
 
-    internal void ReleaseOversizeServeBuffer(int largestFrame) => wire.ReleaseOversize(largestFrame);
+    internal void CompleteLegacyServePass(long tick, int largestFrame)
+    {
+        if (!wireInUse) wire.ReleaseOversize(tick, largestFrame);
+    }
 
-    private byte[]? BuildFor(int slot, World world, IReadOnlySet<long> interestSet, long? ownerNetId,
-        int prefixLength, bool owned)
+    internal readonly ref struct ServeFrame(AoiDeltaReplicator? lender, Span<byte> bytes)
+    {
+        internal Span<byte> Bytes { get; } = bytes;
+
+        public void Dispose()
+        {
+            if (lender is not null) lender.wireInUse = false;
+        }
+    }
+
+    private byte[]? BuildFor(LegacyDeltaBodyWriter destination, int slot, World world, IReadOnlySet<long> interestSet,
+        long? ownerNetId, int prefixLength, bool owned)
     {
         if (world is null) throw new ArgumentNullException(nameof(world));
         if (interestSet is null) throw new ArgumentNullException(nameof(interestSet));
@@ -204,9 +234,9 @@ public sealed class AoiDeltaReplicator
         AoiBaseline? baseline = previous?.Projection;
         int baselineSeq = previous?.Sequence ?? -1;
 
-        wire.Write(registry, projected, baseline, baselineSeq, currentSeq, prefixLength,
-            BeforeLegacyBodyCompletedForTests);
-        byte[]? payload = owned ? wire.ToArray() : null;
+        destination.Write(registry, projected, baseline, baselineSeq, currentSeq, prefixLength,
+            ref legacyBodyFailureForTests);
+        byte[]? payload = owned ? destination.ToArray() : null;
         // Only a completely built payload becomes the slot's last sent state.
         if (previous is null) slots[slot] = new LegacyDeltaSlot(currentSeq, projected);
         else previous.Sent(currentSeq, projected);

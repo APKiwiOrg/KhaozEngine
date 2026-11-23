@@ -7,9 +7,8 @@ public sealed partial class WorldServer
     // Slots that sent ClientControlKind.ServerTickCapable this session. Forgotten on join and on leave, so a recycled
     // slot never inherits the hello.
     private readonly HashSet<int> tickedSlots = new();
-    private readonly LegacyDeltaFrameSender legacyFrames = new();
 
-    /// <summary>The number of <see cref="Tick"/> calls so far: 0 before the first, incremented at the start of
+    /// <summary>The number of <see cref="Tick"/> calls so far: 0 before the first, incremented as the first statement of
     /// <see cref="Tick"/> (before <see cref="OnBeforeTick"/>). Every frame
     /// served by a call carries that call's value, and a client that sent
     /// <see cref="MoveProtocol.ClientControlKind.ServerTickCapable"/> receives it on the wire. Always counted, so a host

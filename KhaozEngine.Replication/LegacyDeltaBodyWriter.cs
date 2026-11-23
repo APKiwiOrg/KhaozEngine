@@ -9,6 +9,9 @@ namespace KhaozEngine.Replication;
 internal sealed class LegacyDeltaBodyWriter
 {
     private const int RetainBelowBytes = 64 * 1024;
+    private const int LowTicksBeforeRelease = 4;
+    private int lowTicks;
+    private long lastLowTick;
     private readonly MemoryStream wireStream = new();
     private readonly BinaryWriter wireWriter;
     private readonly List<long> scratchRemoved = new();
@@ -17,7 +20,7 @@ internal sealed class LegacyDeltaBodyWriter
     internal LegacyDeltaBodyWriter() => wireWriter = new BinaryWriter(wireStream);
 
     internal void Write(ReplicationRegistry registry, Projection projected, Projection? baseline,
-        int baselineSeq, int sequence, int prefixLength, Action? beforeComplete)
+        int baselineSeq, int sequence, int prefixLength, ref Exception? completionFailure)
     {
         wireStream.SetLength(0); // reset the reused wire scratch, keep its capacity
         wireStream.Position = prefixLength;
@@ -48,7 +51,11 @@ internal sealed class LegacyDeltaBodyWriter
             DeltaEncoding.WriteChangedEntity(bw, registry, netId, isNew, isNew ? null : baseline![netId], projected[netId]);
         }
 
-        beforeComplete?.Invoke();
+        if (completionFailure is Exception failure)
+        {
+            completionFailure = null;
+            throw failure;
+        }
         bw.Flush();
     }
 
@@ -56,12 +63,22 @@ internal sealed class LegacyDeltaBodyWriter
 
     internal Span<byte> WrittenSpan => wireStream.GetBuffer().AsSpan(0, (int)wireStream.Length);
 
-    // Discard an outlier once the whole serve pass fits in a quarter of the retained capacity. Waiting for
-    // the end of the pass keeps a smaller viewer from causing a reallocation for a larger viewer in the same tick.
-    internal void ReleaseOversize(int largestFrame)
+    // Sustained low use retires an outlier without thrashing on alternating sizes. A gap in completed
+    // ticks breaks the streak, just as a completed tick that needs the larger buffer does.
+    internal void ReleaseOversize(long tick, int largestFrame)
     {
-        if (wireStream.Capacity <= RetainBelowBytes || largestFrame > wireStream.Capacity / 4) return;
+        if (wireStream.Capacity <= RetainBelowBytes || largestFrame > wireStream.Capacity / 4)
+        {
+            lowTicks = 0;
+            return;
+        }
+
+        lowTicks = tick == unchecked(lastLowTick + 1) ? lowTicks + 1 : 1;
+        lastLowTick = tick;
+        if (lowTicks < LowTicksBeforeRelease) return;
+
         wireStream.SetLength(0);
         wireStream.Capacity = 0;
+        lowTicks = 0;
     }
 }

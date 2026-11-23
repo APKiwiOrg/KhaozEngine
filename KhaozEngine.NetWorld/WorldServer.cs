@@ -523,8 +523,8 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
     /// <summary>Steps one authoritative frame: apply each client's queued input, then serve every client its AoI.</summary>
     public void Tick(float dt)
     {
-        using var legacyTick = legacyFrames.EnterTick(deltaReplicator);
         ServerTick++;
+        var legacyFrames = new LegacyDeltaFrameSender(ServerTick);
         double elapsedSteps = float.IsFinite(dt) && dt > 0f ? dt / config.TickSeconds : 0.0;
         foreach (RateLimiter limiter in rateBySlot.Values) limiter.Refill(elapsedSteps);
         OnBeforeTick?.Invoke(dt);   // consumer NPC/enemy brains run before movement + serving
@@ -591,8 +591,8 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
             {
                 LegacyDeltaAllocationProbe? probe = deltaReplicator.LegacyAllocationsForTests;
                 long serveStart = LegacyDeltaAllocationProbe.Start(probe);
-                Span<byte> delta = legacyFrames.Build(deltaReplicator, slot, world, set, netId);
-                LegacyDeltaFrameSender.Send(net, deltaReplicator, slot, delta, netId, lastAckBySlot[slot],
+                using AoiDeltaReplicator.ServeFrame delta = legacyFrames.Build(deltaReplicator, slot, world, set, netId);
+                LegacyDeltaFrameSender.Send(net, deltaReplicator, slot, delta.Bytes, netId, lastAckBySlot[slot],
                     tickedSlots.Contains(slot) ? ServerTick : null);
                 probe?.Record(LegacyDeltaPhase.Serve, serveStart);
                 continue;
@@ -605,6 +605,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
             net.SendTo(slot, envelope, NetChannelReliability.ReliableOrdered);
         }
         replication.EndServe();
+        legacyFrames.Complete(deltaReplicator);
 
         // Clear the per-tick ECS change-tracking + event sets so they don't accumulate on a long-running server.
         // Neither serve path reads them - a full snapshot re-serializes present components and the delta path diffs

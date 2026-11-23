@@ -92,6 +92,81 @@ public class LegacyDeltaServeReentrancyTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public void RetiringTheSlotDuringTheBorrowLeavesTheLentFrameIntact(bool reset)
+    {
+        using var server = new LegacyDeltaServeFixture(useShards: true, 1);
+        server.Tick();
+        server.Tick(); // Warm both projections before retiring the slot.
+        server.Observe = (slot, world, set, owner) =>
+        {
+            server.Transport.Observe = (_, frame, _) =>
+            {
+                byte[] original = frame.ToArray();
+                if (reset)
+                {
+                    server.Writer.SeedLegacySequenceForTest(int.MaxValue);
+                    server.Writer.ResetAfterLegacySequenceExhaustion();
+                    server.Writer.BeginTick();
+                }
+                else server.Writer.Forget(slot);
+
+                byte[] fresh = server.Writer.WriteFor(slot, world, set, owner);
+                Assert.Equal(-1, BinaryPrimitives.ReadInt32LittleEndian(fresh));
+                Assert.Equal(reset ? 1 : 3, BinaryPrimitives.ReadInt32LittleEndian(fresh.AsSpan(4)));
+                Assert.Equal(1, BinaryPrimitives.ReadInt32LittleEndian(fresh.AsSpan(12)));
+                Assert.True(frame.SequenceEqual(original));
+            };
+        };
+
+        server.Tick();
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void ResetDuringHostCaptureRefusesTheServeAndLeavesAFreshFirstBody(bool sharded, bool openNextTick)
+    {
+        Action? duringCapture = null;
+        using var server = new LegacyDeltaServeFixture(sharded, 1, onPayloadCapture: () => duringCapture?.Invoke());
+        (World world, Entity actor) = server.Spawn(new LegacyDeltaServeFixture.Payload(45));
+        long actorId = world.Get<NetId>(actor).Value;
+        var seat = server.Clients[0];
+        int slot = seat.Net.Slot;
+        server.Tick();
+        server.Writer.SeedLegacySequenceForTest(int.MaxValue - 1);
+        duringCapture = () =>
+        {
+            duringCapture = null;
+            server.Disconnect(seat);
+            server.Writer.Forget(slot);
+            server.Writer.ResetAfterLegacySequenceExhaustion();
+            if (openNextTick) server.Writer.BeginTick();
+        };
+        bool sent = false;
+        server.Transport.Observe = (_, _, _) => sent = true;
+
+        Assert.Throws<InvalidOperationException>(server.Tick);
+
+        Assert.False(sent);
+        Assert.Equal(0, server.Writer.LegacySlotCount);
+        Assert.Equal(0, server.Writer.LegacyHistoryCount);
+        if (!openNextTick) server.Writer.BeginTick();
+        byte[] restarted = server.Writer.WriteFor(slot, world, new HashSet<long> { actorId });
+        Assert.Equal(-1, BinaryPrimitives.ReadInt32LittleEndian(restarted));
+        Assert.Equal(1, BinaryPrimitives.ReadInt32LittleEndian(restarted.AsSpan(4)));
+
+        var receiver = new World();
+        var clientView = new ClientReplicationView(server.Registry);
+        clientView.ApplyDelta(receiver, restarted);
+        Assert.True(clientView.TryGetEntity(actorId, out Entity received));
+        Assert.Equal(new LegacyDeltaServeFixture.Payload(45), receiver.Get<LegacyDeltaServeFixture.Payload>(received));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void OrdinarySessionSendDuringTheBorrowKeepsBothFramesIntact(bool sharded)
     {
         using var server = new LegacyDeltaServeFixture(sharded, 1);

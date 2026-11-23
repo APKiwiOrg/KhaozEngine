@@ -45,16 +45,6 @@ public sealed partial class WorldClient
             NetChannelReliability.ReliableOrdered);
     }
 
-    // The header of a served snapshot or delta, plain or ticked. A plain frame has no tick (-1).
-    private static bool TryDecodeServedFrame(MoveProtocol.ServerFrameKind kind, byte[] data, out long serverTick,
-        out long localNetId, out int ackSeq, out byte[] body)
-    {
-        if (kind is MoveProtocol.ServerFrameKind.TickedSnapshot or MoveProtocol.ServerFrameKind.TickedDelta)
-            return MoveProtocol.TryDecodeTickedSnapshotFrame(data, out serverTick, out localNetId, out ackSeq, out body);
-        serverTick = -1;
-        return MoveProtocol.TryDecodeSnapshotFrame(data, out localNetId, out ackSeq, out body);
-    }
-
     // Called by IngestServerState once per applied snapshot or delta. Ingests collapsed into one Poll share a stamp,
     // and the timeline keeps the newest tick for it, as the view keeps the newest sample.
     private void RecordServerTick(long serverTick)

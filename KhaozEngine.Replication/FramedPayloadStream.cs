@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Runtime.InteropServices;
 
 namespace KhaozEngine.Replication;
 
@@ -11,8 +12,7 @@ namespace KhaozEngine.Replication;
 /// behind it, and the apply succeeds carrying a value rebuilt from bytes that belong to someone else. The lie is
 /// then caught only when it happens to run off the end of the snapshot, which in a real multi-entity snapshot is
 /// the rare case. Bounding the reader is what turns every other case into a short read the codec can refuse.</para>
-/// <para>One instance is reused for a whole apply: the view is single-threaded and no codec re-enters the read
-/// loop, so framing a payload allocates nothing. Holds no unmanaged resource, so it is never disposed.</para>
+/// <para>One instance is reused for a whole apply, so framing a payload allocates nothing. Holds no unmanaged resource, so it is never disposed.</para>
 /// </summary>
 internal sealed class FramedPayloadStream : Stream
 {
@@ -29,6 +29,13 @@ internal sealed class FramedPayloadStream : Stream
         origin = offset;
         count = length;
         position = 0;
+    }
+
+    internal void Retarget(ReadOnlyMemory<byte> source)
+    {
+        if (!MemoryMarshal.TryGetArray(source, out ArraySegment<byte> segment))
+            throw new ArgumentException("A receive window requires array-backed storage.", nameof(source));
+        Retarget(segment.Array!, segment.Offset, segment.Count);
     }
 
     /// <summary>Drops the reference to the snapshot buffer, so a finished apply does not keep it alive.</summary>

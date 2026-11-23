@@ -13,7 +13,7 @@ namespace KhaozEngine.Netcode;
 /// a disconnect enqueued straight into the peer's queue would jump ahead of frames sent before it, which is how a
 /// rejected client used to observe a bare drop before the Reject that explains it.</para>
 /// </summary>
-public sealed class LoopbackTransport : INetTransport
+public sealed class LoopbackTransport : INetTransport, IOwnedReceiveFrames
 {
     private static readonly NetConnectionId PeerId = new(1);
 

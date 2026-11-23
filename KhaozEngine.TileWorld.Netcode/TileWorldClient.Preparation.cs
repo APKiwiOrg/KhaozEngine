@@ -56,7 +56,7 @@ public sealed partial class TileWorldClient
         RejectedCombatPreparationFrameCount++;
     }
 
-    void OnPreparationFrame(byte[] data, bool terminal)
+    void OnPreparationFrame(ReadOnlySpan<byte> data, bool terminal)
     {
         if (!config.CombatPreparationEnabled || !IsJoined) return;
         combatPreparation ??= new();

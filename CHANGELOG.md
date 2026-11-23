@@ -4,6 +4,60 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 24.9.0
+
+2026-11-24
+
+A minor that removes more steady allocation from replication on the server and on the client, and
+closes re-entrancy gaps in the replication writers. `KhaozEngine.NetWorld` adds one method.
+
+**Added.**
+
+- `WorldClient.CopySnapshotTo(List<EntityRenderState>)` clears and fills a list the caller owns with
+  the entries `Snapshot()` returns, in the same order. A list reused across frames allocates nothing
+  once it has grown to the population. `Snapshot()` still returns a new independent list.
+  [#1886](https://github.com/APKiwiOrg/KhaozEngine/issues/1886)
+
+**Fixed.**
+
+- A sequence reset that runs inside a replication build no longer lets that build publish state from
+  before the reset. `AoiDeltaReplicator.WriteFor` and `BuildRebuildFor` throw
+  `InvalidOperationException` and commit nothing when `ResetAfterLegacySequenceExhaustion` runs during
+  their world capture or their interest set enumeration. `ServerReplicator.Capture` does the same for
+  a reset during its scan, and for a nested capture that takes the last legacy sequence.
+  [#1885](https://github.com/APKiwiOrg/KhaozEngine/issues/1885)
+- A capture started from a codec's `write` while another capture is scanning takes scratch storage of
+  its own. Both scans used one stream, so the outer capture could carry the inner capture's payload
+  bytes. [#1885](https://github.com/APKiwiOrg/KhaozEngine/issues/1885)
+- The extension reader on the client apply path resets its text decoder after each framed payload. A
+  payload that ended inside a multi byte character could affect the next payload's character reads.
+  [#1886](https://github.com/APKiwiOrg/KhaozEngine/issues/1886)
+
+**Changed.**
+
+- A sampled component whose codec leaves the reader beyond the end of the frame is refused with
+  `ArgumentException` before its sample copy is sized. A reader left at the stream limit used to
+  surface as `OutOfMemoryException` from sizing that copy.
+  [#1886](https://github.com/APKiwiOrg/KhaozEngine/issues/1886)
+
+**Performance.**
+
+- Continuous-world legacy delta serving reuses each slot's projection. A slot keeps its last sent
+  projection and one empty spare, fills the spare and swaps the two once the body is complete, so a
+  failed build still leaves the last sent projection untouched. In the engine's serving fixture the
+  projection phase fell from 7,008 and 48,672 bytes a tick at 8 and 32 sessions to zero. A spare that
+  grew for one large view is released after sustained low use. Wire bytes are unchanged.
+  [#1885](https://github.com/APKiwiOrg/KhaozEngine/issues/1885)
+- `WorldClient` and `TileWorldClient` read incoming frames in place, with no envelope or body copies,
+  when the transport is `LoopbackTransport`, the in-memory hub or `LiteNetLibClientTransport`. Any
+  other transport is copied at dequeue as before. The public session client and the public frame
+  decoders still return arrays the caller owns.
+  [#1886](https://github.com/APKiwiOrg/KhaozEngine/issues/1886)
+- Legacy client apply reuses its readers and its full state bookkeeping. In the engine's client
+  fixture, session decode and world dispatch fell to zero bytes a frame, and apply allocates only the
+  sample arrays the interpolation history keeps.
+  [#1886](https://github.com/APKiwiOrg/KhaozEngine/issues/1886)
+
 ## 24.8.0
 
 2026-11-23

@@ -66,10 +66,15 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   a full server): the lingering body leaves through the ordinary leave first, then a fresh body with a new net id is
   seated on the slot from that save, where the old one stood. A tokenless guest cannot reclaim, so its linger runs
   out.
-- **`WorldClient`** wraps `NetClient` + `ClientReplicationView` + `ClientPrediction` and exposes
-  `EntityRenderState[]` (local player predicted + reconciled, remotes from replicated positions - smoothly
-  interpolated between snapshots by default, so a remote glides instead of teleporting one ~tick-rate snapshot-step
-  per ingest; `AdvancePresentation(dt)` drives it, opt out with `WorldClientConfig.InterpolateRemotes = false`).
+- **`WorldClient`** wraps `NetClient`, `ClientReplicationView` and `ClientPrediction`. `Snapshot()`
+  returns a caller-owned list of `EntityRenderState` values, with the local player predicted and reconciled
+  and remotes read from replicated positions. `AdvancePresentation(dt)` drives remote interpolation by
+  default. Set `WorldClientConfig.InterpolateRemotes = false` to read the latest replicated positions.
+  To reuse a list across updates, call `CopySnapshotTo(List<EntityRenderState> destination)`. It clears
+  the list and fills it in the same order as `Snapshot()`. The client never keeps the list.
+  The receive dispatcher reads the world kind and served headers in place. It borrows the replication
+  body through apply, so decoding needs no array for either envelope slice. The public `MoveProtocol`
+  decoders that return byte arrays still give their callers ownership.
   Every `Poll` advances its private ECS world before ingest, after any reconnect has replaced it, clearing
   earlier tracking and world events even on empty or zero-time polls and backoff waits. This is internal
   bookkeeping with no opt-out. The private world and its change sets are not exposed, and public snapshot and
@@ -473,7 +478,8 @@ frames, demuxes, rate-limits and size-caps them, but never deserializes them - t
   the duration of the call (copy it with `payload.ToArray()` to keep it).
 - **Server -> client.** `SendGameMessageTo(slot, kind, payload, reliability)` targets one client and
   `BroadcastGameMessage(kind, payload, reliability)` fans out to all; both surface on the client as
-  **`WorldClient.GameMessageReceived(ushort kind, ReadOnlySpan<byte> payload)`**.
+  **`WorldClient.GameMessageReceived(ushort kind, ReadOnlySpan<byte> payload)`**. The span is valid
+  for the callback only. A handler that needs to keep the bytes copies them with `payload.ToArray()`.
 - **Reliability.** `NetChannelReliability.ReliableOrdered` gives ordered exactly-once delivery at the transport, so
   a command consumer needs no seq of its own; `UnreliableSequenced` is a lossy latest-wins state ping.
 - **Hostile-input hardening (client -> server), to the same bar as the move path.** The per-connection

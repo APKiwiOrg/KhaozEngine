@@ -41,7 +41,7 @@ public sealed class ReplicationRegistry
     /// The reader and its base stream are synchronous borrows. Do not retain them after the read call.
     /// Leave disposal to the engine on receive. Closing or disposing either object during sample decoding
     /// ends that borrow. The engine reuses readers for framed receive and sample decoding to avoid allocating
-    /// a reader for each component read.
+    /// a reader for each component read. Legacy framed receive resets its character decoder after each window.
     /// The sample reader supports reads, and its read-only base stream supports synchronous reads, seek,
     /// position, length, capability queries, and flush. The sample stream's asynchronous, APM, copy, write,
     /// resize, and timeout members throw <see cref="NotSupportedException"/>. The runtime's

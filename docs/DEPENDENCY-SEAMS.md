@@ -856,6 +856,29 @@ window is lent. NetWorld also reads `LegacyAllocationsForTests` and uses `Legacy
 public owning `WriteFor` contract. These grants add no public borrowed-buffer or raw-send API, project reference
 or third-party dependency. The packages ship together under `KhaozEngineVersion`.
 
+## Client session and replication receive
+
+- `KhaozEngine.Netcode` grants `InternalsVisibleTo` to `KhaozEngine.Netcode.LiteNetLib` for
+  `IOwnedReceiveFrames`. The transport marks its connected receive arrays as dedicated to their queued events.
+- `KhaozEngine.Netcode` grants `InternalsVisibleTo` to `KhaozEngine.TileWorld.Netcode` for the
+  borrow-enabled `NetClient` constructor, `TryDequeueFrame`, and `ClientSessionFrame.Kind`,
+  `RejectReason` and `Payload`. The tile client uses the frame only during synchronous dispatch.
+- `KhaozEngine.Netcode` grants `InternalsVisibleTo` to `KhaozEngine.Server.Tests` solely for the allocation
+  diagnostic's session phase. It uses the borrow-enabled `NetClient` constructor, `TryDequeueFrame`,
+  and `ClientSessionFrame.Kind` and `Payload` to measure that phase independently of world dispatch.
+- `KhaozEngine.Replication` grants `InternalsVisibleTo` to `KhaozEngine.TileWorld.Netcode` for
+  `ClientReplicationView.TryApplyBorrowed`. The tile client passes the exact bounded snapshot body
+  through apply without copying it from the envelope.
+- The existing `KhaozEngine.Netcode` grant to `KhaozEngine.NetWorld` also covers the borrow-enabled
+  `NetClient` constructor, `TryDequeueFrame`, and `ClientSessionFrame.Kind`, `RejectReason`, `Payload`
+  and `Reliability`. The world client uses these during its synchronous session drain.
+- The existing `KhaozEngine.Replication` grant to `KhaozEngine.NetWorld` also covers
+  `ClientReplicationView.TryApplyBorrowed` for bounded legacy apply and `EnumerateEntities` for
+  walking the live entity order without boxing the enumerator during render snapshot fill.
+
+These grants use existing package references. The public session dequeue and the public protocol decoders
+return owning results.
+
 ## Tile world package edges
 
 `KhaozEngine.TileWorld` adds four edges, all acyclic and all onto packages that already sit below it:

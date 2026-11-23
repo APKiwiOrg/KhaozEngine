@@ -2,7 +2,7 @@ using System;
 
 namespace KhaozEngine.Replication;
 
-internal enum LegacyDeltaPhase { Capture, Projection, Body, Framing, Send, Serve }
+internal enum LegacyDeltaPhase { Capture, Projection, Body, Framing, Send, Serve, CaptureCacheHit }
 
 /// <summary>Opt-in per-writer test meter. When absent, the serving path never reads the allocation counter.</summary>
 internal sealed class LegacyDeltaAllocationProbe

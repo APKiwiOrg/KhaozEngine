@@ -1,3 +1,5 @@
+using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.Netcode;
@@ -64,6 +66,27 @@ public class ReplicationSteadyServeTests
 
     [Theory]
     [MemberData(nameof(Hosts))]
+    public void RecycledLegacySlotSendsAFullProjectionToTheReplacement(RebuildHostKind kind)
+    {
+        V2Rig rig = V2Rig.Create(kind);
+        rig.SpawnPad(4, 0x51);
+        V2Client first = rig.Connect(requestRebuild: false);
+        rig.Steps(5); // Warm both legacy projections.
+        int retiredSlot = first.Slot;
+        first.Disconnect();
+        rig.Step();
+
+        V2Client replacement = rig.Connect(requestRebuild: false);
+        List<RigSend> sends = rig.Steps(3);
+
+        Assert.Equal(retiredSlot, replacement.Slot);
+        RigSend delta = Assert.Single(sends, s => s.IsLegacy && s.Kind == MoveProtocol.ServerFrameKind.Delta);
+        Assert.Equal(-1, BinaryPrimitives.ReadInt32LittleEndian(delta.Payload.AsSpan(14)));
+        Assert.True(Pad.Contains(delta.Payload.AsSpan(14), 4, 0x51));
+    }
+
+    [Theory]
+    [MemberData(nameof(Hosts))]
     public void MixedLegacyAndV2ViewersShareOneCapture(RebuildHostKind kind)
     {
         V2Rig rig = V2Rig.Create(kind);
@@ -83,13 +106,15 @@ public class ReplicationSteadyServeTests
             int legacyBefore = legacy.LegacyFrames.Count;
             int deltasBefore = v2.Deltas.Count;
 
-            rig.Step();
+            List<RigSend> sends = rig.Step();
 
             Assert.Equal(scans + 1, writer.WorldScanCount);
             Assert.Equal(legacyBefore + 1, legacy.LegacyFrames.Count);
             Assert.Equal(MoveProtocol.ServerFrameKind.Delta, legacy.LegacyFrames[^1].Kind);
             Assert.Equal(deltasBefore + 1, v2.Deltas.Count);
             Assert.True(Pad.Contains(v2.Deltas[^1].Body, 4, fill));
+            RigSend legacyDelta = Assert.Single(sends, s => s.IsLegacy);
+            Assert.True(Pad.Contains(legacyDelta.Payload.AsSpan(14), 4, fill));
         }
         Assert.Equal(0, v2.LegacyFramesAfterFirstOffer);
     }

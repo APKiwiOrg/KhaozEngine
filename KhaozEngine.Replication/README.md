@@ -90,12 +90,11 @@ area-of-interest deltas over a reliable channel, and opt-in format 2 acknowledge
   The wire is byte-identical to `ServerReplicator.WriteFor` (a full snapshot is the `baseline -1` delta), so
   `ClientReplicationView.ApplyDelta` decodes both. Keyed by `NetId` (not by owning cell), so a seamless cell handoff
   reads as a component delta, never a despawn+respawn. This is what `WorldServer`/`ShardedWorldServer`/`MmoServer`
-  serve on the live path (see `KhaozEngine.NetWorld`). `WriteFor` captures the whole world once per tick, shared
-  across every client served from that world (not once per client), into one pooled buffer, so allocation drops
-  sharply at high client counts while the wire stays byte-identical. On top of that shared capture the per-client
-  projection is `O(interestSet)`: it resolves each client's interest set off the capture in `O(1)` per entity and
-  re-orders the selection by capture position, rather than walking the whole capture per client - so per-client cost
-  scales with the client's area of interest, not the world population, with the wire unchanged.
+  serve on the live path (see `KhaozEngine.NetWorld`). `WriteFor` captures the whole world once per tick, into an
+  immutable, garbage-collected buffer shared by all viewers served from that world. To build a projection it looks
+  up each interest id and sorts the selected entities by capture position to preserve wire order. A non-owner
+  shares the capture's filtered component view for each entity with owner-only data. If a codec starts another
+  capture on either replicator, the nested scan uses its own stream so the outer scan's bytes stay intact.
 - **`InterestGrid`** - a spatial-hash area-of-interest query (`Insert` / `Query(center, radius)`) used to compute a
   client's interest set for `WriteFiltered` / `AoiDeltaReplicator.WriteFor`.
 - **`ClientReplicationView`** - apply a snapshot to a client `World`: spawn new entities, despawn gone ones,
@@ -104,6 +103,14 @@ area-of-interest deltas over a reliable channel, and opt-in format 2 acknowledge
   boundary's batch, then read changes and events before the next boundary. `WorldClient` does this internally for
   its private world. `TileWorldClient` does it by default for its public world, with an explicit caller-owned opt-out.
   Format-2 reconstruction clears its separate private staging world on every reset, including failed decoding.
+  Legacy apply reuses the outer reader, the bounded extension reader and the full-state bookkeeping
+  on the view's owner thread. A nested apply checks out separate scratch while the outer apply is active.
+  Each decode window is bounded to its input. A legacy extension window releases its backing and resets its
+  character decoder after the codec returns or throws, so partial UTF-8 cannot affect the next component.
+  The outer frame window releases its backing and resets its decoder when apply ends, including on failure.
+  Sampled components keep independent copies because the presentation history can
+  outlive the receive frame and direct callers can reuse their input arrays. History stamping stores
+  references to those copies.
   Two render-smoothing paths: `Interpolate(world, alpha)` lerps registered components between the
   last two snapshots (the legacy estimate-and-ramp path), and the preferred **fixed-delay buffer** (since 9.23.0):
   `RecordInterpolationSample(t, excludeNetId?)` stamps each applied snapshot's interpolatable bytes into a per-component
@@ -167,6 +174,17 @@ every change since the last acknowledgement. That is a header and bandwidth diff
 
 The obligations a standalone owner takes on:
 
+- **AoI projection storage.** Each legacy slot holds its exact committed projection and can keep one empty
+  dictionary for the next candidate. Successful body completion swaps them, then clears the retired dictionary
+  to release its capture references. A failed candidate is cleared before returning. Ordering scratch drops its
+  references when selection exits, including on failure. Nested builds during a legacy frame build or send use
+  independent candidate and ordering storage. An idle slot can retain the capture behind its committed projection.
+  Forgetting the slot or resetting the writer releases both dictionaries.
+- **Oversize AoI storage.** Four consecutive ordinary commits that each use at most a quarter of their two
+  dictionaries' larger capacity, when that capacity exceeds 1,024 entries, start retiring oversized dictionaries.
+  Each retired dictionary above 1,024 entries is released if the new view fits in a quarter of its capacity. A fifth
+  equally small commit can release the other dictionary. Failed builds leave the streak alone. A nested commitment
+  restarts it. Keeping the spare through short dips lets alternating view sizes keep their warmed storage.
 - **Send commitment.** Completing a body commits its projection and sequence before framing or delivery. A failed
   body build leaves the previous projection in place. Both public `WriteFor` methods return caller-owned arrays.
   Ship each committed payload exactly once, in order, over a reliable-ordered channel to the receiver it was built
@@ -182,7 +200,8 @@ The obligations a standalone owner takes on:
   incrementing. The owner then ends every connection the writer serves, including format 2 sessions on the same
   writer, and only after they have ended calls `ResetAfterLegacySequenceExhaustion()`. It throws before exhaustion,
   and clears the counter, the capture and every slot's legacy and format 2 state. The next capture is sequence 1 and
-  every next serve is full state for a fresh receiver. Replication cannot end transports, so it cannot verify the
+  every next serve is full state for a fresh receiver. An AoI build or flat capture interrupted by the reset
+  throws `InvalidOperationException` and publishes nothing. Replication cannot end transports, so it cannot verify the
   precondition. The reset remembers no format 2 epoch, so the owner's epoch source must stay monotonic across it.
 
 ```csharp

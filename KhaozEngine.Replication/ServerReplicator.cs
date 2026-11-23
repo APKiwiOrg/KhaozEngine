@@ -65,6 +65,7 @@ public sealed class ServerReplicator
     private CapturedState? current;
     private readonly Dictionary<int, LegacyDeltaSlot> slots = new();
     private int currentSeq;
+    private ulong resetGeneration;
 
     // Single-threaded per instance (one server tick thread): the capture scratch and the wire scratch below are reused
     // across ticks and clients with no locking. The capture scratch consolidates each snapshot into one buffer. The
@@ -109,12 +110,14 @@ public sealed class ServerReplicator
     /// every connection this writer served and will serve only fresh receivers. Replication cannot verify or end
     /// transports itself. The reset remembers no format 2 epoch, so the owner must start each new stream with an epoch
     /// greater than any it issued before.
+    /// An interrupted capture throws <see cref="InvalidOperationException"/> and publishes nothing.
     /// </summary>
     /// <exception cref="InvalidOperationException">The sequence is not exhausted.</exception>
     public void ResetAfterLegacySequenceExhaustion()
     {
         if (!LegacySequenceExhausted)
             throw new InvalidOperationException("The legacy sequence is not exhausted, so the writer cannot be reset.");
+        resetGeneration = unchecked(resetGeneration + 1);
         currentSeq = 0;
         current = null;
         slots.Clear();
@@ -152,20 +155,33 @@ public sealed class ServerReplicator
     /// <see cref="WriteFor"/>.
     /// </summary>
     /// <exception cref="InvalidOperationException">The legacy sequence is exhausted (see
-    /// <see cref="LegacySequenceExhausted"/>). Nothing is scanned and the counter does not move.</exception>
+    /// <see cref="LegacySequenceExhausted"/>). Nothing is scanned and the counter does not move.
+    /// A reset during the scan, or a nested capture that takes the last sequence during it, also causes this
+    /// exception and the interrupted capture is discarded.</exception>
     public int Capture(World world)
     {
-        if (LegacySequenceExhausted)
-            throw new InvalidOperationException(
-                "The legacy sequence is exhausted. End every connection, then call ResetAfterLegacySequenceExhaustion.");
+        ThrowIfLegacySequenceExhausted();
 
         // One shared buffer for the whole snapshot, owner-only components are captured here (they carry Replicate) and
         // stripped per non-owning client in WriteFor. A slot's last sent projection references the buffer of the
         // capture it was built from, so a buffer lives as long as any such projection - the CaptureScratch never
         // returns it to a pool.
-        current = captureScratch.CaptureReplicate(world, registry);
+        ulong generation = resetGeneration;
+        CapturedState capture = captureScratch.CaptureReplicate(world, registry);
+        if (generation != resetGeneration)
+            throw new InvalidOperationException("A sequence reset interrupted the replication capture.");
+        // A capture nested in this scan can take the last sequence. Publishing this one would step past it.
+        ThrowIfLegacySequenceExhausted();
+        current = capture;
         currentSeq++;
         return currentSeq;
+    }
+
+    private void ThrowIfLegacySequenceExhausted()
+    {
+        if (LegacySequenceExhausted)
+            throw new InvalidOperationException(
+                "The legacy sequence is exhausted. End every connection, then call ResetAfterLegacySequenceExhaustion.");
     }
 
     /// <summary>

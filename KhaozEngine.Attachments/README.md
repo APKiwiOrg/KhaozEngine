@@ -8,8 +8,8 @@ Primitives package, which supplies `MalformedDataException`. It is not included 
 `AttachmentSetDefinition` copies parts, orders them by positive stable ID and exposes read-only
 parts and distinct mesh references. Repeated mesh keys must declare the same lowercase SHA-256.
 Parts derive from `AttachmentPartDefinition` as `RigidAttachmentPartDefinition` or
-`SkinnedAttachmentPartDefinition`. `ValidateReferences` requires every mesh hash and every explicit
-rigid joint to resolve. Unknown programmatic part kinds are refused.
+`SkinnedAttachmentPartDefinition`. `ValidateReferences` requires every mesh hash, every explicit
+rigid joint and the optional footprint key and hash to resolve. Unknown programmatic part kinds are refused.
 Joint names and mesh keys require well-formed UTF-16 and retain their ordinal identity without
 Unicode normalization. Supplementary characters and literal U+FFFD remain valid.
 
@@ -31,7 +31,7 @@ identity. The [outfit resolver](#outfit-coverage) checks those names against the
 
 ## Attachment set JSON
 
-`AttachmentSetJson.Parse(utf8, sourceName)` accepts formats 1 through 6. Format 1 contains only rigid parts
+`AttachmentSetJson.Parse(utf8, sourceName)` accepts formats 1 through 7. Format 1 contains only rigid parts
 and has no `kind` member:
 
 ```json
@@ -192,6 +192,19 @@ links. When constructing a `ChainRig` directly, set `Stretch` on each link that 
 `AttachmentSetJson.LinkStretchFormatVersion` is 6. Move every reader to 24.8.0 or later before publishing
 format 6. Readers on 24.7 or earlier refuse it.
 
+### Format 7
+
+Format 7 adds the optional root member `"footprint": {"key": "sets/garment.khlf", "sha256": "..."}`.
+It references a [lift footprint](#lift-footprints) beside the meshes. Use a safe relative asset key
+distinct from every mesh key in the set, and the lowercase SHA-256 of the exact footprint bytes.
+A set with a footprint needs a layer.
+
+Pass `new LiftFootprintRef(key, sha256)` as the last argument to
+`new AttachmentSetDefinition(parts, layer, covers, colliders, standoff, footprint)`.
+`AttachmentSetDefinition.Footprint` exposes the nullable reference. Supply the footprint's hash in
+the same asset dictionary as the mesh hashes for `ValidateReferences`. `AttachmentSetJson.FootprintFormatVersion`
+is 7. Publish format 7 after every reader supports it.
+
 ### Canonical set bytes
 
 The example hash is a placeholder. Hash the exact self-contained GLB bytes. `local` contains 16
@@ -203,11 +216,12 @@ every format's root members before the version is read, and against the declared
 document with a `layer` and no `formatVersion` is therefore refused as `JsonPropertyMissing` for the version,
 not as `JsonPropertyUnknown` for the layer, because the version decides what every other member means.
 
-`Write(definition)` emits the lowest format that expresses the definition. `linkStretch` requires format 6,
-standoff or lift requires at least format 5, and motion or colliders require at least format 4. A layered set
-without those additions writes format 3, even when all its parts are rigid. A set without a layer writes format 1
-if all its parts are rigid, even after parsing format 2, and format 2 if it contains skinned parts. Existing
-canonical format 1 to 5 bytes and semantic hashes stay unchanged.
+`Write(definition)` emits the lowest format that expresses the definition. A footprint reference requires
+format 7, `linkStretch` requires at least format 6, standoff or lift requires at least format 5, and motion
+or colliders require at least format 4. A layered set without those additions writes format 3, even when all
+its parts are rigid. A set without a layer writes format 1 if all its parts are rigid, even after parsing
+format 2, and format 2 if it contains skinned parts. Existing canonical format 1 to 6 bytes and semantic hashes
+stay unchanged.
 
 Property order is `id, mesh, joint, local` in format 1 and `id, kind, mesh` followed by rigid `joint, local` in
 format 2. Format 3 writes `formatVersion, layer, covers, parts` at the root and appends `region` to a rigid part
@@ -217,14 +231,15 @@ and then `links` when nonempty. Each chain writes `joints, tip, stiffness, dampi
 radius`. Chain and joint order are preserved. Links put the lower index first and sort by the two indices.
 Format 5 writes nonempty `standoff` after `covers` and any `colliders`, with entries in ordinal region name order.
 A skinned part writes `lift` after `regions` and any `motion`. Format 6 writes `linkStretch` after `links`.
+Format 7 writes `footprint` after any `colliders` and `standoff`, before `parts`, with `key` then `sha256`.
 
 Signed zero is normalized without changing other float values. The writer emits canonical UTF-8 with no trailing
 newline. Its SHA-256 is `SemanticSha256`. Source whitespace, part, collider and standoff listing order, and link
 listing order and direction do not change that revision.
 
 Keep each part ID stable across source reordering. The renderer derives temporal identities from
-that semantic revision, the part ID and material ordinal. A changed declared mesh hash changes
-the revision, including changes to embedded material images.
+that semantic revision, the part ID and material ordinal. Changing a declared mesh hash, including when
+embedded material images change, or changing the footprint key or hash changes the revision.
 
 Implement `IAttachmentAssetSource.Read(key)` for another byte source. The directory implementation
 returns a fresh snapshot and refuses symlinks or reparse points, including in root ancestors.
@@ -407,6 +422,13 @@ with `Lift`. Supply one `LiftMaterialMesh(Positions, Indices, Directions, Bearin
 upload order. Indices are local to that group. Directions and bearings line up with its rest positions.
 A missing, extra, duplicate or wrong-shaped mesh is refused with `ArgumentException`.
 
+`OutfitLift.Resolve(coverage, meshes, footprints)` also accepts one nullable `LiftFootprint` per worn
+index. A layered set uses its footprint when the body map digest and total triangle count both match.
+`FootprintApplied(wornIndex)` reports whether it did. An applicable footprint must match all part IDs
+and each skinned part's region-run triangle count. A wrong list length or applicable footprint shape
+throws `ArgumentException` naming `footprints`. Use `LiftFootprintCheck.Verify` to establish that the
+footprint measures the set's actual meshes.
+
 `AttachmentGlb.LiftBasis(glb, sourceName)` validates a skinned GLB and reads its `_LIFT_DIRECTION` and
 `_LIFT_BEARING` attributes. Every primitive supplies an unnormalized FLOAT VEC3 direction and FLOAT SCALAR
 bearing for each position. The direction is the skin's outward normal in body rest space and must be finite
@@ -416,11 +438,17 @@ bearing must agree within 0.0001, including across primitive and material splits
 immutable list in flattened mesh, primitive and vertex order. Each `LiftBasisVertex` carries `MaterialPart`
 and `IndexInPart` in upload order, with materials grouped by first use.
 
-`HeightBelow(wornIndex, region)` is the highest effective standoff among visible sets on strictly lower
-layers, or null when there is no contributor. `EffectiveStandoff(wornIndex, region)` is the visible set's
-declared standoff plus its greatest lift in that region, or null when it does not contribute. Region indices
-refer to the body map. Each vertex uses the highest height below of all regions that touch its position
-and moves along its normalized direction.
+The resolver welds coincident vertices and groups them into sections by bitwise equal directions and
+bearings, treating both signs of zero alike. Each section lifts as one along its normalized direction
+using the highest lower-layer surface under any of its incident triangles. A measured contributor's
+drawn fixed triangles supply their height plus their greatest corner lift per cell. A set using regional
+data reads heights by its triangles' region tags and contributes declared standoff plus its greatest
+lift per visible region.
+
+`HeightBelow(wornIndex, region)` summarizes the greatest height from strictly lower layers in the body
+region. `EffectiveStandoff(wornIndex, region)` summarizes the given set's greatest contribution there.
+Both return null where there is no contribution. Measured sets reduce their cell heights to region
+maxima for these queries.
 `LiftedPositions(wornIndex, partId)` returns rest positions in upload order by material, or null when the
 part has no moved vertex. `HasLift` is true when any part moved. Resolve at bind or run the same calculation
 offline for fitted poses. See the [lift rule](../docs/design/ATTACHMENT-LIFT-DESIGN.md#the-rule).
@@ -496,7 +524,7 @@ The refusals below throw `CoverageClaimDataException`, derived from `MalformedDa
 |---|---|---|
 | `BodyMeshCountMismatch` | a body mesh count other than the map's part count. | `ExpectedMeshCount`, `ActualMeshCount` |
 | `BodyTriangleCountMismatch` | a body mesh whose triangle count differs from its map part's. | `MeshKind`, `MeshIndex`, `ExpectedTriangleCount`, `ActualTriangleCount` |
-| `RegionUnknown` | a covered region, or a standoff region in the standoff check, that the body's map does not declare. | `RegionName` |
+| `RegionUnknown` | a covered region, or a standoff region in standoff or footprint measurement, that the body's map does not declare. | `RegionName` |
 | `IndexCountNotTriangles` | a mesh whose index count is not a multiple of three. | `MeshKind`, `MeshIndex`, `IndexCount` |
 | `IndexOutOfRange` | an index past the mesh's positions. | `MeshKind`, `MeshIndex`, `IndexPosition`, `VertexIndex`, `VertexCount` |
 | `PositionNotFinite` | a position with a NaN or infinite component. | `MeshKind`, `MeshIndex`, `VertexIndex` |
@@ -505,15 +533,22 @@ The refusals below throw `CoverageClaimDataException`, derived from `MalformedDa
 | `PieceMeshPartIdUnknown` | a piece mesh naming a part ID absent from a definition with motion. | `MeshKind`, `MeshIndex`, `PartId` |
 | `PieceMeshPartIdDuplicate` | a second piece mesh naming the same part ID in a definition with motion. | `MeshKind`, `MeshIndex` (the second mesh), `PartId`, `MeshKey` |
 | `PiecePartMeshMissing` | a part with no mesh in a piece with motion. | `MeshKind`, `PartId`, `MeshKey` |
+| `FootprintMeshPartIdMissing` | a footprint piece mesh with `PartId` zero. | `MeshKind`, `MeshIndex`, `PartId` (zero) |
+| `FootprintMeshPartIdUnknown` | a footprint piece mesh naming a part ID absent from the definition. | `MeshKind`, `MeshIndex`, `PartId` |
+| `FootprintMeshPartIdDuplicate` | a second footprint piece mesh naming the same part ID. | `MeshKind`, `MeshIndex` (the second mesh), `PartId`, `MeshKey` |
+| `FootprintPartMeshMissing` | a definition part with no mesh for footprint measurement. | `MeshKind`, `PartId`, `MeshKey` |
+| `FootprintHeightAboveLimit` | a fixed triangle sample more than 0.25 m above the body. | `MeshKind`, `MeshIndex`, `PartId`, `MeshKey`, `TriangleIndex`, `HeightMetres` |
+| `FootprintSamplingGridTooLarge` | a piece triangle whose sample divisions exceed the index range. | `MeshKind`, `MeshIndex`, `PartId`, `MeshKey`, `TriangleIndex`, `LongestEdgeMetres` |
 
 The check has its own refusal family rather than `OutfitDataException`, because it resolves no worn list, so the
 outfit refusal's `WornIndex` would have nothing to name.
 
 ## Standoff claim check
 
-`StandoffClaimCheck.Verify(bodyMeshes, body, piece, pieceMeshes)` checks declared standoffs offline in the
-body's rest frame. Use the [coverage claim check](#coverage-claim-check) geometry, part IDs and per-vertex
-swing masks. It measures each fixed vertex against the nearest nondegenerate body triangle, using the signed
+`StandoffClaimCheck.Verify(bodyMeshes, body, piece, pieceMeshes)` checks regional standoff for fallback
+or sets without footprints in the body's rest frame. Use the [coverage claim check](#coverage-claim-check)
+geometry, part IDs and per-vertex swing masks. It measures each fixed vertex against the nearest
+nondegenerate body triangle, using the signed
 distance along the triangle's outward normal. Triangles within 1 micrometre of the nearest distance compete by
 height. Equal heights choose the first triangle in body part and triangle order. A body without nondegenerate
 triangles yields no measurements.
@@ -522,7 +557,68 @@ triangles yields no measurements.
 `Name`, `HighestHeightMetres`, `VertexCount` and nullable `DeclaredStandoffMetres`. `UnderstatedRegions` lists
 measurements above their declaration. `UndeclaredRegions` lists positive heights where the set declares no
 standoff. The check validates covered and standoff region names and uses the same `CoverageClaimDataException`
-refusals for invalid region names or mesh data as the coverage check.
+refusals for invalid region names or mesh data as the coverage check. A chained mesh's fixed vertices
+are checked even in a triangle that the footprint treats as swinging.
+
+## Lift footprints
+
+`LiftFootprintFile.Write(footprint)` and `LiftFootprintFile.Parse(bytes, sourceName)` handle the canonical
+binary companion named by a format 7 set. A `LiftFootprint` holds `BodyRegionMapSha256`, `BodyTriangleCount`
+and `Parts` in ascending part ID order. `PartById(id)` returns the matching `LiftFootprintPart` or null.
+Read its `Triangles` in material upload order, then triangle order. Each `LiftFootprintTriangle` has
+sorted `CellKeys` and, for fixed triangles, `HeightUnits` in 0.01 mm units. Use `HeightMetres(entryIndex)`
+for metres. A triangle marked `Swinging` carries cells only. See the
+[format 1 layout](../docs/design/ATTACHMENT-LIFT-DESIGN.md#footprint-file-format-1) for the byte schema.
+
+`BodyCell(Triangle, Index)` identifies one of the 64 cells of a body triangle. Triangle indices flatten
+in region map part order, and cell indices run from 0 to 63. `BodyCell.At(triangle, w1, w2)` selects
+the cell from the second and third corners' barycentric weights on the level-8 grid. `Key` and
+`BodyCell.FromKey(key)` convert between the pair and its integer key.
+
+`LiftFootprintMeasure.Measure(bodyMeshes, body, piece, pieceMeshes)` samples rest-pose triangles at
+most 1 mm apart. Use the [coverage claim geometry](#coverage-claim-check), including a swinging vertex
+mask on each part with motion. For footprints, assign `PartId` to every piece mesh, including rigid
+parts and skinned parts without motion. Supply one mesh per definition part with its material groups
+combined in upload order. The highest fixed sample in each cell is clamped to zero and rounded up to
+0.01 mm. Fixed samples over 0.25 m are refused. A triangle with any swinging vertex records cells
+without heights. `RegionHeights(body)` returns the maximum fixed height in each region in map order,
+with null for a region without fixed entries. Use the maxima to declare fallback standoff.
+
+`LiftFootprintCheck.Verify(bodyMeshes, body, piece, pieceMeshes, declared)` measures again and returns
+a `LiftFootprintReport`. `BodyMatches` compares the map digest and triangle count. `PartMismatches`
+holds missing or extra parts, different triangle counts and fixed/swinging mismatches.
+`UncoveredCells` lists measured cells missing from the declaration. `UnderstatedCells` lists shared
+fixed cells with their rounded measured and declared heights in metres. Cell findings identify the
+part, upload-order triangle index and `BodyCell`. A body mismatch skips cell comparisons.
+`IsHonest` requires a matching body and no findings. Extra cells and greater declared heights are allowed.
+
+### Lift footprint refusals
+
+`LiftFootprintDataException` derives from `MalformedDataException` and carries `LiftFootprintRefusal`.
+Binary parse refusals include `SourceName` and the zero-based `ByteOffset` of the refused field.
+`PartIndex`, `PartId`, `TriangleIndex` and `EntryIndex` locate the current entry when available.
+The table lists the other identifiers and the locations supplied by direct model construction.
+
+| Reason | What it refuses | Other identifiers |
+|---|---|---|
+| `BodyRegionMapSha256Invalid` | a model's invalid body map digest. | `BodyRegionMapSha256` |
+| `BodyTriangleCountOutsideRange` | a nonpositive triangle count or a count too large for the cell key domain. | `BodyTriangleCount` |
+| `PartMissing` | a null part in the model. | `PartIndex` |
+| `PartIdZero`, `PartIdsNotAscending` | a zero part ID or one that repeats or decreases. | `PartIndex`, `PartId` |
+| `SwingingTriangleHasHeights` | a swinging triangle with a height. | `EntryIndex`, `HeightMetres` |
+| `FixedTriangleHeightCountMismatch` | a fixed triangle with unequal cell and height counts. | First unmatched `EntryIndex` and its `CellKey` or `HeightMetres` |
+| `CellKeyNegative`, `CellKeysNotAscending` | a negative, repeated or decreasing cell key. | `EntryIndex`, `CellKey` |
+| `CellKeyOutsideBody` | a key outside the declared body triangles. | `PartIndex`, `PartId`, `TriangleIndex`, `EntryIndex`, `CellKey`, `BodyTriangleCount` |
+| `HeightMetresOutsideRange` | a non-finite height or one outside 0 to 0.25 m. | `EntryIndex`, `CellKey`, `HeightMetres` |
+| `MagicInvalid` | a header without the `KHLF` magic. | |
+| `FormatVersionUnsupported`, `LevelUnsupported` | a version other than 1 or a grid level other than 8. | `FormatVersion` or `Level` |
+| `ReservedByteNonzero` | a set reserved header byte. | |
+| `PartCountExceedsRemainingBytes`, `TriangleCountExceedsRemainingBytes`, `EntryCountExceedsRemainingBytes` | a count exceeding the bytes available to its entries. | |
+| `Truncated` | an incomplete field. | |
+| `VarintOverflow`, `VarintNonCanonical` | an unsigned varint over 32 bits or five bytes, or with a redundant last group. | |
+| `HeightUnitsOutsideRange` | a stored height over 25,000 units. | `CellKey`, `HeightUnits` |
+| `TrailingBytes` | bytes after the last part. | |
+| `PartIdsMismatch` | a loaded file whose part IDs differ from its set's. | `SourceName` (the footprint key), `PartId` (the lowest unmatched ID) |
 
 ## Chain simulation
 
@@ -680,8 +776,13 @@ Every JSON refusal also carries `SourceName`. Direct constructor and reference c
 | `StandoffValueOutOfRange` | a standoff outside its finite range. | `StandoffIndex`, `RegionName` |
 | `TooManyStandoffEntries` | a set with more than 128 standoff entries. | `ActualCount`, `ExpectedCount` |
 | `LiftClearanceOutOfRange` | a lift clearance outside its finite range. | `PartId`, `PartIndex` |
+| `FootprintWithoutLayer` | a footprint on a set with no layer. | `FootprintKey`, `PropertyName` (`layer`), `ParamName` from construction |
+| `FootprintKeyInvalid` | an unsafe, malformed or undecodable footprint key. | `FootprintKey` if decoded |
+| `FootprintHashInvalid` | a footprint hash that is not lowercase SHA-256. | `FootprintKey`, `DeclaredHash` if decoded |
+| `FootprintKeyUsedByMesh` | a footprint key also used by a part's mesh. | `FootprintKey` |
+| `FootprintReferenceMissingOrHashMismatch` | a missing footprint entry or differing SHA-256 in `ValidateReferences`. | `FootprintKey`, `ExpectedHash`, `ActualHash` (null when missing) |
 
-JSON refusals above for formats 4 through 6 include `JsonPath`. Chain, joint, link, collider and standoff indices are
+JSON refusals above for formats 4 through 7 include `JsonPath`. Chain, joint, link, collider and standoff indices are
 zero-based and refer to input order. Counts report the supplied size and the required minimum or allowed maximum.
 For a collider or standoff sequence without a known count, construction stops at the first item past the cap,
 so `ActualCount` is the number read, one more than the cap, and a lower bound on the sequence's length.

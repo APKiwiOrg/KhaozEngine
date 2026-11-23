@@ -296,8 +296,8 @@ fixed step. The name is older than the fixed grid, and a rename would break call
 `AttachmentSetJson.MotionFormatVersion` is 4. Format 4 is format 3 with two optional members: `motion` on a skinned
 part and `colliders` at the root. `Write` chooses the lowest format that expresses the set, so these additions
 alone write format 4 and formats 1 to 3 keep their bytes and `SemanticSha256`. A set with motion or colliders
-needs a layer. A part with chains can also [lift over lower layers](ATTACHMENT-LIFT-DESIGN.md#chained-parts) in
-format 5.
+needs a layer. A part with chains can also [lift over lower layers](ATTACHMENT-LIFT-DESIGN.md#chained-parts)
+from format 5 onward.
 
 ```json
 {
@@ -342,7 +342,8 @@ Format 6 is format 5 with one optional member, `linkStretch` in a part's chain m
 }
 ```
 
-`Write` writes format 6 only for a set with `linkStretch`, so formats 1 to 5 keep their bytes and `SemanticSha256`.
+`Write` uses format 6 for sets with `linkStretch` and no footprint reference. Formats 1 to 5 keep their bytes
+and `SemanticSha256`. A set with a footprint reference writes format 7 and retains its `linkStretch` if present.
 Move all readers to 24.8.0 before publishing format 6. Earlier readers refuse it so the bound cannot be silently
 lost. A bound must be finite, greater than zero and at most one. The part needs at least one link for the bound
 to apply.

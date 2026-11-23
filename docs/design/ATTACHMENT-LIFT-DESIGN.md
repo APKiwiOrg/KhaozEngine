@@ -1,282 +1,204 @@
 # Attachment lift: worn parts over lower layers
 
-Implemented for 24.7.0 under [#1880](https://github.com/APKiwiOrg/KhaozEngine/issues/1880). The
-[consumer guide](../USING-KHAOZENGINE.md#worn-parts-over-lower-layers) covers fitting, publishing and binding.
-
-A worn skinned part is fitted to the bare body. It sits a small distance outside the skin and copies the skin's
-weights, so it follows the body in every pose. Worn over a garment that stands off the skin, the same part lies
-under the garment's surface wherever it bears on the body, and the garment draws over it. Lift raises such a part
-clear of the layers beneath it when an outfit is bound. One fit serves bare skin and any garment, every render pass
-draws the same lifted part, and nothing is computed per frame.
+A skinned part fitted to the bare body can sink into a garment worn beneath it. At outfit bind, lift
+moves the part's rest vertices along their baked directions to clear the visible layers below. The same
+fit can sit directly on skin or over several layers. Every render pass draws the same lifted geometry.
+The [consumer guide](../USING-KHAOZENGINE.md#worn-parts-over-lower-layers) covers fitting and publishing.
 
 ## Decisions
 
-### 1. The engine lifts the higher part when the outfit is bound
+### 1. Heights live on body cells
 
-Lift moves a skinned part's rest vertices outward along the skin's normal, once, when an outfit is bound. A part over
-bare skin does not move, so its fit on the bare body is unchanged. Over a garment it rises just enough to keep its
-clearance above the garment.
+A level-8 barycentric grid divides each body triangle into 64 cells. The grid follows the triangle's
+topology, so cell identities can survive a reshape that preserves topology. A whole region can contain a
+thin panel, a raised hem and a rigid plate. A regional maximum makes the outer layer clear the tallest
+feature across all three. A whole body triangle can still span both the hem and the adjacent panel.
+In a rest-pose study of fitted meshes, one height per triangle followed the shirt under straps better than
+regional standoff, but left most of the stacked cape's gap. Sixteen cells per triangle still left more gap
+under the stacked cape than 64. Going to 256 cells showed no measurable improvement and quadrupled the
+number of cells in the grid.
 
-Rejected:
+### 2. The engine measures a footprint published beside the set
 
-- **A second fit per part over a standard garment allowance**, picked when a garment covers the part's regions. It
-  needs one more fit per allowance and per body. A garment thicker than the allowance still sinks and a thinner one
-  floats. A garment that covers only some of the part's regions, such as a vest under a harness that also crosses
-  the shoulders, has no right mesh to pick. Stacked layers multiply the fits.
-- **Pressing the lower garment toward the skin under the higher piece.** A low poly garment has no vertices under a
-  thin strap to press, and flattening whole regions changes the garment's own look.
-- **Fitting every armour part over a standard garment.** Worn on bare skin it shows a gap, which fails a look.
-- **Moving vertices in the skinning shaders every frame.** See decision 4.
+One offline measurement assigns each piece triangle its cells and, for fixed triangles, a height per cell.
+A lower part's height and an upper part's footprint use the same projection and cell boundary rules.
+Measuring height and footprint independently would require tools to agree at every boundary. Storing the
+result beside the definition keeps the many triangle entries out of the JSON and keeps sampling out of bind.
+Sampling just the corners would miss cells under a triangle's interior.
 
-### 2. Each worn set declares how far it stands off the skin per region
+### 3. Lift follows drawing
 
-A worn set declares its **standoff**: for each region where it is worn, how far its outer surface stands off the
-skin at the rest pose, as fitted on the bare body. It is a few numbers beside the layer and the covered regions,
-resolving it costs nothing, and a tool can explain it. `StandoffClaimCheck` measures a piece against the body
-offline and reports any region where the piece stands higher than it declares. A garment that understates its height
-is caught on the garment, not on every armour part that later sinks into it.
+A triangle contributes height only if the outfit draws it. The triangle's own region tag controls its
+visibility, including when its footprint reaches into cells of another region. A shirt's collar band can
+carry the panel's tag while standing over collar cells. Covering the panel hides the band too, so its height
+vanishes from the collar cells. A height masked by the cell's region would still push the outer layer up there.
 
-Measuring the garment's surface at bind, by casting a ray from every higher vertex into the lower meshes, was
-rejected. It costs tens of milliseconds per bind, misses at hems and thin features, and each layer would need the
-lifted geometry of the layer below it first.
+### 4. Cross sections lift as one
 
-### 3. A lifting part bakes its lift direction and bearing per vertex
+Fitting writes one direction and one underside bearing for all vertices of a cross section. The engine
+welds coincident positions, then groups the welds of a part by bitwise equal lift direction and bearing,
+treating both signs of zero alike. The whole section uses one distance, so its thickness survives where
+its triangles carry different region tags or touch different cells. A coincidental equal pair merges two
+sections and raises both to the larger required distance. Deriving the groups from the baked values
+avoids a separate GLB attribute.
 
-The fitting step already finds the skin under each vertex to copy its weights. It also writes two vertex attributes
-into the part's GLB: the **lift direction**, the skin's outward normal under the vertex in the body's rest space, and
-the **bearing**, how far the part's underside stands off the skin under that vertex. A vertex lifts by
-`max(0, heightBelow + clearance - bearing)` along its normalized lift direction, so the baked length tolerance
-does not change the applied distance.
+### 5. Displaced mesh views carry lift into every pass
 
-Every vertex of one cross section shares a footprint and so a bearing, which keeps the section's thickness. A span
-that already bridges a hollow above the garment, as a taut strap does, keeps its place, because its bearing is
-already higher than the garment.
-
-One uniform lift per part, with no per vertex data, was rejected: a taut span standing well off a hollow would rise
-by the full lift and float. Taking directions from the part's own normals was rejected: the inner and side faces of a
-solid strap point at the body or sideways.
-
-### 4. Lifted vertices reach every pass through displaced mesh views
-
-A **displaced view** is a skinned mesh view that carries its own rest positions. It owns a vertex buffer and a CPU
-rest copy, shares the source's materials, alpha cutoff, inverse binds, rest pose and skeleton, and draws a full or a
-filtered index list. Every pass draws an entry's own buffers from the record it copies when the frame is prepared,
-so colour, depth, motion vectors, cascade and point shadows, outlines and dissolve draw the lifted part with no
-shader, pipeline or draw call change. Displaced views are shared between outfits by content and released one frame
-late, exactly like the views that hide covered triangles.
-
-A fresh upload per lifted part was rejected because it duplicates textures and material sets. A lift in the shaders
-was rejected because it touches every skinned shader variant on three backends and the CPU skinning path, and would
-compute every frame what changes only when an outfit does.
-
-### 5. The capability is a minor
-
-Format 5, the lift rule, displaced views, the optional scene capability and the standoff check add types, members
-and overloads. No public interface gains a member, and refusal enums are append only.
+A displaced view owns rest positions and uses the source mesh's materials, binds and skeleton. Colour,
+depth, motion vectors, cascade and point shadows, outlines and dissolve all draw the view's own buffers.
+This puts the work at bind, when the outfit changes. A fresh upload would duplicate materials and textures.
+Shader displacement would repeat the work every frame and would also need to reach the CPU skinning path.
 
 ## Words
 
-- **Standoff**: how far a worn set's outer surface stands off the skin over one region, at the rest pose, as fitted
-  on the bare body.
-- **Bearing**: how far a lifting part's underside stands off the skin under one of its vertices.
-- **Lift direction**: the skin's outward unit normal under a vertex, in the body's rest space.
-- **Clearance**: the gap a lifting part keeps above the layers beneath it.
-- **Height below**: for one worn set and one region, the highest effective standoff among the visible worn sets on
-  lower layers there.
+- **Standoff** is the declared maximum rest-pose height of the set above the bare skin in a region, in metres.
+- **Bearing** is the baked rest-pose height of a lifting section's underside above the bare skin.
+- **Lift direction** is the baked outward skin direction in the body's rest space. The engine normalizes
+  it when applying the lift.
+- **Clearance** is the authored gap a lifting part aims to keep above lower layers.
+- **Body cell** is a barycentric subtriangle identified by the flattened body triangle and its cell index.
+- **Footprint** is the measured cells under each triangle of a set, with heights for fixed triangles.
 
 ## The rule
 
-An outfit is resolved against a body's region map as it is for hiding. Then, in ascending layer order:
+Resolve hiding first, then process sets in ascending layer order. Every set on a layer reads the same
+snapshot of strictly lower layers. An unlayered set neither lifts nor contributes.
 
-1. A worn set **contributes** at region `r` when it has a layer, declares a standoff at `r`, and `r` is not hidden
-   for it, which means no worn set on a strictly higher layer covers `r`. A hidden region draws none of the set's
-   triangles there, so nothing needs to clear it.
-2. For a worn set `k`, the **height below** at `r` is the largest **effective standoff** at `r` among the sets that
-   contribute there from layers strictly below `k`'s. With none, nothing needs clearing at `r`.
-3. A vertex of a lifting part takes the regions of every triangle that uses it or any vertex of the same part at the
-   same position, negative zero counting as zero. Coincident vertices from split normals or material seams therefore
-   always move together. Its height below is the largest over those regions.
-4. The vertex lifts by `max(0, heightBelow + clearance - bearing)` along its normalized lift direction. It stays
-   in place when no region it touches has a height below.
-5. A set's **effective standoff** at `r` is its declared standoff there plus the largest lift any vertex of its parts
-   took at `r`. A layer above therefore clears a part that was itself lifted. The bound is conservative: where a
-   set's highest point over a region did not lift, a layer above clears it by more than it needs.
+1. A layered set uses its measured footprint when the footprint's map hash and body triangle count
+   match the outfit's body. Otherwise its regional data applies. A fallback set supplies its standoff
+   uniformly to the cells in each declared region visible for that set.
+2. The height below a cell is the highest effective height among contributions from strictly lower layers.
+3. A section gathers the cells of every triangle incident to any of its welded positions. When the
+   section's set uses regional data, it gathers the body regions those triangles are tagged with and
+   reads the maximum height in each. This can include measured height from a lower set.
+4. A section with a contribution below lifts by
+   `max(0, maxHeightBelow + clearance - bearing)` along its normalized direction. It stays at its fitted
+   position when there is no contribution. Every corner of a triangle sees the tallest sampled height
+   under that triangle, so a coarse facet crossing a hem rises as a whole to clear the highest point.
+   Fitting can follow details resolved by the body surface and its cells. A coarse body still gives a
+   coarse surface frame, even with smaller cells.
+5. A drawn fixed triangle contributes its measured height in each cell plus the largest lift that moved
+   any of its corners. The set's effective height in a cell is the maximum of those contributions.
+   A hidden triangle or swinging triangle supplies no measured height. A visible rigid part can
+   contribute but its corners stay at their fitted positions. A fallback set contributes its regional
+   standoff plus the largest lift at a welded position incident to a triangle tagged with that region.
 
-Sets on one layer never lift over each other, as they never hide each other. A set with no layer never lifts and
-never contributes. The body is the floor, so a part over bare skin keeps its fit. Rigid parts do not lift (see "Not
-in this release"), but a rigid part's height counts through its set's declared standoff, so a part on a higher layer
-clears it.
+The earlier regional rule gives exactly the same result in an outfit without an applicable footprint
+except where whole sections now share the highest lift their vertices need. The implementation keeps a
+region-sized height field for this case. In a mixed outfit, a regional standoff represents the entire
+region. It assumes a part's triangles lie in the regions they are tagged with. If a lifting triangle
+tagged A also spans B, its lift is added to A and a measured part above B can sink into it. Measuring the
+lower set accounts for where the triangle actually lies.
 
-Lift ends at a garment's hem in a ramp one triangle wide on the side away from the garment, the part rising over
-the hem as a strap does.
+**Oblique directions.** Heights use the body triangle's outward normal. For lift distance `d` at angle
+`theta` to that normal, the rise along the normal is `d * cos(theta)` and the lateral motion is
+`d * sin(theta)`. In the rest-pose outfit measurement, 0.12% of the strap underside entered the shirt
+by up to 0.67 mm where the directions were 18 to 31 degrees off normal. This was under a strap section
+4 to 5 mm thick. Dividing the lift by the cosine used a single bearing for all those cells. For a large
+clasp spanning faces up to 60 degrees off normal, that raised the cape's median gap over the shirt from
+2.4 to 7.7 mm in the same comparison. Use directions close to the body normals and size clearance for
+the remaining deviation. A per-cell height frame needs the section's underside height in each cell.
 
-`OutfitLift.Resolve` in `KhaozEngine.Attachments` runs the rule without a renderer. Its result exposes each
-part's lifted rest positions through `LiftedPositions`, so a pose check or a fitting tool can use the same
-positions as the game.
+## Formats
 
-### Example
+[Format 5](../../KhaozEngine.Attachments/README.md#format-5) adds regional `standoff` and skinned part
+`lift`. Fitting stores `_LIFT_DIRECTION` and `_LIFT_BEARING` in the part's GLB. The same attributes feed
+regional and measured lift. [Format 7](../../KhaozEngine.Attachments/README.md#format-7) adds the optional
+root `footprint` object with `key` and `sha256`. A footprint reference requires a layer. The writer emits
+format 7 only when the reference is present, preserving the canonical bytes and hashes of formats 1
+through 6. Publish format 7 after every reader supports it.
 
-A garment on the garment layer declares a standoff of 8 mm over `chest` and `back`. A strap on the armour layer bears
-at 2 mm over `chest` with a 3 mm section, so its set declares a standoff of 5 mm there. Over `back` it bridges a
-hollow at 14 mm. Its clearance is 1 mm. Worn together, the strap's vertices over `chest` lift by 7 mm, so its
-underside sits at 9 mm and its outer face at 12 mm. The bridging span does not move, because it already stands more
-than 9 mm off. A cloak collar on the outerwear layer bears at 2 mm over `chest` with a clearance of 1 mm. The armour
-set's effective standoff there is 5 + 7 = 12 mm, so the collar lifts by 11 mm and clears the strap by 1 mm. Without
-the garment the strap does not move, and the collar lifts by 4 mm to clear the strap's 5 mm.
+### Footprint file (format 1)
 
-## Format 5
+`LiftFootprintFile` reads and writes canonical little-endian bytes:
 
-`AttachmentSetJson.LiftFormatVersion` is 5. Format 5 is format 4 with two optional members: `standoff` at the root
-and `lift` on a skinned part. `Write` emits format 5 only for a set that has either, so every format 1 to 4
-definition keeps its bytes and `SemanticSha256`. A set with a standoff or a lifting part needs a layer.
+| Order | Bytes |
+| --- | --- |
+| Header | ASCII `KHLF`, unsigned 16-bit version `1`, byte level `8`, zero reserved byte, 32 raw bytes of the canonical body region map SHA-256, unsigned 32-bit body triangle count and part count. |
+| Each part, by ascending positive ID | Unsigned 32-bit part ID and triangle count. |
+| Each triangle, in upload order | Unsigned varint `(entryCount << 1) \| swingingBit`, then that many unsigned varint cell-key deltas from a starting key of zero. Cell keys increase strictly after the first. |
+| Each fixed triangle, after all its deltas | One unsigned 16-bit height for each cell in the same order, in units of 0.01 mm. Swinging triangles have no height bytes. |
 
-```json
-{
-  "formatVersion": 5,
-  "layer": "garment",
-  "covers": ["belly", "chest"],
-  "standoff": [["belly", 0.008], ["chest", 0.008], ["upperArmL", 0.006]],
-  "parts": [
-    { "id": 1, "kind": "skinned",
-      "mesh": { "key": "parts/tunic.glb", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
-      "regions": [["belly", 30], ["chest", 44], ["upperArmL", 12]] }
-  ]
-}
-```
+Varints use up to five bytes with seven payload bits per byte, low groups first, and the high bit
+indicates continuation. Use the shortest encoding. A cell key is `triangleIndex * 64 + cellIndex`,
+where triangles flatten in body region map part order. Piece triangle order is material upload order,
+then triangle order within each material.
 
-```json
-{
-  "formatVersion": 5,
-  "layer": "armour",
-  "covers": [],
-  "standoff": [["chest", 0.006], ["shoulderL", 0.006]],
-  "parts": [
-    { "id": 1, "kind": "skinned",
-      "mesh": { "key": "parts/harness.glb", "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
-      "regions": [["chest", 40], ["shoulderL", 18]],
-      "lift": { "clearance": 0.001 } }
-  ]
-}
-```
+### Measuring and checking
 
-- `standoff` lists `[region, metres]` pairs, at most one per region and at most 128 in all. Each value is finite, 0
-  or more and at most 0.25 m. The writer sorts the pairs by region name, so listing order never changes the
-  revision. A region may have a standoff without being covered: an open vest stands off the chest without hiding it.
-- `lift.clearance` is finite, 0 or more and at most 0.05 m. The file states it, as chains state every setting, so a
-  piece never changes look when an engine default moves.
-- One part may carry both `lift` and `motion`.
-- A lifting part's mesh must carry the lift attributes below.
+`LiftFootprintMeasure.Measure` samples each piece triangle on a barycentric grid with spacing at most
+1 mm, including its corners and edges. Supply meshes in the body's rest frame, including placed rigid
+parts. Each sample finds the nearest nondegenerate body triangle using the same scalar double projection
+as `StandoffClaimCheck`. Within 1 micrometre of the nearest distance the highest signed height wins,
+with ties going to the first triangle in body part and triangle order. A bounding volume hierarchy
+finds that result without a full scan. The closest point's barycentric coordinates choose the cell.
+The signed height is measured from the triangle plane along its outward normal.
 
-## Lift attributes in the part GLB
+A fixed triangle stores its highest sampled height in each cell, clamped at zero and rounded upward to
+0.01 mm. A fixed height over 0.25 m is refused. A triangle with any vertex weighted to a chain joint is
+swinging. It records cells for lift and supplies no height. `LiftFootprint.RegionHeights(body)` reduces
+the fixed heights to each region's maximum for authoring regional standoff.
 
-A lifting part's GLB carries two custom attributes on every primitive, one element per vertex:
-
-| Attribute | Accessor | Meaning |
-| --- | --- | --- |
-| `_LIFT_DIRECTION` | VEC3, FLOAT | The skin's outward unit normal under the vertex, in the body's rest space. |
-| `_LIFT_BEARING` | SCALAR, FLOAT | How far the part's underside stands off the skin under the vertex, in metres. |
-
-The skinned attachment policy refuses a lifting part when a primitive lacks either attribute, uses another
-accessor type or component encoding, normalizes it, or has an element count different from `POSITION`.
-Directions must be finite and within 0.001 of unit length. Bearings must be finite and nonnegative. Vertices at
-equal positions across the mesh, compared bit for bit with negative zero read as zero, must carry direction and
-bearing values within 0.0001 in each component, because they move as one and different data would open a crack.
-A part without lift ignores these attributes.
-
-The renderer groups a part's vertices by material in first use order when it uploads them, and region runs follow
-that grouping. `AttachmentGlb.LiftBasis` returns an immutable `LiftBasis` in flattened mesh, primitive and vertex
-order, as `SwingingVertices` reads its mask. Each entry names its zero-based `MaterialPart` and `IndexInPart`
-so an offline tool or a bind can line it up with the upload. Primitives without a source material share a part.
-
-## Displaced mesh views
-
-```csharp
-SkinnedMeshHandle lifted = scene.CreateSkinnedMeshView(source, indices, restPositions);
-```
-
-- `restPositions` holds one position per source vertex. Every other vertex attribute is the source's. Normals and
-  tangents are kept: a lifted surface runs parallel to the fitted one except along a hem ramp, which lights as it did
-  before.
-- The view owns a vertex buffer, an index buffer and a CPU rest copy, which CPU skinning, CPU motion vectors and the
-  outline pass read. It shares the source's materials, alpha cutoff, inverse binds, rest pose and skeleton.
-- Its bounds are the source's grown on every side by its largest displacement, which contains the lifted positions
-  and, for a chained part, the swing of its lifted vertices. Growth carried from the source later keeps that margin.
-- It is a view in every other respect: `IsSkinnedMeshView` is true, it cannot be viewed again, it counts as a live
-  view of its source, it is released at the next frame boundary, and its buffers go to the retire queue.
-- New `SkinnedMeshViewRefusal` reasons: `PositionCountMismatch` with `VertexCount` and the supplied count, and
-  `PositionNonFinite` with `VertexIndex`.
+`LiftFootprintCheck.Verify` repeats the measurement, checks body identity, part IDs, triangle counts and
+swinging status, and reports missing cells or understated fixed heights. Extra cells and greater heights
+are allowed. If the body differs, it reports the body mismatch and any structural part or triangle
+findings without comparing the cells. Like the measurement, it checks sampled rest geometry.
 
 ## Binding and drawing
 
-- `IAttachmentDisplacedViewScene : IAttachmentViewScene` adds
-  `CreateSkinnedView(source, indices, restPositions)`. `Scene3DAttachmentScene` and `Scene3DTileWorldScene` implement
-  it. A displaced view is released through `ReleaseSkinnedView`.
-- `BindOutfit` resolves coverage, then lift. For each lifting part with a vertex that moves, it builds the lifted
-  positions for each material handle and acquires a displaced view of the part's visible triangles, keyed by source,
-  indices and positions, so outfits and wearers that lift a part alike share one view. A part with no moving vertex
-  draws exactly as before.
-- A lift over a scene without the capability refuses with `AttachmentBindingRefusal.OutfitLiftUnsupported`, naming
-  the worn set's cache key in `SourceName`, its `WornIndex` and the `PartId`. Binding checks the capability before
-  acquiring any views. An outfit that needs no displaced view binds over any view scene.
-- `AttachmentSetCache.Get` reads a lifting part's basis from its verified bytes before any scene upload, including
-  when an earlier set already uploaded the mesh without lift. The cache retains the basis by mesh identity only
-  after the set loads successfully.
-- Draws, outlines, motion and every draw overload are unchanged. An outfit draw names a handle, and a lifted part's
-  handle is its displaced view.
-- Binding allocates. `WriteDraws`, `Queue`, `QueueOutline` and `WornMotion.Step` allocate nothing once warm.
+`AttachmentSetCache.Get` verifies the footprint file's exact bytes against the declared SHA-256, parses
+it and matches its part IDs against the set before mesh upload. The loaded footprint travels with the
+set into `BindOutfit`. A body map digest or total body triangle count mismatch selects regional fallback.
+For a matching body, `BindOutfit` checks each part's triangle count against the skinned material index
+lists or uploaded rigid geometry before acquiring any views. `BoundOutfit.FootprintApplied(wornIndex)`
+and the headless `OutfitLift.FootprintApplied(wornIndex)` report applicability per worn set, including
+sets that only contribute height.
 
-## Chained parts
+The headless resolver checks an applicable footprint's part IDs and skinned triangle counts against
+the coverage snapshot. It trusts that the file measures the set's own meshes. Use
+`LiftFootprintCheck.Verify` to check that measurement and `BindOutfit` to check rigid triangle counts.
 
-- A lifting part may carry chains. Its vertices lift at rest by their own bearing, so a strap tail hanging off the
-  body keeps its place while its root on the body rises. Chain joints, rest hangs and colliders are unchanged, and
-  the swing turns the lifted vertices with their joints.
-- A chained part's culling reach grows by its largest lift, through the displaced view's bounds.
-- A standoff claim rests only on fixed vertices. `StandoffClaimCheck` ignores vertices weighted to chain joints
-  because a swinging hem holds no height. `CoverageClaimCheck` uses the same mask to skip whole triangles with a
-  swinging vertex. A chained garment under armour therefore lifts the armour by the height of its fixed panels.
-- Chains on a higher layer collide with the body's colliders and with worn set colliders, never with a garment's
-  standoff. A garment that must push a cloak's panels out declares worn set colliders, as format 4 allows.
+### Displaced mesh views
 
-## Standoff claim check
+`BindOutfit` gives visible material groups that need displaced geometry a view via
+`IAttachmentDisplacedViewScene.CreateSkinnedView(source, indices, restPositions)`. Both shipped
+Scene3D attachment adapters implement the capability. Plain view scenes can bind outfits that need no
+displacement. A capability refusal occurs before acquiring any views.
 
-`StandoffClaimCheck.Verify(bodyMeshes, body, piece, pieceMeshes)` takes the meshes `CoverageClaimCheck` takes, in the
-body's rest frame, and validates them by the same rules with the same refusals. For each fixed vertex it finds
-the nearest nondegenerate body triangle. The triangle supplies a region and a signed height measured from its
-plane along the outward normal. A body with no such triangles yields no measurements. At a ridge, triangles
-within one micrometre of the nearest distance compete by height so the reported region belongs to the surface
-the piece stands highest over. The report gives each measured region's
-maximum height and declared standoff, and names:
+The view owns vertex and index buffers and a CPU rest copy. It retains the source normals and tangents
+and grows the source bounds by the largest displacement. Views share storage by source, visible indices
+and lifted positions. The last outfit release defers freeing the view to the frame boundary. The
+[renderer reference](../../KhaozEngine.Attachments.Render3D/README.md#outfits) describes lifetime and draw calls.
 
-- **understated** regions, where a vertex stands higher than the declared standoff,
-- **undeclared** regions, where the piece stands but declares no standoff, so a part above would not clear it there.
+### Chained parts
 
-It runs offline and suits low poly meshes. A gate in the game decides what fails.
-
-## Room for live reshape
-
-Standoff, bearing and clearance are heights above the skin. A live reshape
-([#1869](https://github.com/APKiwiOrg/KhaozEngine/issues/1869)) that keeps each piece at its height above the skin
-keeps every one of them valid, so only the lift direction has to follow the reshaped skin. When reshape arrives, the
-same data drives the lift wherever reshape evaluates a piece, with no format change. Cloth
-([#1870](https://github.com/APKiwiOrg/KhaozEngine/issues/1870)) is untouched: a cloth part's fixed rows can declare a
-standoff like any other.
+A chained part can lift at its fixed root while a swinging tail with enough bearing keeps its fitted
+position. The displacement is applied to rest vertices and the existing chain joints and colliders
+pose them as before. A footprint's swinging triangles can lift but do not hold up another layer.
+Regional `StandoffClaimCheck` measures fixed vertices, including fixed vertices of a triangle with a
+swinging corner. For fallback standoff on a chained part, check those claims separately.
+A garment that should push a swinging panel aside needs authored worn set colliders.
 
 ## Cost
 
-The wearables limits are 32 wearers, at most 2 ms added CPU preparation, no managed allocation once warm and at most
-1.3 ms added GPU time at 32 characters on a T4.
+- Per frame, draw counts, vertex counts, shaders and passes are unchanged. Valid warm draws allocate no
+  managed memory.
+- Per bind, lift welds positions, groups sections and reads the height below a triangle's footprint.
+  Visible fixed triangles scatter their heights into the running maximum. The cell path freezes that
+  maximum at each layer boundary. Regional contributors in a mixed outfit fill the corresponding cells.
+  A distinct displaced view needs one vertex and index upload.
+- Per cached footprint, parts pack cell keys and height units into shared arrays. A fixed entry uses
+  four bytes for its key and two for its height. A swinging entry uses only its key. Triangle ranges and
+  part metadata add overhead. Cell scratch uses two pooled floats per body cell and one region byte per
+  body triangle, independent of layer count. Each distinct displaced view holds its 96-byte vertices
+  in both the GPU buffer and CPU rest copy, plus a shared position array at 12 bytes per vertex.
 
-- Per frame: nothing. Draw counts, vertex counts, shaders and passes are unchanged.
-- Per bind: one pass over each lifting part's vertices and triangles, and one vertex and index buffer upload for each
-  displaced view not already shared.
-- Memory: each distinct displaced view holds its vertices twice, 96 bytes each in the GPU buffer and in the CPU copy.
-  The outfit cache also retains one shared position array per distinct displaced view, at 12 bytes per vertex.
-
-`LiftBindCostDiagnostics` reports binding cost for 32 distinct garment and armour pairs after their sets are
-loaded. It measures `BoundOutfit.WriteDraws` for the same armour draws with and without garments, after 120 warm
-frames and over 600 measured frames. The report is one JSON line, including the runner environment. Default CI
-excludes the diagnostic. Run the command below on a GitHub-hosted runner after approval. Only that run supplies
-timing evidence. Set `KE_LIFT_COST_SMOKE_FRAMES` to 1 through 119 to shorten both frame counts for a harness check.
+`LiftBindCostDiagnostics` reports 32 binds with measured liners and armour on a 1,584-triangle synthetic
+body. Measurement, serialization and set upload happen before bind timing. The JSON report records
+`footprintBodyTriangleCount`, `footprintBinds`, the regional bind and draw measurements, and the runner
+environment. The draw comparison defaults to 120 warm frames and 600 measured frames. Default CI
+excludes the diagnostic. Run the command on a GitHub-hosted runner after approval for timing evidence.
+`KE_LIFT_COST_SMOKE_FRAMES` can set both frame counts to 1 through 119 for a harness check.
 
 ```sh
 KE_GPU_TESTS=0 dotnet test KhaozEngine.Render.Tests -c Release --filter 'Category=Diagnostic&FullyQualifiedName~LiftBindCostDiagnostics' --logger 'console;verbosity=detailed'
@@ -284,73 +206,57 @@ KE_GPU_TESTS=0 dotnet test KhaozEngine.Render.Tests -c Release --filter 'Categor
 
 ## Refusals
 
-Each new reason is appended to its enum and carries the identifiers that locate the fault.
-
-- `AttachmentSetRefusal`: a standoff or a lift without a layer, a standoff region name that is empty, malformed or
-  repeated, a standoff value out of range, too many standoff entries, and a clearance out of range.
-- `AttachmentSkinnedGeometryRefusal`: `LiftAttributeMissing`, `LiftAttributeShapeMismatch`,
-  `LiftDirectionInvalid`, `LiftBearingInvalid` and `CoincidentLiftDataMismatch` carry the attribute name and its
-  JSON path in the primitive. Invalid values also carry the primitive-local `VertexIndex`. A coincident mismatch
-  carries the later and earlier flattened indices as `VertexIndex` and `OtherVertexIndex`.
-- `SkinnedMeshViewRefusal`: a position count that does not match the source, and a position that is not finite.
-- `AttachmentBindingRefusal`: a lift over a scene that cannot create displaced views.
+- [Set refusals](../../KhaozEngine.Attachments/README.md#set-refusals) cover a footprint without a layer,
+  an invalid key or hash, a key reused by a mesh, and a missing or mismatched asset in
+  `AttachmentSetDefinition.ValidateReferences`. The cache's exact-byte read uses the same
+  `InvalidDataException` path as a mesh read.
+- [Footprint data refusals](../../KhaozEngine.Attachments/README.md#lift-footprint-refusals) cover invalid
+  models, malformed or noncanonical files and a loaded footprint whose part IDs differ from its set.
+  [Claim refusals](../../KhaozEngine.Attachments/README.md#coverage-claim-check) cover invalid measurement
+  inputs, including missing piece IDs, an oversized sampling grid and heights past the fixed height limit.
+- [Binding refusals](../../KhaozEngine.Attachments.Render3D/README.md#binding-refusals) include
+  `FootprintTriangleCountMismatch` with the worn set source, worn index, part ID and both counts, and
+  `OutfitLiftUnsupported` for a scene missing displaced views.
+- [GLB refusals](../../KhaozEngine.Attachments/README.md#attachmentskinnedgeometry) cover missing, invalid
+  or inconsistent lift attributes. `SkinnedMeshViewRefusal` identifies invalid displaced rest positions
+  or a position count that differs from the source.
 
 ## Tests
 
-All headless, on synthetic bodies and pieces built in code.
-
-- **Format.** Format 5 round trips. Formats 1 to 4 keep their bytes and hashes. Each refusal sits beside a passing
-  control that differs only in the broken rule.
-- **Lift attributes.** A lifting part with the attributes loads. Each attribute refusal is reached beside a control.
-  The flattened read lines up with the upload order across two materials.
-- **Rule.** A part over a garment lifts by `heightBelow + clearance - bearing`. A bridging span above the garment
-  does not move. A section keeps its thickness. With no lower set nothing moves. A region a higher layer hides does
-  not lift the part over it. Three layers stack through the effective standoff. Sets on one layer do not lift each
-  other. Coincident vertices move together, and a hem ramps over one triangle.
-- **Displaced views.** Colour, GPU motion, dissolve, cascade and point shadow, outline and CPU skinning draws
-  read the view's own vertex buffer or rest copy. Bounds contain the lifted positions. Release waits for the
-  frame boundary, and each refusal is reached beside a control.
-- **Binding.** An outfit with a garment lifts a following part on a higher layer. Two wearers of one outfit share one
-  displaced view. Taking the garment off draws the source again. A chained lifting part binds, steps and draws. A
-  scene without the capability refuses only when something lifts. Draws allocate nothing once warm.
-- **Standoff claim.** An honest claim passes. A piece standing higher than it declares is reported understated for
-  that region, and one standing where it declares nothing is reported undeclared. Swinging vertices are ignored.
+Headless tests pin the format 7 and KHLF bytes and the hashes of older set formats. File and model
+refusal cases have passing controls. Measurement tests cover a raised hem within one body triangle,
+rigid parts, swinging triangles, tie-breaking at ridges and verification findings. Outfit tests cover
+straps clearing a local hem, stacked lift, a rigid plate limited to its own cells, hidden triangles,
+equal data lifting together across region tags and regional fallback. Binding tests verify application
+on a matching body, fallback for other bodies, mismatched skinned and rigid triangle counts, shared
+view lifetime and zero managed allocation in warm frame calls.
 
 ## Not in this release
 
-Rigid parts that lift, pressing lower layers toward the skin, chain colliders grown by a garment's standoff, normals
-recomputed along a hem ramp, and live reshape.
+- [Facet tilt](https://github.com/APKiwiOrg/KhaozEngine/issues/1893). A rigidly rising coarse facet
+  spans nearby high and low features even when the cells resolve both. Tilting could follow that
+  contour with the existing mesh.
+- [Clearance in each cell's height frame](https://github.com/APKiwiOrg/KhaozEngine/issues/1895). This
+  needs an underside height for every relevant cell, as described under the lift rule.
+- Subdividing a coarse worn part at bind. This changes the topology shared by skinning, chains,
+  outlines and motion vectors.
+- Lift on rigid parts, displacement of lower layers and collision geometry grown from a footprint.
+- [Live reshape](https://github.com/APKiwiOrg/KhaozEngine/issues/1869). Stable topology preserves cell
+  identities. Applying existing heights and fitting directions to the reshaped surface needs its own path.
 
-A rigid part stands clear of the moving skin by its own fit, and its set usually covers the region it sits over,
-which hides the lower layers there. A rigid lift, a translation fixed at bind, can be added later without a format
-break.
+## Signatures
 
-## Signatures corrected against the code
-
-Each task records here any shape the code required that differs from this note, keeping the planned behaviour.
-
-- Worn set format. `AttachmentSetDefinition(parts, layer, covers, colliders, standoff)` is a new overload.
-  The existing constructors keep their signatures. The new overload accepts a nullable layer so the
-  constructor reports standoff or lift without a layer through the same refusal family as the JSON reader.
-  `SkinnedAttachmentPartDefinition.Lift` is an init-only property, preserving the positional constructor and
-  deconstruction. Standoff entry refusals carry `StandoffIndex` in input order and `RegionName` when available.
-  An unpaired escaped surrogate has no decoded region name, so its JSON refusal carries the index and path.
-- Displaced mesh views. The supplied position count on a `PositionCountMismatch` refusal is `PositionCount`, beside
-  the source's `VertexCount`. A `PositionNonFinite` refusal names `VertexIndex`. Both carry the source index and
-  generation, as every view refusal does. A displaced view owns its vertex buffer even when no vertex moves.
-- Lift rule. `OutfitLift.Resolve(OutfitCoverage coverage, IReadOnlyList<LiftingPartMesh> meshes)` takes the resolved
-  coverage as its one source of truth: the coverage captures layers, hidden sets, standoffs, region runs, each
-  skinned part's clearance and the body's region count, so a snapshot of another outfit cannot be paired with it.
-  A `LiftingPartMesh(WornIndex, PartId, Materials)` holds one `LiftMaterialMesh(Positions, Indices, Directions,
-  Bearings)` per material part in upload order. `LiftedPositions(wornIndex, partId)` is a query on the result and
-  returns every material part's positions, or null when no vertex of the part moves. A vertex counts as moved only
-  when its position changes in float, so a lift that rounds away asks for no displaced view. A weld of coincident
-  vertices takes the first vertex's direction and bearing in upload order, which the GLB policy keeps equal to the
-  others within its tolerance. A standoff region the body lacks refuses as `OutfitRefusal.RegionUnknown` when the
-  coverage resolves.
-- Outfit binding. For custom leases, `GltfLoader.LoadSkinnedPartGeometry` provides index lists and rest vertices
-  for a mesh used by any part that declares lift. `GltfLoader.LoadSkinnedPartIndices` reads indices in the same
-  material order for other tagged meshes. Each mesh is decoded at most once per bind without decoding material
-  maps. Scene3D leases read the retained upload through `SourceIndices` and `SourceVertices`. The internal
-  `OutfitViewCache.Acquire` returns the handle and supplies the canonical `ViewKey` as an out parameter, so each
-  outfit retains the shared position storage.
+- `AttachmentSetDefinition(parts, layer, covers, colliders, standoff, footprint)` accepts a nullable
+  `LiftFootprintRef(Key, Sha256)`. Existing constructors and `AttachmentSetJson` format constants retain
+  their signatures and values.
+- `LiftFootprintMeasure.Measure(bodyMeshes, body, piece, pieceMeshes)` returns a `LiftFootprint` for
+  `LiftFootprintFile.Write(footprint)`. Use `LiftFootprintFile.Parse(bytes, sourceName)` to read it and
+  `LiftFootprintCheck.Verify(bodyMeshes, body, piece, pieceMeshes, declared)` to get a
+  `LiftFootprintReport`.
+- `OutfitLift.Resolve(coverage, meshes, footprints)` accepts one optional footprint per worn index.
+  The two-argument overload uses regional data. Both take one `LiftingPartMesh` per part declaring lift.
+  `HeightBelow` and `EffectiveStandoff` summarize maxima by body region. `LiftedPositions` returns rest
+  positions by material or null when no vertex moves in float. A coincident weld takes the first
+  vertex's lift basis in upload order, which the GLB policy keeps within tolerance of the others.
+- `BoundOutfit.FootprintApplied(wornIndex)` takes the zero-based index from the worn list given to
+  `BindOutfit`. The new APIs are additive and require no new member on a public interface.

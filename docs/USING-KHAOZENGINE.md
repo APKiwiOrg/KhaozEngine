@@ -7443,8 +7443,9 @@ values whose `AttachmentPartDefinition` parts are either `RigidAttachmentPartDef
 required exact `rigid` or `skinned` kind on every part. Rigid parts keep `joint` and `local`. Skinned
 parts in format 2 contain only `id`, `kind` and `mesh`. Format 3 adds a
 [worn layer and covered body regions](#regions-layers-and-outfits). Format 4 adds
-[skinned part motion and worn set colliders](#hanging-parts-that-swing). Format 5 adds
-[standoff and lift over lower layers](#worn-parts-over-lower-layers). Unknown or duplicate members are refused.
+[skinned part motion and worn set colliders](#hanging-parts-that-swing). Format 5 adds regional standoff
+and skinned part lift, format 6 adds [chain link stretch](#hanging-parts-that-swing), and format 7 adds
+[lift footprints](#worn-parts-over-lower-layers). Unknown or duplicate members are refused.
 The writer uses the lowest format that expresses the set, preserving canonical bytes and semantic hashes for
 existing sets. Reference this package explicitly from headless publishers.
 
@@ -7835,42 +7836,57 @@ for binding, resets and culling details.
 
 #### Worn parts over lower layers
 
-Fit a skinned part to the bare body once. In a worn set, `Standoff` declares the outer surface's height above
-the bare skin by region. A higher skinned part with `Lift` keeps its authored clearance above the highest visible
-lower layer at each vertex. For a vertex with lower standoff, the engine moves it by
-`max(0, heightBelow + clearance - bearing)`. A part keeps its bare-body fit where it has nothing to clear.
-Same-layer sets do not lift each other. Use `Covers` only where the higher set should hide the surface beneath it.
-In this example the garment hides the body at `chest`, and the armour leaves the garment visible there.
+Fit each part to the bare body. Give an upper skinned part `Lift = new PartLiftDefinition(clearanceMetres)`
+to raise it over visible, strictly lower layers when the outfit binds. Measured footprints let a strap clear
+the height under each section, so a raised hem does not set the height across an entire region. The set's
+regional `Standoff` supplies fallback on a body whose map or triangle count differs. Use `Covers` where a
+set should hide a surface below it. For example, a garment can cover the body at `chest`, while an armour
+set's empty `Covers` leaves the garment visible there.
 
-At authoring time, write both definitions with `AttachmentSetJson.Write`. The mesh references contain the asset
-keys and SHA-256 hashes of the final GLB bytes. Use the fitted mesh's actual region runs in material and triangle
-order. Here each mesh has one run covering two triangles.
+On every primitive of a lifting part, bake `_LIFT_DIRECTION` (unnormalized `FLOAT VEC3`) and
+`_LIFT_BEARING` (unnormalized `FLOAT SCALAR`), one value per `POSITION`. Use the skin's outward unit
+direction in body rest space and the distance in metres to the part's underside. Write the same bitwise
+direction and bearing to every vertex of a cross section so it lifts as one and keeps its thickness.
+Coincident vertices across seams must agree within the [lift attribute tolerance](../KhaozEngine.Attachments/README.md#outfit-lift).
+Use `AttachmentGlb.LiftBasis` to preflight the final GLB.
+
+In the fitting or define step, measure each layered set that will use footprints. Supply the body meshes in
+map order and one fitted `CoverageClaimMesh` per definition part with its `PartId`. Combine material groups
+in upload order, keep each group's triangle order and supply a swinging vertex mask for parts with motion.
+Place rigid parts in the body's rest frame first. Tag skinned triangles with region runs in that same
+order and give the definition references to the final GLB bytes. For a fitted set definition `piece`:
 
 ```csharp
-var garmentPart = new SkinnedAttachmentPartDefinition(1, garmentMesh)
+LiftFootprint footprint = LiftFootprintMeasure.Measure(bodyMeshes, bodyMap, piece, pieceMeshes);
+byte[] footprintBytes = LiftFootprintFile.Write(footprint);
+var footprintRef = new LiftFootprintRef(footprintKey,
+    Convert.ToHexStringLower(SHA256.HashData(footprintBytes)));
+
+IReadOnlyList<double?> heights = footprint.RegionHeights(bodyMap);
+var standoff = new List<RegionStandoff>();
+for (int region = 0; region < heights.Count; region++)
 {
-    Regions = [new NamedRegionRun("chest", 2)],
-};
-var armourPart = new SkinnedAttachmentPartDefinition(1, armourMesh)
-{
-    Regions = [new NamedRegionRun("chest", 2)],
-    Lift = new PartLiftDefinition(0.001f),
-};
-var garment = new AttachmentSetDefinition([garmentPart], AttachmentLayer.Garment,
-    covers: ["chest"], colliders: [], standoff: [new RegionStandoff("chest", 0.008f)]);
-var armour = new AttachmentSetDefinition([armourPart], AttachmentLayer.Armour, covers: []);
-byte[] garmentSetJson = AttachmentSetJson.Write(garment);
-byte[] armourSetJson = AttachmentSetJson.Write(armour);
+    if (heights[region] is not double height)
+        continue;
+    // Keep the regional float at least as high as the measured maximum.
+    float metres = (float)height;
+    standoff.Add(new RegionStandoff(bodyMap.Regions[region],
+        metres < height ? MathF.BitIncrement(metres) : metres));
+}
+var published = new AttachmentSetDefinition(piece.Parts, piece.Layer, piece.Covers,
+    piece.Colliders, standoff, footprintRef);
+byte[] setJson = AttachmentSetJson.Write(published);
+
+LiftFootprint declared = LiftFootprintFile.Parse(footprintBytes, footprintKey);
+LiftFootprintReport report = LiftFootprintCheck.Verify(bodyMeshes, bodyMap, published, pieceMeshes, declared);
+if (!report.IsHonest)
+    throw new InvalidOperationException("Lift footprint verification failed.");
 ```
 
-While fitting the armour, write `_LIFT_DIRECTION` (unnormalized `FLOAT VEC3`) and `_LIFT_BEARING`
-(unnormalized `FLOAT SCALAR`) on every primitive, one value per `POSITION`. The direction is the skin's outward
-unit normal under the vertex in the body's rest space. The bearing is the distance in metres from the skin to
-the part's underside at that footprint. Give a cross section the same bearing to preserve its thickness.
-Vertices split at the same position, including across materials, must agree within the documented tolerance.
-Use `AttachmentGlb.LiftBasis` to preflight the final mesh. Run `StandoffClaimCheck.Verify` on the garment's fixed
-geometry to catch understated or undeclared regions before publishing. Publish format 5 after every reader
-has upgraded to 24.7.0 or later.
+Put `footprintBytes` in the asset pack at `footprintKey` beside the set and its meshes, and publish
+`setJson` after every reader accepts format 7. In a separate verify step, read the declared bytes from
+the pack. For chained parts, also run `StandoffClaimCheck.Verify` to check fallback against fixed vertices
+in triangles that have swinging corners. Include any larger fixed-vertex claims in the regional standoff.
 
 At runtime, create the cache over a scene that supports displaced views and load the body map through that same
 cache. The set hashes below are for the published JSON bytes. Bind again when the outfit changes.
@@ -7878,17 +7894,20 @@ cache. The set hashes below are for the published JSON bytes. Bind again when th
 ```csharp
 using var cache = new AttachmentSetCache(new Scene3DAttachmentScene(scene), assetSource);
 LoadedBodyRegions body = cache.GetBodyRegions(regionMapKey, regionMapSha256, bodyRigIdentity,
-    bodyHandles, bodyMeshes);
+    bodyHandles, uploadedBodyMeshes);
 LoadedAttachmentSet loadedGarment = cache.Get("sets/garment.json", garmentSetSha256);
 LoadedAttachmentSet loadedArmour = cache.Get("sets/armour.json", armourSetSha256);
 using BoundOutfit outfit = cache.BindOutfit(body, [loadedGarment.Bind(map, bodyMesh), loadedArmour.Bind(map, bodyMesh)]);
+bool garmentFootprintApplied = outfit.FootprintApplied(0);
+bool armourFootprintApplied = outfit.FootprintApplied(1);
 ```
 
-`BindOutfit` resolves coverage and lift and acquires the views. Submit the outfit with the draw or motion
-overloads above. `Scene3DTileWorldScene` also supplies `IAttachmentDisplacedViewScene`. A custom scene that
-supports plain views can bind an outfit that needs no displacement. If a visible part needs a displaced view,
-binding raises `OutfitLiftUnsupported` before acquiring any views. See the
-[format and tooling reference](../KhaozEngine.Attachments/README.md#format-5) and the
+`BindOutfit` resolves coverage and lift and acquires the views. Check `FootprintApplied` by worn index to
+confirm which sets used their measured data. A false result means that set used regional fallback if
+layered. Submit with the draw or motion overloads above. `Scene3DTileWorldScene` also supplies
+`IAttachmentDisplacedViewScene`. A custom scene with plain views can bind an outfit that needs no displacement.
+If a visible part needs a displaced view, binding raises `OutfitLiftUnsupported` before acquiring any views. See the
+[format and tooling reference](../KhaozEngine.Attachments/README.md#format-7) and the
 [lift design](design/ATTACHMENT-LIFT-DESIGN.md#the-rule).
 
 #### Migrating from 20.x

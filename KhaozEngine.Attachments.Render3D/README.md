@@ -82,6 +82,13 @@ captures the parent nodes and local rest transforms from the verified GLB bytes.
 previous set already uploaded those bytes without lift. The basis is retained by mesh identity after
 the set loads successfully. Loading allocates no frame palettes.
 
+For a format 7 set with a footprint, `Get` reads the named file through the same exact-byte SHA-256
+check as a mesh. It parses the file and checks that its part IDs match the definition before uploading
+meshes. The cached footprint travels with the loaded and bound set for use in `BindOutfit`. An unreadable
+file or wrong digest uses the mesh read's `InvalidDataException` path. Malformed footprint data or different
+part IDs propagate `LiftFootprintDataException` with `SourceName` set to the footprint key. See the
+[footprint refusal table](../KhaozEngine.Attachments/README.md#lift-footprint-refusals).
+
 GLB preflight propagates `AttachmentGlbContainerDataException`, `AttachmentAccessorDataException`,
 `AttachmentHierarchyDataException`, `AttachmentRigidGeometryDataException` and
 `AttachmentSkinnedGeometryDataException` from `Get`, including their `Reason`, `SourceName` and identifiers.
@@ -250,6 +257,12 @@ next splits at the boundary, and each handle gets its own view of its visible tr
 each tagged mesh's index lists and the rest vertices it needs for lift. The shipped adapters lend the renderer's
 geometry. For a custom scene's lease, the cache decodes verified bytes once per mesh identity per bind.
 It reads only indices unless a part using that identity declares lift. Both paths skip material maps.
+
+A footprint applies when its map SHA-256 and total body triangle count match the outfit's body. A
+missing footprint or a body mismatch uses regional standoff. On a match, `BindOutfit` checks each part's
+footprint triangle count against the uploaded geometry, including rigid parts. A
+`FootprintTriangleCountMismatch` refuses before any views are acquired. `FootprintApplied(wornIndex)`
+reports which worn sets used their footprint, including sets that only contribute height.
 
 Hidden triangles are cut through skinned mesh views (see the
 [regions and layers design](../docs/design/ATTACHMENT-REGIONS-AND-LAYERS-DESIGN.md#skinned-mesh-views)).
@@ -440,6 +453,7 @@ developer prose. Rigid frame errors carry `PoseCompositionFailed` with the origi
 | `OutfitRegionUnknown` | a worn set naming a region the body's region map does not declare, including in its standoffs | `SourceName`, `WornIndex`, `PartId` for a part region, `RunIndex` for a skinned run, `RegionName`, `InnerException` |
 | `OutfitViewsUnsupported` | an outfit over a scene that is not an `IAttachmentViewScene` | none |
 | `OutfitLiftUnsupported` | a worn part needs a displaced view and the scene lacks `IAttachmentDisplacedViewScene` | `SourceName`, `WornIndex`, `PartId` |
+| `FootprintTriangleCountMismatch` | a footprint for the bound body whose part triangle count differs from its uploaded rigid or skinned geometry | `SourceName` (worn set key), `WornIndex`, `PartId`, `ExpectedTriangleCount` (mesh), `ActualTriangleCount` (footprint) |
 | `ChainJointMissing` | a declared chain joint absent from the garment skin | `PartId`, `MeshKey`, `ChainIndex`, `JointName` |
 | `ChainJointIsHostJoint` | a chain joint whose name resolves to a host skin joint | `PartId`, `MeshKey`, `ChainIndex`, `JointName` |
 | `ChainNotParentLine` | a chain joint that is not a direct child of its predecessor | `PartId`, `MeshKey`, `ChainIndex`, `JointName` |

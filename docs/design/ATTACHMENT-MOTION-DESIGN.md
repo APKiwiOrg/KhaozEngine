@@ -249,17 +249,17 @@ chain can overlap a capsule for at most the blend time, while the live chain alr
 Each chain joint's result is kept relative to its anchor, and drawing composes it on the anchor's current world
 transform. The shown result interpolates the last two steps' anchor relative frames at the frame time's place between
 them, through the hierarchy. Each joint's swing from its unswung frame is slerped, and each child attaches to its
-blended parent, with the first joint pinned to its anchor. At a grid sample the captured frames are copied.
-Between samples, the solver's cached swings follow the current anchor when each sample-to-current transform
-is a rotation with positive uniform scale and any translation, and the anchor and rest bases are well conditioned.
-A changing non-uniform stretch or shear changes the endpoint bases differently. An ill-conditioned basis can
-lose a direction to float rounding even under a rigid change. The display reads the endpoint matrices in either
-case. Anchor bases are checked per sample and frame. The immutable rig bounds the conditioning of its rest
-locals together, because scale spread can accumulate down a chain. When two endpoint swings are near a half turn
-apart, the display rereads that joint's endpoints so both paths select the same arc. Interpolating each frame's translation on its own
-shortened a segment to about 0.71 of its length halfway through a quarter turn in one step. A frame that ends before
-the next step shows that interpolation, and a zero time frame keeps its shown frames, both composed on the current
-anchor, so the chain never falls behind the body.
+blended parent, with the first joint pinned to its anchor. At a grid sample the captured frames are copied. Between
+samples, the solver's cached swings follow the current anchor when each sample-to-current transform is a rotation with
+positive uniform scale and any translation, and the anchor and rest bases are well conditioned. A changing non-uniform
+stretch or shear changes the endpoint bases differently. An ill-conditioned basis can lose a direction to float
+rounding even under a rigid change. The display reads the endpoint matrices in either case. Anchor bases are checked
+per sample and frame. The immutable rig bounds the conditioning of its rest locals together, because scale spread can
+accumulate down a chain. When two endpoint swings are near a half turn apart, the display rereads that joint's
+endpoints so both paths select the same arc. Interpolating each frame's translation on its own shortened a segment to
+about 0.71 of its length halfway through a quarter turn in one step. A frame that ends before the next step shows that
+interpolation, and a zero time frame keeps its shown frames, both composed on the current anchor, so the chain never
+falls behind the body.
 
 ### Resets and limits
 

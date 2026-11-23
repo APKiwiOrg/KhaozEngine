@@ -134,11 +134,12 @@ public class LegacyDeltaServeAllocationTests(ITestOutputHelper output)
         using var rig = new Workload(sharded: true, sessions);
         for (int i = 0; i < WarmTicks; i++) rig.Tick();
 
-        long capture = 0, projection = 0, body = 0, framing = 0, send = 0, loopback = 0;
+        long capture = 0, cacheHit = 0, projection = 0, body = 0, framing = 0, send = 0, loopback = 0;
         for (int i = 0; i < MeasuredTicks; i++)
         {
             rig.Tick();
             capture += rig.Probe[LegacyDeltaPhase.Capture];
+            cacheHit += rig.Probe[LegacyDeltaPhase.CaptureCacheHit];
             projection += rig.Probe[LegacyDeltaPhase.Projection];
             body += rig.Probe[LegacyDeltaPhase.Body];
             framing += rig.Probe[LegacyDeltaPhase.Framing];
@@ -146,8 +147,8 @@ public class LegacyDeltaServeAllocationTests(ITestOutputHelper output)
             loopback += rig.LoopbackBytes;
         }
 
-        output.WriteLine("sessions={0} ticks={1} capture={2} projection={3} body={4} framing={5} send={6} loopback={7}",
-            sessions, MeasuredTicks, capture, projection, body, framing, send, loopback);
+        output.WriteLine("sessions={0} ticks={1} capture={2} cacheHit={3} projection={4} body={5} framing={6} send={7} loopback={8}",
+            sessions, MeasuredTicks, capture, cacheHit, projection, body, framing, send, loopback);
     }
 
     private static void MeasureFixedFrames(Workload rig, string size)

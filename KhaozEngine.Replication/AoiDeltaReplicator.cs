@@ -26,7 +26,8 @@ namespace KhaozEngine.Replication;
 /// and back in interest returns whole, and one sent and gone again is removed once, whatever the ack state.
 /// <see cref="Acknowledge"/> is sequence-only diagnostics and never selects a diff basis. A caller that discards a
 /// returned payload, sends it unreliably, changes session or replaces the receiver must <see cref="Forget"/> the slot
-/// and serve a fresh receiver world and view. Per-client memory is one last sent projection per slot.</para>
+/// and serve a fresh receiver world and view. Each slot keeps its last sent projection and may keep an empty
+/// spare for the next build.</para>
 /// <para>Format 2 acknowledged rebuild streams (<see cref="StartRebuild"/>, <see cref="BuildRebuildFor"/>,
 /// <see cref="RecordRebuildSent"/>, <see cref="AcknowledgeRebuild"/>) share the same per-world tick capture as legacy
 /// viewers but keep separate per-slot state: an unsigned per-slot sequence inside a nonzero epoch, one unsent
@@ -39,12 +40,12 @@ namespace KhaozEngine.Replication;
 public sealed class AoiDeltaReplicator
 {
     private readonly ReplicationRegistry registry;
-    private readonly bool hasOwnerScopedCodec;
     private int currentSeq;
+    private ulong resetGeneration;
 
     // Per slot: the sequence and exact AoI-scoped, owner-scoped projection of the last payload returned for it, which
     // is what a reliable-ordered client holds. The next payload diffs from it.
-    private readonly Dictionary<int, LegacyDeltaSlot> slots = new();
+    private readonly Dictionary<int, AoiLegacyDeltaSlot> slots = new();
 
     // Shared per-tick capture: the whole-world Replicate-channel snapshot (netId -> components), captured ONCE per
     // distinct world per seq and projected per client in WriteFor. Keyed by World because the sharded server serves
@@ -60,16 +61,10 @@ public sealed class AoiDeltaReplicator
     private readonly LegacyDeltaBodyWriter wire = new();
     private bool wireInUse;
     private Exception? legacyBodyFailureForTests;
-    // Project's reused ordering scratch: the interest-set entities present in the capture, tagged with their capture
-    // order, sorted so the projection is built in world ForEach order (byte-identical to the old full-capture walk).
-    // Reused across every WriteFor, so a steady-state projection allocates only the exact-size projected baseline.
-    private readonly List<(int order, long netId, Comps comps)> projectScratch = new();
-    private static readonly Comparison<(int order, long netId, Comps comps)> ByCaptureOrder =
-        static (a, b) => a.order.CompareTo(b.order);
+    private readonly AoiProjectionBuilder projector;
     private readonly RebuildDeltaWriter rebuild;
 
-    // Test seam: how many world scans the shared capture has actually run (one per distinct world per tick). A tick
-    // that serves C clients from one world scans once, not C times - what this whole change buys.
+    // Test seam: how many world scans have populated the shared capture cache, once per distinct world per tick.
     internal long WorldScanCount { get; private set; }
 
     // Test seams: slots holding last sent state, and the shared captures retained for the current seq (one per
@@ -77,6 +72,12 @@ public sealed class AoiDeltaReplicator
     internal int LegacySlotCount => slots.Count;
 
     internal int LegacyHistoryCount => captureByWorld.Count;
+
+    internal Func<int> ObserveCandidateCountForTests(int slot) => slots[slot].ObserveCandidateCountForTests();
+
+    // Weak handles for lifetime tests only. No serving path calls this seam.
+    internal (WeakReference<Comps> Source, WeakReference<Comps>? Public, WeakReference<byte[]> Payload)
+        CaptureReferencesForTests(World world, long netId) => captureByWorld[world][netId].ReferencesForTests();
 
     internal LegacyDeltaAllocationProbe? LegacyAllocationsForTests { get; set; }
     internal void FailNextLegacyBodyCompletionForTests(Exception failure) =>
@@ -90,13 +91,8 @@ public sealed class AoiDeltaReplicator
     {
         this.registry = registry ?? throw new ArgumentNullException(nameof(registry));
         if (historyDepth <= 0) throw new ArgumentOutOfRangeException(nameof(historyDepth), historyDepth, "must be positive");
+        projector = new AoiProjectionBuilder(registry);
         rebuild = new RebuildDeltaWriter(registry);
-        // Whether any registered component is owner-scoped. If none is, every client projects to the exact same
-        // Replicate-channel state, so WriteFor can reference the shared capture's component dictionaries directly
-        // (they are immutable once captured) instead of building a filtered per-client copy - byte-identical, fewer
-        // allocations. Mirrors ServerReplicator's fast path.
-        foreach (ComponentCodec codec in registry.Ordered)
-            if ((codec.Channels & ReplicationChannels.OwnerOnly) != 0) { hasOwnerScopedCodec = true; break; }
     }
 
     /// <summary>The latest snapshot sequence (0 before the first <see cref="BeginTick"/>).</summary>
@@ -115,12 +111,14 @@ public sealed class AoiDeltaReplicator
     /// the owner has already ended every connection this writer served and will serve only fresh receivers.
     /// Replication cannot verify or end transports itself. The reset remembers no format 2 epoch, so the owner must
     /// start each new stream with an epoch greater than any it issued before.
+    /// An interrupted build throws <see cref="InvalidOperationException"/> and commits nothing.
     /// </summary>
     /// <exception cref="InvalidOperationException">The sequence is not exhausted.</exception>
     public void ResetAfterLegacySequenceExhaustion()
     {
         if (!LegacySequenceExhausted)
             throw new InvalidOperationException("The legacy sequence is not exhausted, so the writer cannot be reset.");
+        resetGeneration = unchecked(resetGeneration + 1);
         currentSeq = 0;
         captureByWorld.Clear();
         captureSeq = 0;
@@ -163,15 +161,23 @@ public sealed class AoiDeltaReplicator
     /// </summary>
     /// <remarks>
     /// The world is scanned and captured ONCE per <paramref name="world"/> per tick (the first <see cref="WriteFor"/>
-    /// after a <see cref="BeginTick"/> that sees it), shared across every client served from that world. On top of
-    /// that shared capture, <see cref="Project"/> is O(interestSet): it iterates this client's interest set and
-    /// resolves each entity's captured components in O(1), ordering the selection by capture position so the
-    /// changed-entity wire order is identical to walking the whole capture. So the per-client cost scales with the
-    /// client's area of interest, not the world population. The wire is byte-identical to capturing per client.
+    /// after a <see cref="BeginTick"/> that sees it), shared across every client served from that world. The projection
+    /// iterates this client's interest set and resolves each entity's captured components in O(1), ordering the
+    /// selection by capture position so the changed-entity wire order is identical to walking the whole capture.
+    /// So the per-client cost scales with the client's area of interest, not the world population. The wire is
+    /// byte-identical to capturing per client.
     /// </remarks>
-    public byte[] WriteFor(int slot, World world, IReadOnlySet<long> interestSet, long? ownerNetId = null) =>
-        BuildFor(wireInUse ? new LegacyDeltaBodyWriter() : wire, slot, world, interestSet, ownerNetId,
-            prefixLength: 0, owned: true)!;
+    /// <exception cref="InvalidOperationException">A sequence reset interrupts the build, so it commits nothing.</exception>
+    public byte[] WriteFor(int slot, World world, IReadOnlySet<long> interestSet, long? ownerNetId = null)
+    {
+        if (wireInUse)
+            return BuildFor(new LegacyDeltaBodyWriter(), slot, world, interestSet, ownerNetId,
+                prefixLength: 0, owned: true)!;
+
+        wireInUse = true;
+        try { return BuildFor(wire, slot, world, interestSet, ownerNetId, prefixLength: 0, owned: true)!; }
+        finally { wireInUse = false; }
+    }
 
     // NetWorld fills the reserved prefix and hands these bytes to a synchronous transport call. A nested
     // build while this writer is in use takes the owning path with independent scratch and an owned frame.
@@ -217,90 +223,84 @@ public sealed class AoiDeltaReplicator
         if (interestSet is null) throw new ArgumentNullException(nameof(interestSet));
         if (currentSeq == 0) throw new InvalidOperationException("Call BeginTick before WriteFor.");
 
-        // Project the shared whole-world capture down to what THIS client is entitled to: the in-AoI entities, with
-        // each entity's components filtered to the Replicate channel owner-scoped to this slot. An OwnerOnly component
-        // on another player's entity is stripped here (never sent), so this slot's state holds only what it was
-        // actually sent and owner-only visibility falls out of the diff.
+        ulong generation = resetGeneration;
         LegacyDeltaAllocationProbe? probe = LegacyAllocationsForTests;
         long phaseStart = LegacyDeltaAllocationProbe.Start(probe);
-        AoiBaseline capture = CaptureFor(world);
-        probe?.Record(LegacyDeltaPhase.Capture, phaseStart);
-        phaseStart = LegacyDeltaAllocationProbe.Start(probe);
-        AoiBaseline projected = Project(capture, interestSet, ownerNetId);
-        probe?.Record(LegacyDeltaPhase.Projection, phaseStart);
-        phaseStart = LegacyDeltaAllocationProbe.Start(probe);
+        AoiBaseline capture = CaptureFor(world, out bool cacheHit, probe);
+        if (cacheHit) probe?.Record(LegacyDeltaPhase.CaptureCacheHit, phaseStart);
 
-        LegacyDeltaSlot? previous = slots.GetValueOrDefault(slot);
-        AoiBaseline? baseline = previous?.Projection;
-        int baselineSeq = previous?.Sequence ?? -1;
+        phaseStart = LegacyDeltaAllocationProbe.Start(probe);
+        bool recycle = ReferenceEquals(destination, wire);
+        AoiBaseline projected = recycle && slots.TryGetValue(slot, out AoiLegacyDeltaSlot? state)
+            ? state.PrepareCandidate()
+            : new AoiBaseline();
+        bool committed = false;
+        try
+        {
+            projector.Fill(projected, capture, interestSet, ownerNetId, useSharedScratch: recycle);
+            ThrowIfReset(generation);
+            probe?.Record(LegacyDeltaPhase.Projection, phaseStart);
+            phaseStart = LegacyDeltaAllocationProbe.Start(probe);
 
-        destination.Write(registry, projected, baseline, baselineSeq, currentSeq, prefixLength,
-            ref legacyBodyFailureForTests);
-        byte[]? payload = owned ? destination.ToArray() : null;
-        // Only a completely built payload becomes the slot's last sent state.
-        if (previous is null) slots[slot] = new LegacyDeltaSlot(currentSeq, projected);
-        else previous.Sent(currentSeq, projected);
-        probe?.Record(LegacyDeltaPhase.Body, phaseStart);
-        return payload;
+            // The interest set can run caller code. Resolve the committed baseline after its enumeration.
+            AoiLegacyDeltaSlot? previous = slots.GetValueOrDefault(slot);
+            destination.Write(registry, projected, previous?.Projection, previous?.Sequence ?? -1,
+                currentSeq, prefixLength, ref legacyBodyFailureForTests);
+            byte[]? payload = owned ? destination.ToArray() : null;
+
+            // Only a completely built payload becomes the slot's last sent state.
+            if (previous is null) slots[slot] = new AoiLegacyDeltaSlot(currentSeq, projected);
+            else previous.Commit(currentSeq, projected, recycle);
+            committed = true;
+            probe?.Record(LegacyDeltaPhase.Body, phaseStart);
+            return payload;
+        }
+        finally
+        {
+            if (!committed) projected.Clear();
+        }
     }
 
     /// <summary>
     /// The shared whole-world capture for <paramref name="world"/> at the current seq: every <see cref="NetId"/>
     /// entity's <see cref="ReplicationChannels.Replicate"/>-channel components (owner-only ones included, keyed under
-    /// their entity, to be scoped per client in <see cref="Project"/>). Captured once per world per tick and reused by
+    /// their entity, to be scoped in each viewer projection). Captured once per world per tick and reused by
     /// every later <see cref="WriteFor"/> in the same tick. Insertion order is the world's <c>ForEach</c> order, which
     /// the per-client projection preserves so the changed-entity wire order is unchanged.
     /// </summary>
-    private AoiBaseline CaptureFor(World world)
+    private AoiBaseline CaptureFor(World world, out bool cacheHit, LegacyDeltaAllocationProbe? probe = null)
     {
         if (captureSeq != currentSeq)
         {
             captureByWorld.Clear();   // a new tick: the previous tick's captures are stale, drop them
             captureSeq = currentSeq;
         }
-        if (captureByWorld.TryGetValue(world, out AoiBaseline? cached)) return cached;
+        if (captureByWorld.TryGetValue(world, out AoiBaseline? cached))
+        {
+            cacheHit = true;
+            return cached;
+        }
+        cacheHit = false;
 
-        // One shared buffer per world capture, only Replicate-channel components (owner-only included, scoped per
-        // client in Project) are captured. A slot's last sent projection references it until that slot is served
+        // One shared buffer per world capture. Owner-only components are scoped in the viewer projection.
+        // A slot's last sent projection references the buffer until that slot is successfully served
         // again or forgotten - each capture's payload buffer is a fresh array, so it is never reused while a slot
         // still references it.
+        ulong generation = resetGeneration;
+        long scanStart = LegacyDeltaAllocationProbe.Start(probe);
         AoiBaseline state = captureScratch.CaptureReplicate(world, registry);
+        probe?.Record(LegacyDeltaPhase.Capture, scanStart);
+        // Codecs can reset the writer during capture. Keep that scan out of the new generation's cache.
+        ThrowIfReset(generation);
         captureByWorld[world] = state;
         WorldScanCount++;
         return state;
     }
 
-    /// <summary>
-    /// Projects the shared <paramref name="capture"/> down to one client: keeps only entities in
-    /// <paramref name="interestSet"/> and, per entity, only the components this slot may see (an
-    /// <see cref="ReplicationChannels.OwnerOnly"/> component only when its net id equals <paramref name="ownerNetId"/>).
-    /// O(interestSet): it iterates the (usually far smaller) interest set and resolves each entity's captured
-    /// components in O(1), instead of walking the whole shared capture and filtering. The selected entities are then
-    /// ordered by their capture position (<see cref="CapturedComponents.Order"/>, the world <c>ForEach</c> order) so
-    /// the resulting baseline - and thus the changed-entity order on the wire - matches a full capture walk exactly
-    /// (byte-identical to the pre-index projection). When no registered component is owner-scoped, each in-AoI
-    /// entity's captured component set is referenced directly (it is immutable and identical for every client),
-    /// avoiding a per-client copy. When one is, the owner still gets the captured set itself and every other viewer
-    /// gets the entity's one shared public view (<see cref="CaptureProjection.OwnerScope"/>), so owner scoping costs
-    /// at most one filtered copy per entity per tick, not one per entity per client.
-    /// </summary>
-    private AoiBaseline Project(AoiBaseline capture, IReadOnlySet<long> interestSet, long? ownerNetId)
+    private void ThrowIfReset(ulong generation)
     {
-        // Collect the in-AoI entities present in the capture, tagged with their capture order, then sort by that order
-        // to reproduce the world ForEach order the old full-capture walk emitted. Capture orders are unique per entity,
-        // so the sort has no ties and is deterministic regardless of interest-set enumeration order.
-        projectScratch.Clear();
-        foreach (long netId in interestSet)
-            if (capture.TryGetValue(netId, out Comps? comps))
-                projectScratch.Add((comps.Order, netId, comps));
-        projectScratch.Sort(ByCaptureOrder);
-
-        var projected = new AoiBaseline(projectScratch.Count); // exact-size: no growth reallocations
-        foreach ((int _, long netId, Comps comps) in projectScratch)
-            projected[netId] = hasOwnerScopedCodec
-                ? CaptureProjection.OwnerScope(comps, registry, netId, ownerNetId)
-                : comps; // shared, immutable: no owner scoping to apply, so no copy needed
-        return projected;
+        if (generation != resetGeneration)
+            throw new InvalidOperationException("A sequence reset interrupted the replication build.");
     }
 
     /// <summary>
@@ -309,7 +309,7 @@ public sealed class AoiDeltaReplicator
     /// </summary>
     public void Acknowledge(int slot, int seq)
     {
-        if (slots.TryGetValue(slot, out LegacyDeltaSlot? state)) state.Acknowledge(seq);
+        if (slots.TryGetValue(slot, out AoiLegacyDeltaSlot? state)) state.Acknowledge(seq);
     }
 
     /// <summary>
@@ -350,7 +350,7 @@ public sealed class AoiDeltaReplicator
     /// <exception cref="ArgumentNullException"><paramref name="world"/> or <paramref name="interestSet"/> is
     /// null.</exception>
     /// <exception cref="InvalidOperationException"><see cref="BeginTick"/> was never called, the slot has no started
-    /// stream, or the owner differs from the epoch's owner.</exception>
+    /// stream, the owner differs from the epoch's owner, or a sequence reset interrupts the build.</exception>
     /// <exception cref="DeltaRebuildException">The projection can never fit
     /// (<see cref="DeltaRebuildFailure.CapacityExceeded"/>), pins leave no room for it
     /// (<see cref="DeltaRebuildFailure.RetentionPressure"/>), or the next sequence is not ordered after the baseline
@@ -362,7 +362,12 @@ public sealed class AoiDeltaReplicator
         if (interestSet is null) throw new ArgumentNullException(nameof(interestSet));
         if (currentSeq == 0) throw new InvalidOperationException("Call BeginTick before BuildRebuildFor.");
         rebuild.RequireBuildable(slot, ownerNetId);
-        return rebuild.Build(slot, Project(CaptureFor(world), interestSet, ownerNetId), ownerNetId, keyframe);
+        ulong generation = resetGeneration;
+        AoiBaseline capture = CaptureFor(world, out _);
+        var projected = new AoiBaseline();
+        projector.Fill(projected, capture, interestSet, ownerNetId, useSharedScratch: !wireInUse);
+        ThrowIfReset(generation);
+        return rebuild.Build(slot, projected, ownerNetId, keyframe);
     }
 
     /// <summary>

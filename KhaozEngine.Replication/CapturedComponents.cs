@@ -91,6 +91,11 @@ internal sealed class CapturedComponents
     // replicator reads it from one thread.
     private CapturedComponents? publicView;
 
+    // Weak handles for lifetime tests only. No serving path calls this seam.
+    internal (WeakReference<CapturedComponents> Source, WeakReference<CapturedComponents>? Public,
+        WeakReference<byte[]> Payload) ReferencesForTests() =>
+        (new(this), publicView is null ? null : new(publicView), new(buffer.Bytes));
+
     /// <summary>
     /// This entity's components minus every <see cref="ReplicationChannels.OwnerOnly"/> one: exactly what any viewer
     /// other than the owner may see. Computed once per capture and shared across every non-owning client, so an
@@ -101,7 +106,7 @@ internal sealed class CapturedComponents
     {
         if (publicView is not null) return publicView;
         bool anyOwnerOnly = false;
-        foreach (ushort typeId in segments.Keys)
+        foreach (var (typeId, _) in segments)
             if (!IsPublic(registry, typeId)) { anyOwnerOnly = true; break; }
         if (!anyOwnerOnly) return publicView = this;   // the common entity: nothing to strip, nothing to allocate
 
@@ -133,13 +138,14 @@ internal sealed class CapturedComponents
 /// Reusable scratch that captures a world's <see cref="ReplicationChannels.Replicate"/>-channel components into one
 /// consolidated <see cref="CaptureBuffer"/> per capture, keyed per entity by <see cref="NetId"/>. The scratch stream
 /// is reused across ticks (its capacity is retained), so a steady-state capture allocates only the final exact-size
-/// buffer plus the per-entity <see cref="CapturedComponents"/> - never a <c>byte[]</c> per component. Single-threaded:
-/// a replicator instance owns one scratch and drives it on its own server-tick thread, so there is no locking.
+/// buffer plus the per-entity <see cref="CapturedComponents"/> - never a <c>byte[]</c> per component. An instance
+/// runs on the writer's server-tick thread. A nested scan takes its own scratch stream.
 /// </summary>
 internal sealed class CaptureScratch
 {
     private readonly MemoryStream stream = new();
     private readonly BinaryWriter writer;
+    private bool inUse;
 
     public CaptureScratch() => writer = new BinaryWriter(stream);
 
@@ -151,6 +157,16 @@ internal sealed class CaptureScratch
     /// non-owning client at projection time.
     /// </summary>
     public Dictionary<long, CapturedComponents> CaptureReplicate(World world, ReplicationRegistry registry)
+    {
+        // A codec can reenter this writer while the stream holds earlier entity bytes.
+        if (inUse) return new CaptureScratch().Scan(world, registry);
+
+        inUse = true;
+        try { return Scan(world, registry); }
+        finally { inUse = false; }
+    }
+
+    private Dictionary<long, CapturedComponents> Scan(World world, ReplicationRegistry registry)
     {
         int replicateCount = 0;
         IReadOnlyList<ComponentCodec> codecs = registry.Ordered;

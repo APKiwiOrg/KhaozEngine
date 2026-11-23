@@ -151,33 +151,8 @@ public sealed class ClientApplyReuseTests
     [InlineData(true)]
     public void CutUnframedSampleHasTheBaseFailureType(bool delta)
     {
-        var registry = new ReplicationRegistry();
-        registry.Register<Marker>(1, static (sample, writer) => writer.Write(sample.Value), static reader =>
-        {
-            int length = reader.ReadInt32();
-            reader.BaseStream.Seek(length, SeekOrigin.Current);
-            return new Marker(length);
-        }, discreteSample: true);
-
-        using var stream = new MemoryStream();
-        using var writer = new BinaryWriter(stream);
-        if (delta)
-        {
-            writer.Write(-1);
-            writer.Write(1);
-            writer.Write(0);
-        }
-        writer.Write(1);
-        writer.Write(3L);
-        if (delta)
-        {
-            writer.Write(true);
-            writer.Write(0);
-        }
-        writer.Write((ushort)1);
-        int sampleStart = (int)stream.Position;
-        writer.Write(3);
-        byte[] cut = stream.ToArray();
+        ReplicationRegistry registry = SeekingSampleRegistry();
+        byte[] cut = CutSampledFrame(delta, declared: 3, out int sampleStart);
         byte[] sample = new byte[sizeof(int) + 3];
         Assert.Throws<ArgumentException>(() => Array.Copy(cut, sampleStart, sample, 0, sample.Length));
 
@@ -195,6 +170,60 @@ public sealed class ClientApplyReuseTests
             if (delta) view.ApplyDeltaBorrowed(world, body);
             else view.ApplyBorrowed(world, body);
         });
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SampleEndFarBeyondTheBodyIsRefusedBeforeItsCopyIsSized(bool delta)
+    {
+        // The window check runs before the sample array is created, so a reader left at the stream
+        // limit gets the same refusal as any other end beyond the body and never sizes an array from it.
+        ReplicationRegistry registry = SeekingSampleRegistry();
+        byte[] cut = CutSampledFrame(delta, declared: int.MaxValue, out _);
+        var view = new ClientReplicationView(registry);
+        var world = new World();
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        Assert.Throws<ArgumentException>(() => Apply(view, world, cut, delta));
+        Assert.True(GC.GetAllocatedBytesForCurrentThread() - before < 1 << 20);
+    }
+
+    // A discrete sampled codec that skips a declared length, or jumps to the stream limit for int.MaxValue.
+    private static ReplicationRegistry SeekingSampleRegistry()
+    {
+        var registry = new ReplicationRegistry();
+        registry.Register<Marker>(1, static (sample, writer) => writer.Write(sample.Value), static reader =>
+        {
+            int length = reader.ReadInt32();
+            if (length == int.MaxValue) reader.BaseStream.Position = int.MaxValue;
+            else reader.BaseStream.Seek(length, SeekOrigin.Current);
+            return new Marker(length);
+        }, discreteSample: true);
+        return registry;
+    }
+
+    // One entity with one sampled component whose payload is only its declared length, cut straight after it.
+    private static byte[] CutSampledFrame(bool delta, int declared, out int sampleStart)
+    {
+        using var stream = new MemoryStream();
+        using var writer = new BinaryWriter(stream);
+        if (delta)
+        {
+            writer.Write(-1);
+            writer.Write(1);
+            writer.Write(0);
+        }
+        writer.Write(1);
+        writer.Write(3L);
+        if (delta)
+        {
+            writer.Write(true);
+            writer.Write(0);
+        }
+        writer.Write((ushort)1);
+        sampleStart = (int)stream.Position;
+        writer.Write(declared);
+        return stream.ToArray();
     }
 
     [Fact]

@@ -37,8 +37,10 @@ public sealed class TileSnapshotReceiveTests(ITestOutputHelper output)
         Assert.Equal(new byte[] { 41, 83 }, owned);
     }
 
-    [Fact]
-    public void WarmedJoinedPollBorrowsPaddedSnapshotBody()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void WarmedJoinedPollBorrowsTheSnapshotBody(bool padded)
     {
         const int measured = 32;
         const long remoteId = 73;
@@ -67,11 +69,14 @@ public sealed class TileSnapshotReceiveTests(ITestOutputHelper output)
 
         byte[] body = SnapshotWriter.Write(world, registry);
         byte[] envelope = TileProtocol.EncodeSnapshotFrame(-1, 12, 48, body);
-        // The encoder pads two-byte bodies. A complete replication snapshot is longer, so set the
-        // accepted pad flag and add the pad to a valid snapshot to exercise the full receive path.
-        int flagsOffset = envelope.Length - body.Length - 1;
-        envelope[flagsOffset] = 0x01;
-        Array.Resize(ref envelope, envelope.Length + 1);
+        if (padded)
+        {
+            // The server sends a replication snapshot unpadded, as the encoder wrote it. The encoder pads only
+            // two-byte bodies, so set the accepted pad flag and add the pad to cover the padded receive path too.
+            int flagsOffset = envelope.Length - body.Length - 1;
+            envelope[flagsOffset] = 0x01;
+            Array.Resize(ref envelope, envelope.Length + 1);
+        }
         byte[] frame = SessionFrame.Write(SessionOpcode.Data, envelope);
         for (int i = 0; i < 16; i++)
         {

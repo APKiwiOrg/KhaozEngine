@@ -367,7 +367,8 @@ public sealed partial class ClientReplicationView
                 if (extension) ms.Position = end;                       // the framed read never moved ms: step it over
                 if (codec.FixedDelaySampled)   // interpolated OR discrete nearest-sampled: both need the timestamped bytes
                 {
-                    // An unframed codec can seek past EOF. Preserve the legacy Array.Copy failure type.
+                    // An unframed codec can seek past EOF. Refuse with the legacy Array.Copy failure type, and
+                    // before the copy is sized, so no reader position can ask for an array larger than the body.
                     if (end > backing.Length) throw new ArgumentException("A sampled component extends past the replication body.");
                     var slice = new byte[end - posBefore];
                     backing.Span.Slice((int)posBefore, slice.Length).CopyTo(slice);

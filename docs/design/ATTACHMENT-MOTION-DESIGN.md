@@ -4,8 +4,8 @@ Implemented for 24.5.0 under [#1879](https://github.com/APKiwiOrg/KhaozEngine/is
 a skinned body and its clips under [#1876](https://github.com/APKiwiOrg/KhaozEngine/issues/1876). 24.8.0 keeps
 corrections out of velocity ([#1882](https://github.com/APKiwiOrg/KhaozEngine/issues/1882)), steps on a fixed grid
 ([#1883](https://github.com/APKiwiOrg/KhaozEngine/issues/1883)) and adds a width bound for linked chains
-([#1884](https://github.com/APKiwiOrg/KhaozEngine/issues/1884)). The
-[consumer guide](../USING-KHAOZENGINE.md#hanging-parts-that-swing) covers setup and frame submission.
+([#1884](https://github.com/APKiwiOrg/KhaozEngine/issues/1884)). It also skips capsules outside each chain's reach.
+The [consumer guide](../USING-KHAOZENGINE.md#hanging-parts-that-swing) covers setup and frame submission.
 
 A worn skinned part may carry joints of its own beyond the body's. They form chains, each hanging from a body joint:
 a cloak's panels, a skirt's strips, a strap tail, a braid, a pouch. A motion stage moves those joints every frame
@@ -134,16 +134,16 @@ moves.
 | `angleLimit` | radians, above 0 and at most pi | How far a segment may bend away from its rest direction relative to its parent. |
 | `radius` | metres, 0 or more | The chain's thickness against colliders. |
 
-Links name pairs of chains in one part. A link keeps the movable joints at the same position in both chains, and both
-chains' tips, near their rest spacing through a spring of 10 radians per second. Tips are linked because the tip
+Links name pairs of chains in one part. A spring of 10 radians per second keeps movable joints at matching depths,
+and both chains' tips, near their rest spacing. Tips are linked because the tip
 sets the last joint's turn, so an unlinked tip would let a hem splay.
 
 A soft link only pulls, so under a moving body linked panels can spread to several times their rest spacing and come
-back, which reads as rubber. A part may state `linkStretch`, above 0 and at most 1. Every linked pair of that part
-then keeps its spacing within `linkStretch` of rest, longer or shorter, wherever the bend limit and capsules allow, so
-a cloak of panels moves as one sheet. A part
-without it has no bound. A garment that should hang as one piece states it. Strips that should fan out apart leave it
-out. Stretch and compression share one bound because a sheet of panels should neither part nor overlap.
+back, which reads as rubber. A part may state `linkStretch`, above 0 and at most 1. The solver then steers each linked
+pair into a band around rest spacing, within the position sweep budget and subject to the bend limit and capsules,
+so a cloak of panels moves as one sheet. A garment that should hang as one piece states the bound. Strips that
+should fan out rely on the springs alone. Stretch and compression share one bound because a sheet of panels should
+neither part nor overlap.
 
 ## Colliders
 
@@ -207,29 +207,30 @@ frame's poses and this frame's. Within each step of length `h`:
    root to tip pass without the stiffness spring restores the bend limit, collisions and lengths.
 5. **Width bound.** Chains joined by links of a part that states `linkStretch` run that second pass together, depth by
    depth. Each depth's particles are placed from their final parents. Bound pairs at that depth then move both
-   particles on their own length spheres into the band, in sweeps that alternate direction and stop once every pair
-   fits or after eight. The bend limit and capsules are applied again to each moved particle, because they outrank
-   the bound. The width's escaping relative velocity is removed before the length, limit and contact velocity
-   constraints, which keep the last word. Tip pairs are solved together after every movable depth, because a short
-   chain's tip can be linked to a longer chain's. A pair whose segments point straight apart turns both toward one
-   shared perpendicular, since its tangents give no leverage. A bound applied after the whole pass has to drag the
-   joints below a corrected particle without their speed, and the next step pushes them back out. Placing a depth only
-   from final parents keeps lengths exact and drags nothing.
+   particles on their own length spheres toward the band. Up to eight alternating sweeps stop early when every
+   pair fits within 0.5 mm of its band. The bend limit and capsules are applied again to each moved particle,
+   because they outrank the bound. The width's escaping relative velocity is removed before the length, limit
+   and contact velocity constraints, which keep the last word. Tip pairs are solved together after all joint
+   depths, because a short chain's tip can be linked to a longer chain's. A pair whose segments point straight
+   apart turns both toward one shared perpendicular, since its tangents give no leverage. A bound applied after
+   the whole pass has to drag the joints below a corrected particle without their speed, and the next step
+   pushes them back out. Placing a depth only from final parents keeps lengths exact and drags nothing.
 
 Corrections never write velocity. A chain whose one movable joint hangs from a still anchor never gains kinetic
-energy from its limit, contacts or length, and a chain released from a capsule it rested on starts from rest. The
+energy from its limit, static contacts or length. A chain released from a capsule it rested on starts from rest. The
 anchored first joint and segment lengths always hold. A collider outranks the bend limit, because a pass through
 looks worse than an extra bend. Contact solves the capsule locally as a sphere at the closest point of its axis, up to
-eight passes, in double precision. Each chain skips every capsule farther from its first joint than the chain's reach
-plus both radii, the contact tolerance and a rounding margin far above double precision error. No position a pass
-tests leaves that reach, and a correction that would replays the joint against every capsule, so skipping never
-changes a result. Segment lengths come from this frame's rest hang, so a scaled wearer keeps its proportions.
+eight passes, in double precision. Each chain can skip capsules farther from its first joint than the chain's reach
+plus both radii, the contact tolerance and a rounding margin far above double precision error. A correction that
+would leave that reach replays the joint against every capsule, so skipping preserves the result. A standalone
+simulation with more than 64 capsules, or a reach too large to bound safely, uses the full list. Segment lengths
+come from this step's rest hang, so a scaled wearer keeps its proportions.
 
 Known limits: contact acts on joints and tips, so a long segment can cross a thin capsule between its ends, and the
-fitting step uses enough joints to avoid it. The shown shape is one step behind the last step relative to its anchor,
-so a collider moving fast relative to the anchor can overlap the shown chain by up to one step of that motion while
-the stepped chain clears it. While a held chain blends back to the live one, the shown chain can overlap a capsule for
-at most the blend time, while the live chain already clears it.
+fitting step uses enough joints to avoid it. The shown shape is up to one step behind the latest solved shape
+relative to its anchor. A collider moving fast relative to the anchor can overlap the shown chain by up to one
+step of that motion while the stepped chain clears it. While a held chain blends back to the live one, the shown
+chain can overlap a capsule for at most the blend time, while the live chain already clears it.
 
 Each chain joint's result is kept relative to its anchor, and drawing composes it on the anchor's current world
 transform. The shown result interpolates the last two steps' anchor relative frames, rotation by slerp and
@@ -314,10 +315,10 @@ Format 6 is format 5 with one optional member, `linkStretch` in a part's chain m
 }
 ```
 
-`Write` writes format 6 only for a set with `linkStretch`, so formats 1 to 5 keep their bytes and `SemanticSha256`. A
-reader that predates format 6 refuses the version instead of dropping the bound, which would change the look. A
-`linkStretch` outside above 0 and at most 1 refuses, and so does one on a part with no links, which would bound
-nothing.
+`Write` writes format 6 only for a set with `linkStretch`, so formats 1 to 5 keep their bytes and `SemanticSha256`.
+Move all readers to 24.8.0 before publishing format 6. Earlier readers refuse it so the bound cannot be silently
+lost. A bound must be finite, greater than zero and at most one. The part needs at least one link for the bound
+to apply.
 
 The body collider file, format 1:
 
@@ -425,14 +426,18 @@ body, like everything else in a piece.
 The wearables limits are 32 wearers, at most 2 ms added CPU preparation, no managed allocation once warm and at most
 1.3 ms added GPU time at 32 characters on a T4.
 
-- CPU: a cloak of five chains of five joints and four strap tails of three joints is about 37 particles against
-  about 12 colliders. Each joint takes a few matrix products and a pass over the colliders per step, twice when links
-  are present. Capsule tests are most of a step, so each chain skips the capsules beyond its reach. The fixed step
-  runs 0.83 steps a frame on average at 144 Hz and 2 at 60 Hz.
+- CPU: a cloak of five chains of five joints and four strap tails of three joints has 37 movable points, including
+  the tips. Each step runs a root-to-tip solve against capsules within each chain's reach. When link springs move
+  particles, chains outside bounded groups get a second pass. Bounded groups always get a second pass by depth.
+  Each depth and the tip group run up to eight position sweeps over their bounded pairs, recheck contact and bends
+  for moved points, then apply the velocity constraints. A reach test selects candidates once per chain per pass,
+  with a full capsule replay if a contact correction leaves the conservative reach. At the default 120 Hz simulation
+  rate, a 144 Hz frame averages 0.83 steps and a 60 Hz frame averages two.
 - GPU: no shader, pass or draw count changes. A chained part adds palette entries within the 128 joint limit.
 - Allocation is tested per call, as outfit draws are.
 
-`SwingCostDiagnostics` reports CPU preparation for 32 wearers with independent outfits and motion. It measures
+`SwingCostDiagnostics` reports CPU preparation for 32 wearers with independent outfits and motion. Each wearer
+uses 12 body capsules and a cloak whose neighbouring chains have a 25% width bound. It measures
 `WornMotion.Step` and `BoundOutfit.WriteDraws` for every worn set, excluding host animation and scene submission.
 After 120 warm frames per rate it reports the mean, p50, p95 and maximum frame cost in milliseconds, total managed
 bytes on the preparation thread and the runner environment in one JSON line. Each rate samples 600 frames at
@@ -462,7 +467,7 @@ or collider.
 
 - `AttachmentSetRefusal`: an unknown motion kind, an empty chain, a duplicate chain joint, a setting out of range, a
   bad tip, a bad link, a bad collider, too many chains, joints, links or colliders, motion or colliders without a
-  layer, and in format 6 a `linkStretch` out of range or on a part with no links.
+  layer, and the three width bound reasons listed below.
 - `BodyCollidersRefusal`, a new family: an unsupported format version, an unknown or duplicate property, a bad rig
   identity, an empty joint name, a bad radius or point and too many colliders.
 - `AttachmentBindingRefusal`: a chain joint missing from the garment skin, a chain joint named like a host joint, a
@@ -506,8 +511,10 @@ All headless, on synthetic skeletons built in code.
 
 ## Not supported
 
-Cloth, live reshape, wind, chains colliding with each other or the ground, rigid parts bound to chain joints and a
-rigid part riding a bending surface.
+The chain solver has no cloth, live reshape or wind input. It tests joint and tip contact against the supplied
+capsules. Links constrain spacing within a part, with no chain-to-chain contact. `WornMotion` takes only body and
+worn set capsules and has no ground query. Rigid attachments bind to host joints, and cannot bind to chain joints
+or follow a bending surface. Skin a hanging rigid piece to a one-joint chain to give it swing.
 
 ## Signatures corrected against the code
 
@@ -551,3 +558,12 @@ Each task records here any shape the code required that differs from this note, 
   parameter. The cull sphere starts at the first simulated joint. The host anchor carries that joint's offset,
   which is outside the simulated chain length. The cache measures reach from the uploaded garment's inverse binds
   and vertex weights. Binding still owns typed chain validation.
+
+- Width bound. `AttachmentSetJson.LinkStretchFormatVersion` is 6. The nullable, init-only `float` properties
+  `ChainMotionDefinition.LinkStretch` and `ChainLink.Stretch` preserve the existing constructors and deconstruction.
+  A set supplies its bound through the motion definition. The renderer's existing `CreateMotion` methods copy
+  it to each rig link in that part.
+  A directly constructed `ChainRig` takes per-link bounds and rejects invalid values with `ArgumentException`.
+  `AttachmentSetRefusal` appends `LinkStretchOutOfRange` and `LinkStretchWithoutLinks`, both with `PartId`,
+  `PartIndex`, `SettingName` and `JsonPath`. It also appends `ChainLinkStretchInDefinition` for a rig bound
+  embedded in a set definition's link, with `PartId`, `PartIndex`, `LinkIndex` and `JsonPath`.

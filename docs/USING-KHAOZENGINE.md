@@ -7746,16 +7746,25 @@ A separate body collider file declares capsules against the body's `rig-v1` iden
 joint and use endpoints and a radius in the body's rest model space. Chains collide with the body and all worn
 set capsules on that wearer. In the bind pose the radius keeps its authored size before wearer scaling.
 During motion it follows the largest axis scale of the composed rest-to-world transform.
-The [format 4 reference](../KhaozEngine.Attachments/README.md#format-4)
-gives the schema and limits.
-
-Use the [format 6 `linkStretch` setting](../KhaozEngine.Attachments/README.md#format-6) to declare a width
-bound for all links in a skinned part's chain motion. Publish a set using it once every reader supports format 6.
+The [format 4 reference](../KhaozEngine.Attachments/README.md#format-4) gives the schema and limits.
 
 Publish format 4 after every reader moves to 24.5.0 or later. A 24.4.0 reader raises
 `AttachmentSetDataException` with `JsonPropertyUnknown` for root `colliders` if the member is present,
 even when empty. Without `colliders` it raises `FormatVersionUnsupported` for version 4.
 Readers at 24.3.0 or earlier raise `JsonPropertyUnknown` for `layer` in canonical format 4 bytes.
+
+To keep neighbouring panels together, add [format 6 `linkStretch`](../KhaozEngine.Attachments/README.md#format-6)
+beside `links` in the part's `motion` object:
+
+```json
+"links": [[0, 1]],
+"linkStretch": 0.15
+```
+
+For every link in the part, the solver aims to keep corresponding movable joints and both tips between
+85% and 115% of their rest spacing, subject to bend limits and capsule clearance. Omit `linkStretch`
+for looser panels that use the link springs alone. Move every reader to 24.8.0 or later before publishing
+format 6.
 
 Load the body collider file and bind when the outfit changes. The example uses the cache, loaded body
 regions, map and host mesh from the preceding section, a loaded `cape` set and an animation clip for the
@@ -7800,8 +7809,18 @@ Load colliders for the binding's skeleton instance. `CreateMotion` raises `BodyC
 different skeleton instance, even when the joint names match. Pass null to use only the worn sets'
 capsules. A single bound set also supports
 `CreateMotion` and takes that motion in its `Queue`, `WriteDraws` and `QueueOutline` overloads. Keep each
-motion with its originating binding and animate before stepping. A skipped step keeps the last chain shape
-on the current anchor. Use `Reset()` to restore the rest hang immediately.
+motion with its originating binding and animate before stepping. Use `Reset()` to restore the rest hang
+immediately.
+
+Set `ChainSimulationOptions.MaxStepSeconds` to choose the fixed simulation step (1/120 s by default).
+`MaxStepsPerFrame` caps the number of steps a frame can run (8 by default). The solver samples the frame
+poses at each grid step, so uneven frame lengths do not change the step size. The display interpolates
+the last two steps in anchor space. The shape is shown one step late relative to the anchor and follows
+the current body pose even when a frame runs no simulation step.
+
+Review existing chained pieces after upgrading. Position corrections no longer feed speed into the
+next step, so a piece tuned with stiff springs and tight limits may look calmer. Try reducing damping
+on a short tail or widening a cloak's bend limits while using `linkStretch` to keep its panels together.
 
 For multiple wearers, call `MotionLevels.Assign(wearerPositions, viewerPosition, simulateWithin, maxSimulated,
 scratch, levels)` before stepping. It assigns `Simulated` to the nearest wearers within the distance limit

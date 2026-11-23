@@ -301,11 +301,13 @@ is alive. A bound set or outfit refuses colliders loaded for another skeleton in
 `BodyCollidersMismatch`. An outfit also compares the file's rig with its body region map.
 
 Call `outfit.CreateMotion(bodyColliders, options)` or `bound.CreateMotion(bodyColliders, options)`
-once per wearer. The motion combines the visible chains on their distinct host anchors. It uses
-capsules from the body file and all worn sets, with a limit of 64 per wearer. Passing null for body
-colliders still includes worn set capsules. For each step, the host inverse bind, current joint
-matrix and model compose the rest-to-world transform. It places the endpoints and scales the radius
-by its largest axis scale. The bind pose preserves the authored radius before wearer scaling.
+once per wearer. The motion combines the visible chains on their distinct host anchors and copies
+each part's [format 6 `linkStretch`](../KhaozEngine.Attachments/README.md#format-6) to its rig links.
+It uses capsules from the body file and all worn sets, with a limit of 64 per wearer. Passing null
+for body colliders still includes worn set capsules. In each frame, the host inverse bind, current
+joint matrix and model compose the rest-to-world transform. It places the endpoints and scales
+the radius by its largest axis scale. The bind pose preserves the authored radius before wearer
+scaling. Each chain skips capsules beyond its reach.
 Collider motion needs a set bound with the explicit host mesh, even if its parts are rigid.
 An outfit uses the inverse binds already held by
 its first such worn set. A collider index names its position in the normalized source list.
@@ -313,18 +315,27 @@ its first such worn set. A collider index names its position in the normalized s
 Animate the host, call `motion.Step(skeleton, palette, model, deltaSeconds)` once with its current
 pose, then draw and outline as often as needed. Pass the motion first to the set's mixed
 `WriteDraws`, `Queue` or `QueueOutline`, or after `wornIndex` to the outfit's `WriteDraws` or
-`QueueOutline`. These calls only read the motion. If a frame skips the step, each chain keeps its
-latest shape and follows its current anchor. Overloads without motion draw the rest hang.
+`QueueOutline`. These calls only read the motion. Overloads without motion draw the rest hang.
+
+`ChainSimulationOptions.MaxStepSeconds` sets the fixed step length (default 1/120 s).
+`MaxStepsPerFrame` caps the steps processed in one frame (default 8). The solver interpolates the
+frame's anchors, capsules and wearer pose at each grid step. Draws interpolate the last two
+steps in anchor space, so the shape is one step late relative to its anchor and stays on the
+current body pose. Frames with no grid step still update that interpolation. If a frame omits the
+`Step` call entirely, the last displayed shape follows the current anchor. See the
+[solver options](../KhaozEngine.Attachments/README.md#chain-simulation) for the full limits.
 
 `Step` uses the binding's exact skeleton and full host skin palette. It validates the model and
 the joint matrices it reads for anchors and capsules. Each draw validates the matrices it reads.
 Valid steps and draws allocate nothing once warm. Use `MotionLevels.Assign` to select simulated wearers
-by distance and count and pass each level to `Step`. `MotionLevel.Held` blends toward rest. `Reset()`
-restores the rest hang immediately and clears velocity on the next valid step. `Tune(wornIndex, partId, chain, settings)`
-changes settings on the next substep. Worn and chain indices are zero-based and a bare set uses
-worn index zero. A fully hidden part has no tunable chains. Wearers can share a binding and have
-independent motions. Each motion belongs to its originating set or outfit and owns no disposable
-scene state. Passing it to another binding raises `MotionMismatch` before submitting any draw.
+by distance and count and pass each level to `Step`. `MotionLevel.Held` blends toward rest.
+When simulation resumes, motion starts from the held shape with zero velocity and the display blends
+toward the live shape. `Reset()` restores the rest hang immediately and clears velocity on the next
+valid step. `Tune(wornIndex, partId, chain, settings)` changes settings on the next simulation step.
+Worn and chain indices are zero-based and a bare set uses worn index zero. A fully hidden part
+has no tunable chains. Wearers can share a binding and have independent motions. Each motion
+belongs to its originating set or outfit and owns no disposable scene state. Passing it to another
+binding raises `MotionMismatch` before submitting any draw.
 
 When the cache loads a chained set through a shipped `Scene3D` upload lease, it expands the
 chained meshes' rest bounds for culling. Each chain contributes a sphere at its first joint's

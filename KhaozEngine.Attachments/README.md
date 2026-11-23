@@ -181,14 +181,16 @@ empty array, and `FormatVersionUnsupported` for version 5 otherwise.
 ### Format 6
 
 Format 6 adds optional `linkStretch` beside `links` in a skinned part's chain motion. It declares how far
-the spacing of each linked chain pair can depart from rest as a fraction of rest spacing, in either direction.
+the spacing of corresponding movable joints and both tips can depart from rest, as a fraction of rest spacing.
+For example, `"links": [[0, 1]], "linkStretch": 0.15` sets a band from 85% to 115% of rest spacing.
 The value must be finite, greater than zero and at most one, and the part must declare at least one link.
-Omit it for an unbounded link. Formats 4 and 5 refuse the member as unknown.
+Omit it to use only the link springs. Formats 4 and 5 refuse the member as unknown.
 
 Set `ChainMotionDefinition.LinkStretch` to declare the bound in code. Set definitions take only chain
 indices in each `ChainLink`. The wearer binding copies the part's bound to `ChainLink.Stretch` on the rig
 links. When constructing a `ChainRig` directly, set `Stretch` on each link that needs a bound.
-`AttachmentSetJson.LinkStretchFormatVersion` is 6.
+`AttachmentSetJson.LinkStretchFormatVersion` is 6. Move every reader to 24.8.0 or later before publishing
+format 6. Readers on 24.7 or earlier refuse it.
 
 ### Canonical set bytes
 
@@ -257,9 +259,9 @@ are documented in the living [equipment coverage guide](../docs/EQUIPMENT-COVERA
 owns state-key semantics and sampled evidence does not provide a continuous proof.
 
 `EquipmentCoverageJson.Read(utf8, identity)` reads strict equipment coverage format 1, separate
-from attachment JSON v1/v2. `EquipmentCoverageDefinition` binds an exact attachment-file SHA-256
-to a host-map semantic SHA-256. It owns 1 to 4 commands with unique positive IDs. Each command
-names a rigid part and host region, a finite affine frame with positive determinant, disjoint
+from the [attachment set format](#attachment-set-json). `EquipmentCoverageDefinition` binds an exact
+attachment-file SHA-256 to a host-map semantic SHA-256. It owns 1 to 4 commands with unique positive IDs.
+Each command names a rigid part and host region, a finite affine frame with positive determinant, disjoint
 source support ranges totaling at most 1024 triangles, and finite coverage bounds and distances.
 Part, region and support resolution against actual assets belongs to their binding layer.
 
@@ -527,10 +529,15 @@ refusals for invalid region names or mesh data as the coverage check.
 Build a `ChainRig` with an anchor count, ordered chains and optional `ChainLink` pairs. Each chain names
 its anchor index and supplies one to sixteen `ChainJointRest` transforms in parent-to-child order. The
 first joint stays on its anchor and can turn. The tip is a point in the last joint's local frame, so
-even a one-joint chain can swing. A link keeps corresponding movable joints and both virtual tips near
-their rest spacing. The link springs have a natural frequency of 10 radians per second. All links
-read the same substep poses. When several links touch a joint or tip, it receives their average
-correction.
+even a one-joint chain can swing.
+
+Link springs keep corresponding movable joints and both virtual tips near their rest spacing.
+Their natural frequency is 10 radians per second. All links read the same poses within a step.
+A joint or tip in several links receives the average of their spring corrections. A link
+with `ChainLink.Stretch` also limits stretch and compression. The solver applies this bound depth
+by depth, then handles all linked tips together so chains of different lengths can share a bound.
+Capsule clearance and bend limits take priority over spacing.
+
 The rig owns its rest data and can be shared. Create a `ChainSimulation` for each wearer with a fixed
 collider count.
 
@@ -543,28 +550,35 @@ The solver stores a position and velocity for each particle and uses implicit mi
 Stiffness is the nonnegative natural frequency in radians per second for a segment returning to its rest
 direction. Damping is a nonnegative velocity decay rate per second.
 Gravity scales world gravity from 0 to 10. It contributes the constant-acceleration displacement to the
-position prediction and the full velocity change to the stored velocity. Trail ranges from 0, carrying the chain with the wearer's
-rigid movement, to 1, giving the chain full inertia. The bend limit is greater than zero and at most
-pi radians. The nonnegative chain radius adds clearance against capsules. `Tune` applies settings
-starting at the next substep.
+position prediction and the full velocity change to the stored velocity. Trail ranges from 0, carrying
+the chain with the wearer's rigid movement, to 1, giving the chain full inertia. The bend limit is
+greater than zero and at most pi radians. The nonnegative chain radius adds clearance against capsules.
+`Tune` applies settings starting at the next simulation step.
 
-Chains advance on a fixed grid with a step of `MaxStepSeconds`, which is greater than zero and at most
-1/30 s. Each step samples the interpolated input at its grid boundary. A hitch keeps the newest
-`MaxStepsPerFrame` complete steps and carries any fractional remainder into the next frame.
-`MaxStepsPerFrame` is from 1 through 64.
+Chains advance on a fixed grid. `MaxStepSeconds` is the fixed step length, greater than zero and at
+most 1/30 s. Each step interpolates anchors, capsules and the wearer between the previous and current
+frame poses at its grid boundary. `MaxStepsPerFrame` limits the number of steps to a value from 1
+through 64. A hitch drops the oldest steps above that limit and carries any fractional remainder into
+the next frame.
 
-Presentation interpolates the last two simulated joint frames in anchor space, one step behind the
-simulation, and composes the result on the current anchor. A zero-duration frame keeps the same anchor-relative
-shape. A fast collider can overlap the displayed chain while the simulated shape already clears it.
-Segment lengths use the posed rest scale. Capsule correction keeps the
-root and segment lengths fixed and can exceed the bend limit to clear a collider. Bend, length and capsule
-corrections move positions. Velocity constraints remove motion that would leave the segment length or
-cross the bend limit. Capsule contact removes relative approach along the contact direction within the
-segment's tangent plane. The position solve handles the part of the push along the segment. Both capsule
-surface motion and bend limit turn account for the chain's carried rigid movement. A movable parent shares
-the reaction at a bend limit. The first step, `Reset()`, a teleport or a long gap places the chain at rest
-with zero velocity and resets the grid. `Held` blends from the last displayed shape to rest without
-stepping physics. On resume, physics starts from the held shape with zero velocity on a fresh grid.
+Presentation interpolates the last two simulated joint frames in anchor space and composes the result
+on the current anchor. The displayed shape is one step late relative to the anchor and follows the
+current body pose, even on frames that run no simulation step. A fast collider can overlap the
+displayed chain while the simulated shape already clears it.
+
+Segment lengths use the posed rest scale. Capsule correction keeps the root and segment lengths fixed
+and can exceed the bend limit to clear a collider. The solver can skip capsules outside each chain's
+reach without changing the result. A standalone simulation with more than 64 capsules uses the full
+list. Bend, length, capsule and width corrections move positions without turning the correction into
+speed. Velocity constraints remove motion that would leave the segment length,
+bend limit or width band. Capsule contact removes relative approach along the contact direction within
+the segment's tangent plane. The position solve handles the part of the push along the segment. Both
+capsule surface motion and bend limit turn account for the chain's carried rigid movement. A movable
+parent shares the stop at a bend limit.
+
+The first step, `Reset()`, a teleport or a long gap places the chain at rest with zero velocity
+and resets the grid. `Held` blends from the last displayed shape to rest without stepping physics.
+On resume, physics starts from the held shape with zero velocity on a fresh grid.
 The displayed joints blend from that shape toward the live solution over `HoldBlendSeconds`.
 During hold and resume, each joint's swing blends from the last displayed shape and its position follows
 its blended parent to keep the segment length. An anchor turning through a half turn keeps a continuous

@@ -15,8 +15,11 @@ internal static class ChainConstraints
         float springWeight = pullTowardRest ? ChainMath.MidpointSpringWeight(settings.Stiffness, seconds) : 0;
         float cosine = settings.AngleLimit == MathF.PI ? -1 : MathF.Cos(settings.AngleLimit);
         var parent = anchor;
-        var velocity = new ChainVelocityConstraints(particles, first + chain, particles.StepCarries[chain],
-            colliders, previousColliders, settings.Radius, seconds);
+        int root = first + chain;
+        var capsules = particles.CapsuleCull.Select(particles.Positions[root],
+            particles.Lengths.AsSpan(first, last - first + 1), settings.Radius, colliders);
+        var velocity = new ChainVelocityConstraints(particles, root, particles.StepCarries[chain],
+            previousColliders, settings.Radius, seconds);
 
         for (int joint = first; joint <= last; joint++)
         {
@@ -47,11 +50,13 @@ internal static class ChainConstraints
                 var limited = ClampBend(direction, rest, cosine);
                 clamped = limited != direction;
                 direction = limited;
-                direction = ChainCapsuleCollision.Clear(direction, start, length, settings.Radius, colliders);
+                direction = ChainCapsuleCollision.Clear(direction, start, length, settings.Radius, capsules);
+                if (capsules.IsFiltered && !ChainCapsuleCull.FitsReach(direction))
+                    capsules = capsules.All;
             }
 
             particles.Positions[end] = start + length * direction;
-            velocity.Apply(particle, length, direction, rest, clamped);
+            velocity.Apply(particle, length, direction, rest, clamped, capsules);
             var swing = length > 0 ? ChainMath.Swing(rest, direction) : Quaternion.Identity;
             parent = world * Matrix4x4.CreateFromQuaternion(swing);
             parent.Translation = start;

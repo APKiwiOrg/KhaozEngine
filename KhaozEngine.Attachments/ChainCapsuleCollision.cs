@@ -6,18 +6,32 @@ namespace KhaozEngine.Attachments;
 internal static class ChainCapsuleCollision
 {
     private const int ContactPasses = 8;
-    private const double TouchTolerance = 0.0001;
+    internal const double TouchTolerance = 0.0001;
+
+    internal static bool BeyondReach(Vector3 root, double contactReach, in ColliderCapsule capsule)
+    {
+        var residual = CapsuleResidual(new Offset(root), default, capsule, out _);
+        var coordinates = Vector3.Max(Vector3.Abs(root), Vector3.Max(Vector3.Abs(capsule.Start), Vector3.Abs(capsule.End)));
+        // Allow for double roundoff in the axis projection, including on very long axes.
+        double projectionRounding = (1d / (1L << 47)) * Math.Max(coordinates.X, Math.Max(coordinates.Y, coordinates.Z));
+        double limit = contactReach + capsule.Radius + projectionRounding;
+        return residual.LengthSquared > limit * limit;
+    }
 
     internal static Vector3 Clear(Vector3 direction, Vector3 start, float length,
-        float chainRadius, ReadOnlySpan<ColliderCapsule> colliders)
+        float chainRadius, ChainCapsuleCandidates capsules)
     {
+        if (capsules.IsFiltered && !ChainCapsuleCull.FitsReach(direction))
+            capsules = capsules.All;
+        var initial = direction;
         var root = new Offset(start);
         // Revisit earlier contacts after a correction moves the particle along its length sphere.
         for (int pass = 0; pass < ContactPasses; pass++)
         {
             bool changed = false;
-            foreach (ref readonly var capsule in colliders)
+            for (int index = 0; index < capsules.Count; index++)
             {
+                ref readonly var capsule = ref capsules[index];
                 var fromRoot = new Offset(direction) * length;
                 var residual = CapsuleResidual(root, fromRoot, capsule, out _);
                 double radius = (double)capsule.Radius + chainRadius;
@@ -25,6 +39,9 @@ internal static class ChainCapsuleCollision
                     continue;
 
                 var corrected = ClearSphere(direction, length, fromRoot - residual, radius);
+                // A poorly conditioned direction can leave the padded reach. Replay this joint in original order.
+                if (capsules.IsFiltered && !ChainCapsuleCull.FitsReach(corrected))
+                    return Clear(initial, start, length, chainRadius, capsules.All);
                 changed |= corrected != direction;
                 direction = corrected;
             }

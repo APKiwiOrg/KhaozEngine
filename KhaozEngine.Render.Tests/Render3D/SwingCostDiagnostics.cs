@@ -178,7 +178,7 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
         var part = new SkinnedAttachmentPartDefinition(1, rig.Source.Mesh(name + ".glb", glb.Build()))
         {
             Regions = [new NamedRegionRun("alpha", 1)],
-            Motion = new ChainMotionDefinition(chains, links),
+            Motion = new ChainMotionDefinition(chains, links) { LinkStretch = linkNeighbours ? .25f : null },
         };
         return rig.Load(name + ".json", new AttachmentSetDefinition([part], layer, []));
     }

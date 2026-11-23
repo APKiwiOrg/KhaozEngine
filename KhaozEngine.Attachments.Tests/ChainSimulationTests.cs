@@ -472,9 +472,9 @@ public class ChainSimulationTests
     [Fact]
     public void Warm_step_and_compose_do_not_allocate()
     {
-        var simulation = Create(Chain(Vector3.UnitX, Settings, Joint(Vector3.Zero), Joint(Vector3.UnitX)), 1);
+        var simulation = Create(Chain(Vector3.UnitX, Settings, Joint(Vector3.Zero), Joint(Vector3.UnitX)), 2);
         Matrix4x4[] anchors = [Matrix4x4.Identity];
-        ColliderCapsule[] capsules = [new(new(8, 0, 0), new(8, -1, 0), 0.3f)];
+        ColliderCapsule[] capsules = [new(new(8, 0, 0), new(8, -1, 0), 0.3f), new(new(2, -0.1f, 0), new(2, -1, 0), 0.3f)];
         var output = new Matrix4x4[2];
         void AdvanceAndCompose()
         {

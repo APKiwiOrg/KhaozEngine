@@ -54,7 +54,11 @@ internal sealed class ChainPresentationBlend(int jointCount)
                 parent.Translation = unswung.Translation;
                 // On resume these are presentation frames only. Physics has already advanced.
                 if (toRest)
+                {
                     particles.Positions[joint + chain] = parent.Translation;
+                    var offset = Vector3.TransformNormal(rig.SegmentOffset(joint), unswung);
+                    particles.PreviousRestDirections[joint] = ChainMath.Direction(offset, Vector3.UnitY);
+                }
                 particles.JointWorlds[joint] = parent;
                 particles.WorldSwings[joint] = worldSwing;
             }

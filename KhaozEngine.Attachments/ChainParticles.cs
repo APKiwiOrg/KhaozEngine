@@ -10,22 +10,26 @@ internal sealed class ChainParticles
         Rig = rig;
         int count = checked(rig.JointCount + rig.Chains.Count);
         Positions = new Vector3[count];
-        Previous = new Vector3[count];
+        Velocities = new Vector3[count];
         SubstepStarts = new Vector3[count];
         RestPositions = new Vector3[count];
         Lengths = new float[rig.JointCount];
         JointWorlds = new Matrix4x4[rig.JointCount];
         WorldSwings = new Quaternion[rig.JointCount];
+        PreviousRestDirections = new Vector3[rig.JointCount];
+        StepRestDirections = new Vector3[rig.JointCount];
     }
 
     internal ChainRig Rig { get; }
     internal Vector3[] Positions { get; }
-    private Vector3[] Previous { get; }
+    internal Vector3[] Velocities { get; }
     internal Vector3[] RestPositions { get; }
     internal Vector3[] SubstepStarts { get; }
     internal float[] Lengths { get; }
     internal Matrix4x4[] JointWorlds { get; }
     internal Quaternion[] WorldSwings { get; }
+    internal Vector3[] PreviousRestDirections { get; private set; }
+    internal Vector3[] StepRestDirections { get; private set; }
 
     internal void SetRest(ReadOnlySpan<Matrix4x4> anchors, bool reset)
     {
@@ -48,6 +52,7 @@ internal sealed class ChainParticles
                 {
                     JointWorlds[joint] = world;
                     WorldSwings[joint] = Quaternion.Identity;
+                    PreviousRestDirections[joint] = ChainMath.Direction(offset, Vector3.UnitY);
                 }
             }
 
@@ -57,41 +62,44 @@ internal sealed class ChainParticles
         if (reset)
         {
             RestPositions.CopyTo(Positions, 0);
-            RestPositions.CopyTo(Previous, 0);
+            ZeroVelocity();
         }
     }
 
-    internal void ZeroVelocity() => Positions.CopyTo(Previous, 0);
+    internal void ZeroVelocity() => Array.Clear(Velocities);
+
+    internal void RememberRestDirections() =>
+        (PreviousRestDirections, StepRestDirections) = (StepRestDirections, PreviousRestDirections);
 
     internal void Predict(int root, int jointCount, in ChainSettings settings, Vector3 gravity, float seconds,
-        float previousSeconds, Vector3 oldWearer, Vector3 newWearer, Quaternion wearerTurn)
+        Vector3 oldWearer, Vector3 newWearer, Quaternion wearerTurn)
     {
-        Positions[root] = Previous[root] = SubstepStarts[root] = RestPositions[root];
         float carry = 1 - settings.Trail;
         var carriedTurn = carry == 0 ? Quaternion.Identity : Quaternion.Slerp(Quaternion.Identity, wearerTurn, carry);
         var carriedOffset = carry * (newWearer - oldWearer);
-        double velocityFactor = previousSeconds > 0 && seconds > 0
-            ? (double)seconds / previousSeconds * MathF.Exp(-settings.Damping * seconds)
-            : 0;
-        var gravityDisplacement = gravity * (0.5f * settings.Gravity * seconds * seconds);
+
+        SubstepStarts[root] = Carry(Positions[root]);
+        Positions[root] = RestPositions[root];
+        Velocities[root] = seconds > 0 ? (Positions[root] - SubstepStarts[root]) / seconds : Vector3.Zero;
+
+        float decay = MathF.Exp(-settings.Damping * seconds);
+        var gravityVelocity = gravity * (settings.Gravity * seconds);
+        var gravityDisplacement = gravityVelocity * (0.5f * seconds);
         for (int particle = root + 1; particle <= root + jointCount; particle++)
         {
-            var current = Positions[particle];
-            var previous = Previous[particle];
-            if (carry > 0)
+            var current = Carry(Positions[particle]);
+            SubstepStarts[particle] = current;
+            if (seconds == 0)
             {
-                current = Carry(current);
-                previous = Carry(previous);
+                Positions[particle] = current;
+                continue;
             }
 
-            SubstepStarts[particle] = current;
-            var displacement = current - previous;
-            Positions[particle] = current + new Vector3(
-                (float)(displacement.X * velocityFactor),
-                (float)(displacement.Y * velocityFactor),
-                (float)(displacement.Z * velocityFactor)) + gravityDisplacement;
-            // Encode the other half so the next substep sees the full velocity impulse.
-            Previous[particle] = seconds > 0 ? current - gravityDisplacement : previous;
+            var damped = (carriedTurn == Quaternion.Identity
+                ? Velocities[particle]
+                : Vector3.Transform(Velocities[particle], carriedTurn)) * decay;
+            Positions[particle] = current + damped * seconds + gravityDisplacement;
+            Velocities[particle] = damped + gravityVelocity;
         }
 
         Vector3 Carry(Vector3 position) => carriedTurn == Quaternion.Identity
@@ -99,32 +107,10 @@ internal sealed class ChainParticles
             : oldWearer + carriedOffset + Vector3.Transform(position - oldWearer, carriedTurn);
     }
 
-    internal void ApplySpring(int particle, Vector3 correction)
+    internal void ApplySpring(int particle, Vector3 correction, float seconds)
     {
         // Midpoint moves the position by half the velocity impulse times the timestep.
-        // Shifting both Verlet samples encodes the full impulse for the next substep.
         Positions[particle] += correction;
-        Previous[particle] -= correction;
-    }
-
-    internal void Constrain(int parent, Vector3 position, Vector3 normal, bool preserveVelocity)
-    {
-        int particle = parent + 1;
-        if (preserveVelocity)
-        {
-            Previous[particle] += position - Positions[particle];
-        }
-        else
-        {
-            // The link to the parent permits tangential motion only. Carry end-of-step
-            // velocity forward without the radial component introduced by the projection.
-            var parentDisplacement = Positions[parent] - Previous[parent];
-            var relativeDisplacement = position - Previous[particle] - parentDisplacement;
-            Previous[particle] += normal == Vector3.Zero
-                ? relativeDisplacement
-                : Vector3.Dot(relativeDisplacement, normal) * normal;
-        }
-
-        Positions[particle] = position;
+        Velocities[particle] += correction / seconds * 2;
     }
 }

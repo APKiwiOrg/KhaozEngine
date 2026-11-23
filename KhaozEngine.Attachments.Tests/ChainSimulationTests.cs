@@ -407,7 +407,7 @@ public class ChainSimulationTests
         var linked = new ChainSimulation(new ChainRig(2, [left, right], [new(0, 1)]), 1);
         var loose = new ChainSimulation(new ChainRig(2, [left, right], []), 1);
         Matrix4x4[] anchors = [Matrix4x4.Identity, Matrix4x4.CreateTranslation(0, 0, 0.65f)];
-        ColliderCapsule[] capsules = [new(new(0, -1, 0.14f), new(0, -1, 0.14f), 0.35f)];
+        ColliderCapsule[] capsules = [new(new(0, -1, 0.14f), new(0, -joints.Length, 0.14f), 0.35f)];
         foreach (var simulation in new[] { linked, loose })
         {
             simulation.Step(anchors, capsules, Matrix4x4.Identity, 0);

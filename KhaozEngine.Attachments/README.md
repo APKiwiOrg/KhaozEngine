@@ -527,12 +527,11 @@ the wearer matrix and elapsed seconds. Equal capsule endpoints describe a sphere
 be finite, invertible affine transforms. The wearer matrix must be finite and affine. Distances are in
 metres, Y is up, and local transforms compose as scale, rotation, translation in that order.
 
-The solver uses damped Verlet particles with implicit midpoint springs. Stiffness is the nonnegative
-natural frequency in radians per second for a segment returning to its rest direction. Damping is a
-nonnegative velocity decay rate per second.
-Gravity scales world gravity from 0 to 10. Half of the gravity displacement goes into the position
-prediction and half into the stored previous position, so the next substep carries the full velocity
-change even when its duration differs. Trail ranges from 0, carrying the chain with the wearer's
+The solver stores a position and velocity for each particle and uses implicit midpoint springs.
+Stiffness is the nonnegative natural frequency in radians per second for a segment returning to its rest
+direction. Damping is a nonnegative velocity decay rate per second.
+Gravity scales world gravity from 0 to 10. It contributes the constant-acceleration displacement to the
+position prediction and the full velocity change to the stored velocity. Trail ranges from 0, carrying the chain with the wearer's
 rigid movement, to 1, giving the chain full inertia. The bend limit is greater than zero and at most
 pi radians. The nonnegative chain radius adds clearance against capsules. `Tune` applies settings
 starting at the next substep.
@@ -541,7 +540,9 @@ Substeps interpolate the input poses and end on the current frame, so chains fol
 through fast movement. A hitch may drop integration time to stay within the step budget while still
 reaching the current pose. `MaxStepSeconds` is greater than zero and at most 1/30 s.
 `MaxStepsPerFrame` is from 1 through 64. Segment lengths use the posed rest scale. Capsule correction keeps the
-root and segment lengths fixed and can exceed the bend limit to clear a collider. The first step,
+root and segment lengths fixed and can exceed the bend limit to clear a collider. Bend, length and capsule
+corrections move positions. Velocity constraints remove motion that would leave the segment length, cross
+the bend limit or enter the capsule. A movable parent shares the reaction at a bend limit. The first step,
 `Reset()`, a teleport or a long gap places the chain at rest with zero velocity. `Held` blends from the
 last shape to rest without stepping physics. On resume, physics starts from the held shape with zero
 velocity. The displayed joint swings blend from that shape toward the live solution over

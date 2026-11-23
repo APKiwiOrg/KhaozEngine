@@ -15,10 +15,10 @@ public sealed class ChainSimulation
     private readonly Matrix4x4[] _stepAnchors;
     private ChainPose[] _previousAnchors;
     private ChainPose[] _frameAnchors;
-    private readonly ColliderCapsule[] _previousColliders;
-    private readonly ColliderCapsule[] _stepColliders;
+    private readonly ColliderCapsule[] _previousFrameColliders;
+    private ColliderCapsule[] _stepColliders;
+    private ColliderCapsule[] _previousStepColliders;
     private ChainPose _previousWearer;
-    private float _previousStepSeconds;
     private bool _needsReset = true;
     private bool _held;
     private bool _resuming;
@@ -45,8 +45,9 @@ public sealed class ChainSimulation
         _stepAnchors = new Matrix4x4[rig.AnchorCount];
         _previousAnchors = new ChainPose[rig.AnchorCount];
         _frameAnchors = new ChainPose[rig.AnchorCount];
-        _previousColliders = new ColliderCapsule[colliderCount];
+        _previousFrameColliders = new ColliderCapsule[colliderCount];
         _stepColliders = new ColliderCapsule[colliderCount];
+        _previousStepColliders = new ColliderCapsule[colliderCount];
     }
 
     public ChainRig Rig { get; }
@@ -71,7 +72,6 @@ public sealed class ChainSimulation
         if (reset)
         {
             _particles.SetRest(anchorWorlds, reset: true);
-            _previousStepSeconds = 0;
             _resuming = false;
             if (level == MotionLevel.Held)
                 _blend.Begin(_particles, _frameAnchors);
@@ -90,8 +90,6 @@ public sealed class ChainSimulation
                 _particles.SetRest(anchorWorlds, reset: true);
                 Rig.RestFromAnchor.CopyTo(_jointsFromAnchor);
             }
-
-            _previousStepSeconds = 0;
         }
         else
         {
@@ -108,7 +106,9 @@ public sealed class ChainSimulation
         }
 
         (_previousAnchors, _frameAnchors) = (_frameAnchors, _previousAnchors);
-        colliders.CopyTo(_previousColliders);
+        colliders.CopyTo(_previousFrameColliders);
+        if (reset || level == MotionLevel.Held)
+            colliders.CopyTo(_previousStepColliders);
         _previousWearer = frameWearer;
         _held = level == MotionLevel.Held;
         _needsReset = false;
@@ -192,7 +192,7 @@ public sealed class ChainSimulation
             for (int anchor = 0; anchor < _stepAnchors.Length; anchor++)
                 _stepAnchors[anchor] = _previousAnchors[anchor].Interpolate(_frameAnchors[anchor], fraction);
             for (int collider = 0; collider < ColliderCount; collider++)
-                _stepColliders[collider] = Interpolate(_previousColliders[collider], colliders[collider], fraction);
+                _stepColliders[collider] = Interpolate(_previousFrameColliders[collider], colliders[collider], fraction);
 
             var position = fraction == 1 ? wearer.Matrix.Translation : Vector3.Lerp(_previousWearer.Matrix.Translation, wearer.Matrix.Translation, fraction);
             var rotation = fraction == 1 ? wearer.Rotation : Quaternion.Slerp(_previousWearer.Rotation, wearer.Rotation, fraction);
@@ -204,9 +204,9 @@ public sealed class ChainSimulation
                 var definition = Rig.Chains[chain];
                 int root = Rig.FirstJoint(chain) + chain;
                 _particles.Predict(root, definition.Joints.Count, _settings[chain], Options.Gravity,
-                    seconds, _previousStepSeconds, oldPosition, position, turn);
+                    seconds, oldPosition, position, turn);
                 ChainConstraints.FollowChain(_particles, chain, _stepAnchors[definition.Anchor],
-                    _stepColliders, _settings[chain], seconds, pullTowardRest: true);
+                    _stepColliders, _previousStepColliders, _settings[chain], seconds, pullTowardRest: true);
             }
 
             if (_links.Apply(_particles, seconds))
@@ -215,14 +215,14 @@ public sealed class ChainSimulation
                 {
                     int anchor = Rig.Chains[chain].Anchor;
                     ChainConstraints.FollowChain(_particles, chain, _stepAnchors[anchor],
-                        _stepColliders, _settings[chain], seconds, pullTowardRest: false);
+                        _stepColliders, _previousStepColliders, _settings[chain], seconds, pullTowardRest: false);
                 }
             }
 
             oldPosition = position;
             oldRotation = rotation;
-            if (seconds > 0)
-                _previousStepSeconds = seconds;
+            _particles.RememberRestDirections();
+            (_previousStepColliders, _stepColliders) = (_stepColliders, _previousStepColliders);
         }
     }
 

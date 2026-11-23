@@ -68,7 +68,7 @@ internal sealed class ChainLinks
 
             // Each pair reads the same snapshot. Averaging keeps shared particles from
             // taking a stiffer step simply because several links touch them.
-            particles.ApplySpring(particle, _corrections[particle] / _degrees[particle]);
+            particles.ApplySpring(particle, _corrections[particle] / _degrees[particle], seconds);
             moved = true;
         }
 

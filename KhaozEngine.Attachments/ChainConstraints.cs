@@ -6,7 +6,8 @@ namespace KhaozEngine.Attachments;
 internal static class ChainConstraints
 {
     internal static void FollowChain(ChainParticles particles, int chain, in Matrix4x4 anchor,
-        ReadOnlySpan<ColliderCapsule> colliders, in ChainSettings settings, float seconds, bool pullTowardRest)
+        ReadOnlySpan<ColliderCapsule> colliders, ReadOnlySpan<ColliderCapsule> previousColliders,
+        in ChainSettings settings, float seconds, bool pullTowardRest)
     {
         var rig = particles.Rig;
         int first = rig.FirstJoint(chain);
@@ -14,6 +15,8 @@ internal static class ChainConstraints
         float springWeight = pullTowardRest ? ChainMath.MidpointSpringWeight(settings.Stiffness, seconds) : 0;
         float cosine = settings.AngleLimit == MathF.PI ? -1 : MathF.Cos(settings.AngleLimit);
         var parent = anchor;
+        var velocity = new ChainVelocityConstraints(particles, first + chain, colliders, previousColliders,
+            settings.Radius, seconds);
 
         for (int joint = first; joint <= last; joint++)
         {
@@ -23,24 +26,32 @@ internal static class ChainConstraints
             var world = rig.RestLocal(joint) * parent;
             var restOffset = Vector3.TransformNormal(rig.SegmentOffset(joint), world);
             var rest = ChainMath.Direction(restOffset, Vector3.UnitY);
+            particles.StepRestDirections[joint] = rest;
+            if (joint == first)
+                velocity.Start(particles.PreviousRestDirections[joint], rest);
+
             int end = particle + 1;
             var predicted = particles.Positions[end] - start;
             if (springWeight > 0)
             {
-                var started = particles.SubstepStarts[end] - start;
+                var started = particles.SubstepStarts[end] - particles.SubstepStarts[particle];
                 var correction = springWeight * (length * rest - 0.5f * (started + predicted));
-                particles.ApplySpring(end, correction);
+                particles.ApplySpring(end, correction, seconds);
                 predicted += correction;
             }
 
             var direction = ChainMath.Direction(predicted, rest);
+            bool clamped = false;
             if (length > 0)
             {
-                direction = ClampBend(direction, rest, cosine);
+                var limited = ClampBend(direction, rest, cosine);
+                clamped = limited != direction;
+                direction = limited;
                 direction = ChainCapsuleCollision.Clear(direction, start, length, settings.Radius, colliders);
             }
 
-            particles.Constrain(particle, start + length * direction, length > 0 ? direction : Vector3.Zero, preserveVelocity: seconds == 0);
+            particles.Positions[end] = start + length * direction;
+            velocity.Apply(particle, length, direction, rest, clamped);
             var swing = length > 0 ? ChainMath.Swing(rest, direction) : Quaternion.Identity;
             parent = world * Matrix4x4.CreateFromQuaternion(swing);
             parent.Translation = start;

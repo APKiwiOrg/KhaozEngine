@@ -170,7 +170,10 @@ Each frame the motion takes the host palette, the model matrix and the frame tim
 hang, the chain joints' rest transforms on the anchor's current world transform, and poses every collider in world
 space. Then it runs the steps of decision 3: every step whose time falls inside the frame, at most `maxSteps` of them,
 with older time dropped. The anchors, colliders and wearer are interpolated at each step's time between the previous
-frame's poses and this frame's. Within each step of length `h`:
+frame's poses and this frame's. Dropped time is crossed by the wearer's trail carry alone, which moves positions and
+leaves velocities untouched, and the first kept step measures capsule motion, the anchor's turn and the first joint's
+motion from its own opening poses. Measuring them from the last step before the dropped time divided all the skipped
+motion by one step, so a slow capsule could throw a tip at many times its own speed. Within each step of length `h`:
 
 1. **Trail.** Every particle's position and velocity move with `(1 - trail)` of the wearer's rigid movement over the
    step, which starts from the previous step's wearer pose, sometimes in the previous frame. Velocities turn with the
@@ -191,11 +194,15 @@ frame's poses and this frame's. Within each step of length `h`:
      length, and the length is restored. These move the position only.
    - Then the velocity constraints of decision 2. The velocity along the segment relative to the parent is removed.
      When the bend limit acted, the limit's wall moves with the parent particle's velocity and with the turning rate of
-     the parent's frame, taken from the parent segment's velocity, with twist inherited down the chain from the anchor.
-     The child's outward velocity relative to that wall is removed, half from the child and half given to the parent
-     particle, or all from the child when the parent is the anchored first joint. When a capsule pushed the particle,
-     the approach of its velocity relative to the capsule's moving surface is removed along the contact normal's
-     direction within the segment's tangent plane. Each velocity constraint is thus a projection along one unit
+     the parent's frame. The first joint's frame turns with the anchor's whole rotation over the step relative to the
+     carried frame, twist included. Each later frame keeps the twist about its parent segment and adds that segment's
+     swing rate from its endpoint velocities, so an anchor twisting about the first segment still moves every wall
+     below it. The child's outward velocity relative to that wall is removed, half from the child and half given to
+     the parent particle, or all from the child when the parent is the anchored first joint. When a capsule pushed the
+     particle, the approach of its velocity relative to the capsule's moving surface is removed along the contact
+     normal's direction within the segment's tangent plane. That surface moves with the capsule's axis and with any
+     change of its radius along the contact normal, so an animated radius pushes as a moving capsule does. Each
+     velocity constraint is thus a projection along one unit
      direction, and the part of a push along the segment moves the position only, so a capsule driving along a
      segment cannot flick its tip and a tip held at a shallow angle keeps no speed. Capsule motion, the anchor's turn
      and the first joint's velocity are measured in the chain's carried frame, where its velocities live, so a capsule
@@ -212,7 +219,8 @@ frame's poses and this frame's. Within each step of length `h`:
    because they outrank the bound. The width's escaping relative velocity is removed before the length, limit
    and contact velocity constraints, which keep the last word. Tip pairs are solved together after all joint
    depths, because a short chain's tip can be linked to a longer chain's. A pair whose segments point straight
-   apart turns both toward one shared perpendicular, since its tangents give no leverage. A bound applied after
+   apart turns both toward one shared perpendicular, since its tangents give no leverage. Coincident endpoints turn
+   to opposite sides of it, so a gap can open. A bound applied after
    the whole pass has to drag the joints below a corrected particle without their speed, and the next step
    pushes them back out. Placing a depth only from final parents keeps lengths exact and drags nothing.
 
@@ -233,10 +241,12 @@ step of that motion while the stepped chain clears it. While a held chain blends
 chain can overlap a capsule for at most the blend time, while the live chain already clears it.
 
 Each chain joint's result is kept relative to its anchor, and drawing composes it on the anchor's current world
-transform. The shown result interpolates the last two steps' anchor relative frames, rotation by slerp and
-translation linearly, at the frame time's place between them. A frame that runs no step, with a zero frame time or one
-that ends before the next step, still shows that interpolation on the current anchor, so the chain never falls behind
-the body.
+transform. The shown result interpolates the last two steps' anchor relative frames at the frame time's place between
+them, through the hierarchy. Each joint's swing from its unswung frame is slerped, and each child attaches to its
+blended parent, with the first joint pinned to its anchor. Interpolating each frame's translation on its own
+shortened a segment to about 0.71 of its length halfway through a quarter turn in one step. A frame that ends before
+the next step shows that interpolation, and a zero time frame keeps its shown frames, both composed on the current
+anchor, so the chain never falls behind the body.
 
 ### Resets and limits
 
@@ -246,7 +256,9 @@ the body.
 - **Hold.** A frame at `MotionLevel.Held` runs no steps. The chains blend from their last shown shape to the rest
   hang over the hold blend time and stay there. A later simulated step starts the live chain from the held shape with
   no velocity and blends the shown chain to it over the same time. Each blend continues from the last shown swing, so
-  an anchor turning through a half turn during a blend never switches arcs, and neither switch pops.
+  an anchor turning through a half turn during a blend never switches arcs, and neither switch pops. A blend rebuilds
+  the chain through the hierarchy as the step interpolation does, so lengths hold mid blend. With a hold blend time of
+  0 a switch completes on its first frame, even one with no elapsed time.
 - **Picking who swings.** `MotionLevels.Assign` sets the nearest wearers within a distance to simulated, up to a
   count, and the rest to held, writing into caller spans without allocating.
 
@@ -261,8 +273,9 @@ the body.
 
 These are motion options with defaults in the API, not in a file, because they describe the game's world and frame
 budget, not a piece. A step is at most 1/30 s and a frame at most 64 steps, because a presentation solver needs
-nothing coarser and the link update is proven stable within those bounds. `MaxStepSeconds` names the fixed step. The
-name is older than the fixed grid, and a rename would break callers for no change in what they set.
+nothing coarser and the link update is proven stable within those bounds. A step is at least 0.0001 s, because
+velocities divide position changes by the step and a far shorter one overflows them. `MaxStepSeconds` names the
+fixed step. The name is older than the fixed grid, and a rename would break callers for no change in what they set.
 
 ## Format 4 and the body collider file
 
@@ -432,7 +445,8 @@ The wearables limits are 32 wearers, at most 2 ms added CPU preparation, no mana
   Each depth and the tip group run up to eight position sweeps over their bounded pairs, recheck contact and bends
   for moved points, then apply the velocity constraints. A reach test selects candidates once per chain per pass,
   with a full capsule replay if a contact correction leaves the conservative reach. At the default 120 Hz simulation
-  rate, a 144 Hz frame averages 0.83 steps and a 60 Hz frame averages two.
+  rate, a 144 Hz frame averages 0.83 steps and a 60 Hz frame averages two. A frame between grid steps rebuilds each
+  shown chain from the last two steps, with one swing read and slerp per joint.
 - GPU: no shader, pass or draw count changes. A chained part adds palette entries within the 128 joint limit.
 - Allocation is tested per call, as outfit draws are.
 
@@ -492,12 +506,16 @@ All headless, on synthetic skeletons built in code.
   never gains kinetic energy. A chain released from a capsule it rested on moves exactly as far as gravity alone
   moves it from rest. A cape of five linked chains with tight limits and stiff springs, on an anchor that runs with a
   sway and stops, has a lower peak tip speed after the stop than while running, at 30, 60, 144 and 240 Hz. A capsule
-  that strikes a limp chain and stops never throws it faster than the capsule moved.
+  that strikes a limp chain and stops never throws it faster than the capsule moved. A pure anchor twist moves a
+  downstream limit's wall, and a growing sphere passes its surface speed to a tip.
 - **Stepping.** A chain driven by a slow anchor stays within a tight bound of its fixed rate path under uneven frame
   times, and a frozen pose in contact stops moving. The first joint sits on the current anchor at every frame. A frame
-  equals the grid steps inside it.
+  equals the grid steps inside it. A frame past the step budget keeps a capsule's real contact speed. The shown chain
+  keeps its segment lengths through a large turn between steps and when a resume finishes between steps. A zero
+  length hold finishes on a zero time frame, and a step below the minimum refuses.
 - **Width bound.** Linked chains with `linkStretch` keep their spacing inside the bound under a driven anchor, and the
-  same chains without it leave it. The second pass keeps them clear of capsules and within their limits.
+  same chains without it leave it. The second pass keeps them clear of capsules and within their limits. Coincident
+  tips separate into their band.
 - **Formats.** Formats 4 and 6 and the body collider file round trip. Each refusal sits beside a passing control that
   differs only in the broken rule. Format 1 to 5 bytes and hashes are unchanged.
 - **Binding and draws.** A chained garment binds and draws. Each binding refusal is reached. Without a motion, chain
@@ -567,3 +585,6 @@ Each task records here any shape the code required that differs from this note, 
   `AttachmentSetRefusal` appends `LinkStretchOutOfRange` and `LinkStretchWithoutLinks`, both with `PartId`,
   `PartIndex`, `SettingName` and `JsonPath`. It also appends `ChainLinkStretchInDefinition` for a rig bound
   embedded in a set definition's link, with `PartId`, `PartIndex`, `LinkIndex` and `JsonPath`.
+- Fixed step. `ChainSimulationOptions.MaxStepSeconds` accepts 0.0001 s through 1/30 s. A simulation built with any
+  other value, NaN included, refuses with `ArgumentOutOfRangeException` naming `MaxStepSeconds`, as a step above
+  1/30 s did before.

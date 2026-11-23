@@ -559,10 +559,11 @@ Chains advance on a fixed grid. `MaxStepSeconds` is the fixed step duration, fro
 1/30 s. Each step interpolates anchors, capsules and the wearer between the previous and current
 frame poses at its grid boundary. `MaxStepsPerFrame` limits the number of steps to a value from 1
 through 64. A hitch drops the oldest steps above that limit and carries any fractional remainder into
-the next frame.
+the next frame. Dropped time moves chains only with the wearer's trail carry, so the first kept step
+measures speeds from its own start.
 
-Presentation interpolates the last two simulated joint frames in anchor space and composes the result
-on the current anchor. The displayed shape is one step late relative to the anchor and follows the
+Presentation interpolates the last two simulated joint frames in anchor space through the chain
+hierarchy, so segment lengths hold, and composes the result on the current anchor. The displayed shape is one step late relative to the anchor and follows the
 current body pose, even on frames that run no simulation step. A fast collider can overlap the
 displayed chain while the simulated shape already clears it.
 

@@ -193,9 +193,12 @@ frame's poses and this frame's. Within each step of length `h`:
      the parent's frame, taken from the parent segment's velocity, with twist inherited down the chain from the anchor.
      The child's outward velocity relative to that wall is removed, half from the child and half given to the parent
      particle, or all from the child when the parent is the anchored first joint. When a capsule pushed the particle,
-     its approach velocity relative to the capsule's moving surface is removed within the segment's tangent plane, so
-     the length holds. Where the contact normal lies within about 18 degrees of the segment, the segment cannot swing
-     clear and the approach is left to the position push.
+     the approach of its velocity relative to the capsule's moving surface is removed along the contact normal's
+     direction within the segment's tangent plane. Each velocity constraint is thus a projection along one unit
+     direction, and the part of a push along the segment moves the position only, so a capsule driving along a
+     segment cannot flick its tip and a tip held at a shallow angle keeps no speed. Capsule motion, the anchor's turn
+     and the first joint's velocity are measured in the chain's carried frame, where its velocities live, so a capsule
+     or a limit that moves with the wearer never pushes a chain that trails nothing.
    - The joint's rotation is the swing that turns its rest direction onto the simulated one, applied to its unswung
      rotation, which keeps the animation's twist.
 4. **Links.** Every linked pair reads the same snapshot, and each particle takes the mean of its pairs' midpoint

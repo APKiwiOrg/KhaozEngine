@@ -140,7 +140,8 @@ sets the last joint's turn, so an unlinked tip would let a hem splay.
 
 A soft link only pulls, so under a moving body linked panels can spread to several times their rest spacing and come
 back, which reads as rubber. A part may state `linkStretch`, above 0 and at most 1. Every linked pair of that part
-then keeps its spacing within `linkStretch` of rest, longer or shorter, so a cloak of panels moves as one sheet. A part
+then keeps its spacing within `linkStretch` of rest, longer or shorter, wherever the bend limit and capsules allow, so
+a cloak of panels moves as one sheet. A part
 without it has no bound. A garment that should hang as one piece states it. Strips that should fan out apart leave it
 out. Stretch and compression share one bound because a sheet of panels should neither part nor overlap.
 
@@ -202,18 +203,27 @@ frame's poses and this frame's. Within each step of length `h`:
    - The joint's rotation is the swing that turns its rest direction onto the simulated one, applied to its unswung
      rotation, which keeps the animation's twist.
 4. **Links.** Every linked pair reads the same snapshot, and each particle takes the mean of its pairs' midpoint
-   corrections, so a particle in several links never takes a stiffer step and the update stays stable. Where the part
-   states `linkStretch`, two passes over its pairs then move both particles of a pair half each into the bound and
-   remove the relative velocity that would leave it, shared equally. Then a second root to tip pass without the
-   stiffness spring restores the bend limit, collisions and lengths, which outrank the width bound.
+   corrections, so a particle in several links never takes a stiffer step and the update stays stable. Then a second
+   root to tip pass without the stiffness spring restores the bend limit, collisions and lengths.
+5. **Width bound.** Chains joined by links of a part that states `linkStretch` run that second pass together, depth by
+   depth. Each depth's particles are placed from their final parents. Bound pairs at that depth then move both
+   particles on their own length spheres into the band, in sweeps that alternate direction and stop once every pair
+   fits or after eight. The bend limit and capsules are applied again to each moved particle, because they outrank
+   the bound. The width's escaping relative velocity is removed before the length, limit and contact velocity
+   constraints, which keep the last word. Tip pairs are solved together after every movable depth, because a short
+   chain's tip can be linked to a longer chain's. A pair whose segments point straight apart turns both toward one
+   shared perpendicular, since its tangents give no leverage. A bound applied after the whole pass has to drag the
+   joints below a corrected particle without their speed, and the next step pushes them back out. Placing a depth only
+   from final parents keeps lengths exact and drags nothing.
 
 Corrections never write velocity. A chain whose one movable joint hangs from a still anchor never gains kinetic
 energy from its limit, contacts or length, and a chain released from a capsule it rested on starts from rest. The
 anchored first joint and segment lengths always hold. A collider outranks the bend limit, because a pass through
 looks worse than an extra bend. Contact solves the capsule locally as a sphere at the closest point of its axis, up to
 eight passes, in double precision. Each chain skips every capsule farther from its first joint than the chain's reach
-plus both radii, which cannot change a result because no particle of the chain leaves that reach. Segment lengths
-come from this frame's rest hang, so a scaled wearer keeps its proportions.
+plus both radii, the contact tolerance and a rounding margin far above double precision error. No position a pass
+tests leaves that reach, and a correction that would replays the joint against every capsule, so skipping never
+changes a result. Segment lengths come from this frame's rest hang, so a scaled wearer keeps its proportions.
 
 Known limits: contact acts on joints and tips, so a long segment can cross a thin capsule between its ends, and the
 fitting step uses enough joints to avoid it. The shown shape is one step behind the last step relative to its anchor,

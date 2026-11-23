@@ -60,7 +60,7 @@ public sealed partial class TileWorldClient
     {
         if (config.AdvanceWorldTick) World.AdvanceTick();
         net.Poll();
-        while (net.TryDequeueFrame(out ClientSessionEvent ev))
+        while (net.TryDequeueFrame(out ClientSessionFrame ev))
         {
             switch (ev.Kind)
             {

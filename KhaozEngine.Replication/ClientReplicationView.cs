@@ -54,8 +54,8 @@ public sealed partial class ClientReplicationView
     private LegacyApplyScratch? availableApplyScratch;
 
     // Friend-test diagnostics for the two windows, which must detach on every exit.
-    internal long FramedWindowLength => availableApplyScratch?.Framed.Length ?? 0;
-    internal bool HasBorrowedFrameForTest => availableApplyScratch?.Frame.CanRead ?? false;
+    internal long FramedWindowLength => availableApplyScratch?.FramedWindowLength ?? 0;
+    internal bool HasBorrowedFrameForTests => availableApplyScratch?.Frame.CanRead ?? false;
 
     public ClientReplicationView(ReplicationRegistry registry)
     {
@@ -339,67 +339,57 @@ public sealed partial class ClientReplicationView
     {
         BorrowedPayloadStream ms = scratch.Frame;
         BinaryReader br = scratch.Reader;
-        // The finally is the point: every exit from this loop has to drop the window, an ABORTED apply included. A
-        // lying length and an unregistered built-in id both throw from inside here, TryApply turns that into a false,
-        // and the caller drops the frame and carries on, so without the finally the view kept the failed snapshot's
-        // byte[] alive until the next Retarget happened to re-point the window.
-        try
+        while (true)
         {
-            while (true)
+            ushort typeId = br.ReadUInt16();
+            if (typeId == 0) break;
+            bool extension = ReplicationRegistry.IsExtension(typeId);
+            int len = extension ? br.Read7BitEncodedInt() : -1;   // extension payloads carry a length
+            long posBefore = ms.Position;
+            // Hostile/corrupt-safe: a bad length must never seek backward (a loop) or past the buffer. Turn it into a
+            // clean caught error (TryApply -> disconnect), not an unbounded read.
+            if (extension && (len < 0 || posBefore + len > ms.Length))
+                throw new InvalidOperationException($"{streamKind} extension component {typeId} has an invalid length {len}.");
+            if (registry.TryGet(typeId, out ComponentCodec codec))
             {
-                ushort typeId = br.ReadUInt16();
-                if (typeId == 0) break;
-                bool extension = ReplicationRegistry.IsExtension(typeId);
-                int len = extension ? br.Read7BitEncodedInt() : -1;   // extension payloads carry a length
-                long posBefore = ms.Position;
-                // Hostile/corrupt-safe: a bad length must never seek backward (a loop) or past the buffer. Turn it into a
-                // clean caught error (TryApply -> disconnect), not an unbounded read.
-                if (extension && (len < 0 || posBefore + len > ms.Length))
-                    throw new InvalidOperationException($"{streamKind} extension component {typeId} has an invalid length {len}.");
-                if (registry.TryGet(typeId, out ComponentCodec codec))
+                if (extension)
                 {
-                    if (extension)
-                    {
-                        // Bounded to this component's own payload. Unbounded, a codec that reads a declared length out
-                        // of its payload has the WHOLE remaining snapshot to satisfy it, so a lie is caught only when it
-                        // runs off the end of the stream and is otherwise served out of the following components' bytes.
-                        scratch.Framed.Retarget(backing.Slice((int)posBefore, len));
-                        codec.Deserialize(world, entity, scratch.FramedReader);
-                    }
-                    else
-                    {
-                        codec.Deserialize(world, entity, br);
-                    }
-                    long end = extension ? posBefore + len : ms.Position;   // codec consumes exactly len for extensions
-                    if (extension) ms.Position = end;                       // the framed read never moved ms: step it over
-                    if (codec.FixedDelaySampled)   // interpolated OR discrete nearest-sampled: both need the timestamped bytes
-                    {
-                        var slice = new byte[end - posBefore];
-                        backing.Span.Slice((int)posBefore, slice.Length).CopyTo(slice);
-                        SetCurrent(netId, typeId, slice);
-                    }
-                }
-                else if (extension)
-                {
-                    if (unknownExtensionSink is not null)
-                    {
-                        // Retain the raw frame (retain-and-rewrite) instead of dropping it, so a registry downgrade does
-                        // not destroy data at rest. The caller re-emits it verbatim on the next save.
-                        var payload = new byte[len];
-                        backing.Span.Slice((int)posBefore, len).CopyTo(payload);
-                        unknownExtensionSink(netId, typeId, payload);
-                    }
-                    ms.Position = posBefore + len;   // unknown extension: skip its framed payload (forward-compat)
+                    // Bounded to this component's own payload. Unbounded, a codec that reads a declared length out
+                    // of its payload has the WHOLE remaining snapshot to satisfy it, so a lie is caught only when it
+                    // runs off the end of the stream and is otherwise served out of the following components' bytes.
+                    scratch.DeserializeFramed(codec, world, entity, backing.Slice((int)posBefore, len));
                 }
                 else
                 {
-                    throw new InvalidOperationException($"{streamKind} references unregistered type id {typeId}.");
+                    codec.Deserialize(world, entity, br);
+                }
+                long end = extension ? posBefore + len : ms.Position;   // codec consumes exactly len for extensions
+                if (extension) ms.Position = end;                       // the framed read never moved ms: step it over
+                if (codec.FixedDelaySampled)   // interpolated OR discrete nearest-sampled: both need the timestamped bytes
+                {
+                    // An unframed codec can seek past EOF. Preserve the legacy Array.Copy failure type.
+                    if (end > backing.Length) throw new ArgumentException("A sampled component extends past the replication body.");
+                    var slice = new byte[end - posBefore];
+                    backing.Span.Slice((int)posBefore, slice.Length).CopyTo(slice);
+                    SetCurrent(netId, typeId, slice);
                 }
             }
-        }
-        finally
-        {
-            scratch.Framed.Release();   // do not keep this snapshot's buffer alive until the next apply re-points it
+            else if (extension)
+            {
+                if (unknownExtensionSink is not null)
+                {
+                    // Retain the raw frame (retain-and-rewrite) instead of dropping it, so a registry downgrade does
+                    // not destroy data at rest. The caller re-emits it verbatim on the next save.
+                    var payload = new byte[len];
+                    backing.Span.Slice((int)posBefore, len).CopyTo(payload);
+                    unknownExtensionSink(netId, typeId, payload);
+                }
+                ms.Position = posBefore + len;   // unknown extension: skip its framed payload (forward-compat)
+            }
+            else
+            {
+                throw new InvalidOperationException($"{streamKind} references unregistered type id {typeId}.");
+            }
         }
     }
 

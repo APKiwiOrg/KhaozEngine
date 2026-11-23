@@ -349,12 +349,13 @@ identical bytes on top of the frame). A third-party transport must honour the sa
 ## Session receive path
 
 A public `NetClient` copies each Data body while draining the transport. A caller can keep the
-`ClientSessionEvent.Data` array while polling again. Internally, `WorldClient` and `TileWorldClient`
-read a slice of the received frame when the transport supplies a dedicated array. The shipped
-loopback and LiteNetLib client transports never write to that array after enqueueing it, so distinct
-frames stay valid through the session queue and a nested dispatch. Other transports keep the session
-copy, since their next dequeue may reuse the underlying storage. Each transport and client has one
-owner thread for polling and draining.
+`ClientSessionEvent.Data` array while polling again.
+
+The engine's own `WorldClient` and `TileWorldClient` borrow session bodies internally. The
+`LoopbackTransport`, `InMemoryTransportHub` client endpoint and `LiteNetLibClientTransport` supply
+dedicated receive arrays that stay valid through the session queue and nested dispatch. A Data event
+from any other transport is copied as soon as it is dequeued, even if that transport supplies its
+own dedicated array. Each transport and client has one owner thread for polling and draining.
 
 ## Send commitments and the packet-size query
 

@@ -309,7 +309,7 @@ public sealed partial class WorldClient : IDisposable
         world.AdvanceTick();
         net.Poll();
         bool gotFrame = false;
-        while (net.TryDequeueFrame(out ClientSessionEvent ev))
+        while (net.TryDequeueFrame(out ClientSessionFrame ev))
         {
             switch (ev.Kind)
             {

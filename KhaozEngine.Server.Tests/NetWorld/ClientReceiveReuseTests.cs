@@ -6,11 +6,12 @@ using KhaozEngine.Netcode;
 using KhaozEngine.NetWorld;
 using KhaozEngine.Replication;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace KhaozEngine.Tests.NetWorld;
 
 [Collection("AllocSensitive")]
-public sealed class ClientReceiveReuseTests
+public sealed class ClientReceiveReuseTests(ITestOutputHelper output)
 {
     private static readonly NetConnectionId Peer = new(1);
     private const NetChannelReliability Channel = NetChannelReliability.ReliableOrdered;
@@ -52,6 +53,106 @@ public sealed class ClientReceiveReuseTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public void WarmedDeltaPollAllocatesOnlyTheAcknowledgement(bool ticked)
+    {
+        const int warmup = 16;
+        const int measured = 32;
+        ReplicationRegistry registry = Registry();
+        var world = new World();
+        Entity entity = world.Spawn();
+        world.Set(entity, new NetId(47));
+        var writer = new ServerReplicator(registry);
+        var frames = new byte[warmup + measured][];
+        for (int i = 0; i < frames.Length; i++)
+        {
+            world.AdvanceTick();
+            world.Set(entity, new Marker(i));
+            writer.Capture(world);
+            frames[i] = Envelope(ticked, delta: true, writer.WriteFor(0));
+        }
+
+        (LoopbackTransport source, LoopbackTransport receiver) = LoopbackTransport.CreatePair();
+        using var sourceLease = source;
+        using var receiverLease = receiver;
+        using var client = NewClient(source, receiver, registry);
+        _ = ReadAcknowledgement(source);
+        bool allAcknowledged = true;
+        for (int i = 0; i < warmup; i++)
+        {
+            source.Send(Peer, frames[i], Channel);
+            client.Poll();
+            allAcknowledged &= ReadAcknowledgement(source) == i + 1;
+        }
+
+        // The send-only control follows the same ACK encoder, session framing and loopback transport path.
+        long acknowledgements = MeasureAcknowledgements(warmup, measured);
+        long staged = 0;
+        long polled = 0;
+        using (AllocationRegion.Start("Warmed joined delta poll"))
+        {
+            for (int i = warmup; i < frames.Length; i++)
+            {
+                long start = GC.GetAllocatedBytesForCurrentThread();
+                source.Send(Peer, frames[i], Channel);
+                long afterStage = GC.GetAllocatedBytesForCurrentThread();
+                client.Poll();
+                staged += afterStage - start;
+                polled += GC.GetAllocatedBytesForCurrentThread() - afterStage;
+                allAcknowledged &= ReadAcknowledgement(source) == i + 1;
+            }
+        }
+
+        output.WriteLine($"B/frame: transport staging {staged / (double)measured}, ACK control {acknowledgements / (double)measured}, poll {polled / (double)measured}");
+        Assert.True(allAcknowledged);
+        Assert.True(client.TryGetComponent(47, out Marker marker) && marker.Value == frames.Length - 1);
+        Assert.Equal(acknowledgements, polled);
+    }
+
+    private static long MeasureAcknowledgements(int warmup, int measured)
+    {
+        var (sender, receiver) = LoopbackTransport.CreatePair();
+        using var senderLease = sender;
+        using var receiverLease = receiver;
+        var session = new NetClient(sender);
+        session.Poll();
+        _ = ReadAcknowledgement(receiver);
+        for (int i = 0; i < warmup; i++)
+        {
+            session.Send(MoveProtocol.EncodeReplicationAck(i + 1), Channel);
+            _ = ReadAcknowledgement(receiver);
+        }
+
+        long bytes = 0;
+        bool valid = true;
+        using (AllocationRegion.Start("Delta acknowledgement send control"))
+        {
+            for (int i = warmup; i < warmup + measured; i++)
+            {
+                long start = GC.GetAllocatedBytesForCurrentThread();
+                session.Send(MoveProtocol.EncodeReplicationAck(i + 1), Channel);
+                bytes += GC.GetAllocatedBytesForCurrentThread() - start;
+                valid &= ReadAcknowledgement(receiver) == i + 1;
+            }
+        }
+
+        Assert.True(valid);
+        return bytes;
+    }
+
+    private static int ReadAcknowledgement(LoopbackTransport transport)
+    {
+        int sequence = -1;
+        transport.Poll();
+        while (transport.TryDequeueEvent(out NetEvent ev))
+            if (ev.Type == NetEventType.Data && SessionFrame.ReadOpcode(ev.Data) == SessionOpcode.Data
+                && MoveProtocol.TryDecodeReplicationAck(ev.Data.AsSpan(1), out int ack))
+                sequence = ack;
+        return sequence;
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void WorldDispatchDoesNotReadBytesBehindTheCurrentFrame(bool ticked)
     {
         byte[] body = [2, 3, 5, 7];
@@ -61,7 +162,8 @@ public sealed class ClientReceiveReuseTests
             : MoveProtocol.EncodeSnapshotFrame(71, 17, body);
         byte[] prior = MoveProtocol.EncodeServerFrame(kind, payload);
 
-        Assert.True(MoveProtocol.TryBorrowServerFrame(prior.AsMemory(0, prior.Length - 1), out var received, out var served));
+        ReadOnlyMemory<byte> logicalFrame = prior.AsMemory(0, prior.Length - 1);
+        Assert.True(MoveProtocol.TryBorrowServerFrame(logicalFrame, out var received, out var served));
         Assert.Equal(kind, received);
         Assert.True(MoveProtocol.TryBorrowServedFrame(received, served, out long serverTick, out long netId, out int ack,
             out ReadOnlyMemory<byte> slice));
@@ -70,9 +172,22 @@ public sealed class ClientReceiveReuseTests
         Assert.Equal(17, ack);
         Assert.Equal(new byte[] { 2, 3, 5 }, slice.ToArray());
 
-        Assert.True(MoveProtocol.TryDecodeServerFrame(prior, out _, out byte[] owned));
+        Assert.True(MoveProtocol.TryDecodeServerFrame(logicalFrame.Span, out var owningKind, out byte[] owned));
+        Assert.Equal(received, owningKind);
+        Assert.Equal(served.ToArray(), owned);
+        long owningTick = -1;
+        long owningNetId;
+        int owningAck;
+        byte[] owningBody;
+        bool decoded = ticked
+            ? MoveProtocol.TryDecodeTickedSnapshotFrame(owned, out owningTick, out owningNetId, out owningAck, out owningBody)
+            : MoveProtocol.TryDecodeSnapshotFrame(owned, out owningNetId, out owningAck, out owningBody);
+        Assert.True(decoded);
+        Assert.Equal((serverTick, netId, ack), (owningTick, owningNetId, owningAck));
+        Assert.Equal(slice.ToArray(), owningBody);
         Array.Clear(prior);
-        Assert.Equal(payload, owned);
+        Assert.Equal(payload[..^1], owned);
+        Assert.Equal(new byte[] { 2, 3, 5 }, owningBody);
     }
 
     [Fact]
@@ -167,11 +282,21 @@ public sealed class ClientReceiveReuseTests
             world.Set(entity, new NetId(id));
             world.Set(entity, new Marker(value));
         }
-        byte[] body = SnapshotWriter.Write(world, registry);
-        return SessionFrame.Write(SessionOpcode.Data, MoveProtocol.EncodeServerFrame(
-            ticked ? MoveProtocol.ServerFrameKind.TickedSnapshot : MoveProtocol.ServerFrameKind.Snapshot,
-            ticked ? MoveProtocol.EncodeTickedSnapshotFrame(23, -1, -1, body)
-                : MoveProtocol.EncodeSnapshotFrame(-1, -1, body)));
+        return Envelope(ticked, delta: false, SnapshotWriter.Write(world, registry));
+    }
+
+    private static byte[] Envelope(bool ticked, bool delta, byte[] body)
+    {
+        var kind = (ticked, delta) switch
+        {
+            (true, true) => MoveProtocol.ServerFrameKind.TickedDelta,
+            (false, true) => MoveProtocol.ServerFrameKind.Delta,
+            (true, false) => MoveProtocol.ServerFrameKind.TickedSnapshot,
+            _ => MoveProtocol.ServerFrameKind.Snapshot
+        };
+        byte[] served = ticked ? MoveProtocol.EncodeTickedSnapshotFrame(23, -1, -1, body)
+            : MoveProtocol.EncodeSnapshotFrame(-1, -1, body);
+        return SessionFrame.Write(SessionOpcode.Data, MoveProtocol.EncodeServerFrame(kind, served));
     }
 
     private static byte[] GameFrame(ushort kind, byte[] payload) =>

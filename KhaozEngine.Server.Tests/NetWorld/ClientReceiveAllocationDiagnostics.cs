@@ -49,7 +49,7 @@ public sealed class ClientReceiveAllocationDiagnostics(ITestOutputHelper output)
 
             long start = GC.GetAllocatedBytesForCurrentThread();
             session.Poll();
-            if (!session.TryDequeueFrame(out ClientSessionEvent ev) || ev.Kind != ClientSessionEventKind.Data)
+            if (!session.TryDequeueFrame(out ClientSessionFrame ev) || ev.Kind != ClientSessionEventKind.Data)
                 throw new UnreachableException("The diagnostic queued one data frame.");
             counts[0] += GC.GetAllocatedBytesForCurrentThread() - start;
 

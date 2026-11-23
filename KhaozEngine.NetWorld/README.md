@@ -478,7 +478,8 @@ frames, demuxes, rate-limits and size-caps them, but never deserializes them - t
   the duration of the call (copy it with `payload.ToArray()` to keep it).
 - **Server -> client.** `SendGameMessageTo(slot, kind, payload, reliability)` targets one client and
   `BroadcastGameMessage(kind, payload, reliability)` fans out to all; both surface on the client as
-  **`WorldClient.GameMessageReceived(ushort kind, ReadOnlySpan<byte> payload)`**.
+  **`WorldClient.GameMessageReceived(ushort kind, ReadOnlySpan<byte> payload)`**. The span is valid
+  for the callback only. A handler that needs to keep the bytes copies them with `payload.ToArray()`.
 - **Reliability.** `NetChannelReliability.ReliableOrdered` gives ordered exactly-once delivery at the transport, so
   a command consumer needs no seq of its own; `UnreliableSequenced` is a lossy latest-wins state ping.
 - **Hostile-input hardening (client -> server), to the same bar as the move path.** The per-connection

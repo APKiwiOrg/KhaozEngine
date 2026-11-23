@@ -139,11 +139,130 @@ public sealed class ClientApplyReuseTests
 
         ApplySlice(body.Length);
         Assert.Throws<EndOfStreamException>(() => ApplySlice(body.Length - 1));
-        Assert.False(view.HasBorrowedFrameForTest);
+        Assert.False(view.HasBorrowedFrameForTests);
         Assert.Equal(0L, view.FramedWindowLength);
         ApplySlice(body.Length);
-        Assert.False(view.HasBorrowedFrameForTest);
+        Assert.False(view.HasBorrowedFrameForTests);
         Assert.True(view.TryGetEntity(7, out Entity e) && world.TryGet(e, out Marker marker) && marker.Value == 57);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CutUnframedSampleHasTheBaseFailureType(bool delta)
+    {
+        var registry = new ReplicationRegistry();
+        registry.Register<Marker>(1, static (sample, writer) => writer.Write(sample.Value), static reader =>
+        {
+            int length = reader.ReadInt32();
+            reader.BaseStream.Seek(length, SeekOrigin.Current);
+            return new Marker(length);
+        }, discreteSample: true);
+
+        using var stream = new MemoryStream();
+        using var writer = new BinaryWriter(stream);
+        if (delta)
+        {
+            writer.Write(-1);
+            writer.Write(1);
+            writer.Write(0);
+        }
+        writer.Write(1);
+        writer.Write(3L);
+        if (delta)
+        {
+            writer.Write(true);
+            writer.Write(0);
+        }
+        writer.Write((ushort)1);
+        int sampleStart = (int)stream.Position;
+        writer.Write(3);
+        byte[] cut = stream.ToArray();
+        byte[] sample = new byte[sizeof(int) + 3];
+        Assert.Throws<ArgumentException>(() => Array.Copy(cut, sampleStart, sample, 0, sample.Length));
+
+        var view = new ClientReplicationView(registry);
+        var world = new World();
+        Assert.Throws<ArgumentException>(() => Apply(view, world, cut, delta));
+
+        // Bytes outside the logical window could satisfy the seek if the decoder used the array length.
+        byte[] backing = new byte[cut.Length + 5];
+        cut.CopyTo(backing, 2);
+        ReadOnlyMemory<byte> body = backing.AsMemory(2, cut.Length);
+        world.AdvanceTick();
+        Assert.Throws<ArgumentException>(() =>
+        {
+            if (delta) view.ApplyDeltaBorrowed(world, body);
+            else view.ApplyBorrowed(world, body);
+        });
+    }
+
+    [Fact]
+    public void FailedUnframedCharacterReadCannotAffectTheNextFrame()
+    {
+        var registry = new ReplicationRegistry();
+        registry.Register<Marker>(1, static (value, writer) => writer.Write((byte)value.Value),
+            static reader => new Marker(reader.ReadChar()));
+        var view = new ClientReplicationView(registry);
+        var world = new World();
+
+        Assert.Throws<EndOfStreamException>(() => Apply(view, world, CharacterSnapshot(1, 0xC3, complete: false), delta: false));
+        Apply(view, world, CharacterSnapshot(1, (byte)'q'), delta: false);
+        Assert.True(view.TryGetEntity(3, out Entity entity));
+        Assert.True(world.TryGet(entity, out Marker letter));
+        Assert.Equal((int)'q', letter.Value);
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    public void FramedCharacterReadCannotAffectTheNextWindow(bool sameFrame, bool firstReadThrows)
+    {
+        var registry = new ReplicationRegistry();
+        registry.Register<Marker>(ExtensionId, static (value, writer) => writer.Write((byte)value.Value),
+            reader => new Marker(firstReadThrows ? reader.ReadChar() : reader.Read()));
+        registry.Register<Value>(ExtensionId + 1, static (value, writer) => writer.Write((byte)value.Number),
+            static reader => new Value(reader.ReadChar()));
+        var view = new ClientReplicationView(registry);
+        var world = new World();
+
+        if (sameFrame)
+        {
+            Apply(view, world, CharacterSnapshot(ExtensionId, 0xC3, includeFollowing: true), delta: false);
+        }
+        else
+        {
+            byte[] first = CharacterSnapshot(ExtensionId, 0xC3);
+            if (firstReadThrows)
+                Assert.Throws<EndOfStreamException>(() => Apply(view, world, first, delta: false));
+            else
+                Apply(view, world, first, delta: false);
+            Apply(view, world, CharacterSnapshot(ExtensionId + 1, (byte)'q'), delta: false);
+        }
+
+        Assert.True(view.TryGetEntity(3, out Entity entity));
+        Assert.True(world.TryGet(entity, out Value letter));
+        Assert.Equal((float)'q', letter.Number);
+    }
+
+    private static byte[] CharacterSnapshot(ushort type, byte value, bool complete = true, bool includeFollowing = false)
+    {
+        using var stream = new MemoryStream();
+        using var writer = new BinaryWriter(stream);
+        writer.Write(1);
+        writer.Write(3L);
+        writer.Write(type);
+        if (ReplicationRegistry.IsExtension(type)) writer.Write7BitEncodedInt(1);
+        writer.Write(value);
+        if (includeFollowing)
+        {
+            writer.Write((ushort)(ExtensionId + 1));
+            writer.Write7BitEncodedInt(1);
+            writer.Write((byte)'q');
+        }
+        if (complete) writer.Write((ushort)0);
+        return stream.ToArray();
     }
 
     [Fact]
@@ -179,7 +298,7 @@ public sealed class ClientApplyReuseTests
         view.Apply(target, outer);
         Assert.Equal(2, view.LastAppliedSeq);
         Assert.True(view.TryGetEntity(71, out Entity e) && target.TryGet(e, out Marker marker) && marker.Value == 17);
-        Assert.False(view.HasBorrowedFrameForTest);
+        Assert.False(view.HasBorrowedFrameForTests);
     }
 
     private static ReplicationRegistry MakeRegistry(bool sampled)

@@ -53,6 +53,10 @@ public enum CoverageClaimRefusal
 
     /// <summary>Refuses a triangle whose one-millimetre sampling grid exceeds the index range.</summary>
     FootprintSamplingGridTooLarge,
+
+    /// <summary>Refuses a layered skinned part's footprint mesh whose triangle count differs from the triangles its region
+    /// runs tag, identifying the part, mesh and both counts.</summary>
+    FootprintMeshTriangleCountMismatch,
 }
 
 /// <summary>Which input list a refused coverage claim mesh belongs to. Members are only ever appended.</summary>

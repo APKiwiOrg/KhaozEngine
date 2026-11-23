@@ -539,6 +539,7 @@ The refusals below throw `CoverageClaimDataException`, derived from `MalformedDa
 | `FootprintPartMeshMissing` | a definition part with no mesh for footprint measurement. | `MeshKind`, `PartId`, `MeshKey` |
 | `FootprintHeightAboveLimit` | a fixed triangle sample more than 0.25 m above the body. | `MeshKind`, `MeshIndex`, `PartId`, `MeshKey`, `TriangleIndex`, `HeightMetres` |
 | `FootprintSamplingGridTooLarge` | a piece triangle whose sample divisions exceed the index range. | `MeshKind`, `MeshIndex`, `PartId`, `MeshKey`, `TriangleIndex`, `LongestEdgeMetres` |
+| `FootprintMeshTriangleCountMismatch` | a layered skinned part's mesh whose triangle count differs from its region runs, which binding would refuse. | `MeshKind`, `MeshIndex`, `PartId`, `MeshKey`, `ExpectedTriangleCount`, `ActualTriangleCount` |
 
 The check has its own refusal family rather than `OutfitDataException`, because it resolves no worn list, so the
 outfit refusal's `WornIndex` would have nothing to name.
@@ -582,7 +583,9 @@ parts and skinned parts without motion. Supply one mesh per definition part with
 combined in upload order. The highest fixed sample in each cell is clamped to zero and rounded up to
 0.01 mm. Fixed samples over 0.25 m are refused. A triangle with any swinging vertex records cells
 without heights. `RegionHeights(body)` returns the maximum fixed height in each region in map order,
-with null for a region without fixed entries. Use the maxima to declare fallback standoff.
+with null for a region without fixed entries. Declare fallback standoff as the larger of these maxima and the
+fixed vertex heights `StandoffClaimCheck` measures, because a triangle with a swinging corner holds no footprint
+height. The [consumer guide](../docs/USING-KHAOZENGINE.md#worn-parts-over-lower-layers) shows the step.
 
 `LiftFootprintCheck.Verify(bodyMeshes, body, piece, pieceMeshes, declared)` measures again and returns
 a `LiftFootprintReport`. `BodyMatches` compares the map digest and triangle count. `PartMismatches`

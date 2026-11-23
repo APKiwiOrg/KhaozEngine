@@ -37,12 +37,17 @@ public class LiftFootprintMeasureTests(ITestOutputHelper output)
     [Fact]
     public void A_triangle_with_one_swinging_vertex_records_cells_without_heights()
     {
-        CoverageClaimMesh swinging = SmallFootprintTriangle(12, 0.5f) with { Swinging = new[] { false, true, false } };
+        // ChainedPiece tags part 12 with two triangles, so its claim mesh carries the swinging triangle twice.
+        CoverageClaimMesh swinging = SmallFootprintTriangle(12, 0.5f) with
+        {
+            Indices = new uint[] { 0, 1, 2, 0, 1, 2 }, Swinging = new[] { false, true, false },
+        };
         LiftFootprint measured = LiftFootprintMeasure.Measure(FootprintBody, FootprintMap, ChainedPiece(),
             [swinging, SmallFootprintTriangle(3, 0.015625f)]);
 
         Assert.Collection(measured.Parts, part => Assert.Equal(3u, part.PartId), part => Assert.Equal(12u, part.PartId));
-        LiftFootprintTriangle triangle = Assert.Single(measured.PartById(12)!.Triangles);
+        Assert.Equal(2, measured.PartById(12)!.TriangleCount);
+        LiftFootprintTriangle triangle = measured.PartById(12)!.Triangles[0];
         Assert.True(triangle.Swinging);
         Assert.Equal(0, Assert.Single(triangle.CellKeys.ToArray()));
         Assert.True(triangle.HeightUnits.IsEmpty);
@@ -79,8 +84,8 @@ public class LiftFootprintMeasureTests(ITestOutputHelper output)
     }
 
     [Theory]
-    [InlineData(CoverageClaimRefusal.FootprintMeshPartIdMissing, 0u, 0)]
-    [InlineData(CoverageClaimRefusal.FootprintMeshPartIdUnknown, 2u, 0)]
+    [InlineData(CoverageClaimRefusal.FootprintMeshPartIdMissing, 0u, 1)]
+    [InlineData(CoverageClaimRefusal.FootprintMeshPartIdUnknown, 2u, 1)]
     [InlineData(CoverageClaimRefusal.FootprintMeshPartIdDuplicate, 1u, 1)]
     [InlineData(CoverageClaimRefusal.FootprintPartMeshMissing, 1u, null)]
     public void Every_part_needs_one_mesh_with_its_definition_id(CoverageClaimRefusal reason, uint partId, int? meshIndex)
@@ -92,7 +97,8 @@ public class LiftFootprintMeasureTests(ITestOutputHelper output)
         {
             CoverageClaimRefusal.FootprintMeshPartIdDuplicate => [mesh, mesh],
             CoverageClaimRefusal.FootprintPartMeshMissing => [],
-            _ => [mesh with { PartId = partId }],
+            // The valid mesh stays, so the added mesh breaks only the ID rule and no part lacks a mesh.
+            _ => [mesh, mesh with { PartId = partId }],
         };
 
         var error = Assert.Throws<CoverageClaimDataException>(
@@ -103,6 +109,29 @@ public class LiftFootprintMeasureTests(ITestOutputHelper output)
         Assert.Equal(partId, error.PartId);
         Assert.Equal(meshIndex, error.MeshIndex);
         Assert.Equal(partId == 1 ? piece.Parts[0].Mesh.Key : null, error.MeshKey);
+    }
+
+    [Fact]
+    public void A_layered_skinned_mesh_needs_the_triangles_its_region_runs_tag()
+    {
+        // Binding refuses a footprint whose part has another triangle count, so measuring one must refuse too.
+        var piece = new AttachmentSetDefinition(
+            [new SkinnedAttachmentPartDefinition(3, new("parts/skin.glb", Hash)) { Regions = [new NamedRegionRun("upper", 2)] }],
+            AttachmentLayer.Garment, []);
+        CoverageClaimMesh one = SmallFootprintTriangle(3, 0.015625f);
+        CoverageClaimMesh two = new(new[]
+        {
+            new Vector3(0.00390625f, 0.00390625f, 0.015625f), new Vector3(0.0078125f, 0.00390625f, 0.015625f),
+            new Vector3(0.00390625f, 0.0078125f, 0.015625f), new Vector3(0.0078125f, 0.0078125f, 0.015625f),
+        }, new uint[] { 0, 1, 2, 1, 3, 2 }) { PartId = 3 };
+        Assert.Equal(2, Assert.Single(LiftFootprintMeasure.Measure(FootprintBody, FootprintMap, piece, [two]).Parts).TriangleCount);
+
+        var error = Assert.Throws<CoverageClaimDataException>(
+            () => LiftFootprintMeasure.Measure(FootprintBody, FootprintMap, piece, [one]));
+
+        Assert.Equal(CoverageClaimRefusal.FootprintMeshTriangleCountMismatch, error.Reason);
+        Assert.Equal((CoverageClaimMeshKind.Piece, 0, 3u, "parts/skin.glb", 2, 1),
+            (error.MeshKind, error.MeshIndex, error.PartId, error.MeshKey, error.ExpectedTriangleCount, error.ActualTriangleCount));
     }
 
     [Fact]

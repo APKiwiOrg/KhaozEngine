@@ -225,7 +225,10 @@ public sealed partial class OutfitLiftDrawTests
             AttachmentLayer.Garment, [], [], standoff is float height ? [new("alpha", height)] : []));
     }
 
-    internal static BoundAttachmentSet Armour(OutfitRig rig, bool splitMaterials = false)
+    internal static BoundAttachmentSet Armour(OutfitRig rig, bool splitMaterials = false) =>
+        rig.Wear("armour.json", ArmourDefinition(rig, splitMaterials));
+
+    internal static AttachmentSetDefinition ArmourDefinition(OutfitRig rig, bool splitMaterials = false)
     {
         SkinnedAttachmentGlbFixture glb = OutfitRig.GarmentFixture();
         glb.SetIndexedMaterialParts([0, 1, 2], 2);
@@ -240,7 +243,7 @@ public sealed partial class OutfitLiftDrawTests
             Regions = [new("alpha", 1), new("beta", 1)],
             Lift = new(Clearance),
         };
-        return rig.Wear("armour.json", new AttachmentSetDefinition([part], AttachmentLayer.Armour, []));
+        return new AttachmentSetDefinition([part], AttachmentLayer.Armour, []);
     }
 
     internal static BoundAttachmentSet ChainedArmour(OutfitRig rig)

@@ -12,10 +12,12 @@ public sealed partial class OutfitLiftDrawTests
     const float MeasuredHeight = .0625f;
 
     [Theory]
-    [InlineData(true, true)]
-    [InlineData(false, true)]
-    [InlineData(true, false)]
-    public void Footprint_lift_uses_the_body_it_was_measured_on(bool matchingHash, bool matchingBodyCount)
+    [InlineData(true, true, false)]
+    [InlineData(false, true, false)]
+    [InlineData(true, false, false)]
+    [InlineData(true, true, true)]
+    [InlineData(false, true, true)]
+    public void Footprint_lift_uses_the_body_it_was_measured_on(bool matchingHash, bool matchingBodyCount, bool measuredArmour)
     {
         using var rig = new OutfitRig();
         LoadedBodyRegions body = Body(rig);
@@ -31,7 +33,8 @@ public sealed partial class OutfitLiftDrawTests
                 [new LiftFootprintPart(part.PartId, [triangle, triangle])]);
         }
         BoundAttachmentSet garment = rig.Wear("garment.json", rig.WithFootprint("liner.khlf", definition, measured));
-        BoundAttachmentSet armour = Armour(rig);
+        // A measured lifting part must reach the resolver through binding too, not only lower sets.
+        BoundAttachmentSet armour = measuredArmour ? MeasuredArmour(rig, measuredBody) : Armour(rig);
 
         using BoundOutfit outfit = rig.Cache.BindOutfit(body, [garment, armour]);
 
@@ -39,7 +42,7 @@ public sealed partial class OutfitLiftDrawTests
         Assert.True(rig.Scene.IsSkinnedMeshView(mesh));
         Assert.Equal((matchingBody ? MeasuredHeight : Standoff) + Clearance - Bearing, Positions(rig, mesh)[0].Z, 5);
         Assert.Equal(matchingBody, outfit.FootprintApplied(0));
-        Assert.False(outfit.FootprintApplied(1));
+        Assert.Equal(measuredArmour && matchingHash, outfit.FootprintApplied(1));
     }
 
     [Fact]
@@ -129,6 +132,16 @@ public sealed partial class OutfitLiftDrawTests
     {
         (AttachmentSetDefinition definition, LiftFootprint footprint) = MeasureGarment(rig, body);
         return rig.Wear("footprint-liner.json", rig.WithFootprint("liner.khlf", definition, footprint));
+    }
+
+    static BoundAttachmentSet MeasuredArmour(OutfitRig rig, LoadedBodyRegions measuredBody)
+    {
+        AttachmentSetDefinition definition = ArmourDefinition(rig);
+        // Upload order puts both primitives in one material group: the chest triangle, then the back triangle.
+        Vector3[] positions = [.. Chest, .. Back];
+        var claim = new CoverageClaimMesh(positions, new uint[] { 0, 1, 2, 3, 4, 5 }) { PartId = ArmourPartId };
+        LiftFootprint footprint = rig.MeasureFootprint(measuredBody, definition, claim);
+        return rig.Wear("armour.json", rig.WithFootprint("shell.khlf", definition, footprint));
     }
 
     static (AttachmentSetDefinition, LiftFootprint) MeasureGarment(OutfitRig rig, LoadedBodyRegions body, bool rigid = false)

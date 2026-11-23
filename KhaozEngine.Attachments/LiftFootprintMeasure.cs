@@ -33,6 +33,7 @@ public static class LiftFootprintMeasure
         Dictionary<uint, int> pieceMeshIndices = CoverageClaimSwingEvidence.ResolveFootprintMeshes(piece, pieceMeshes);
         for (int mesh = 0; mesh < pieceMeshes.Count; mesh++)
             CoverageClaimValidation.CheckPieceMesh(pieceMeshes, mesh);
+        CheckSkinnedTriangleCounts(piece, pieceMeshes, pieceMeshIndices);
 
         long triangleCount = 0;
         for (int part = 0; part < body.Parts.Count; part++)
@@ -50,6 +51,28 @@ public static class LiftFootprintMeasure
             parts[i] = MeasurePart(index, part, pieceMeshes[meshIndex], meshIndex, cells, keys);
         }
         return new LiftFootprint(body.Sha256, (int)triangleCount, parts);
+    }
+
+    // Binding checks a layered skinned part's footprint against the triangles its region runs tag, so measuring another
+    // count would publish a footprint that the offline check passes and the binder refuses.
+    static void CheckSkinnedTriangleCounts(AttachmentSetDefinition piece, IReadOnlyList<CoverageClaimMesh> pieceMeshes,
+        Dictionary<uint, int> pieceMeshIndices)
+    {
+        foreach (AttachmentPartDefinition part in piece.Parts)
+        {
+            if (part is not SkinnedAttachmentPartDefinition { Regions.Count: > 0 } skinned) continue;
+            long tagged = 0;
+            foreach (NamedRegionRun run in skinned.Regions) tagged += run.TriangleCount;
+            int meshIndex = pieceMeshIndices[part.Id];
+            int triangles = pieceMeshes[meshIndex].Indices.Length / 3;
+            if (tagged != triangles)
+                throw new CoverageClaimDataException(CoverageClaimRefusal.FootprintMeshTriangleCountMismatch,
+                    $"Piece part {part.Id}, mesh '{part.Mesh.Key}', has {triangles} triangles and its region runs tag {tagged}.")
+                {
+                    MeshKind = CoverageClaimMeshKind.Piece, MeshIndex = meshIndex, PartId = part.Id, MeshKey = part.Mesh.Key,
+                    ExpectedTriangleCount = (int)Math.Min(tagged, int.MaxValue), ActualTriangleCount = triangles,
+                };
+        }
     }
 
     static LiftFootprintPart MeasurePart(BodyTriangleIndex index, AttachmentPartDefinition part, CoverageClaimMesh mesh,

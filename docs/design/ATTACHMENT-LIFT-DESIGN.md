@@ -137,7 +137,10 @@ The signed height is measured from the triangle plane along its outward normal.
 A fixed triangle stores its highest sampled height in each cell, clamped at zero and rounded upward to
 0.01 mm. A fixed height over 0.25 m is refused. A triangle with any vertex weighted to a chain joint is
 swinging. It records cells for lift and supplies no height. `LiftFootprint.RegionHeights(body)` reduces
-the fixed heights to each region's maximum for authoring regional standoff.
+the fixed heights to each region's maximum. Regional standoff takes the larger of those maxima and the fixed
+vertex heights `StandoffClaimCheck` measures, because a triangle with a swinging corner holds no footprint height
+while its fixed corners still stand on a body that falls back to the regional claim. A layered skinned part's
+measured mesh must have the triangles its region runs tag, as binding checks, so measuring refuses another count.
 
 `LiftFootprintCheck.Verify` repeats the measurement, checks body identity, part IDs, triangle counts and
 swinging status, and reports missing cells or understated fixed heights. Extra cells and greater heights

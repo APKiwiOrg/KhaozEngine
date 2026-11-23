@@ -7862,11 +7862,21 @@ byte[] footprintBytes = LiftFootprintFile.Write(footprint);
 var footprintRef = new LiftFootprintRef(footprintKey,
     Convert.ToHexStringLower(SHA256.HashData(footprintBytes)));
 
+// Fallback standoff covers the footprint's fixed triangles and every fixed vertex the regional check measures.
 IReadOnlyList<double?> heights = footprint.RegionHeights(bodyMap);
-var standoff = new List<RegionStandoff>();
-for (int region = 0; region < heights.Count; region++)
+StandoffClaimReport fixedVertices = StandoffClaimCheck.Verify(bodyMeshes, bodyMap, piece, pieceMeshes);
+var highest = new double?[bodyMap.Regions.Count];
+for (int region = 0; region < highest.Length; region++)
+    highest[region] = heights[region];
+foreach (StandoffClaimRegion measured in fixedVertices.Regions)
 {
-    if (heights[region] is not double height)
+    if (measured.HighestHeightMetres > 0 && bodyMap.TryRegion(measured.Name, out int region))
+        highest[region] = Math.Max(highest[region] ?? 0, measured.HighestHeightMetres);
+}
+var standoff = new List<RegionStandoff>();
+for (int region = 0; region < highest.Length; region++)
+{
+    if (highest[region] is not double height)
         continue;
     // Keep the regional float at least as high as the measured maximum.
     float metres = (float)height;
@@ -7885,8 +7895,9 @@ if (!report.IsHonest)
 
 Put `footprintBytes` in the asset pack at `footprintKey` beside the set and its meshes, and publish
 `setJson` after every reader accepts format 7. In a separate verify step, read the declared bytes from
-the pack. For chained parts, also run `StandoffClaimCheck.Verify` to check fallback against fixed vertices
-in triangles that have swinging corners. Include any larger fixed-vertex claims in the regional standoff.
+the pack. The regional standoff takes the larger of the footprint's region heights and the fixed vertex
+heights `StandoffClaimCheck` measures: a triangle with a swinging corner holds no footprint height, while
+its fixed corners still stand where a body without this footprint relies on the regional claim.
 
 At runtime, create the cache over a scene that supports displaced views and load the body map through that same
 cache. The set hashes below are for the published JSON bytes. Bind again when the outfit changes.

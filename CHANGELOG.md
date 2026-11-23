@@ -4,6 +4,49 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 24.8.0
+
+2026-11-23
+
+A minor that changes how every hanging chain moves. `KhaozEngine.Attachments` adds API for width bounds,
+which `KhaozEngine.Attachments.Render3D` applies when it binds wearer motion.
+
+**Fixed.**
+
+- Chain position corrections no longer become velocity. A bend limit shares its stop with a movable
+  parent. This removes the snap at an anchor stop and the rubbery recoil caused by feeding corrections
+  back into the next step.
+  [#1882](https://github.com/APKiwiOrg/KhaozEngine/issues/1882)
+- Chains advance on a fixed grid, sampling anchors, capsules and the wearer at each step. The step
+  length stays the same under uneven frame pacing. The displayed shape is interpolated relative to
+  its anchor. [#1883](https://github.com/APKiwiOrg/KhaozEngine/issues/1883)
+
+**Added.**
+
+- Attachment set format 6 adds optional `linkStretch` to bound the stretch and compression of linked
+  chains. `AttachmentSetJson.LinkStretchFormatVersion` is 6. Author the bound on
+  `ChainMotionDefinition.LinkStretch`. The wearer binding copies it to `ChainLink.Stretch` on each
+  rig link. `AttachmentSetRefusal` appends `LinkStretchOutOfRange`, `LinkStretchWithoutLinks` and
+  `ChainLinkStretchInDefinition`. [#1884](https://github.com/APKiwiOrg/KhaozEngine/issues/1884)
+
+**Changed.**
+
+- `ChainSimulationOptions.MaxStepSeconds` now sets the fixed simulation step and `MaxStepsPerFrame`
+  caps the steps processed in one frame. The displayed shape is one step late relative to the anchor
+  and follows the body's current pose.
+- Every chained piece moves differently. Review existing pieces after upgrading, especially chains
+  tuned with tight bend limits and stiff springs that may now look calmer than intended. For example,
+  try lower damping on a short tail or wider bend limits with `linkStretch` on a cloak.
+
+**Performance.**
+
+- Each chain skips capsules beyond its reach while preserving the simulation result.
+
+**Upgrade order.**
+
+- Move every reader to 24.8.0 or later before any publisher writes format 6. Readers on 24.7 or earlier
+  refuse it. Sets that use formats 1 to 5 keep their canonical bytes and semantic hashes.
+
 ## 24.7.0
 
 2026-11-23

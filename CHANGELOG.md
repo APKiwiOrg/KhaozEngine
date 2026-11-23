@@ -8,11 +8,38 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 2026-11-24
 
-A minor that removes more steady allocation from replication on the server and on the client, and
-closes re-entrancy gaps in the replication writers. `KhaozEngine.NetWorld` adds one method.
+A minor that lifts worn parts by where the layers below them actually stand, removes more steady
+allocation from replication on the server and on the client, and closes re-entrancy gaps in the
+replication writers. `KhaozEngine.Attachments` adds measured lift footprints and set format 7,
+`KhaozEngine.Attachments.Render3D` binds with them, and `KhaozEngine.NetWorld` adds one method.
 
 **Added.**
 
+- Lift by footprint. A worn set can name a footprint file measured on one body: for every triangle of
+  every part, the body cells it lies over, 8 by 8 per body triangle, and its highest point in each. A
+  lifting cross section then clears only the cells under its own triangles, and a layer above clears a
+  lifted part only where it lies, so a strap no longer floats over a garment panel because of a hem
+  elsewhere in the region. Regions still decide what is hidden, and a hidden triangle adds no height.
+  Measured with the engine on a consumer's shipped outfit, a strap harness over a linen shirt now
+  stands a median 0.3 mm above its 1 mm clearance, against 3.2 mm with regions. A set without a footprint, or measured on another body, lifts by its regional
+  standoff as before. [#1891](https://github.com/APKiwiOrg/KhaozEngine/issues/1891)
+- Attachment set format 7 adds an optional root `footprint` naming the file by key and SHA-256.
+  `AttachmentSetJson.FootprintFormatVersion` is 7 and `AttachmentSetDefinition.Footprint` holds a
+  `LiftFootprintRef`. Formats 1 to 6 keep their bytes and hashes. `AttachmentSetRefusal` appends
+  `FootprintWithoutLayer`, `FootprintKeyInvalid`, `FootprintHashInvalid`, `FootprintKeyUsedByMesh` and
+  `FootprintReferenceMissingOrHashMismatch`. [#1891](https://github.com/APKiwiOrg/KhaozEngine/issues/1891)
+- `BodyCell`, `LiftFootprint`, `LiftFootprintPart`, `LiftFootprintTriangle` and `LiftFootprintFile`
+  read and write the footprint file (`KHLF` format 1), refusing with `LiftFootprintDataException` and
+  `LiftFootprintRefusal`. `LiftFootprintMeasure.Measure` measures a set over a body with the nearest
+  triangle rule `StandoffClaimCheck` uses, and `LiftFootprintCheck.Verify` reports uncovered cells,
+  understated heights and part mismatches. `CoverageClaimRefusal` appends seven footprint members.
+  [#1891](https://github.com/APKiwiOrg/KhaozEngine/issues/1891)
+- `OutfitLift.Resolve` takes one optional footprint per worn set and reports `FootprintApplied`, as
+  `BoundOutfit.FootprintApplied` does after binding. The set cache verifies a named footprint file and
+  its part IDs before upload, and binding refuses a footprint whose part triangle counts differ from the
+  meshes with `AttachmentBindingRefusal.FootprintTriangleCountMismatch` before acquiring any view.
+  `LiftBindCostDiagnostics` reports footprint binds on a 1,584 triangle body.
+  [#1891](https://github.com/APKiwiOrg/KhaozEngine/issues/1891)
 - `WorldClient.CopySnapshotTo(List<EntityRenderState>)` clears and fills a list the caller owns with
   the entries `Snapshot()` returns, in the same order. A list reused across frames allocates nothing
   once it has grown to the population. `Snapshot()` still returns a new independent list.
@@ -35,6 +62,12 @@ closes re-entrancy gaps in the replication writers. `KhaozEngine.NetWorld` adds 
 
 **Changed.**
 
+- The vertices of a lifting part whose lift direction and bearing are bitwise equal form one cross
+  section and lift by one distance, so a section keeps its thickness whatever region tags its triangles
+  carry. An outfit without footprints lifts as before except where one section's vertices touched
+  different region sets. [#1887](https://github.com/APKiwiOrg/KhaozEngine/issues/1887)
+- `StandoffClaimCheck` shares its nearest body triangle rule with footprint measurement through a
+  bounding volume hierarchy. Its results are unchanged.
 - A sampled component whose codec leaves the reader beyond the end of the frame is refused with
   `ArgumentException` before its sample copy is sized. A reader left at the stream limit used to
   surface as `OutOfMemoryException` from sizing that copy.

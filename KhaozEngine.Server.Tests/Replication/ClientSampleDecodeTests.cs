@@ -144,25 +144,25 @@ public sealed class ClientSampleDecodeTests
     }
 
     [Fact]
-    public void NumericOverreadAfterASeekPreservesLegacyCursorRecovery()
+    public void SeekPastSampleCannotReadEarlierSamplesBytes()
     {
         var registry = new ReplicationRegistry();
-        registry.Register<Characters>(1, static (value, writer) => writer.Write((byte)value.Older),
+        registry.Register<Characters>(1, static (value, writer) => writer.Write(value.Older),
             static reader =>
             {
-                Stream stream = reader.BaseStream;
-                int pastEnd = (int)stream.Seek(1, SeekOrigin.End);
-                try { reader.ReadInt32(); }
-                catch (EndOfStreamException) { return new Characters(pastEnd, (int)stream.Position); }
-                throw new InvalidOperationException("Expected the read past the sample to fail.");
+                reader.BaseStream.Seek(2, SeekOrigin.Begin);
+                return new Characters(reader.ReadInt32(), 0);
             }, discreteSample: true);
         Assert.True(registry.TryGet(1, out ComponentCodec codec));
         var world = new World();
         Entity entity = world.Spawn();
+        var older = new Characters(37, 0);
 
-        codec.SetFromBytes!(world, entity, [0x61]);
+        codec.SetFromBytes!(world, entity, [0, 0, 37, 0, 0, 0]);
 
-        Assert.Equal(new Characters(2, 1), world.Get<Characters>(entity));
+        Assert.Equal(older, world.Get<Characters>(entity));
+        Assert.Throws<EndOfStreamException>(() => codec.SetFromBytes!(world, entity, [0x61]));
+        Assert.Equal(older, world.Get<Characters>(entity));
     }
 
     private readonly record struct Characters(int Older, int Newer) : IComponent;

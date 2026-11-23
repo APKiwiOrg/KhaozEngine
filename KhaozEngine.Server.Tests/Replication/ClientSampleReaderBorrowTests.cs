@@ -18,8 +18,8 @@ public sealed class ClientSampleReaderBorrowTests
     {
         (BinaryReader reader, _) = Decode(fail);
 
-        Assert.Throws<ObjectDisposedException>(() => reader.ReadByte());
-        Assert.Throws<ObjectDisposedException>(() => reader.BaseStream.ReadByte());
+        Assert.Throws<EndOfStreamException>(() => reader.ReadByte());
+        Assert.Equal(-1, reader.BaseStream.ReadByte());
     }
 
     [Theory]

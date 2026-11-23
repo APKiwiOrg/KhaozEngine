@@ -6,8 +6,9 @@ namespace KhaozEngine.Attachments;
 internal sealed class ChainWidthBounds(ChainWidthBounds.Pair[] pairs)
 {
     private const int MaximumSweeps = 8;
-    // A sub-millimetre margin avoids chasing roundoff across links that share a particle.
+    private const float PositionTolerance = 0.000001f;
     private const float SweepTolerance = 0.0005f;
+    private const float VelocityTolerance = 0.0005f;
     private readonly (float Minimum, float Maximum)[] _bands = new (float, float)[pairs.Length];
 
     internal readonly record struct Member(int Chain, int Particle, int Root)
@@ -29,40 +30,52 @@ internal sealed class ChainWidthBounds(ChainWidthBounds.Pair[] pairs)
             _bands[index] = (rest * (1 - pair.Stretch), rest * (1 + pair.Stretch));
         }
 
-        for (int sweeps = 0; sweeps < MaximumSweeps && NeedsSweep(particles); sweeps++)
+        for (int sweeps = 0; sweeps < MaximumSweeps; sweeps++)
         {
+            // Later sweeps tolerate a small residual from pairs that share a particle.
+            // Use the same margin for checking and projecting so a sweep starts without a snap.
+            float margin = sweeps == 0 ? PositionTolerance : SweepTolerance;
+            if (!NeedsSweep(particles, margin))
+                break;
+
             bool forward = (sweeps & 1) == 0;
             int direction = forward ? 1 : -1;
             int stop = forward ? pairs.Length : -1;
             for (int index = forward ? 0 : pairs.Length - 1; index != stop; index += direction)
-                Constrain(particles, pairs[index], _bands[index]);
+                Constrain(particles, pairs[index], _bands[index], margin);
         }
     }
 
-    private bool NeedsSweep(ChainParticles particles)
+    private bool NeedsSweep(ChainParticles particles, float margin)
     {
         for (int index = 0; index < pairs.Length; index++)
         {
             var pair = pairs[index];
             float squared = Vector3.DistanceSquared(particles.Positions[pair.First.Particle], particles.Positions[pair.Second.Particle]);
             var (minimum, maximum) = _bands[index];
-            float lower = MathF.Max(0, minimum - SweepTolerance);
-            float upper = maximum + SweepTolerance;
+            float lower = MathF.Max(0, minimum - margin);
+            float upper = maximum + margin;
             if (squared < lower * lower || squared > upper * upper)
                 return true;
         }
         return false;
     }
 
-    private static void Constrain(ChainParticles particles, in Pair pair, (float Minimum, float Maximum) band)
+    private static void Constrain(ChainParticles particles, in Pair pair, (float Minimum, float Maximum) band, float margin)
     {
         int first = pair.First.Particle;
         int second = pair.Second.Particle;
         var offset = particles.Positions[second] - particles.Positions[first];
         float spacing = offset.Length();
         float bound = Math.Clamp(spacing, band.Minimum, band.Maximum);
-        if (bound == spacing)
+        float excess = spacing - bound;
+        float violation = MathF.Abs(excess);
+        if (violation <= margin)
             return;
+
+        // Ease into a sweep at its margin and reach the authored band at twice that error.
+        // Project inside the margin so rounding and shared pairs do not stall on its edge.
+        bound += MathF.CopySign(MathF.Max(0, 2 * margin - violation), excess);
 
         var rest = particles.RestPositions[second] - particles.RestPositions[first];
         var axis = ChainMath.Direction(offset, ChainMath.Direction(rest, Vector3.UnitX));
@@ -96,7 +109,7 @@ internal sealed class ChainWidthBounds(ChainWidthBounds.Pair[] pairs)
                 bestError = MathF.Abs(error);
                 (bestLeft, bestRight) = (a, b);
             }
-            if (bestError <= 0.000001f || distance == 0)
+            if (bestError <= PositionTolerance || distance == 0)
                 break;
 
             leverage = Vector3.Dot(aSlope - bSlope, delta / distance);
@@ -168,7 +181,7 @@ internal sealed class ChainWidthBounds(ChainWidthBounds.Pair[] pairs)
         float spacing = offset.Length();
         var (minimum, maximum) = _bands[index];
         bool stretching = spacing - minimum >= maximum - spacing;
-        if (stretching ? spacing < maximum - SweepTolerance : spacing > minimum + SweepTolerance)
+        if (stretching ? spacing < maximum - VelocityTolerance : spacing > minimum + VelocityTolerance)
             return;
 
         var rest = particles.RestPositions[pair.Second.Particle] - particles.RestPositions[pair.First.Particle];

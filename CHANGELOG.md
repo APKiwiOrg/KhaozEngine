@@ -20,6 +20,8 @@ which `KhaozEngine.Attachments.Render3D` applies when it binds wearer motion.
 - Chains advance on a fixed grid, sampling anchors, capsules and the wearer at each step. The step
   length stays the same under uneven frame pacing. The displayed shape is interpolated relative to
   its anchor. [#1883](https://github.com/APKiwiOrg/KhaozEngine/issues/1883)
+- Soft linked chains with a width bound come to rest against stationary capsules.
+  [#1884](https://github.com/APKiwiOrg/KhaozEngine/issues/1884)
 
 **Added.**
 

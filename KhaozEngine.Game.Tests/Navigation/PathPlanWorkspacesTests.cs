@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using System.Threading.Tasks;
 using KhaozEngine.Navigation;
 using KhaozEngine.Tests.Physics;
 using Xunit;
@@ -113,38 +112,54 @@ public class PathPlanWorkspacesTests
     }
 
     [Fact]
-    public async Task PoolCanMoveThreadsButRefusesOverlappingCalls()
+    public void PoolCanMoveThreadsButRefusesOverlappingCalls()
     {
         var planner = Incremental(Corridor());
-        using var pool = planner.CreateWorkspaces(1, PathQueryBudget.Default);
-        var entered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var exit = new ManualResetEventSlim();
+        var pool = planner.CreateWorkspaces(1, PathQueryBudget.Default);
+        var entered = new ManualResetEventSlim();
+        var exit = new ManualResetEventSlim();
+        var contenderFinished = new ManualResetEventSlim();
         var goal = new NavGoalRegion(End().Anchor, 0f, _ =>
         {
-            entered.TrySetResult(true);
-            BoundedThread.Await(exit);
+            entered.Set();
+            exit.Wait();
             return true;
         });
-        using var request = planner.BeginPath(Start, goal, 0f, PathQueryBudget.Default, pool);
-        Task advance = Task.Run(() => request.Advance(new PathWorkBudget(int.MaxValue)));
-        Task<Exception?>? contender = null;
+        var request = planner.BeginPath(Start, goal, 0f, PathQueryBudget.Default, pool);
+        var advance = BoundedThread.Start(() => request.Advance(new PathWorkBudget(int.MaxValue)));
+        BoundedThread? contender = null;
+        Exception? coordination = null;
         try
         {
-            Assert.Same(entered.Task, await Task.WhenAny(entered.Task, advance).WaitAsync(BoundedThread.Timeout));
-            contender = Task.Run<Exception?>(() => Record.Exception(() =>
+            BoundedThread.Await(entered);
+            contender = BoundedThread.Start(() =>
             {
-                using var unexpected = Begin(planner, pool);
-            }));
-            Assert.IsType<InvalidOperationException>(await contender.WaitAsync(BoundedThread.Timeout));
+                try
+                {
+                    Assert.Throws<InvalidOperationException>(() =>
+                    {
+                        using var unexpected = Begin(planner, pool);
+                    });
+                }
+                finally { contenderFinished.Set(); }
+            });
+            BoundedThread.Await(contenderFinished);
         }
-        finally
+        catch (Exception error) { coordination = error; }
+        exit.Set();
+        // A thread that outlives its join can still use the request, the pool and the signals,
+        // so they are released only after both threads stopped without a failure.
+        BoundedThread.JoinAll(coordination, advance, contender);
+        using (pool)
+        using (entered)
+        using (exit)
+        using (contenderFinished)
+        using (request)
         {
-            exit.Set();
-            await (contender is null ? advance : Task.WhenAll(advance, contender)).WaitAsync(BoundedThread.Timeout);
+            Assert.Equal(PathPlanState.Ready, request.State);
+            using var later = Begin(planner, pool);
+            Finish(later, 7);
         }
-        Assert.Equal(PathPlanState.Ready, request.State);
-        using var later = Begin(planner, pool);
-        Finish(later, 7);
     }
 
     [Fact]

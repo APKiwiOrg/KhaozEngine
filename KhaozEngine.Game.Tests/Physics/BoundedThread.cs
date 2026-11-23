@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using Xunit;
@@ -47,6 +48,27 @@ internal sealed class BoundedThread
     {
         Assert.True(_thread.Join(Timeout), "A coordinated test thread did not finish within its timeout.");
         return _error;
+    }
+
+    /// <summary>
+    /// Joins every started thread within the timeout and reports every failure together: the
+    /// coordinator's own first, then each body failure or missed join. Returns only when all of them
+    /// stopped cleanly, so the caller may then release what the threads shared.
+    /// </summary>
+    internal static void JoinAll(Exception? coordinatorFailure, params BoundedThread?[] threads)
+    {
+        var failures = new List<Exception>();
+        if (coordinatorFailure is not null) failures.Add(coordinatorFailure);
+        foreach (BoundedThread? thread in threads)
+        {
+            if (thread is null) continue;
+            if (!thread._thread.Join(Timeout))
+                failures.Add(new TimeoutException("A coordinated test thread did not finish within its timeout."));
+            else if (thread._error is not null)
+                failures.Add(thread._error);
+        }
+        if (failures.Count == 1) ExceptionDispatchInfo.Throw(failures[0]);
+        if (failures.Count > 1) throw new AggregateException(failures);
     }
 
     internal static void Arrive(Barrier barrier)

@@ -1740,11 +1740,13 @@ same version-skew bar as 9.16.0.
   the send throws. A nested build during the borrow uses independent scratch and an owned array, so the
   transport's frame stays intact. Once serving has completed, the post-step hook can step the host again.
   Each host owns its writer and ticks it serially. Successive ticks can run on different threads.
-  The stream grows as needed, normally doubling capacity. Four consecutive completed serve passes release a buffer
-  above 64 KiB if the largest request in each pass, including its reserved prefix, fits in a quarter of that
-  capacity. Idle passes qualify. A larger request or a gap breaks the streak, so alternating small and large frames
-  keep their warmed capacity. After four consecutive passes, retained capacity is bounded by the larger of 64 KiB
-  and four times the largest request in those passes. The next serve grows from empty after release.
+  The stream grows as needed, normally doubling capacity. Hosts number passes as the slot loop begins, after the
+  pre-tick hook, and count them when the loop finishes with the buffer available. A pass with no legacy frame
+  counts as zero bytes. Four consecutive counted passes release a buffer above 64 KiB when each pass's largest
+  frame request, including the reserved prefix, fits in a quarter of its capacity. A larger request or a gap
+  from an incomplete or uncounted pass breaks the streak. After four consecutive counted passes, retained
+  capacity is bounded by the larger of 64 KiB and four times the largest request in those passes. The next serve
+  grows from empty after release.
 - **Handshake.** On join a delta-capable `WorldClient` sends a **`MoveProtocol.ClientControlKind.DeltaCapable`**
   hello (a 2-byte control an older server decodes as an unknown control and harmlessly ignores). The server upgrades
   that slot to **`ServerFrameKind.Delta`** frames; the client applies them with `ClientReplicationView.ApplyDelta`,

@@ -46,6 +46,7 @@ internal sealed class RebuildServerStreams
     private readonly Action<int> raiseMalformed;
     private readonly Action<int, string> disconnect;
     private bool allowance;
+    private long servePassOrdinal;
 
     /// <param name="net">The host's session server.</param>
     /// <param name="gate">The outermost authenticator <paramref name="net"/> was built with. Closed while the writer
@@ -161,6 +162,9 @@ internal sealed class RebuildServerStreams
     /// this tick crossed a cadence boundary: format 2 routine sends and keyframe chunks spend allowance only then, even
     /// on a short sharded frame that ran no simulation step.</summary>
     internal void Advance(float dt) => allowance = cadence?.Advance(dt) ?? false;
+
+    // Number the slot passes at the serving boundary, after hooks that can step the authority again.
+    internal LegacyDeltaFrameSender BeginServePass() => new(unchecked(++servePassOrdinal));
 
     /// <summary>The serve-pass hook for one slot, after the host opened its one writer capture tick. True when format 2
     /// owns the slot's state this tick, so the legacy writers must not serve it. A faulted stream is owned even before

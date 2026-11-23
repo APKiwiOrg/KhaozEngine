@@ -9,9 +9,9 @@ namespace KhaozEngine.Replication;
 internal sealed class LegacyDeltaBodyWriter
 {
     private const int RetainBelowBytes = 64 * 1024;
-    private const int LowTicksBeforeRelease = 4;
-    private int lowTicks;
-    private long lastLowTick;
+    private const int LowPassesBeforeRelease = 4;
+    private int lowPasses;
+    private long lastLowPass;
     private readonly MemoryStream wireStream = new();
     private readonly BinaryWriter wireWriter;
     private readonly List<long> scratchRemoved = new();
@@ -63,22 +63,22 @@ internal sealed class LegacyDeltaBodyWriter
 
     internal Span<byte> WrittenSpan => wireStream.GetBuffer().AsSpan(0, (int)wireStream.Length);
 
-    // Sustained low use retires an outlier without thrashing on alternating sizes. A gap in completed
-    // ticks breaks the streak, just as a completed tick that needs the larger buffer does.
-    internal void ReleaseOversize(long tick, int largestFrame)
+    // Sustained low use retires an outlier without thrashing on alternating sizes. A gap in the
+    // completed serve pass ordinals breaks the streak, as does a pass that needs the larger buffer.
+    internal void ReleaseOversize(long passOrdinal, int largestFrame)
     {
         if (wireStream.Capacity <= RetainBelowBytes || largestFrame > wireStream.Capacity / 4)
         {
-            lowTicks = 0;
+            lowPasses = 0;
             return;
         }
 
-        lowTicks = tick == unchecked(lastLowTick + 1) ? lowTicks + 1 : 1;
-        lastLowTick = tick;
-        if (lowTicks < LowTicksBeforeRelease) return;
+        lowPasses = passOrdinal == unchecked(lastLowPass + 1) ? lowPasses + 1 : 1;
+        lastLowPass = passOrdinal;
+        if (lowPasses < LowPassesBeforeRelease) return;
 
         wireStream.SetLength(0);
         wireStream.Capacity = 0;
-        lowTicks = 0;
+        lowPasses = 0;
     }
 }

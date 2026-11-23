@@ -195,9 +195,9 @@ public sealed class AoiDeltaReplicator
         }
     }
 
-    internal void CompleteLegacyServePass(long tick, int largestFrame)
+    internal void CompleteLegacyServePass(long passOrdinal, int largestFrame)
     {
-        if (!wireInUse) wire.ReleaseOversize(tick, largestFrame);
+        if (!wireInUse) wire.ReleaseOversize(passOrdinal, largestFrame);
     }
 
     internal readonly ref struct ServeFrame(AoiDeltaReplicator? lender, Span<byte> bytes)

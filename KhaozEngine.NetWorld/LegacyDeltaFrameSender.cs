@@ -7,7 +7,7 @@ using KhaozEngine.Replication;
 namespace KhaozEngine.NetWorld;
 
 /// <summary>Frames each legacy body and records the largest request of the current serve pass.</summary>
-internal struct LegacyDeltaFrameSender(long tick)
+internal struct LegacyDeltaFrameSender(long passOrdinal)
 {
     private int largestFrame;
 
@@ -20,7 +20,7 @@ internal struct LegacyDeltaFrameSender(long tick)
         return frame;
     }
 
-    internal void Complete(AoiDeltaReplicator? writer) => writer?.CompleteLegacyServePass(tick, largestFrame);
+    internal void Complete(AoiDeltaReplicator? writer) => writer?.CompleteLegacyServePass(passOrdinal, largestFrame);
 
     internal static void Send(NetServer net, AoiDeltaReplicator writer, int slot, Span<byte> frame,
         long netId, int ack, long? serverTick)

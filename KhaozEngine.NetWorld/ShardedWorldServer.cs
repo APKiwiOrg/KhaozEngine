@@ -487,7 +487,6 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
     public void Tick(float dt)
     {
         ServerTick++;
-        var legacyFrames = new LegacyDeltaFrameSender(ServerTick);
         ExpireLingers();            // an expired linger leaves before anything sees this tick
         OnBeforeTick?.Invoke(dt);   // consumer NPC/enemy brains run before movement + serving
         admin.Drain(ApplyAdminCommand);
@@ -576,6 +575,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         replication.OpenCaptureTick(deltaCapableSlots);   // or waits out a writer restart, opening no capture
         replication.Advance(dt);   // elapsed time, independent of whether a movement sub-tick ran
         long serveEpoch = ++interestServeEpoch;   // fresh each tick: each served home cell rebuilds its grid once
+        LegacyDeltaFrameSender legacyFrames = replication.BeginServePass();
         foreach (int slot in slots)
         {
             if (!netIdBySlot.TryGetValue(slot, out long netId) || IsLingering(slot)) continue;   // nobody to serve
@@ -590,9 +590,11 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
             {
                 LegacyDeltaAllocationProbe? probe = deltaReplicator.LegacyAllocationsForTests;
                 long serveStart = LegacyDeltaAllocationProbe.Start(probe);
-                using AoiDeltaReplicator.ServeFrame delta = legacyFrames.Build(deltaReplicator, slot, world, interestScratch, netId);
-                LegacyDeltaFrameSender.Send(net, deltaReplicator, slot, delta.Bytes, netId, lastAckBySlot[slot],
-                    tickedSlots.Contains(slot) ? ServerTick : null);
+                using (AoiDeltaReplicator.ServeFrame delta = legacyFrames.Build(deltaReplicator, slot, world, interestScratch, netId))
+                {
+                    LegacyDeltaFrameSender.Send(net, deltaReplicator, slot, delta.Bytes, netId, lastAckBySlot[slot],
+                        tickedSlots.Contains(slot) ? ServerTick : null);
+                }
                 probe?.Record(LegacyDeltaPhase.Serve, serveStart);
                 continue;
             }
@@ -601,8 +603,8 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
             byte[] envelope = MoveProtocol.EncodeServerFrame(kind, frame);
             net.SendTo(slot, envelope, NetChannelReliability.ReliableOrdered);
         }
-        replication.EndServe();
         legacyFrames.Complete(deltaReplicator);
+        replication.EndServe();
 
         // 6. Clear each cell's per-tick ECS change-tracking + event sets so they don't accumulate on a long-running
         //    server. One fixed sub-tick ran per cell this frame (maxTicksPerFrame: 1), so one advance per cell here

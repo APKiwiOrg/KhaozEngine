@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 
 namespace KhaozEngine.Attachments;
@@ -15,14 +16,19 @@ public static class LiftFootprintMeasure
     /// its <see cref="CoverageClaimMesh.PartId"/>. The piece meshes are in the body's rest frame and
     /// their indices follow material part order, then triangle order. A part with motion needs a
     /// swinging vertex mask. Swinging triangles record only cells, while fixed triangles record each
-    /// cell's highest sample, clamped to zero and rounded up to 0.01 mm.
+    /// cell's highest sample, clamped to zero and rounded up to 0.01 mm. Every body triangle referenced
+    /// by those cells contributes its outward face normal.
     /// </summary>
     /// <exception cref="ArgumentException">A nonempty swinging mask differs in length from its mesh's positions.</exception>
     /// <exception cref="CoverageClaimDataException">The geometry or claim breaks a rule, a triangle's
     /// sampling grid exceeds the index range, or a fixed sample stands more than 0.25 metres above the body.</exception>
     /// <exception cref="LiftFootprintDataException">The body triangle count cannot be represented by the footprint format.</exception>
     public static LiftFootprint Measure(IReadOnlyList<CoverageClaimMesh> bodyMeshes, BodyRegionMap body,
-        AttachmentSetDefinition piece, IReadOnlyList<CoverageClaimMesh> pieceMeshes)
+        AttachmentSetDefinition piece, IReadOnlyList<CoverageClaimMesh> pieceMeshes) =>
+        MeasureWithBodyIndex(bodyMeshes, body, piece, pieceMeshes, out _);
+
+    internal static LiftFootprint MeasureWithBodyIndex(IReadOnlyList<CoverageClaimMesh> bodyMeshes, BodyRegionMap body,
+        AttachmentSetDefinition piece, IReadOnlyList<CoverageClaimMesh> pieceMeshes, out BodyTriangleIndex index)
     {
         CoverageClaimValidation.CheckArguments(bodyMeshes, body, piece, pieceMeshes);
         CoverageClaimValidation.CheckBody(bodyMeshes, body);
@@ -39,21 +45,24 @@ public static class LiftFootprintMeasure
             triangleCount += body.TriangleCount(part);
         LiftFootprint.CheckBodyTriangleCount(triangleCount);
 
-        var index = new BodyTriangleIndex(bodyMeshes, body);
+        index = new BodyTriangleIndex(bodyMeshes, body);
         var parts = new LiftFootprintPart[piece.Parts.Count];
         var cells = new Dictionary<int, double>();
         var keys = new List<int>();
+        var referenced = new HashSet<int>();
         for (int i = 0; i < parts.Length; i++)
         {
             AttachmentPartDefinition part = piece.Parts[i];
             int meshIndex = pieceMeshIndices[part.Id];
-            parts[i] = MeasurePart(index, part, pieceMeshes[meshIndex], meshIndex, cells, keys);
+            parts[i] = MeasurePart(index, part, pieceMeshes[meshIndex], meshIndex, cells, keys, referenced);
         }
-        return new LiftFootprint(body.Sha256, (int)triangleCount, parts);
+        var normals = index.FaceNormals(referenced).OrderBy(face => face.Key)
+            .Select(face => new LiftFootprintBodyNormal(face.Key, face.Value));
+        return new LiftFootprint(body.Sha256, (int)triangleCount, parts, normals);
     }
 
     static LiftFootprintPart MeasurePart(BodyTriangleIndex index, AttachmentPartDefinition part, CoverageClaimMesh mesh,
-        int meshIndex, Dictionary<int, double> cells, List<int> keys)
+        int meshIndex, Dictionary<int, double> cells, List<int> keys, HashSet<int> referenced)
     {
         ReadOnlySpan<Vector3> positions = mesh.Positions.Span;
         ReadOnlySpan<uint> indices = mesh.Indices.Span;
@@ -72,8 +81,13 @@ public static class LiftFootprintMeasure
             keys.Clear();
             keys.AddRange(cells.Keys);
             keys.Sort();
+            int previousFace = -1;
             foreach (int key in keys)
             {
+                int face = key / BodyCell.CellsPerTriangle;
+                if (face != previousFace)
+                    referenced.Add(face);
+                previousFace = face;
                 builder.AddCell(key);
                 if (!moves)
                     builder.AddHeight(LiftFootprintTriangle.RoundHeightUp(cells[key]));

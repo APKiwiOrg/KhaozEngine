@@ -1,5 +1,6 @@
 using System;
 using System.Buffers.Binary;
+using System.Numerics;
 
 namespace KhaozEngine.Attachments;
 
@@ -7,6 +8,8 @@ namespace KhaozEngine.Attachments;
 internal ref struct LiftFootprintFileReader(ReadOnlySpan<byte> bytes)
 {
     const int PartHeaderBytes = 2 * sizeof(uint);
+    const int NormalCountBytes = sizeof(uint);
+    const int NormalEntryBytes = sizeof(uint) + 3 * sizeof(float);
     const int DigestBytes = 32;
 
     readonly ReadOnlySpan<byte> input = bytes;
@@ -44,23 +47,52 @@ internal ref struct LiftFootprintFileReader(ReadOnlySpan<byte> bytes)
 
         field = offset;
         uint partCount = ReadUInt32();
-        EnsureCountFits(partCount, PartHeaderBytes, 0, field, LiftFootprintRefusal.PartCountExceedsRemainingBytes);
+        EnsureCountFits(partCount, PartHeaderBytes, NormalCountBytes, field, LiftFootprintRefusal.PartCountExceedsRemainingBytes);
         var parts = new LiftFootprintPart[(int)partCount];
         uint previousId = 0;
         for (int index = 0; index < parts.Length; index++)
         {
             partIndex = index;
-            int laterPartHeaders = (parts.Length - index - 1) * PartHeaderBytes;
+            int laterPartHeaders = (parts.Length - index - 1) * PartHeaderBytes + NormalCountBytes;
             parts[index] = ReadPart(previousId, index, laterPartHeaders);
             previousId = parts[index].PartId;
         }
 
         partId = null;
         partIndex = null;
+        int normalCountOffset = offset;
+        LiftFootprintBodyNormal[] normals = ReadBodyNormals();
         if (Remaining != 0)
-            throw Error(LiftFootprintRefusal.TrailingBytes, "The file has bytes after its last part.", offset);
+            throw Error(LiftFootprintRefusal.TrailingBytes, "The file has bytes after its face normal table.", offset);
 
-        return new LiftFootprint(digest, bodyTriangleCount, parts);
+        return new LiftFootprint(digest, bodyTriangleCount, parts, normals, normalCountOffset);
+    }
+
+    LiftFootprintBodyNormal[] ReadBodyNormals()
+    {
+        int countOffset = offset;
+        uint count = ReadUInt32();
+        if (count * (long)NormalEntryBytes > Remaining)
+            throw new LiftFootprintDataException(LiftFootprintRefusal.NormalCountExceedsRemainingBytes,
+                "The declared face normal count cannot fit in the remaining bytes.")
+            { NormalCount = count, ByteOffset = countOffset };
+
+        if (count == 0)
+            return [];
+
+        var normals = new LiftFootprintBodyNormal[(int)count];
+        int previousTriangle = -1;
+        for (int index = 0; index < normals.Length; index++)
+        {
+            int field = offset;
+            uint triangle = ReadUInt32();
+            LiftFootprintBodyNormalRules.CheckTriangleIndex(triangle, bodyTriangleCount, index, field);
+            var normal = new Vector3(ReadSingle(), ReadSingle(), ReadSingle());
+            normals[index] = new((int)triangle, normal);
+            LiftFootprintBodyNormalRules.CheckEntry(normals[index], previousTriangle, index, field);
+            previousTriangle = (int)triangle;
+        }
+        return normals;
     }
 
     LiftFootprintPart ReadPart(uint previousId, int index, int laterPartHeaders)
@@ -170,6 +202,7 @@ internal ref struct LiftFootprintFileReader(ReadOnlySpan<byte> bytes)
 
     uint ReadUInt32() => BinaryPrimitives.ReadUInt32LittleEndian(Take(sizeof(uint)));
     ushort ReadUInt16() => BinaryPrimitives.ReadUInt16LittleEndian(Take(sizeof(ushort)));
+    float ReadSingle() => BinaryPrimitives.ReadSingleLittleEndian(Take(sizeof(float)));
 
     ReadOnlySpan<byte> Take(int count)
     {

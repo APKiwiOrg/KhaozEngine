@@ -13,25 +13,92 @@ public class OutfitLiftFootprintTests
     const string Rig = "rig-v1:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
     static readonly BodyRegionMap Body = new(Rig, ["a", "b"], [[new(0, 1)], [new(1, 1)]]);
-    static readonly int HemCell = new BodyCell(0, 0).Key;
-    static readonly int PanelCell = new BodyCell(0, 1).Key;
+    static readonly int PanelCell = new BodyCell(0, 0).Key;
+    static readonly int HemCell = new BodyCell(0, 1).Key;
     static readonly int BackCell = new BodyCell(1, 0).Key;
 
     [Fact]
     public void A_strap_clears_the_hem_only_over_its_cells()
     {
         // #1891: a hem must not push the strap off the panel in the same body triangle.
+        // Review T4 finding 4: every corner of the spanning triangle must clear the last cell as well.
+        const float clearance = 0.015625f;
+        const float hemHeight = 0.0625f;
+        const float panelHeight = 0.03125f;
+        AttachmentSetDefinition armour = new([AttachmentFixtures.TaggedSkinned(new NamedRegionRun("a", 2))
+            with { Lift = new(clearance) }], AttachmentLayer.Armour, []);
         OutfitCoverage coverage = OutfitCoverage.Resolve(Body,
-            [Garment(new NamedRegionRun("a", 2)), Lifting(AttachmentLayer.Armour, new NamedRegionRun("a", 2))]);
-        LiftFootprint shirt = Footprint(SkinnedId, Fixed(HemCell, 0.012), Fixed(PanelCell, 0.008));
-        LiftFootprint strap = Footprint(SkinnedId, Fixed(HemCell, 0.005), Fixed(PanelCell, 0.006));
-
-        OutfitLift lift = Resolve(coverage, [TwoSections(1)], [shirt, strap]);
+            [Garment(new NamedRegionRun("a", 2)), armour]);
+        LiftFootprint shirt = Footprint(SkinnedId, Fixed(HemCell, hemHeight), Fixed(PanelCell, panelHeight));
+        LiftFootprint strap = Footprint(SkinnedId, new(false, [PanelCell, HemCell], [0.046875, 0.046875]),
+            Fixed(PanelCell, 0.0078125));
+        LiftMaterialMesh spanning = Triangle(new(0, 0, 0.015625f), 0.015625f) with
+        {
+            Positions = new Vector3[] { new(0, 0, 0.015625f), new(1, 0, 0.03125f), new(0, 1, 0.046875f) },
+            Bearings = new[] { 0.015625f, 0.03125f, 0.046875f },
+        };
+        LiftMaterialMesh panel = Triangle(new(2, 0, 0.0078125f), 0.0078125f);
+        OutfitLift lift = Resolve(coverage, [new(1, SkinnedId, [spanning, panel])], [shirt, strap]);
 
         Assert.True(lift.FootprintApplied(0));
         Assert.True(lift.FootprintApplied(1));
-        AssertHeight(0.013f, RestHeight(lift, 1, 0));
-        AssertHeight(0.009f, RestHeight(lift, 1, 1));
+        AssertHeight(hemHeight + clearance, RestHeight(lift, 1, 0, 0));
+        AssertHeight(hemHeight + clearance, RestHeight(lift, 1, 0, 1));
+        AssertHeight(hemHeight + clearance, RestHeight(lift, 1, 0, 2));
+        AssertHeight(panelHeight + clearance, RestHeight(lift, 1, 1));
+    }
+
+    [Theory]
+    [InlineData(0.6f, 0.8f, true, 0.078125f, 0.078125f)]
+    [InlineData(0f, 1f, true, 0.0625f, 0.078125f)]
+    [InlineData(0.96f, 0.28f, true, 0.125f, 0.050625f)]
+    [InlineData(0.6f, 0.8f, false, 0.0625f, 0.065625f)]
+    public void A_measured_section_lifts_in_the_body_face_height_frame(float x, float z, bool hasNormals,
+        float expectedDistance, float expectedHeight)
+    {
+        // Review T4 finding 2 (#1891): an oblique section used to rise by less than the clearance required in the cell.
+        const float restHeight = 0.015625f;
+        AttachmentSetDefinition armour = new([AttachmentFixtures.TaggedSkinned(new NamedRegionRun("a", 1))
+            with { Lift = new(restHeight) }], AttachmentLayer.Armour, []);
+        OutfitCoverage coverage = OutfitCoverage.Resolve(Body, [Garment(new NamedRegionRun("a", 1)), armour]);
+        LiftFootprint shirt = Footprint(SkinnedId, Fixed(HemCell, 0.0625));
+        LiftFootprintPart strapPart = new(SkinnedId, [Fixed(HemCell, restHeight)]);
+        LiftFootprint strap = hasNormals
+            ? new(Body.Sha256, 2, [strapPart], [new(0, Vector3.UnitZ)])
+            : new(Body.Sha256, 2, [strapPart]);
+        Vector3 direction = new(x, 0, z);
+        Vector3 origin = new(0, 0, restHeight);
+        LiftMaterialMesh mesh = Triangle(origin, restHeight) with { Directions = new[] { direction, direction, direction } };
+
+        OutfitLift lift = Resolve(coverage, [new(1, SkinnedId, [mesh])], [shirt, strap]);
+
+        IReadOnlyList<ReadOnlyMemory<Vector3>>? positions = lift.LiftedPositions(1, SkinnedId);
+        Assert.NotNull(positions);
+        Vector3 lifted = Assert.Single(positions).Span[0];
+        AssertHeight(expectedDistance, Vector3.Distance(origin, lifted));
+        AssertHeight(expectedHeight, lifted.Z);
+        AssertHeight((float)strapPart.Triangles[0].HeightMetres(0) + expectedDistance, lift.EffectiveStandoff(1, 0)!.Value);
+    }
+
+    [Fact]
+    public void The_largest_face_frame_requirement_lifts_every_weld_in_a_section()
+    {
+        const float restHeight = 0.015625f;
+        AttachmentSetDefinition armour = new([AttachmentFixtures.TaggedSkinned(new NamedRegionRun("a", 2))
+            with { Lift = new(restHeight) }], AttachmentLayer.Armour, []);
+        OutfitCoverage coverage = OutfitCoverage.Resolve(Body, [Garment(new NamedRegionRun("a", 2)), armour]);
+        LiftFootprint shirt = Footprint(SkinnedId, Fixed(HemCell, 0.09375), Fixed(BackCell, 0.0625));
+        LiftFootprint strap = new(Body.Sha256, 2,
+            [new(SkinnedId, [Fixed(HemCell, restHeight), Fixed(BackCell, restHeight)])],
+            [new(0, Vector3.UnitZ), new(1, Vector3.UnitX)]);
+        LiftMaterialMesh front = Triangle(new(0, 0, restHeight), restHeight);
+        LiftMaterialMesh back = Triangle(new(2, 0, restHeight), restHeight);
+
+        OutfitLift lift = Resolve(coverage, [new(1, SkinnedId, [front, back])], [shirt, strap]);
+
+        // The lower back cell needs twice its height difference. The two triangles share one section basis.
+        AssertHeight(0.140625f, RestHeight(lift, 1, 0));
+        AssertHeight(0.140625f, RestHeight(lift, 1, 1));
     }
 
     [Fact]
@@ -213,7 +280,7 @@ public class OutfitLiftFootprintTests
         LiftFootprint?[] malformed = fault switch
         {
             "list count" => [],
-            "missing rigid part" => [new(Body.Sha256, 2, [skinned])],
+            "missing rigid part" => [new(Body.Sha256, 2, [skinned, new(3, rigid.Triangles)])],
             "extra part" => [new(Body.Sha256, 2, [rigid, skinned, new(3, skinned.Triangles)])],
             "different skinned part" => [new(Body.Sha256, 2, [rigid, new(3, skinned.Triangles)])],
             "skinned triangle count" => [new(Body.Sha256, 2, [rigid, new(SkinnedId, [Fixed(PanelCell, 0.008), default])])],

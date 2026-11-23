@@ -67,6 +67,25 @@ public class LiftFootprintMeasureTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void Measurement_stores_the_wound_face_normal_of_every_referenced_body_triangle()
+    {
+        var (bodyMeshes, body) = RidgeBody(0);
+        CoverageClaimMesh patch = new(new Vector3[]
+        {
+            new(-0.125f, 0.125f, 0.03125f), new(-0.25f, 0.125f, 0.03125f), new(-0.125f, 0.25f, 0.03125f),
+            new(0.03125f, 0.125f, -0.125f), new(0.03125f, 0.25f, -0.125f), new(0.03125f, 0.125f, -0.25f),
+        }, new uint[] { 0, 1, 2, 3, 4, 5 })
+        {
+            PartId = 1,
+            Swinging = new[] { false, false, false, true, false, false },
+        };
+
+        LiftFootprint measured = LiftFootprintMeasure.Measure(bodyMeshes, body, Piece("upper"), [patch]);
+
+        Assert.Equal(new LiftFootprintBodyNormal[] { new(1, Vector3.UnitZ), new(3, Vector3.UnitX) }, measured.BodyNormals);
+    }
+
+    [Fact]
     public void A_body_with_only_degenerate_triangles_keeps_the_piece_triangle_but_has_no_cells()
     {
         CoverageClaimMesh collapsed = FootprintBody[0] with { Indices = new uint[] { 0, 0, 0 } };
@@ -74,6 +93,7 @@ public class LiftFootprintMeasureTests(ITestOutputHelper output)
             [SmallFootprintTriangle(1, 0.03125f)]);
 
         Assert.Equal(1, measured.BodyTriangleCount);
+        Assert.Empty(measured.BodyNormals);
         LiftFootprintTriangle triangle = Assert.Single(Assert.Single(measured.Parts).Triangles);
         Assert.True(triangle.CellKeys.IsEmpty);
     }

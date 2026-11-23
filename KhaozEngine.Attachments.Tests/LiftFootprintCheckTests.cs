@@ -1,3 +1,4 @@
+using System.Numerics;
 using KhaozEngine.Attachments;
 using Xunit;
 using static KhaozEngine.Tests.Attachments.CoverageClaimFixtures;
@@ -6,6 +7,37 @@ namespace KhaozEngine.Tests.Attachments;
 
 public class LiftFootprintCheckTests
 {
+    [Theory]
+    [InlineData(false, 1)]
+    [InlineData(true, 3)]
+    public void Verification_reports_a_wrong_normal_even_for_a_conservative_extra_cell(bool extraCell, int wrongTriangle)
+    {
+        var (bodyMeshes, body) = RidgeBody(0);
+        AttachmentSetDefinition piece = Piece("upper");
+        CoverageClaimMesh mesh = Triangle(1, new(-0.03125f, 0.03125f, 0.03125f),
+            new(-0.0625f, 0.03125f, 0.03125f), new(-0.03125f, 0.0625f, 0.03125f));
+        LiftFootprint measured = LiftFootprintMeasure.Measure(bodyMeshes, body, piece, [mesh]);
+        LiftFootprintReport Verify(LiftFootprint declared) => LiftFootprintCheck.Verify(bodyMeshes, body, piece, [mesh], declared);
+        Assert.True(Verify(measured).IsHonest);
+        LiftFootprintPart part = Assert.Single(measured.Parts);
+        LiftFootprintTriangle triangle = Assert.Single(part.Triangles);
+        int measuredCell = Assert.Single(triangle.CellKeys.ToArray());
+        double height = triangle.HeightMetres(0);
+        if (extraCell)
+            part = new(1, [new(false, [measuredCell, new BodyCell(3, 0).Key], [height, height])]);
+
+        LiftFootprintBodyNormal[] normals = extraCell ? [new(1, Vector3.UnitZ), new(3, Vector3.UnitX)] : [new(1, Vector3.UnitZ)];
+        LiftFootprint Build() => new(body.Sha256, measured.BodyTriangleCount, [part], normals);
+        Assert.True(Verify(Build()).IsHonest);
+        Vector3 correct = normals[^1].Normal;
+        normals[^1] = new(wrongTriangle, -correct);
+
+        LiftFootprintReport report = Verify(Build());
+
+        Assert.False(report.IsHonest);
+        Assert.Equal(new LiftFootprintNormalMismatch(wrongTriangle, correct, -correct), Assert.Single(report.NormalMismatches));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

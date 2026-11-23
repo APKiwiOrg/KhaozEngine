@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 
 namespace KhaozEngine.Attachments;
 
@@ -34,6 +35,8 @@ internal readonly struct ClaimBodyTriangle
     internal int Index { get; }
     internal int Region { get; }
     internal bool HasNormal => normalLength > 0;
+    internal Vector3 UnitNormal => new((float)(normal.X / normalLength), (float)(normal.Y / normalLength),
+        (float)(normal.Z / normalLength));
     internal ClaimPoint Min => ClaimPoint.Min(a, ClaimPoint.Min(b, c));
     internal ClaimPoint Max => ClaimPoint.Max(a, ClaimPoint.Max(b, c));
 

@@ -215,7 +215,8 @@ motion by one step, so a slow capsule could throw a tip at many times its own sp
      projects the child speed, parent speed and surface speed onto the contact normal's direction in the segment's
      tangent plane. At fraction `s`, with parent speed `b` and surface speed `w`, the solver raises the child's speed
      along that direction to at most `min((w - (1 - s) * b) / s, w)`. It skips contacts too near the parent to divide
-     safely. At the tip, the target is the surface speed. At interior contacts the cap keeps repeated pushes from
+     safely. At the tip, subtract the surface velocity before projecting onto the tangent so a small approach
+     survives large shared speed. At interior contacts the cap keeps repeated pushes from
      accumulating to a child speed greater than the surface speed and prevents the parent's motion from flicking
      the child. Any remaining approach and pushes along the segment are handled by positions. The surface moves
      with its axis and with radius changes along the contact normal. Capsule motion, the anchor's turn
@@ -248,9 +249,12 @@ Corrections never write velocity. A chain whose one movable joint hangs from a s
 energy from its limit, static contacts or length. A tip released from contact at its endpoint starts from rest. The
 anchored first joint and segment lengths always hold. A collider outranks the bend limit, because a pass through
 looks worse than an extra bend. Contact solves the capsule locally as a sphere at the closest point of its axis, up to
-eight passes, in double precision. Use the axis point closest to the segment being placed. The contact correction
-allows a small margin for rounding the direction and endpoint to float, because that endpoint becomes the next
-segment's parent. Each chain can skip capsules farther from its first joint than the chain's reach plus both radii,
+eight passes, in double precision. Use the axis point closest to the segment being placed. Each correction
+checks the segment with its world-space float endpoint, because that endpoint becomes the next segment's parent.
+If rounding introduces penetration, refine the correction using the difference between the projected and stored
+endpoint, weighted by the contact fraction. This accounts for coarse float spacing far from the origin and keeps
+near-parent corrections near their tangent cone. Each chain can skip capsules farther from its first joint than
+the chain's reach plus both radii,
 the contact tolerance and a rounding margin far above double precision error. A correction that
 would leave that reach replays the joint against every capsule, so skipping preserves the result. A standalone
 simulation with more than 64 capsules, or a reach too large to bound safely, skips the per-chain reach test. The
@@ -548,7 +552,8 @@ All headless, on synthetic skeletons built in code.
 - **Solver.** A chain released level falls and settles below its anchor. It settles to the same pose at 30, 60, 144
   and 240 Hz within 1 cm at the tip, and its first swing peaks within 10 percent across those rates. Random frame
   times from 1 ms to 500 ms, hitches included, stay finite. A 10 m teleport shows no whip. Whole segments clear
-  thin and moving capsules, including long capsule axes. A soft chain settles on the side of a capsule it fell onto.
+  thin and moving capsules, including long capsule axes. A translated endpoint clears after rounding, and a tiny
+  near-parent contact stays near its tangent cone. A soft chain settles on the side of a capsule it fell onto.
   A capsule that crosses a segment within one step pushes it ahead. Bends stay within the limit except where
   capsule clearance takes precedence. Disabling the placement filter preserves every joint frame bit, including
   for very long axes. A diagnostic counts segment-axis queries per wearer step with the filter enabled and disabled.

@@ -7,7 +7,6 @@ namespace KhaozEngine.Attachments;
 internal static class ChainSegmentContact
 {
     private const int ContactPasses = 8;
-    private const double FloatProjectionMargin = 1d / (1 << 21);
 
     [ThreadStatic]
     private static Vector3? _firstCorrectionDirectionForTests;
@@ -23,14 +22,20 @@ internal static class ChainSegmentContact
     {
         internal Segment(Vector3 root, float length, Vector3 direction)
             : this(new Offset(root), new Offset(direction) * length) { }
+
+        internal static Segment FromStoredEndpoint(Vector3 start, float length, Vector3 direction)
+        {
+            var root = new Offset(start);
+            return new Segment(root, new Offset(start + length * direction) - root);
+        }
     }
 
-    internal static Vector3 Clear(ChainParticles particles, int chain, int parent, Vector3 direction, float length,
+    internal static Vector3 Clear(ChainParticles particles, int placementRow, int parent, Vector3 direction, float length,
         float chainRadius, ChainCapsuleCandidates capsules, out bool replayedAll, out int placementCount)
     {
         var start = particles.Positions[parent];
         bool fitsReach = ChainCapsuleCull.FitsReach(direction);
-        var placement = fitsReach ? particles.PlacementCull.Select(chain, start, length, chainRadius, capsules) : capsules.All;
+        var placement = fitsReach ? particles.PlacementCull.Select(placementRow, start, length, chainRadius, capsules) : capsules.All;
         replayedAll = !fitsReach && capsules.IsFiltered;
         placementCount = placement.Count;
         if (placementCount == 0)
@@ -51,9 +56,7 @@ internal static class ChainSegmentContact
     private static Vector3 ClearPasses(Vector3 start, Vector3 direction, float length, float chainRadius,
         ChainCapsuleCandidates capsules, ChainOpeningContact opening, out bool outsideReach)
     {
-        var segment = new Segment(start, length, direction);
-        var coordinates = Vector3.Abs(start);
-        double positionScale = Math.Max(coordinates.X, Math.Max(coordinates.Y, coordinates.Z)) + (double)length;
+        var segment = Segment.FromStoredEndpoint(start, length, direction);
         var firstCorrectionForTests = _firstCorrectionDirectionForTests;
         Axis scratch = default;
         outsideReach = false;
@@ -89,8 +92,8 @@ internal static class ChainSegmentContact
                 }
 
                 var corrected = firstCorrectionForTests ??
-                    ClearSphere(direction, length, center, radius, crossed ? side : direction, useCone: !parentInside,
-                        positionScale);
+                    ChainContactProjection.Clear(start, length, direction, center, radius,
+                        crossed ? side : direction, parentInside, axis);
                 firstCorrectionForTests = null;
                 if (capsules.IsFiltered && !ChainCapsuleCull.FitsReach(corrected))
                 {
@@ -100,7 +103,7 @@ internal static class ChainSegmentContact
 
                 changed |= corrected != direction;
                 direction = corrected;
-                segment = segment with { Displacement = new Offset(direction) * length };
+                segment = Segment.FromStoredEndpoint(start, length, direction);
             }
 
             if (!changed)
@@ -108,30 +111,6 @@ internal static class ChainSegmentContact
         }
 
         return direction;
-    }
-
-    private static Vector3 ClearSphere(Vector3 direction, float length, Offset center, double radius,
-        Vector3 side, bool useCone, double positionScale)
-    {
-        double distance = Math.Sqrt(center.LengthSquared);
-        if (distance == 0)
-            return direction;
-
-        var axis = (center * (1 / distance)).ToVector3();
-        // Leave room for the float direction and end position to round. In particular,
-        // an endpoint on a capsule must remain outside when it becomes the next parent.
-        double margin = Math.Min(FloatProjectionMargin * (positionScale + radius), TouchTolerance / 8);
-        double projectedRadius = useCone ? Math.Min(radius + margin, distance) : radius + margin;
-        double tangentSquared = (distance - projectedRadius) * (distance + projectedRadius);
-        double boundary = useCone && Square(length) >= tangentSquared
-            ? Math.Sqrt(Math.Max(0, tangentSquared)) / distance
-            : (Square(length) + tangentSquared) / (2 * length * distance);
-        double cosine = Math.Clamp(boundary, -1, 1);
-        double sine = Math.Sqrt(1 - cosine * cosine);
-        var tangent = ChainMath.Tangent(side, axis);
-        if (tangent == Vector3.Zero)
-            tangent = ChainMath.Perpendicular(axis);
-        return (float)cosine * axis + (float)sine * tangent;
     }
 
     private static double Square(double value) => value * value;

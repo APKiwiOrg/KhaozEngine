@@ -104,6 +104,47 @@ public sealed class ChainSegmentContactTests
         Assert.InRange(DistanceToSegment(after, Vector3.Zero, tip), radius - ClearanceTolerance, radius + ClearanceTolerance);
     }
 
+    [Fact]
+    public void Corrected_world_endpoint_and_segment_clear_after_float_rounding()
+    {
+        var root = new Vector3(32769, 0, 0);
+        var center = root + Vector3.UnitY;
+        const float radius = 0.064f;
+        const float startX = 0.0625f;
+        var incoming = new Vector3(startX, MathF.Sqrt(1 - startX * startX), 0);
+        var end = CorrectSegment(root, center, radius, incoming);
+        var storedOffset = end - root;
+        Assert.True(Vector3.Distance(storedOffset, center - root) >= radius, $"Stored endpoint {end} is inside the sphere.");
+        Assert.True(DistanceToSegment(center - root, Vector3.Zero, storedOffset) >= radius, $"Stored segment to {end} crosses the sphere.");
+    }
+
+    [Fact]
+    public void A_tiny_contact_near_the_parent_turns_only_to_the_tangent_cone()
+    {
+        const float radius = 1e-8f;
+        var center = new Vector3(0, 1e-7f, 0);
+        var end = CorrectSegment(Vector3.Zero, center, radius, Vector3.UnitY);
+        float tangentAngle = MathF.Asin(radius / center.Y);
+        float angle = MathF.Atan2(new Vector2(end.X, end.Z).Length(), end.Y);
+        Assert.InRange(angle, tangentAngle - 0.000001f, tangentAngle + 0.000001f);
+        Assert.True(DistanceToSegment(center, Vector3.Zero, end) >= radius);
+    }
+
+    private static Vector3 CorrectSegment(Vector3 root, Vector3 center, float radius, Vector3 incoming)
+    {
+        var settings = Settings with { Gravity = 0 };
+        var definition = Chain(Vector3.UnitY, settings, Joint(Vector3.Zero));
+        var particles = new ChainParticles(new ChainRig(1, [definition], []), colliderCount: 1);
+        var anchor = Matrix4x4.CreateTranslation(root);
+        ColliderCapsule sphere = new(center, center, radius);
+        particles.SetRest([anchor], reset: true);
+        particles.Positions[1] = root + incoming;
+        particles.SnapshotOpening();
+        particles.SetCapsuleGeometry(0, sphere, sphere);
+        ChainConstraints.FollowChain(particles, 0, anchor, [sphere], [sphere], settings, StepSeconds, pullTowardRest: false);
+        return particles.Positions[1];
+    }
+
     internal static float DistanceToSegment(Vector3 point, Vector3 start, Vector3 end) =>
         Vector3.Distance(point, ClosestPointOnSegment(point, start, end));
 

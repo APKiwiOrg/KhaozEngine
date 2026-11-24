@@ -20,13 +20,14 @@ public sealed class ChainVelocityTests(ITestOutputHelper output)
         var definition = Chain(-Vector3.UnitY, settings, Joint(Vector3.Zero));
         var particles = new ChainParticles(new ChainRig(1, [definition], []), colliderCount: 1);
         particles.SetRest([Matrix4x4.Identity], reset: true);
-        var center = strikesMiddle ? new Vector3(-0.08f, -0.58f, 0) : new Vector3(-0.06f, -1.16f, 0);
+        var center = strikesMiddle ? new Vector3(0.09f, -0.58f, 0.116f) : new Vector3(0.16f, -1.15f, 0.10f);
         ColliderCapsule sphere = new(center, center, strikesMiddle ? 0.12f : 0.2f);
         particles.SetCapsuleGeometry(0, sphere, sphere);
 
         Predict(Vector3.UnitX * (13 / step));
         Project();
-        bool touched = TouchesSphere(particles.Positions[1]);
+        Assert.True(Clearance(particles.Positions[1]) > sphere.Radius);
+        bool touched = false;
         Predict(Vector3.Zero);
         float previousEnergy = SquaredSpeed();
         Assert.True(previousEnergy > 0);
@@ -34,10 +35,11 @@ public sealed class ChainVelocityTests(ITestOutputHelper output)
         bool reachedBendLimit = false;
         for (int frame = 0; frame < 8; frame++)
         {
+            bool predictedPenetration = Clearance(Vector3.Normalize(particles.Positions[1])) < sphere.Radius;
             Project();
             var tip = particles.Positions[1];
             reachedBendLimit |= MathF.Abs(Vector3.Dot(-Vector3.UnitY, tip) - MathF.Cos(settings.AngleLimit)) < 0.0001f;
-            touched |= TouchesSphere(tip);
+            touched |= predictedPenetration && MathF.Abs(Clearance(tip) - sphere.Radius) < 0.0001f;
             Predict(Vector3.Zero);
             float energy = SquaredSpeed();
             largestGain = MathF.Max(largestGain, energy - previousEnergy);
@@ -58,15 +60,36 @@ public sealed class ChainVelocityTests(ITestOutputHelper output)
             particles.Predict(0, settings, gravity, step, Vector3.Zero, Vector3.Zero, Quaternion.Identity);
         }
 
-        bool TouchesSphere(Vector3 tip)
-        {
-            float distance = strikesMiddle ? ChainSegmentContactTests.DistanceToSegment(center, Vector3.Zero, tip)
-                : Vector3.Distance(tip, center);
-            return MathF.Abs(distance - sphere.Radius) < 0.0001f;
-        }
+        float Clearance(Vector3 tip) => strikesMiddle
+            ? ChainSegmentContactTests.DistanceToSegment(center, Vector3.Zero, tip)
+            : Vector3.Distance(tip, center);
 
         // A force-free prediction reads velocity without counting position corrections as motion.
         float SquaredSpeed() => ((particles.Positions[1] - particles.SubstepStarts[1]) / step).LengthSquared();
+    }
+
+    [Fact]
+    public void Endpoint_contact_retains_a_small_approach_beside_large_shared_speed()
+    {
+        const float step = 1f / 64;
+        var definition = Chain(Vector3.UnitX, Settings, Joint(Vector3.Zero));
+        var particles = new ChainParticles(new ChainRig(1, [definition], []), colliderCount: 1);
+        particles.SetRest([Matrix4x4.Identity], reset: true);
+        particles.Velocities[1] = new Vector3(0, 1, 1024);
+        var center = new Vector3(1.125f, -0.25f, -0.25f);
+        var surface = new Vector3(0, 1 + 1f / (1 << 18), 1024);
+        var previousCenter = center - step * surface;
+        ColliderCapsule sphere = new(center, center, 0.375f);
+        ColliderCapsule previous = new(previousCenter, previousCenter, sphere.Radius);
+        particles.SetCapsuleGeometry(0, sphere, previous);
+
+        var carry = new ChainCarry(Vector3.Zero, Vector3.Zero, Quaternion.Identity);
+        var constraints = new ChainVelocityConstraints(particles, 0, carry, [previous], 0, step);
+        constraints.ApplyLocal(0, 1, Vector3.UnitX, Vector3.UnitX, clamped: false, new ChainCapsuleCandidates([sphere]));
+
+        // The tangent splits the tiny Y approach equally between Y and Z, where the shared
+        // speed is large enough to erase that approach when each velocity is dotted separately.
+        Assert.Equal(1 + 1f / (1 << 19), particles.Velocities[1].Y);
     }
 
     [Theory]

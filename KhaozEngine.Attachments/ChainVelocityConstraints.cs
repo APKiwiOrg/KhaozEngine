@@ -129,6 +129,14 @@ internal ref struct ChainVelocityConstraints
 
             var surface = ChainCapsuleCollision.SurfaceVelocity(capsule,
                 _previousColliders[capsules.OriginalIndex(index)], along, normal, _carry, _seconds);
+            if (fraction == 1)
+            {
+                float approach = Vector3.Dot(velocity - surface, tangent);
+                if (approach < 0)
+                    velocity -= approach * tangent;
+                continue;
+            }
+
             double childSpeed = Vector3.Dot(velocity, tangent);
             double parentSpeed = Vector3.Dot(parentVelocity, tangent);
             double surfaceSpeed = Vector3.Dot(surface, tangent);

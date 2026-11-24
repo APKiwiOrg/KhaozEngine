@@ -17,4 +17,5 @@
     <Compile Include="../test-shared/ChainSwingFixture.cs" Link="Shared/ChainSwingFixture.cs" />
     <Compile Include="../test-shared/SkinnedAttachmentGlbFixture.cs" Link="Shared/SkinnedAttachmentGlbFixture.cs" />
   </ItemGroup>
+  <Import Project="../test-shared/AllocationMeasurement.props" />
 </Project>

@@ -52,7 +52,7 @@ internal sealed class ChainBoundGroups
                     depths[depth.Key] = new ChainWidthBounds(depth.ToArray());
             }
             return new Group(chains, depths, new ChainWidthBounds(tips.ToArray()),
-                colliderCount > 0 ? new ChainSheetContact(rig, group, depths.Length) : null);
+                colliderCount > 0 ? new ChainSheetContact(rig, group.ToArray(), depths.Length) : null);
         }).ToArray();
         PlacementRows = _groups.Max(group => group.Chains.Length);
         _capsuleCulls = new ChainCapsuleCull[PlacementRows];

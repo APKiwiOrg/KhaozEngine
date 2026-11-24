@@ -155,12 +155,12 @@ public sealed class ChainWidthBoundsTests(ITestOutputHelper output)
         Assert.InRange((particles.Velocities[1] + particles.Velocities[3]).Length(), 0, 0.00001f);
     }
 
-    private static (ChainParticles Particles, ChainWidthBounds Bounds) CreateTipPair(float firstTrail, int colliderCount = 0)
+    private static (ChainParticles Particles, ChainWidthBounds Bounds) CreateTipPair(float firstTrail, int colliderCount = 0, float secondLength = 1)
     {
         var settings = new ChainSettings(0, 0, 0, 1, MathF.PI, 0);
         ChainRigChain first = new(0, [new(Vector3.Zero, Quaternion.Identity, Vector3.One)], -Vector3.UnitY,
             settings with { Trail = firstTrail });
-        var second = first with { Anchor = 1, Settings = settings };
+        var second = first with { Anchor = 1, Settings = settings, Tip = -secondLength * Vector3.UnitY };
         var particles = new ChainParticles(new ChainRig(2, [first, second], [new(0, 1) { Stretch = 0.1f }]), colliderCount);
         particles.SetRest([Matrix4x4.Identity, Matrix4x4.CreateTranslation(0.5f, 0, 0)], reset: true);
         var bounds = new ChainWidthBounds([new(new(0, 1, 0), new(1, 3, 2), 0.1f)]);
@@ -288,19 +288,35 @@ public sealed class ChainWidthBoundsTests(ITestOutputHelper output)
             particles.Positions[3] - particles.Positions[2]) > 0);
     }
 
-    [Fact]
-    public void A_bounded_tip_does_not_approach_a_capsule_holding_it()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_bounded_tip_does_not_approach_a_capsule_holding_it(bool stretching)
     {
         // #1884: the other tip's escape impulse must not undo the contact stop.
-        var (particles, _) = CreateTipPair(1, colliderCount: 1);
+        float secondLength = stretching ? 0.4f : 1f;
+        var (particles, _) = CreateTipPair(1, colliderCount: 1, secondLength: secondLength);
         PredictPair(particles, Vector3.Zero, Quaternion.Identity);
-        float y = -MathF.Sqrt(1 - 0.06f * 0.06f);
-        // Compression drives the left tip toward the capsule outside the sheet.
-        particles.Positions[1] = new Vector3(0.06f, y, 0);
-        particles.Positions[3] = particles.Positions[2] + new Vector3(-0.06f, y, 0);
-        particles.Velocities[3] = new Vector3(y, 0.06f, 0);
+        float x = stretching ? 0.1f : 0.06f;
+        float y = -MathF.Sqrt(1 - x * x);
         const float radius = 0.15f;
-        var center = particles.Positions[1] - radius * Vector3.UnitX;
+        Vector3 center;
+        if (stretching)
+        {
+            // The shorter tip leaves the capsule below the sheet while width
+            // recovery brings the longer tip inward toward it.
+            particles.Positions[1] = new Vector3(-x, y, 0);
+            particles.Positions[3] = particles.Positions[2] + new Vector3(x, -MathF.Sqrt(secondLength * secondLength - x * x), 0);
+            particles.Velocities[3] = Vector3.UnitX;
+            center = particles.Positions[1] + radius * new Vector3(0.5f, -MathF.Sqrt(0.75f), 0);
+        }
+        else
+        {
+            particles.Positions[1] = new Vector3(x, y, 0);
+            particles.Positions[3] = particles.Positions[2] + new Vector3(-x, y, 0);
+            particles.Velocities[3] = new Vector3(y, x, 0);
+            center = particles.Positions[1] - radius * Vector3.UnitX;
+        }
         ColliderCapsule sphere = new(center, center, radius);
         particles.SetCapsuleGeometry(0, sphere, sphere);
         FinishTipPair(particles, [sphere]);

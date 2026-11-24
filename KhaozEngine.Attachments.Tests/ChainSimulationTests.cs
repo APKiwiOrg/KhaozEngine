@@ -565,47 +565,6 @@ public class ChainSimulationTests
         }
     }
 
-    [Theory]
-    [InlineData(false, false)]
-    [InlineData(true, false)]
-    [InlineData(false, true)]
-    public void Warm_step_and_compose_do_not_allocate(bool bounded, bool layered)
-    {
-        var upper = Chain(Vector3.UnitX, Settings, Joint(Vector3.Zero), Joint(Vector3.UnitX));
-        ColliderCapsule distant = new(new(8, 0, 0), new(8, -1, 0), 0.3f);
-        ColliderCapsule contact = new(new(2, -0.1f, 0), new(2, -1, 0), 0.3f);
-        var lower = Chain(contact.End - contact.Start, Settings with { Gravity = 0, Radius = contact.Radius }, Joint(contact.Start))
-            with { Layer = AttachmentLayer.Armour };
-        var rig = bounded ? ChainSwingFixture.CreateRig(0.12f, wideLimits: true) :
-            layered ? new ChainRig(1, [lower, upper with { Layer = AttachmentLayer.Outerwear }], []) :
-            new ChainRig(1, [upper], []);
-        ColliderCapsule[] capsules = layered ? [distant] : [distant, contact];
-        var simulation = new ChainSimulation(rig, capsules.Length);
-        Matrix4x4[] anchors = [Matrix4x4.Identity];
-        var output = new Matrix4x4[simulation.Rig.JointCount];
-        int frame = 0;
-        void AdvanceAndCompose()
-        {
-            var wearer = Matrix4x4.Identity;
-            if (bounded)
-                (anchors[0], wearer) = ChainSwingFixture.Pose(frame++ / 60f);
-            simulation.Step(anchors, capsules, wearer, 1f / 60);
-            simulation.ComposeJointWorlds(anchors, output);
-        }
-
-        int warmFrames = bounded ? 20 : 2;
-        for (int call = 0; call < warmFrames; call++)
-            AdvanceAndCompose();
-        if (!bounded)
-            Assert.InRange(DistanceToVerticalCapsule(output[^1].Translation,
-                Vector3.Transform(Vector3.UnitX, output[^1]), contact), 0.299f, 0.301f);
-
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (var call = 0; call < 100; call++)
-            AdvanceAndCompose();
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
-    }
-
     internal static readonly ChainRigChain SharedBendStopChain = Chain(new(0.5f, -1, 0),
         new ChainSettings(0, 0, 0, 1, MathF.PI / 2, 0), Joint(Vector3.Zero), Joint(Vector3.UnitX))
         with { Layer = AttachmentLayer.Armour };
@@ -701,7 +660,7 @@ public class ChainSimulationTests
     private static void AssertNear(Vector3 expected, Vector3 actual, float tolerance = 0.0001f) =>
         Assert.True(Vector3.Distance(expected, actual) <= tolerance, $"Expected {expected}, got {actual}.");
 
-    private static float DistanceToVerticalCapsule(Vector3 start, Vector3 end, ColliderCapsule capsule)
+    internal static float DistanceToVerticalCapsule(Vector3 start, Vector3 end, ColliderCapsule capsule)
     {
         var flatStart = new Vector2(start.X - capsule.Start.X, start.Z - capsule.Start.Z);
         var flatSegment = new Vector2(end.X - start.X, end.Z - start.Z);

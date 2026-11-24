@@ -1,11 +1,13 @@
 using System;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using KhaozEngine.Attachments;
 using Xunit;
 using static KhaozEngine.Tests.Attachments.ChainSimulationTests;
 
 namespace KhaozEngine.Tests.Attachments;
 
+[Collection(AttachmentAllocationCollection.Name)]
 public sealed class ChainSheetContactTests
 {
     private const float StepSeconds = 1f / 120;
@@ -123,6 +125,68 @@ public sealed class ChainSheetContactTests
     }
 
     [Fact]
+    public void An_embedded_sheet_resets_to_one_side_with_nonmonotonic_chain_indices()
+    {
+        var settings = Settings with { Gravity = 0, Stiffness = 0 };
+        var tip = -0.5f * Vector3.UnitY;
+        var left = Chain(tip, settings, Joint(-0.5f * Vector3.UnitX));
+        var right = Chain(tip, settings, Joint(0.5f * Vector3.UnitX));
+        var middle = Chain(tip, settings, Joint(Vector3.Zero));
+        var forward = Solve(new(0, 2) { Stretch = 0.14f }, new(1, 2) { Stretch = 0.14f });
+        var reversed = Solve(new(2, 0) { Stretch = 0.14f }, new(2, 1) { Stretch = 0.14f });
+
+        Assert.Equal(3, forward.JointsFromAnchor.Length);
+        Assert.True(MemoryMarshal.AsBytes(forward.JointsFromAnchor)
+            .SequenceEqual(MemoryMarshal.AsBytes(reversed.JointsFromAnchor)));
+        float side = Vector3.Transform(tip, forward.JointsFromAnchor[0]).Z;
+        Assert.True(MathF.Abs(side) > 0.01f);
+        Assert.True(side * Vector3.Transform(tip, forward.JointsFromAnchor[1]).Z > 0);
+        Assert.True(side * Vector3.Transform(tip, forward.JointsFromAnchor[2]).Z > 0);
+
+        ChainSimulation Solve(ChainLink first, ChainLink second)
+        {
+            var simulation = new ChainSimulation(new ChainRig(1, [left, right, middle], [first, second]), 2);
+            var a = new Vector3(-0.25f, -0.375f, 0);
+            var b = new Vector3(0.25f, -0.375f, 0);
+            ColliderCapsule[] capsules = [new(a, a, 0.05f), new(b, b, 0.05f)];
+            simulation.Step([Identity], capsules, Identity, 0);
+            simulation.Step([Identity], capsules, Identity, StepSeconds);
+            simulation.Step([Identity], capsules, Identity, StepSeconds);
+            return simulation;
+        }
+    }
+
+    [Fact]
+    public void A_piercing_axis_stops_approach_when_the_bend_limit_keeps_the_sheet_in_contact()
+    {
+        var settings = Settings with { Gravity = 0, Stiffness = 0, Radius = SheetRadius, AngleLimit = 0.1f };
+        var tip = -0.5f * Vector3.UnitY;
+        var left = Chain(tip, settings, Joint(-0.65f * Vector3.UnitX));
+        var right = Chain(tip, settings, Joint(0.65f * Vector3.UnitX));
+        var rig = new ChainRig(1, [left, right], [new(0, 1) { Stretch = 0.14f }]);
+        var previous = new ColliderCapsule(new(0, -0.35f, -0.6f), new(0, -0.35f, -0.2f), ObstacleRadius);
+        var current = new ColliderCapsule(new(0, -0.35f, -0.4f), new(0, -0.35f, 0.1f), ObstacleRadius);
+        var particles = new ChainParticles(rig, colliderCount: 1, placementRows: 2);
+        particles.SetRest([Identity], reset: true);
+        particles.SnapshotOpening();
+        particles.SetCapsuleGeometry(0, current, previous);
+        for (int chain = 0; chain < rig.Chains.Count; chain++)
+            particles.Predict(chain, settings, Vector3.Zero, StepSeconds, Vector3.Zero, Vector3.Zero, Quaternion.Identity);
+
+        new ChainLinks(rig, rig.Links, 1).FinishStep(particles, [Identity], [current], [previous],
+            [settings, settings], StepSeconds);
+
+        var positions = particles.Positions;
+        float clearance = MathF.Min(AxisDistance(current, positions[0], positions[1], positions[3]),
+            AxisDistance(current, positions[0], positions[3], positions[2]));
+        Assert.InRange(clearance, 0, 0.00005f);
+        Assert.InRange(positions[1].Z, 0, 0.051f);
+        Assert.InRange(positions[3].Z, 0, 0.051f);
+        float peak = MathF.Max(particles.Velocities[1].Z, particles.Velocities[3].Z);
+        Assert.InRange(peak, 0.01f, 0.3f / StepSeconds + 0.0001f);
+    }
+
+    [Fact]
     public void Warm_sheet_contact_steps_allocate_nothing()
     {
         var rig = CreateSheet(bounded: true, out var left, out var right);
@@ -136,9 +200,7 @@ public sealed class ChainSheetContactTests
         float clearance = MeasureSheet(simulation, left, right, capsules[0]);
         Assert.InRange(clearance, Clearance - Tolerance, Clearance + Tolerance);
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        WarmSweep();
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        AllocationMeasurement.NoPerCallAllocation("warm sheet contact", WarmSweep);
 
         void WarmSweep()
         {

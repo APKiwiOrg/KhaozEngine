@@ -9,6 +9,7 @@ internal sealed class ChainPlacementCull(int rowCount, int colliderCount)
     private const float DirectionLengthBound = 1.000002f;
     private const float FloatRoundingMargin = 1f / (1 << 19);
     private readonly SweptSphere[] _bounds = new SweptSphere[colliderCount];
+    private readonly float[] _sheetInflation = new float[colliderCount];
     private readonly int[] _indices = AllocateIndices(rowCount, colliderCount);
 
     [ThreadStatic]
@@ -23,6 +24,8 @@ internal sealed class ChainPlacementCull(int rowCount, int colliderCount)
         float previousReach = Vector3.Distance(center, previousCenter) + HalfAxisLength(previous) + previous.Radius;
         float radius = MathF.Max(currentReach, previousReach);
         _bounds[index] = new SweptSphere(center, radius + FloatRoundingMargin * (MaxAbs(center) + radius));
+        // The chord uses the current radius even at the opening end.
+        _sheetInflation[index] = MathF.Max(0, current.Radius - previous.Radius);
     }
 
     internal ChainCapsuleCandidates Select(int row, Vector3 parent, float length, float chainRadius,
@@ -47,20 +50,27 @@ internal sealed class ChainPlacementCull(int rowCount, int colliderCount)
     }
 
     internal static SweptSphere BandReach(Vector3 firstParent, float firstLength,
-        Vector3 secondParent, float secondLength, Vector3 firstUpper, Vector3 secondUpper, float radius)
+        Vector3 secondParent, float secondLength, Vector3 firstUpper, Vector3 secondUpper, float radius,
+        Vector3 openingFirstUpper, Vector3 openingSecondUpper, Vector3 openingFirstLower, Vector3 openingSecondLower)
     {
         // The convex hull bridges the gap between length spheres. The fixed corners of
         // an unequal-length tip band can also be different from the actual tip parents.
-        var center = Midpoint(firstParent, secondParent);
+        var openingCenter = Midpoint(Midpoint(openingFirstUpper, openingSecondUpper),
+            Midpoint(openingFirstLower, openingSecondLower));
+        var center = Midpoint(Midpoint(firstParent, secondParent), openingCenter);
         float reach = MathF.Max(Vector3.Distance(center, firstParent) + firstLength * DirectionLengthBound,
             Vector3.Distance(center, secondParent) + secondLength * DirectionLengthBound);
         reach = MathF.Max(reach, MathF.Max(Vector3.Distance(center, firstUpper), Vector3.Distance(center, secondUpper)));
+        reach = MathF.Max(reach, MathF.Max(Vector3.Distance(center, openingFirstUpper),
+            Vector3.Distance(center, openingSecondUpper)));
+        reach = MathF.Max(reach, MathF.Max(Vector3.Distance(center, openingFirstLower),
+            Vector3.Distance(center, openingSecondLower)));
         reach += radius + (float)ChainCapsuleCollision.TouchTolerance;
         return new SweptSphere(center, reach + FloatRoundingMargin * (MaxAbs(center) + reach));
     }
 
     internal bool ReachesBand(int index, in SweptSphere band) =>
-        DisableForTests || _bounds[index].CanReach(band.Center, band.Radius);
+        DisableForTests || _bounds[index].CanReach(band.Center, band.Radius + _sheetInflation[index]);
 
     internal ChainCapsuleCandidates Selected(int row, ChainCapsuleCandidates capsules, int count) =>
         count == capsules.Count ? capsules : capsules.WithIndices(Indices(row)[..count]);

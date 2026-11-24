@@ -268,16 +268,23 @@ sees only body and worn set capsules.
    within the current margin or after eight sweeps. The bend limit and capsules are applied again to each moved
    particle because they outrank the bound.
    Then test each band ending at the current row, with the row above fixed. For an uneven pair, the last band
-   joins the last common row directly to the two tips. A float sphere enclosing both moving corners' length
-   spheres and the fixed corners is compared with each obstacle's swept sphere. For the surviving axes, find
-   the closest points to both triangles in double precision. An opening-to-current residual chord that crosses
-   the inflated axis preserves the opening side. When an axis pierces a face, the face normal takes that side.
-   If a reset puts the axis into the plane between chains, the triangle winding chooses a side until the sheet
-   has separated. Each moving corner takes its barycentric share of a separation correction, capped at one
+   joins the last common row directly to the two tips. The float band bound encloses both opening triangles,
+   the fixed corners and both moving corners' current length spheres. The obstacle's swept bound covers
+   the current contact radius across both poses. This keeps the relative chord between the sheet and the
+   axis eligible even when the sheet moves past a still capsule. Surviving axes are compared with both
+   triangles in double precision. A change of face side and a chord through the inflated axis preserve the
+   opening side. A piercing axis uses the face normal oriented to that side.
+   Bounded links wind along deterministic trails through chain edges shared by two bands. A junction shared
+   by three or more bands ends the trails, because opposite winding cannot hold for every pair there.
+   An embedded coplanar axis with no opening side uses the face normal with its largest component pointing
+   in the positive direction, breaking ties by Z, then Y. Coplanar faces at a junction share the same side
+   by this rule regardless of link endpoint order. Each moving corner takes its barycentric share of a separation correction, capped at one
    segment length, and returns to its length sphere. The correction accounts for the radial motion lost
-   in that projection. Any clearance deficit in the fixed row stays with that row. A small position margin
-   keeps grazing contacts from switching on a full push. Up to eight passes clear the bands, then the bend limit
-   and each chain's own contact run again on moved corners.
+   in that projection. The margin is the smaller of 2 micrometres and 0.01 percent of the inflated radius.
+   It keeps grazing contacts from switching on a full push. The fixed row retains its share of any clearance
+   deficit. Up to eight passes resolve the reachable contact. The bend limit and each chain's own contact
+   then run again on moved corners. Unavailable leverage, a fixed edge, or a wedge between these constraints
+   can leave a remaining overlap.
    The impulse that stops escaping width velocity increases continuously across the 0.5 mm approach margin inside
    the band, reaching a full stop at the edge within rounding tolerance. This avoids switching between free
    separation and a full stop while springs and gravity act on a cape at rest. The width velocity constraint runs
@@ -285,7 +292,10 @@ sees only body and worn set capsules.
    velocity rules. It measures approach using all three corners' weighted velocities against the obstacle's
    surface, measured in each chain's carried frame. It raises only the moving corners' velocities, along
    each segment's tangent to the contact normal, up to the surface speed in that direction. The stop eases
-   in over its touch margin and fades as the contact moves toward the fixed row.
+   in over its touch margin and fades as the contact moves toward the fixed row. If the recheck leaves a
+   piercing contact, velocity uses the same opening-oriented face normal. The bend clamp still holds the
+   position. The last sheet stop can change tangent velocity at that limit, and the next placement applies
+   the bend constraint again.
    Tip pairs are solved together after all joint depths, because a short chain's tip can be linked to a
    longer chain's. A pair whose segments point straight apart turns both toward one shared perpendicular,
    since its tangents give no leverage.

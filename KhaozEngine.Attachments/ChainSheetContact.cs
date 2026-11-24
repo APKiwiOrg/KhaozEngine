@@ -26,13 +26,15 @@ internal sealed class ChainSheetContact
             : new(positions[FirstUpper], positions[FirstLower], positions[SecondLower]);
     }
 
-    internal ChainSheetContact(ChainRig rig, IEnumerable<ChainWidthBounds.Pair> pairs, int depths)
+    internal ChainSheetContact(ChainRig rig, IReadOnlyList<ChainWidthBounds.Pair> pairs, int depths)
     {
         var bands = new List<Band>?[depths];
         // Each width pair is a lower row. A tip pair closes from the last shared joint,
         // which need not be the actual parent of the longer chain's tip.
-        foreach (var pair in pairs)
+        var winding = new ChainSheetWinding(rig, pairs);
+        foreach (var link in pairs)
         {
+            var pair = winding.Orient(link);
             var first = pair.First;
             var second = pair.Second;
             int firstCount = rig.Chains[first.Chain].Joints.Count;
@@ -64,8 +66,10 @@ internal sealed class ChainSheetContact
             var band = bands[index];
             var first = placed[band.FirstChain];
             var second = placed[band.SecondChain];
+            var opening = particles.OpeningPositions;
             _reaches[index] = ChainPlacementCull.BandReach(first.Start, first.Length, second.Start, second.Length,
-                particles.Positions[band.FirstUpper], particles.Positions[band.SecondUpper], Radius(band, settings));
+                particles.Positions[band.FirstUpper], particles.Positions[band.SecondUpper], Radius(band, settings),
+                opening[band.FirstUpper], opening[band.SecondUpper], opening[band.FirstLower], opening[band.SecondLower]);
         }
 
         for (int pass = 0; pass < MaxPasses; pass++)
@@ -111,19 +115,17 @@ internal sealed class ChainSheetContact
         if (squared >= radiusSquared && !crossed)
             return false;
 
-        // A reset may seed a sphere inside the sheet's plane. Until it has a side,
-        // use the band winding to pick one for the whole embedded patch.
+        // A reset may seed a sphere inside the sheet's plane. Coplanar faces
+        // share a deterministic side, including faces that meet at a junction.
         double firstChainWeight = secondTriangle ? hit.Weights.X : 1 - hit.Weights.Z;
         bool spansChains = firstChainWeight is > 0 and < 1;
         bool coplanar = spansChains && Math.Abs(openingSide) <= sideTolerance && Math.Abs(currentSide) <= sideTolerance &&
             Math.Sqrt(opening.Residual.LengthSquared) < thickness - TouchTolerance;
         Offset normal;
         if (crossed || coplanar || squared == 0)
-            normal = openingSide < -sideTolerance ? faceNormal * -1 : faceNormal;
+            normal = Facing(faceNormal, openingNormal, openingSide, sideTolerance);
         else
             normal = hit.Residual * (1 / Math.Sqrt(squared));
-        if (normal.LengthSquared == 0)
-            normal = openingNormal;
         if (normal.LengthSquared == 0)
             return false;
 
@@ -164,6 +166,22 @@ internal sealed class ChainSheetContact
         double correction = (separation - positionMargin) / Math.Max(leverage, 0.05 * movableSquared);
         bool moved = Move(particles.Positions, first, normal, correction * firstWeight);
         return Move(particles.Positions, second, normal, correction * secondWeight) | moved;
+    }
+
+    private static Offset Facing(Offset normal, Offset openingNormal, double openingSide, double tolerance)
+    {
+        if (normal.LengthSquared == 0)
+            normal = openingNormal;
+        if (Math.Abs(openingSide) > tolerance)
+            return openingSide < 0 ? normal * -1 : normal;
+
+        // The dominant component gives a common half-space to coplanar faces
+        // even when a nonmanifold chain edge is incident to several trails.
+        var reference = openingNormal.LengthSquared > 0 ? openingNormal : normal;
+        double component = Math.Abs(reference.Z) >= Math.Max(Math.Abs(reference.X), Math.Abs(reference.Y))
+            ? reference.Z
+            : Math.Abs(reference.Y) >= Math.Abs(reference.X) ? reference.Y : reference.X;
+        return component < 0 ? normal * -1 : normal;
     }
 
     private static double NormalLeverage(Vector3[] positions, in ChainConstraints.JointStep step, Offset normal, double weight)
@@ -220,12 +238,29 @@ internal sealed class ChainSheetContact
         ChainConstraints.JointStep[] placed, int obstacle, in ColliderCapsule capsule, in ColliderCapsule previous,
         double thickness, float seconds)
     {
-        var hit = band.Triangle(particles.Positions, secondTriangle).Closest(particles.CapsuleAxes[obstacle], out _);
+        var hit = band.Triangle(particles.Positions, secondTriangle).Closest(particles.CapsuleAxes[obstacle], out var faceNormal);
         double squared = hit.Residual.LengthSquared;
-        if (squared == 0 || squared > thickness * thickness)
+        if (squared > thickness * thickness)
             return;
 
-        var normal = (hit.Residual * (1 / Math.Sqrt(squared))).ToVector3();
+        Offset facing;
+        if (squared == 0)
+        {
+            var opening = band.Triangle(particles.OpeningPositions, secondTriangle)
+                .Closest(particles.PreviousCapsuleAxes[obstacle], out var openingNormal);
+            double sideTolerance = Math.Min(SideTolerance, 0.0001 * (thickness - TouchTolerance));
+            facing = Facing(faceNormal, openingNormal, Offset.Dot(openingNormal, opening.Residual), sideTolerance);
+            if (facing.LengthSquared == 0)
+                return;
+        }
+        else
+        {
+            facing = hit.Residual * (1 / Math.Sqrt(squared));
+        }
+
+        // The bend limit keeps its position. A piercing contact can still stop
+        // tangent approach after that limit's local velocity constraint.
+        var normal = facing.ToVector3();
         double firstWeight = secondTriangle ? 0 : hit.Weights.Y;
         double secondWeight = secondTriangle ? hit.Weights.Y : hit.Weights.Z;
         double firstUpperWeight = hit.Weights.X;

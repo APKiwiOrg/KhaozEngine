@@ -78,6 +78,46 @@ public sealed class ChainPlacementCullTests(ITestOutputHelper output)
         Assert.True(madeContact, "The moving capsules must change the solved pose.");
     }
 
+    [Fact]
+    public void Placement_cull_preserves_bits_when_a_sheet_crosses_a_stationary_obstacle()
+    {
+        var settings = ChainSimulationTests.Settings with { Gravity = 0, Stiffness = 0, Trail = 0 };
+        var tip = -0.125f * Vector3.UnitY;
+        var left = ChainSimulationTests.Chain(tip, settings, ChainSimulationTests.Joint(-0.125f * Vector3.UnitX));
+        var right = ChainSimulationTests.Chain(tip, settings, ChainSimulationTests.Joint(0.125f * Vector3.UnitX));
+        var rig = new ChainRig(1, [left, right], [new(0, 1) { Stretch = 0.1f }]);
+        var culled = new ChainSimulation(rig, 1);
+        var unfiltered = new ChainSimulation(rig, 1);
+        var noContact = new ChainSimulation(rig, 0);
+        var center = new Vector3(0, -0.09375f, 0);
+        ColliderCapsule[] obstacle = [new(center, center, 0.03125f)];
+        var before = Matrix4x4.CreateTranslation(0, 0, -0.375f);
+        var after = Matrix4x4.CreateTranslation(0, 0, 0.375f);
+
+        Cross(culled, obstacle);
+        ChainPlacementCull.DisableForTests = true;
+        try
+        {
+            Cross(unfiltered, obstacle);
+        }
+        finally
+        {
+            ChainPlacementCull.DisableForTests = false;
+        }
+        Cross(noContact, []);
+        Assert.Equal(2, culled.JointsFromAnchor.Length);
+        var reference = MemoryMarshal.AsBytes(unfiltered.JointsFromAnchor);
+        Assert.False(reference.SequenceEqual(MemoryMarshal.AsBytes(noContact.JointsFromAnchor)));
+        Assert.True(reference.SequenceEqual(MemoryMarshal.AsBytes(culled.JointsFromAnchor)));
+
+        void Cross(ChainSimulation simulation, ReadOnlySpan<ColliderCapsule> colliders)
+        {
+            simulation.Step([before], colliders, before, 0);
+            simulation.Step([after], colliders, after, StepSeconds);
+            simulation.Step([after], colliders, after, StepSeconds);
+        }
+    }
+
     [Theory]
     [InlineData(65_536, 32_768, MotionLevel.Held)]
     [InlineData(512, 96, MotionLevel.Simulated)]

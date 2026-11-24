@@ -55,6 +55,7 @@ internal sealed class ChainBoundGroups
             }
             return new Group(chains, depths, new ChainWidthBounds(tips.ToArray()));
         }).ToArray();
+        PlacementRows = _groups.Max(group => group.Chains.Length);
 
         bool IsTip(ChainWidthBounds.Member member) =>
             member.Particle - member.Root == rig.Chains[member.Chain].Joints.Count;
@@ -66,6 +67,8 @@ internal sealed class ChainBoundGroups
             return chain;
         }
     }
+
+    internal int PlacementRows { get; } = 1;
 
     internal bool Contains(int chain) => _bounded[chain];
 
@@ -112,8 +115,9 @@ internal sealed class ChainBoundGroups
         ReadOnlySpan<ColliderCapsule> colliders, ReadOnlySpan<ChainSettings> settings, float seconds, int depth)
     {
         var rig = particles.Rig;
-        foreach (int chain in chains)
+        for (int row = 0; row < chains.Length; row++)
         {
+            int chain = chains[row];
             var definition = rig.Chains[chain];
             if (!HasParticle(depth, definition.Joints.Count))
                 continue;
@@ -125,7 +129,7 @@ internal sealed class ChainBoundGroups
                 previous.Particle, previous.Length, previous.Direction, _incomingTurns[chain]);
             var parent = joint == first ? anchors[definition.Anchor] : particles.JointWorlds[joint - 1];
             _placed[chain] = ChainConstraints.PlaceJoint(particles, chain, joint, parent, 0,
-                ChainConstraints.BendCosine(settings[chain]), settings[chain].Radius, seconds, Capsules(chain, colliders));
+                ChainConstraints.BendCosine(settings[chain]), settings[chain].Radius, seconds, Capsules(chain, colliders), row);
             if (_placed[chain].ReplayedAll)
                 _capsuleCounts[chain] = colliders.Length;
         }
@@ -134,14 +138,15 @@ internal sealed class ChainBoundGroups
     private void ReapplyLimits(ChainParticles particles, int[] chains, ReadOnlySpan<ColliderCapsule> colliders,
         ReadOnlySpan<ChainSettings> settings, int depth)
     {
-        foreach (int chain in chains)
+        for (int row = 0; row < chains.Length; row++)
         {
+            int chain = chains[row];
             if (!HasParticle(depth, particles.Rig.Chains[chain].Joints.Count))
                 continue;
             var step = _placed[chain];
             if (particles.Positions[step.Particle + 1] == step.End)
                 continue;
-            _placed[chain] = ChainConstraints.ReapplyLimits(particles, chain, step,
+            _placed[chain] = ChainConstraints.ReapplyLimits(particles, row, step,
                 ChainConstraints.BendCosine(settings[chain]), settings[chain].Radius, Capsules(chain, colliders));
             if (_placed[chain].ReplayedAll)
                 _capsuleCounts[chain] = colliders.Length;
@@ -152,8 +157,9 @@ internal sealed class ChainBoundGroups
         ReadOnlySpan<ColliderCapsule> previousColliders, ReadOnlySpan<ChainSettings> settings, float seconds, int depth)
     {
         var rig = particles.Rig;
-        foreach (int chain in chains)
+        for (int row = 0; row < chains.Length; row++)
         {
+            int chain = chains[row];
             if (!HasParticle(depth, rig.Chains[chain].Joints.Count))
                 continue;
             var step = _placed[chain];
@@ -165,7 +171,7 @@ internal sealed class ChainBoundGroups
             if (step.Joint == first)
                 velocity.Start(rig.Chains[chain].Anchor);
             _incomingTurns[chain] = velocity.FrameTurn;
-            var placement = particles.PlacementCull.Selected(chain, Capsules(chain, colliders), step.PlacementCount);
+            var placement = particles.PlacementCull.Selected(row, Capsules(chain, colliders), step.PlacementCount);
             velocity.ApplyLocal(step.Particle, step.Length, step.Direction, step.Rest, step.Clamped, placement);
             ChainConstraints.WriteSwing(particles, step);
         }

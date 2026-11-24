@@ -78,6 +78,52 @@ public sealed class ChainPlacementCullTests(ITestOutputHelper output)
         Assert.True(madeContact, "The moving capsules must change the solved pose.");
     }
 
+    [Theory]
+    [InlineData(65_536, 32_768, MotionLevel.Held)]
+    [InlineData(512, 96, MotionLevel.Simulated)]
+    public void Independent_standalone_chains_share_placement_scratch(int chainCount, int capsuleCount, MotionLevel level)
+    {
+        var settings = new ChainSettings(0, 0, 0, 1, MathF.PI, 0);
+        var definition = ChainSimulationTests.Chain(-Vector3.UnitY, settings, ChainSimulationTests.Joint(Vector3.Zero));
+        var chains = new ChainRigChain[chainCount];
+        Array.Fill(chains, definition);
+        var rig = new ChainRig(1, chains, []);
+        var simulation = new ChainSimulation(rig, capsuleCount);
+        var capsules = new ColliderCapsule[capsuleCount];
+        var distant = new Vector3(4, 0, 0);
+        Array.Fill(capsules, new ColliderCapsule(distant, distant, 0.125f));
+        var center = new Vector3(0.04f, -0.5f, 0);
+        capsules[0] = new ColliderCapsule(center, center, 0.125f);
+        var anchor = Matrix4x4.Identity;
+        simulation.Step([anchor], capsules, anchor, 0, level);
+
+        // Run held frames at the overflow boundary to validate the large public inputs in linear
+        // work. The smaller rig runs its grid steps and exercises the shared row during contact.
+        simulation.Step([anchor], capsules, anchor, StepSeconds, level);
+        simulation.Step([anchor], capsules, anchor, StepSeconds, level);
+        Assert.Equal(chainCount, simulation.JointsFromAnchor.Length);
+        var tip = Vector3.Transform(definition.Tip, simulation.JointsFromAnchor[^1]);
+        if (level == MotionLevel.Held)
+            Assert.Equal(definition.Tip, tip);
+        else
+            Assert.True(ChainSegmentContactTests.DistanceToSegment(center, Vector3.Zero, tip) >= capsules[0].Radius);
+    }
+
+    [Fact]
+    public void Unrepresentable_placement_scratch_keeps_the_original_candidates()
+    {
+        var filter = new ChainPlacementCull(int.MaxValue, 2);
+        var center = 10 * Vector3.UnitX;
+        ColliderCapsule[] colliders = [new(center, center, 0.125f), new(-center, -center, 0.125f)];
+        for (int index = 0; index < colliders.Length; index++)
+            filter.SetBounds(index, colliders[index], colliders[index]);
+
+        var selected = filter.Select(0, Vector3.Zero, 1, 0, new ChainCapsuleCandidates(colliders));
+        Assert.Equal(colliders.Length, selected.Count);
+        Assert.Equal(colliders[0], selected[0]);
+        Assert.Equal(colliders[1], selected[1]);
+    }
+
     [Fact]
     [Trait("Category", "Diagnostic")]
     public void Counts_segment_axis_queries_per_wearer_step()

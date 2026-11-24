@@ -3,13 +3,13 @@ using System.Numerics;
 
 namespace KhaozEngine.Attachments;
 
-// A bound group can have one placement awaiting velocity constraints for each chain.
-internal sealed class ChainPlacementCull(int chainCount, int colliderCount)
+// Immediate consumers share row zero. A bound group can have a placement awaiting velocity for each chain.
+internal sealed class ChainPlacementCull(int rowCount, int colliderCount)
 {
     private const float DirectionLengthBound = 1.000002f;
     private const float FloatRoundingMargin = 1f / (1 << 19);
     private readonly SweptSphere[] _bounds = new SweptSphere[colliderCount];
-    private readonly int[] _indices = new int[checked(chainCount * colliderCount)];
+    private readonly int[] _indices = AllocateIndices(rowCount, colliderCount);
 
     [ThreadStatic]
     internal static bool DisableForTests;
@@ -25,16 +25,16 @@ internal sealed class ChainPlacementCull(int chainCount, int colliderCount)
         _bounds[index] = new SweptSphere(center, radius + FloatRoundingMargin * (MaxAbs(center) + radius));
     }
 
-    internal ChainCapsuleCandidates Select(int chain, Vector3 parent, float length, float chainRadius,
+    internal ChainCapsuleCandidates Select(int row, Vector3 parent, float length, float chainRadius,
         ChainCapsuleCandidates capsules)
     {
-        if (capsules.Count == 0 || DisableForTests)
+        if (capsules.Count == 0 || _indices.Length == 0 || row >= rowCount || DisableForTests)
             return capsules;
 
         // Cover the admitted direction length and float rounding in the sphere and distance test.
         float reach = length * DirectionLengthBound + chainRadius + (float)ChainCapsuleCollision.TouchTolerance +
             FloatRoundingMargin * (MaxAbs(parent) + length + chainRadius);
-        var indices = Indices(chain);
+        var indices = Indices(row);
         int count = 0;
         for (int index = 0; index < capsules.Count; index++)
         {
@@ -43,13 +43,30 @@ internal sealed class ChainPlacementCull(int chainCount, int colliderCount)
                 indices[count++] = original;
         }
 
-        return Selected(chain, capsules, count);
+        return Selected(row, capsules, count);
     }
 
-    internal ChainCapsuleCandidates Selected(int chain, ChainCapsuleCandidates capsules, int count) =>
-        count == capsules.Count ? capsules : capsules.WithIndices(Indices(chain)[..count]);
+    internal ChainCapsuleCandidates Selected(int row, ChainCapsuleCandidates capsules, int count) =>
+        count == capsules.Count ? capsules : capsules.WithIndices(Indices(row)[..count]);
 
-    private Span<int> Indices(int chain) => _indices.AsSpan(chain * colliderCount, colliderCount);
+    private Span<int> Indices(int row) => _indices.AsSpan(row * colliderCount, colliderCount);
+
+    private static int[] AllocateIndices(int rows, int colliders)
+    {
+        long count = (long)rows * colliders;
+        if (count > Array.MaxLength)
+            return [];
+
+        // This is an optional filter. A rig can still run if its scratch cannot be allocated.
+        try
+        {
+            return new int[(int)count];
+        }
+        catch (OutOfMemoryException)
+        {
+            return [];
+        }
+    }
 
     private static Vector3 Midpoint(Vector3 a, Vector3 b) => 0.5f * a + 0.5f * b;
 

@@ -44,6 +44,8 @@ internal sealed class ChainLinks
         _boundGroups = new ChainBoundGroups(rig, widthPairs);
     }
 
+    internal int PlacementRows => _boundGroups.PlacementRows;
+
     internal bool Apply(ChainParticles particles, float seconds)
     {
         if (_pairs.Length == 0 || seconds == 0)

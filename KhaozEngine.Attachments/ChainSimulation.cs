@@ -39,8 +39,8 @@ public sealed class ChainSimulation
         Rig = rig;
         ColliderCount = colliderCount;
         Options = options;
-        _particles = new ChainParticles(rig, colliderCount);
         _links = new ChainLinks(rig);
+        _particles = new ChainParticles(rig, colliderCount, _links.PlacementRows);
         var hierarchy = new ChainPresentationHierarchy(rig);
         _blend = new ChainPresentationBlend(rig, hierarchy);
         _stepPresentation = new ChainStepPresentation(rig, hierarchy);

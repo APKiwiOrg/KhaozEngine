@@ -5,7 +5,7 @@ namespace KhaozEngine.Attachments;
 
 internal sealed class ChainParticles
 {
-    internal ChainParticles(ChainRig rig, int colliderCount = 0)
+    internal ChainParticles(ChainRig rig, int colliderCount = 0, int placementRows = 1)
     {
         Rig = rig;
         int count = checked(rig.JointCount + rig.Chains.Count);
@@ -20,7 +20,7 @@ internal sealed class ChainParticles
         PreviousAnchorRotations = new Quaternion[rig.AnchorCount];
         StepAnchorRotations = new Quaternion[rig.AnchorCount];
         StepCarries = new ChainCarry[rig.Chains.Count];
-        PlacementCull = new ChainPlacementCull(rig.Chains.Count, colliderCount);
+        PlacementCull = new ChainPlacementCull(placementRows, colliderCount);
         CapsuleAxes = new ChainCapsuleCollision.Axis[colliderCount];
         PreviousCapsuleAxes = new ChainCapsuleCollision.Axis[colliderCount];
         OpeningResiduals = new ChainCapsuleCollision.Offset?[colliderCount];

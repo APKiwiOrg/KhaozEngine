@@ -487,8 +487,10 @@ The wearables limits are 32 wearers, at most 2 ms added CPU preparation, no mana
   for moved points, then apply the velocity constraints. A reach test selects candidates once per chain per pass,
   with a full capsule replay if a contact correction leaves the conservative reach. The cull and both contact
   passes share the capsule axes and swept bounds prepared once per step. Each placement runs the float filter
-  before any double precision contact query. Its preallocated candidate storage holds a row per chain so the
-  depth pass can finish each chain's velocity constraints after solving width. A segment reuses its opening residual
+  before any double precision contact query. Immediate consumers share one candidate row. The width pass
+  reuses one row per chain in the largest bound group so it can finish a depth's velocity constraints after solving
+  width. If that scratch cannot be represented or allocated, the solve uses the chain candidate list directly.
+  A segment reuses its opening residual
   for a capsule throughout the placement and its current offset until a correction changes its direction.
   Constraint setup extracts the anchor rotation and skips the unused stretch.
   At the default 120 Hz simulation rate, a 144 Hz frame averages 0.83 steps and a 60 Hz frame averages two.

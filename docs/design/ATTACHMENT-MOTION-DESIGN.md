@@ -52,7 +52,9 @@ relative to the parent, and the parent never feels it. Each joint's spring there
 which is what `stiffness` means. A length constraint shared with the parent would conserve energy exactly, but every
 joint would then carry the weight of the chain below it, so every piece would hang lower than it was tuned to. The
 cost is that a parent moving along its child's segment hands the child that speed, a small transfer the limits and
-contacts then remove.
+contacts then remove. A downstream bend stop can return velocity along a segment whose length rule has already
+run. Positions still hold every segment length at the end of the step. The next step's length rule removes
+relative motion along the segment it places.
 
 A full two sided solver with masses on every constraint is the cloth solver's job
 ([#1870](https://github.com/APKiwiOrg/KhaozEngine/issues/1870)). Chains keep the root to tip pass, their settings and
@@ -182,9 +184,10 @@ at bind, so the radius there is the authored radius before wearer scaling.
   The previous axis joins the same particles at the substep opening, so contact sees the lower chain's motion.
   Chains in the same layer, unlayered chains and chains on different wearers never meet through layered contact.
 
-Caps bound the cost and are refused past: 32 colliders in a body file, 8 in a worn set and 64 in one wearer's
-motion. A part holds at most 32 chains and 64 links, and a chain at most 16 joints. The garment skin keeps its 128
-joint limit, which counts chain joints.
+A body file can author up to 32 capsules and a worn set up to 8. The body and worn sets together can author up
+to 64 capsules per wearer. Lower chain segments add to a tier's obstacle list beyond that cap. A part holds at
+most 32 chains and 64 links, and a chain at most 16 joints. The garment skin keeps its 128 joint limit, which
+counts chain joints.
 
 ## One step
 
@@ -243,7 +246,9 @@ sees only body and worn set capsules.
 4. **Links.** Every linked pair reads the same snapshot, and each particle takes the mean of its pairs' midpoint
    corrections, so a particle in several links never takes a stiffer step and the update stays stable. A second
    root-to-tip pass without the stiffness spring restores the bend limit, collisions and lengths for chains moved by
-   a link spring.
+   a link spring. An unbounded chain whose particles receive no spring correction keeps its first pass, including an
+   unlinked chain. Another pass would also reapply the earlier velocity rules after a shared bend stop. Running it when
+   an unrelated spring moves would change the chain's motion. Each lower tier is final before a higher tier's springs run.
 5. **Width bound.** Chains joined by links of a part that states `linkStretch` run that second pass together, depth by
    depth. Each depth's particles are placed from their final parents. Bound pairs at that depth then move both
    particles on their own length spheres toward the band. The first sweep uses the position solve's rounding
@@ -574,7 +579,9 @@ All headless, on synthetic skeletons built in code.
 
 - **Solver.** A chain released level falls and settles below its anchor. It settles to the same pose at 30, 60, 144
   and 240 Hz within 1 cm at the tip, and its first swing peaks within 10 percent across those rates. Random frame
-  times from 1 ms to 500 ms, hitches included, stay finite. A 10 m teleport shows no whip. Whole segments clear
+  times from 1 ms to 500 ms, hitches included, stay finite. A 10 m teleport shows no whip. Unlinked chains and
+  chains with zero net spring correction keep the same frames and segment lengths when an unrelated spring moves.
+  Whole segments clear
   thin and moving capsules, including long capsule axes. A translated endpoint clears after rounding, and a tiny
   near-parent contact stays near its tangent cone. A soft chain settles on the side of a capsule it fell onto.
   A capsule that crosses a segment within one step pushes it ahead. Bends stay within the limit except where
@@ -587,7 +594,9 @@ All headless, on synthetic skeletons built in code.
   Trail 0 keeps the chain's shape in the wearer's space while the wearer moves steadily, and trail 1 lags it. A hold and a resume move no joint further in a frame than the blend
   allows. Linked chains keep their spacing when a collider pushes one. Nothing allocates once warm.
 - **Velocity rule.** A one joint chain on a still anchor, with no spring or gravity, sent into its limit and a capsule
-  never gains kinetic energy, including with contact in the middle of the segment. A chain released from tip
+  never gains kinetic energy, including with contact in the middle of the segment. A downstream bend stop that
+  pushes its free parent along the previous segment does not raise kinetic energy in the anchor frame in the
+  shared-stop regression. A chain released from tip
   contact moves exactly as far as gravity alone moves it from rest. A cape of five linked chains with tight limits and stiff springs, on an anchor that runs with a
   sway and stops, has a lower peak tip speed after the stop than while running, at 30, 60, 144 and 240 Hz. A capsule
   that strikes a limp chain and stops never throws it faster than the capsule moved. A pure anchor twist moves a

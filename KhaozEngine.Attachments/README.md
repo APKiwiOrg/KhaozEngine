@@ -632,10 +632,12 @@ even a one-joint chain can swing.
 
 Link springs keep corresponding movable joints and both virtual tips near their rest spacing.
 Their natural frequency is 10 radians per second. All links read the same poses within a step.
-A joint or tip in several links receives the average of their spring corrections. A link
-with `ChainLink.Stretch` also limits stretch and compression. The solver applies this bound depth
-by depth, then handles all linked tips together so chains of different lengths can share a bound.
-Capsule clearance and bend limits take priority over spacing.
+A joint or tip in several links receives the average of their spring corrections. Outside a width-bounded group,
+only chains moved by a link spring get a second pass. This keeps a chain's pose and velocity independent of
+unrelated springs. Each lower tier is final before a higher tier's springs run. A link with `ChainLink.Stretch`
+also limits stretch and compression. The solver applies this bound depth by depth, then handles all linked tips
+together so chains of different lengths can share a bound. Capsule clearance and bend limits take priority
+over spacing.
 
 The rig owns its rest data and can be shared. Create a `ChainSimulation` for each wearer with a fixed
 collider count.
@@ -682,7 +684,9 @@ move positions without turning the correction into speed. Velocity constraints r
 bend limit or width band. Capsule contact uses the velocity at the contact along the segment and limits
 the child's stop to the capsule's speed along the contact direction in the segment's tangent plane. The position solve handles the part of the push along the segment. Both
 capsule surface motion and bend limit turn account for the chain's carried rigid movement. A movable
-parent shares the stop at a bend limit.
+parent shares the stop at a bend limit. This can leave the parent moving along a segment whose length rule
+has already run. Each finished pose keeps its segment lengths. The next step's length rule removes relative
+motion along the segment it places.
 
 The first step, `Reset()`, a teleport or a long gap places the chain at rest with zero velocity
 and resets the grid. `Held` blends from the last displayed shape to rest without stepping physics.

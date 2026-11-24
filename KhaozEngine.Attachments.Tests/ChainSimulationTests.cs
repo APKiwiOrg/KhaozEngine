@@ -146,34 +146,55 @@ public class ChainSimulationTests
         }
     }
 
-    [Fact]
-    public void An_unlinked_chain_keeps_its_pose_when_other_chains_need_a_link_solve()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Chains_keep_their_first_pass_when_only_an_unrelated_spring_moves(bool zeroNetLink)
     {
-        var linkEnd = Chain(-Vector3.UnitY, Settings with { Gravity = 0 }, Joint(Vector3.Zero));
-        var independent = Chain(Vector3.UnitX, Settings with { Stiffness = 5 },
-            Joint(Vector3.Zero), Joint(Vector3.UnitX)) with { Anchor = 2 };
-        ChainRigChain[] chains = [linkEnd, linkEnd with { Anchor = 1 }, independent];
-        var linked = new ChainSimulation(new ChainRig(3, chains, [new(0, 1)]), 0);
-        var uncoupled = new ChainSimulation(new ChainRig(3, chains, []), 0);
-        var left = Matrix4x4.CreateTranslation(-1, 0, 0);
-        const float stepSeconds = 1f / 120;
-        bool linkChangedPose = false;
-        Assert.Equal(4, linked.Rig.JointCount);
-        Assert.Equal(4, uncoupled.Rig.JointCount);
+        var stopped = SharedBendStopChain;
+        var upright = Chain(Vector3.UnitY, stopped.Settings, Joint(Vector3.Zero)) with { Layer = stopped.Layer };
+        ChainRigChain[] independent = zeroNetLink ? [stopped, stopped with { Anchor = 1 }] : [stopped];
+        int firstActive = independent.Length;
+        int independentJoints = firstActive * stopped.Joints.Count;
+        var activeLink = new ChainLink(firstActive, firstActive + 1);
+        ChainLink[] links = zeroNetLink ? [new(0, 1), activeLink] : [activeLink];
+        ChainRigChain[] chains = [.. independent, upright with { Anchor = firstActive }, upright with { Anchor = firstActive + 1 }];
+        var linked = new ChainSimulation(new ChainRig(chains.Length, chains, links), 0);
+        var isolated = new ChainSimulation(new ChainRig(firstActive, independent, []), 0);
+        var activeWithoutSpring = new ChainSimulation(new ChainRig(2, [upright, upright with { Anchor = 1 }], []), 0);
+        bool springChangedPose = false;
+        Assert.Equal(independentJoints + 2, linked.JointsFromAnchor.Length);
+        Assert.Equal(independentJoints, isolated.JointsFromAnchor.Length);
 
-        for (int frame = 0; frame < 48; frame++)
+        for (int frame = 0; frame <= 5; frame++)
         {
-            var right = Matrix4x4.CreateRotationZ(frame * 0.07f);
-            var anchor = Matrix4x4.CreateScale(1.1f, 1.25f, 0.9f) * Matrix4x4.CreateRotationZ(frame * 0.03f);
-            float elapsed = frame == 0 ? 0 : stepSeconds;
-            linked.Step([left, right, anchor], [], Matrix4x4.Identity, elapsed);
-            uncoupled.Step([left, right, anchor], [], Matrix4x4.Identity, elapsed);
-            Assert.True(MemoryMarshal.AsBytes(linked.JointsFromAnchor[2..])
-                .SequenceEqual(MemoryMarshal.AsBytes(uncoupled.JointsFromAnchor[2..])));
-            linkChangedPose |= !linked.JointsFromAnchor[..2].SequenceEqual(uncoupled.JointsFromAnchor[..2]);
+            var anchor = frame == 0 ? Matrix4x4.Identity : SharedBendStopAnchor;
+            // Both chains in the zero-net pair follow the same XY motion with exactly four metres
+            // of Z separation. Their corresponding particles keep their rest spacing.
+            var offset = Matrix4x4.CreateTranslation(anchor.Translation + 4 * Vector3.UnitZ);
+            Matrix4x4[] independentAnchors = zeroNetLink ? [anchor, offset] : [anchor];
+            var left = Matrix4x4.Identity;
+            var right = Matrix4x4.CreateTranslation(frame == 0 ? 4 : 5, 0, 0);
+            float elapsed = frame == 0 ? 0 : 1f / 120;
+            linked.Step([.. independentAnchors, left, right], [], Matrix4x4.Identity, elapsed);
+            isolated.Step(independentAnchors, [], Matrix4x4.Identity, elapsed);
+            activeWithoutSpring.Step([left, right], [], Matrix4x4.Identity, elapsed);
+
+            var frames = linked.JointsFromAnchor[..independentJoints];
+            Assert.True(MemoryMarshal.AsBytes(frames).SequenceEqual(MemoryMarshal.AsBytes(isolated.JointsFromAnchor)),
+                $"The independent chain frames changed at frame {frame}.");
+            springChangedPose |= !linked.JointsFromAnchor[independentJoints..].SequenceEqual(activeWithoutSpring.JointsFromAnchor);
+            for (int index = 0; index < independentJoints; index += 2)
+            {
+                var root = frames[index].Translation;
+                var joint = frames[index + 1].Translation;
+                var tip = Vector3.Transform(stopped.Tip, frames[index + 1]);
+                Assert.InRange(Vector3.Distance(root, joint), 0.99999f, 1.00001f);
+                Assert.InRange(Vector3.Distance(joint, tip), stopped.Tip.Length() - 0.00001f, stopped.Tip.Length() + 0.00001f);
+            }
         }
 
-        Assert.True(linkChangedPose);
+        Assert.True(springChangedPose, "The unrelated pair must be moved by its spring.");
     }
 
     [Fact]
@@ -584,6 +605,12 @@ public class ChainSimulationTests
             AdvanceAndCompose();
         Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
     }
+
+    internal static readonly ChainRigChain SharedBendStopChain = Chain(new(0.5f, -1, 0),
+        new ChainSettings(0, 0, 0, 1, MathF.PI / 2, 0), Joint(Vector3.Zero), Joint(Vector3.UnitX))
+        with { Layer = AttachmentLayer.Armour };
+
+    internal static readonly Matrix4x4 SharedBendStopAnchor = Matrix4x4.CreateTranslation(1.5f, -1, 0);
 
     internal static readonly ChainSettings Settings = new(0, 3, 1, 1, MathF.PI, 0);
 

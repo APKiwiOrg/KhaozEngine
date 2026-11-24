@@ -69,6 +69,33 @@ public sealed class ChainVelocityTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void A_downstream_bend_stop_shares_speed_with_its_free_parent_without_adding_energy()
+    {
+        const float step = 1f / 120;
+        var chain = SharedBendStopChain;
+        var anchor = SharedBendStopAnchor;
+        var particles = new ChainParticles(new ChainRig(1, [chain], []));
+        particles.SetRest([Matrix4x4.Identity], reset: true);
+        particles.SetRest([anchor], reset: false);
+        particles.Predict(0, chain.Settings, Vector3.Zero, step, Vector3.Zero, Vector3.Zero, Quaternion.Identity);
+        var anchorSpeed = anchor.Translation / step;
+        float before = SquaredRelativeSpeed();
+        Assert.True(before > 0);
+
+        ChainConstraints.FollowChain(particles, 0, anchor, [], [], chain.Settings, step, pullTowardRest: true);
+
+        var first = Vector3.Normalize(particles.Positions[1] - particles.Positions[0]);
+        // The first length rule removes this component before the second cone passes its stop
+        // back. A measurable component after the pass proves the case reached that shared stop.
+        Assert.True(Vector3.Dot(particles.Velocities[1] - anchorSpeed, first) < -1);
+        Assert.InRange(SquaredRelativeSpeed(), 0, before);
+
+        // The sum of squared speeds in the anchor frame is proportional to kinetic energy for equal masses.
+        float SquaredRelativeSpeed() =>
+            (particles.Velocities[1] - anchorSpeed).LengthSquared() + (particles.Velocities[2] - anchorSpeed).LengthSquared();
+    }
+
+    [Fact]
     public void Endpoint_contact_retains_a_small_approach_beside_large_shared_speed()
     {
         const float step = 1f / 64;

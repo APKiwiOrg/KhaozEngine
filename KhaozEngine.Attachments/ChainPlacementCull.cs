@@ -69,8 +69,55 @@ internal sealed class ChainPlacementCull(int rowCount, int colliderCount)
         return new SweptSphere(center, reach + FloatRoundingMargin * (MaxAbs(center) + reach));
     }
 
-    internal bool ReachesBand(int index, in SweptSphere band) =>
-        DisableForTests || _bounds[index].CanReach(band.Center, band.Radius + _sheetInflation[index]);
+    internal bool ReachesBand(int index, in SweptSphere band)
+    {
+        ChainContactCounts.Record(ChainContactQuery.BandFilter);
+        return DisableForTests || _bounds[index].CanReach(band.Center, band.Radius + _sheetInflation[index]);
+    }
+
+    internal bool ReachesTight(int index, in SweptSphere reach) =>
+        DisableForTests || (uint)index >= (uint)_bounds.Length || _bounds[index].Radius == 0 ||
+        _bounds[index].CanReach(reach.Center, reach.Radius + _sheetInflation[index]);
+
+    internal static SweptSphere TriangleReach((Vector3 A, Vector3 B, Vector3 C) current,
+        (Vector3 A, Vector3 B, Vector3 C) opening, float radius, bool includeOpening)
+    {
+        var center = Centroid(current);
+        if (includeOpening)
+            center = Midpoint(center, Centroid(opening));
+
+        float reach = Farthest(current, center);
+        if (includeOpening)
+            reach = MathF.Max(reach, Farthest(opening, center));
+        return Pad(center, reach + radius);
+
+        static Vector3 Centroid((Vector3 A, Vector3 B, Vector3 C) triangle) =>
+            triangle.A / 3 + triangle.B / 3 + triangle.C / 3;
+
+        static float Farthest((Vector3 A, Vector3 B, Vector3 C) triangle, Vector3 center) =>
+            MathF.Max(Vector3.Distance(triangle.A, center),
+                MathF.Max(Vector3.Distance(triangle.B, center), Vector3.Distance(triangle.C, center)));
+    }
+
+    internal static SweptSphere SegmentReach(in ChainSegmentContact.Segment segment,
+        in ChainSegmentContact.Segment opening, float radius, bool includeOpening)
+    {
+        var start = segment.Root.ToVector3();
+        var end = (segment.Root + segment.Displacement).ToVector3();
+        var center = Midpoint(start, end);
+        var openingStart = opening.Root.ToVector3();
+        var openingEnd = (opening.Root + opening.Displacement).ToVector3();
+        if (includeOpening)
+            center = Midpoint(center, Midpoint(openingStart, openingEnd));
+
+        float reach = MathF.Max(Vector3.Distance(start, center), Vector3.Distance(end, center));
+        if (includeOpening)
+            reach = MathF.Max(reach, MathF.Max(Vector3.Distance(openingStart, center), Vector3.Distance(openingEnd, center)));
+        return Pad(center, reach + radius);
+    }
+
+    private static SweptSphere Pad(Vector3 center, float radius) =>
+        new(center, radius + FloatRoundingMargin * (MaxAbs(center) + radius));
 
     internal ChainCapsuleCandidates Selected(int row, ChainCapsuleCandidates capsules, int count) =>
         count == capsules.Count ? capsules : capsules.WithIndices(Indices(row)[..count]);

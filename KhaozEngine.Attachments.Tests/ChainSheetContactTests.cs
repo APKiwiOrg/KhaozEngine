@@ -215,7 +215,7 @@ public sealed class ChainSheetContactTests
         }
     }
 
-    private static ChainRig CreateSheet(bool bounded, out ChainRigChain left, out ChainRigChain right, bool layered = false)
+    internal static ChainRig CreateSheet(bool bounded, out ChainRigChain left, out ChainRigChain right, bool layered = false)
     {
         // The capsule fits between both chains without reaching either chain's length sphere.
         var settings = Settings with { Gravity = 0, Damping = 0, Radius = SheetRadius };

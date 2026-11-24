@@ -47,6 +47,11 @@ internal static partial class ChainCapsuleCollision
         internal double LengthSquared => Dot(this, this);
         internal Vector3 ToVector3() => new((float)X, (float)Y, (float)Z);
 
+        internal bool SameBits(Offset other) =>
+            BitConverter.DoubleToInt64Bits(X) == BitConverter.DoubleToInt64Bits(other.X) &&
+            BitConverter.DoubleToInt64Bits(Y) == BitConverter.DoubleToInt64Bits(other.Y) &&
+            BitConverter.DoubleToInt64Bits(Z) == BitConverter.DoubleToInt64Bits(other.Z);
+
         internal static double Dot(Offset a, Offset b) => a.X * b.X + a.Y * b.Y + a.Z * b.Z;
         internal static Offset Cross(Offset a, Offset b) =>
             new(a.Y * b.Z - a.Z * b.Y, a.Z * b.X - a.X * b.Z, a.X * b.Y - a.Y * b.X);

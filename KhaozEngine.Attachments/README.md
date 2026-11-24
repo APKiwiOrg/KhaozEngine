@@ -679,8 +679,9 @@ displayed chain while the simulated shape already clears it.
 
 Segment lengths use the posed rest scale. Capsule correction keeps the root and segment lengths fixed
 and can exceed the bend limit to clear a collider. The solver can filter capsules by chain reach and
-by each segment's placement against the swept capsule bounds without changing the result. The buffers hold
-the authored capsules and every segment exposed to the highest tier. Bend, length, capsule and width corrections
+by each segment's placement against the swept capsule bounds without changing the result. Sheet contact also
+filters the swept band and its triangles. Later segment passes use a tighter bound around the segment's
+actual endpoints. The buffers hold the authored capsules and every segment exposed to the highest tier. Bend, length, capsule and width corrections
 move positions without turning the correction into speed. Velocity constraints remove motion that would leave the segment length,
 bend limit or width band. Capsule contact uses the velocity at the contact along the segment and limits
 the child's stop to the capsule's speed along the contact direction in the segment's tangent plane. The position solve handles the part of the push along the segment. Both

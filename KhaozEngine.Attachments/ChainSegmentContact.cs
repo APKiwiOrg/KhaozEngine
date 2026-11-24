@@ -11,10 +11,6 @@ internal static class ChainSegmentContact
     [ThreadStatic]
     private static Vector3? _firstCorrectionDirectionForTests;
 
-    // Counts complete segment-axis queries, including the opening pose and velocity contacts.
-    [ThreadStatic]
-    internal static long? ClosestPointEvaluationsForTests;
-
     internal static void SetFirstCorrectionDirectionForTests(Vector3? direction) =>
         _firstCorrectionDirectionForTests = direction;
 
@@ -43,34 +39,45 @@ internal static class ChainSegmentContact
 
         var opening = new ChainOpeningContact(particles, parent, capsules.ObstacleCount);
         var initial = direction;
-        direction = ClearPasses(start, direction, length, chainRadius, placement, opening, out bool outsideReach);
+        direction = ClearPasses(start, direction, length, chainRadius, placement, opening, particles.PlacementCull, out bool outsideReach);
         if (!outsideReach)
             return direction;
 
         replayedAll = true;
         var all = capsules.All;
         placementCount = all.Count;
-        return ClearPasses(start, initial, length, chainRadius, all, opening, out _);
+        return ClearPasses(start, initial, length, chainRadius, all, opening, particles.PlacementCull, out _);
     }
 
     private static Vector3 ClearPasses(Vector3 start, Vector3 direction, float length, float chainRadius,
-        ChainCapsuleCandidates capsules, ChainOpeningContact opening, out bool outsideReach)
+        ChainCapsuleCandidates capsules, ChainOpeningContact opening, ChainPlacementCull cull, out bool outsideReach)
     {
         var segment = Segment.FromStoredEndpoint(start, length, direction);
         var firstCorrectionForTests = _firstCorrectionDirectionForTests;
         Axis scratch = default;
         outsideReach = false;
+        bool tightCull = ChainContactOptimizations.Use(ChainContactOptimization.SegmentCull) && !ChainPlacementCull.DisableForTests;
+        var tightBound = default(ChainPlacementCull.SweptSphere);
         for (int pass = 0; pass < ContactPasses; pass++)
         {
+            bool useTight = tightCull && pass > 0;
+            if (useTight)
+                tightBound = ChainPlacementCull.SegmentReach(segment, opening.Segment, chainRadius, includeOpening: true);
+
             bool changed = false;
             for (int index = 0; index < capsules.Count; index++)
             {
+                int obstacle = capsules.OriginalIndex(index);
+                if (useTight && !cull.ReachesTight(obstacle, tightBound))
+                    continue;
+
                 ref readonly var axis = ref capsules.ReadAxis(index, ref scratch);
                 double radius = (double)capsules[index].Radius + chainRadius;
+                ChainContactCounts.Record(ChainContactQuery.SegmentPlacement);
                 var residual = axis.ClosestResidual(segment, out double fraction, out _);
                 double squared = residual.LengthSquared;
                 double radiusSquared = radius * radius;
-                bool crossed = opening.Crossed(capsules.OriginalIndex(index), residual, radiusSquared, out var side);
+                bool crossed = opening.Crossed(obstacle, residual, radiusSquared, out var side);
                 if (squared >= radiusSquared && !crossed)
                     continue;
 
@@ -104,6 +111,8 @@ internal static class ChainSegmentContact
                 changed |= corrected != direction;
                 direction = corrected;
                 segment = Segment.FromStoredEndpoint(start, length, direction);
+                if (useTight)
+                    tightBound = ChainPlacementCull.SegmentReach(segment, opening.Segment, chainRadius, includeOpening: true);
             }
 
             if (!changed)
@@ -118,6 +127,7 @@ internal static class ChainSegmentContact
     internal static bool TryContact(in Segment segment, float chainRadius, in ColliderCapsule capsule, in Axis axis,
         out Vector3 normal, out double fraction, out double along)
     {
+        ChainContactCounts.Record(ChainContactQuery.SegmentVelocity);
         var residual = axis.ClosestResidual(segment, out fraction, out along);
         double squared = residual.LengthSquared;
         double radius = capsule.Radius + (double)chainRadius + TouchTolerance;

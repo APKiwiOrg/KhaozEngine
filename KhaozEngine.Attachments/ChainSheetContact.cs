@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using static KhaozEngine.Attachments.ChainCapsuleCollision;
+using static KhaozEngine.Attachments.ChainSheetWorkspace;
 
 namespace KhaozEngine.Attachments;
 
@@ -12,21 +13,16 @@ internal sealed class ChainSheetContact
     private const double SideTolerance = 2.5e-7;
     private const double MaximumPositionMargin = 2e-6;
     private readonly Band[][] _bandsByDepth;
-    private readonly ChainPlacementCull.SweptSphere[] _reaches;
-
-    // Counts complete triangle-axis queries, including the opening pose and velocity contacts.
-    [ThreadStatic]
-    internal static long? ClosestPointEvaluationsForTests;
+    private readonly ChainSheetWorkspace _workspace;
 
     private readonly record struct Band(int FirstChain, int SecondChain, int FirstUpper, int SecondUpper,
         int FirstLower, int SecondLower)
     {
-        internal ChainContactTriangle Triangle(Vector3[] positions, bool second) => second
-            ? new(positions[FirstUpper], positions[SecondLower], positions[SecondUpper])
-            : new(positions[FirstUpper], positions[FirstLower], positions[SecondLower]);
+        internal Corners ReadCorners(Vector3[] positions) =>
+            new(positions[FirstUpper], positions[SecondUpper], positions[FirstLower], positions[SecondLower]);
     }
 
-    internal ChainSheetContact(ChainRig rig, IReadOnlyList<ChainWidthBounds.Pair> pairs, int depths)
+    internal ChainSheetContact(ChainRig rig, IReadOnlyList<ChainWidthBounds.Pair> pairs, int depths, int obstacleCount)
     {
         var bands = new List<Band>?[depths];
         // Each width pair is a lower row. A tip pair closes from the last shared joint,
@@ -54,40 +50,70 @@ internal sealed class ChainSheetContact
             maxBands = Math.Max(maxBands, row.Length);
         }
 
-        _reaches = new ChainPlacementCull.SweptSphere[maxBands];
+        _workspace = new ChainSheetWorkspace(maxBands, obstacleCount);
     }
 
     internal void ProjectPositions(ChainParticles particles, int depth, ChainConstraints.JointStep[] placed,
         ReadOnlySpan<ColliderCapsule> obstacles, ReadOnlySpan<ChainSettings> settings)
     {
         var bands = _bandsByDepth[depth];
+        _workspace.BeginDepth();
+        bool useCandidates = CanReuseCandidates;
         for (int index = 0; index < bands.Length; index++)
         {
             var band = bands[index];
             var first = placed[band.FirstChain];
             var second = placed[band.SecondChain];
-            var opening = particles.OpeningPositions;
-            _reaches[index] = ChainPlacementCull.BandReach(first.Start, first.Length, second.Start, second.Length,
-                particles.Positions[band.FirstUpper], particles.Positions[band.SecondUpper], Radius(band, settings),
-                opening[band.FirstUpper], opening[band.SecondUpper], opening[band.FirstLower], opening[band.SecondLower]);
+            var opening = band.ReadCorners(particles.OpeningPositions);
+            var current = band.ReadCorners(particles.Positions);
+            float radius = Radius(band, settings);
+            var reach = ChainPlacementCull.BandReach(first.Start, first.Length, second.Start, second.Length,
+                current.FirstUpper, current.SecondUpper, radius, opening.FirstUpper, opening.SecondUpper,
+                opening.FirstLower, opening.SecondLower);
+            ref var row = ref _workspace.Rows[index];
+            row = new Row(opening, current, radius, reach);
+            if (useCandidates)
+            {
+                var indices = _workspace.Indices(index);
+                for (int obstacle = 0; obstacle < obstacles.Length; obstacle++)
+                    if (particles.PlacementCull.ReachesBand(obstacle, reach))
+                        indices[row.CandidateCount++] = obstacle;
+            }
         }
 
+        bool skipNoOps = ChainContactOptimizations.Use(ChainContactOptimization.CleanBands);
+        Candidate temporary = default;
         for (int pass = 0; pass < MaxPasses; pass++)
         {
             bool moved = false;
             for (int index = 0; index < bands.Length; index++)
             {
                 var band = bands[index];
-                double radius = Radius(band, settings);
-                for (int obstacle = 0; obstacle < obstacles.Length; obstacle++)
+                ref var row = ref _workspace.Rows[index];
+                row.Refresh(band.ReadCorners(particles.Positions));
+                int revision = row.Revision;
+                if (skipNoOps && row.LastNoOpRevision == revision)
+                    continue;
+
+                ChainContactCounts.Record(ChainContactQuery.BandVisit);
+                bool bandMoved = false;
+                float radius = useCandidates ? row.Radius : Radius(band, settings);
+                var indices = useCandidates ? _workspace.Indices(index)[..row.CandidateCount] : default;
+                int count = useCandidates ? indices.Length : obstacles.Length;
+                for (int candidate = 0; candidate < count; candidate++)
                 {
-                    if (!particles.PlacementCull.ReachesBand(obstacle, _reaches[index]))
+                    int obstacle = useCandidates ? indices[candidate] : candidate;
+                    if (!useCandidates && !particles.PlacementCull.ReachesBand(obstacle, row.Reach))
                         continue;
 
-                    double thickness = radius + obstacles[obstacle].Radius;
-                    moved |= ProjectTriangle(particles, band, secondTriangle: false, placed, obstacle, thickness);
-                    moved |= ProjectTriangle(particles, band, secondTriangle: true, placed, obstacle, thickness);
+                    ref var entry = ref _workspace.ForObstacle(index, obstacle, ref temporary);
+                    double thickness = (double)radius + obstacles[obstacle].Radius;
+                    bandMoved |= ProjectTriangle(particles, band, false, placed, obstacle, thickness, ref row, ref entry);
+                    bandMoved |= ProjectTriangle(particles, band, true, placed, obstacle, thickness, ref row, ref entry);
                 }
+
+                row.LastNoOpRevision = bandMoved ? 0 : revision;
+                moved |= bandMoved;
             }
 
             if (!moved)
@@ -95,23 +121,29 @@ internal sealed class ChainSheetContact
         }
     }
 
+    private bool CanReuseCandidates =>
+        _workspace.CanStoreCandidates && ChainContactOptimizations.Use(ChainContactOptimization.BandCandidates);
+
     private static bool ProjectTriangle(ChainParticles particles, in Band band, bool secondTriangle,
-        ChainConstraints.JointStep[] placed, int obstacle, double thickness)
+        ChainConstraints.JointStep[] placed, int obstacle, double thickness, ref Row row, ref Candidate entry)
     {
-        var triangle = band.Triangle(particles.Positions, secondTriangle);
-        var hit = triangle.Closest(particles.CapsuleAxes[obstacle], out var faceNormal);
+        row.Refresh(band.ReadCorners(particles.Positions));
+        if (!TryCurrent(particles, ref row, ref entry, obstacle, secondTriangle, velocity: false, out var sample))
+            return false;
+        var hit = sample.Contact;
+        var faceNormal = sample.Normal;
         double squared = hit.Residual.LengthSquared;
         double radiusSquared = thickness * thickness;
         double positionMargin = Math.Min(MaximumPositionMargin, 0.0001 * thickness);
         double sideTolerance = Math.Min(SideTolerance, positionMargin);
-        var opening = band.Triangle(particles.OpeningPositions, secondTriangle)
-            .Closest(particles.PreviousCapsuleAxes[obstacle], out var openingNormal);
-        double openingSide = Offset.Dot(openingNormal, opening.Residual);
-        double currentSide = Offset.Dot(faceNormal, hit.Residual);
+        var opening = ReadOpening(particles, row, ref entry, obstacle, secondTriangle);
+        var openingNormal = opening.Normal;
+        double openingSide = opening.Side;
+        double currentSide = sample.Side;
         // A closest point can move across a triangle edge while the capsule remains
         // on the same side of the sheet. Only the normal component distinguishes sides.
         bool crossed = Math.Abs(openingSide) > sideTolerance && openingSide * currentSide < 0 &&
-            ChainOpeningContact.Crossed(opening.Residual, hit.Residual, radiusSquared);
+            ChainOpeningContact.Crossed(opening.Contact.Residual, hit.Residual, radiusSquared);
         if (squared >= radiusSquared && !crossed)
             return false;
 
@@ -120,7 +152,7 @@ internal sealed class ChainSheetContact
         double firstChainWeight = secondTriangle ? hit.Weights.X : 1 - hit.Weights.Z;
         bool spansChains = firstChainWeight is > 0 and < 1;
         bool coplanar = spansChains && Math.Abs(openingSide) <= sideTolerance && Math.Abs(currentSide) <= sideTolerance &&
-            Math.Sqrt(opening.Residual.LengthSquared) < thickness - TouchTolerance;
+            Math.Sqrt(opening.Contact.Residual.LengthSquared) < thickness - TouchTolerance;
         Offset normal;
         if (crossed || coplanar || squared == 0)
             normal = Facing(faceNormal, openingNormal, openingSide, sideTolerance);
@@ -145,13 +177,8 @@ internal sealed class ChainSheetContact
             double fixedWeight = hit.Weights.X + (secondTriangle ? hit.Weights.Z : 0);
             if (fixedWeight > 0)
             {
-                var upperStart = new Offset(particles.Positions[band.FirstUpper]);
-                var upperEdge = secondTriangle ? new Offset(particles.Positions[band.SecondUpper]) - upperStart : default;
-                var fixedResidual = particles.CapsuleAxes[obstacle]
-                    .ClosestResidual(new ChainSegmentContact.Segment(upperStart, upperEdge), out _, out _);
-                // Only the preceding depth can clear its own residual. Carry that fraction
-                // through the constraint so it cannot be divided by the moving weight.
-                separation -= fixedWeight * Math.Max(0, thickness - Math.Sqrt(fixedResidual.LengthSquared));
+                // Only the preceding depth can clear its residual.
+                separation -= fixedWeight * ReadFixedDeficit(particles, band, secondTriangle, obstacle, thickness, ref entry);
             }
         }
         // Leave a small margin before applying the lever. Starting the correction at
@@ -216,29 +243,40 @@ internal sealed class ChainSheetContact
             return;
 
         var bands = _bandsByDepth[depth];
+        bool useCandidates = CanReuseCandidates;
+        Candidate temporary = default;
         for (int index = 0; index < bands.Length; index++)
         {
             var band = bands[index];
-            double radius = Radius(band, settings) + TouchTolerance;
-            for (int obstacle = 0; obstacle < obstacles.Length; obstacle++)
+            ref var row = ref _workspace.Rows[index];
+            row.Refresh(band.ReadCorners(particles.Positions));
+            double radius = (useCandidates ? row.Radius : Radius(band, settings)) + TouchTolerance;
+            var indices = useCandidates ? _workspace.Indices(index)[..row.CandidateCount] : default;
+            int count = useCandidates ? indices.Length : obstacles.Length;
+            for (int candidate = 0; candidate < count; candidate++)
             {
-                if (!particles.PlacementCull.ReachesBand(obstacle, _reaches[index]))
+                int obstacle = useCandidates ? indices[candidate] : candidate;
+                if (!useCandidates && !particles.PlacementCull.ReachesBand(obstacle, row.Reach))
                     continue;
 
+                ref var entry = ref _workspace.ForObstacle(index, obstacle, ref temporary);
                 double thickness = radius + obstacles[obstacle].Radius;
-                StopTriangle(particles, band, secondTriangle: false, placed, obstacle,
-                    obstacles[obstacle], previous[obstacle], thickness, seconds);
-                StopTriangle(particles, band, secondTriangle: true, placed, obstacle,
-                    obstacles[obstacle], previous[obstacle], thickness, seconds);
+                StopTriangle(particles, band, false, placed, obstacle,
+                    obstacles[obstacle], previous[obstacle], thickness, seconds, ref row, ref entry);
+                StopTriangle(particles, band, true, placed, obstacle,
+                    obstacles[obstacle], previous[obstacle], thickness, seconds, ref row, ref entry);
             }
         }
     }
 
     private static void StopTriangle(ChainParticles particles, in Band band, bool secondTriangle,
         ChainConstraints.JointStep[] placed, int obstacle, in ColliderCapsule capsule, in ColliderCapsule previous,
-        double thickness, float seconds)
+        double thickness, float seconds, ref Row row, ref Candidate entry)
     {
-        var hit = band.Triangle(particles.Positions, secondTriangle).Closest(particles.CapsuleAxes[obstacle], out var faceNormal);
+        if (!TryCurrent(particles, ref row, ref entry, obstacle, secondTriangle, velocity: true, out var sample))
+            return;
+        var hit = sample.Contact;
+        var faceNormal = sample.Normal;
         double squared = hit.Residual.LengthSquared;
         if (squared > thickness * thickness)
             return;
@@ -246,10 +284,9 @@ internal sealed class ChainSheetContact
         Offset facing;
         if (squared == 0)
         {
-            var opening = band.Triangle(particles.OpeningPositions, secondTriangle)
-                .Closest(particles.PreviousCapsuleAxes[obstacle], out var openingNormal);
+            var opening = ReadOpening(particles, row, ref entry, obstacle, secondTriangle);
             double sideTolerance = Math.Min(SideTolerance, 0.0001 * (thickness - TouchTolerance));
-            facing = Facing(faceNormal, openingNormal, Offset.Dot(openingNormal, opening.Residual), sideTolerance);
+            facing = Facing(faceNormal, opening.Normal, opening.Side, sideTolerance);
             if (facing.LengthSquared == 0)
                 return;
         }
@@ -295,6 +332,78 @@ internal sealed class ChainSheetContact
         double strength = Math.Min(1, (thickness - Math.Sqrt(squared)) / TouchTolerance);
         RaiseVelocity(ref firstVelocity, firstSurface, firstTangent, impulse * firstGradient, strength);
         RaiseVelocity(ref secondVelocity, secondSurface, secondTangent, impulse * secondGradient, strength);
+    }
+
+    private static bool TryCurrent(ChainParticles particles, ref Row row, ref Candidate entry, int obstacle,
+        bool second, bool velocity, out Sample sample)
+    {
+        if (ChainContactOptimizations.Use(ChainContactOptimization.TriangleCull) && !ChainPlacementCull.DisableForTests &&
+            !particles.PlacementCull.ReachesTight(obstacle, Row.TriangleReach(ref row, second, velocity)))
+        {
+            sample = default;
+            return false;
+        }
+
+        ref var cache = ref Candidate.Triangle(ref entry, second);
+        var reuse = velocity ? ChainContactOptimization.VelocityTriangle : ChainContactOptimization.CurrentTriangle;
+        if (ChainContactOptimizations.Use(reuse) && cache.Revision == row.Revision)
+        {
+            sample = cache.Current;
+            return true;
+        }
+
+        ChainContactCounts.Record(velocity ? ChainContactQuery.SheetVelocity : ChainContactQuery.SheetCurrent);
+        var hit = row.Current.Triangle(second).Closest(particles.CapsuleAxes[obstacle], second, ref entry.CurrentDiagonal, out var normal);
+        sample = new Sample(hit, normal, Offset.Dot(normal, hit.Residual));
+        cache.Current = sample;
+        cache.Revision = row.Revision;
+        return true;
+    }
+
+    private static Sample ReadOpening(ChainParticles particles, in Row row, ref Candidate entry, int obstacle, bool second)
+    {
+        ref var cache = ref Candidate.Triangle(ref entry, second);
+        bool reuse = ChainContactOptimizations.Use(ChainContactOptimization.OpeningTriangle);
+        if (reuse && cache.Opening is { } sample)
+            return sample;
+
+        ref readonly var openingAxis = ref particles.PreviousCapsuleAxes[obstacle];
+        ref readonly var currentAxis = ref particles.CapsuleAxes[obstacle];
+        bool sameAxis = openingAxis.Start.SameBits(currentAxis.Start) && openingAxis.End.SameBits(currentAxis.End);
+        ref var diagonal = ref (sameAxis ? ref entry.CurrentDiagonal : ref entry.OpeningDiagonal);
+        ChainContactCounts.Record(ChainContactQuery.SheetOpening);
+        var triangle = reuse ? row.OpeningTriangle(second) : row.Opening.Triangle(second);
+        var hit = triangle.Closest(openingAxis, second, ref diagonal, out var normal);
+        var result = new Sample(hit, normal, Offset.Dot(normal, hit.Residual));
+        if (reuse)
+            cache.Opening = result;
+        return result;
+    }
+
+    private static double ReadFixedDeficit(ChainParticles particles, in Band band, bool second, int obstacle,
+        double thickness, ref Candidate entry)
+    {
+        ref var cache = ref Candidate.Triangle(ref entry, second);
+        bool reuse = ChainContactOptimizations.Use(ChainContactOptimization.FixedEdge);
+        if (reuse && cache.FixedDeficit is { } deficit)
+            return deficit;
+
+        var upperStart = new Offset(particles.Positions[band.FirstUpper]);
+        ref readonly var axis = ref particles.CapsuleAxes[obstacle];
+        ChainContactCounts.Record(ChainContactQuery.FixedEdge);
+        Offset residual;
+        if (!second && reuse)
+            residual = axis.Residual(upperStart, default, out _);
+        else
+        {
+            var upperEdge = second ? new Offset(particles.Positions[band.SecondUpper]) - upperStart : default;
+            residual = axis.ClosestResidual(new ChainSegmentContact.Segment(upperStart, upperEdge), out _, out _);
+        }
+
+        double value = Math.Max(0, thickness - Math.Sqrt(residual.LengthSquared));
+        if (reuse)
+            cache.FixedDeficit = value;
+        return value;
     }
 
     private static void RaiseVelocity(ref Vector3 velocity, Vector3 surface, Vector3 tangent, double amount, double strength)

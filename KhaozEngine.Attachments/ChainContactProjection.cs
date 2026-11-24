@@ -31,6 +31,8 @@ internal static class ChainContactProjection
 
             var stored = ChainSegmentContact.Segment.FromStoredEndpoint(start, length, direction);
             double fraction = 1;
+            if (!parentInside)
+                ChainContactCounts.Record(ChainContactQuery.RoundingRecheck);
             var residual = parentInside
                 ? capsule.Residual(stored.Root, stored.Displacement, out _)
                 : capsule.ClosestResidual(stored, out fraction, out _);

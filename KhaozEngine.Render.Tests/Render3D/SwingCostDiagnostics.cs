@@ -92,10 +92,11 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
             for (int index = 0; index < measurements.Length; index++)
             {
                 Measurement sample = measurements[index];
+                var counts = CountQueries(simulated, options, 1f / sample.FrameRateHz, warmFrames, measuredFrames);
                 measurements[index] = sample with
                 {
-                    SegmentAxisQueriesPerSimulatedWearerStep = CountQueries(
-                        simulated, options, 1f / sample.FrameRateHz, warmFrames, measuredFrames),
+                    SegmentAxisQueriesPerSimulatedWearerStep = counts.Segments,
+                    TriangleAxisQueriesPerSimulatedWearerStep = counts.Triangles,
                 };
             }
             return (measurements, heldMeasurement);
@@ -145,32 +146,37 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
         }
         foreach (Wearer wearer in wearers) wearer.ValidateDraws();
 
-        var ticks = new long[measuredFrames];
+        bool measureTiming = measuredFrames == MeasuredFrames;
+        var ticks = measureTiming ? new long[measuredFrames] : [];
         long allocated = 0, stepTicks = 0, drawTicks = 0;
         using (AllocationRegion.Start("swing preparation frames"))
         {
-            for (int frame = 0; frame < ticks.Length; frame++)
+            for (int frame = 0; frame < measuredFrames; frame++)
             {
                 foreach (Wearer wearer in wearers) wearer.Pose((warmFrames + frame) * frameTime);
 
                 long bytesBefore = GC.GetAllocatedBytesForCurrentThread();
-                long start = Stopwatch.GetTimestamp();
+                long start = measureTiming ? Stopwatch.GetTimestamp() : 0;
                 foreach (Wearer wearer in wearers)
                 {
-                    long beforeStep = Stopwatch.GetTimestamp();
+                    long beforeStep = measureTiming ? Stopwatch.GetTimestamp() : 0;
                     wearer.Step(frameTime);
-                    long afterStep = Stopwatch.GetTimestamp();
+                    long afterStep = measureTiming ? Stopwatch.GetTimestamp() : 0;
                     wearer.WriteDraws();
-                    long afterDraws = Stopwatch.GetTimestamp();
+                    long afterDraws = measureTiming ? Stopwatch.GetTimestamp() : 0;
                     stepTicks += afterStep - beforeStep;
                     drawTicks += afterDraws - afterStep;
                 }
-                long end = Stopwatch.GetTimestamp();
+                long end = measureTiming ? Stopwatch.GetTimestamp() : 0;
                 allocated += GC.GetAllocatedBytesForCurrentThread() - bytesBefore;
-                ticks[frame] = end - start;
+                if (measureTiming)
+                    ticks[frame] = end - start;
             }
         }
         foreach (Wearer wearer in wearers) wearer.ValidateDraws();
+
+        if (!measureTiming)
+            return new Measurement(frameRate, null, null, null, null, allocated, null, null);
 
         Array.Sort(ticks);
         double msPerTick = 1000d / Stopwatch.Frequency;
@@ -179,7 +185,7 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
             stepTicks * msPerTick / measuredFrames, drawTicks * msPerTick / measuredFrames);
     }
 
-    static double? CountQueries(ReadOnlySpan<Wearer> wearers, ChainSimulationOptions options,
+    static (double? Segments, double? Triangles) CountQueries(ReadOnlySpan<Wearer> wearers, ChainSimulationOptions options,
         float frameTime, int warmFrames, int measuredFrames)
     {
         // Replay only the simulated wearers. Their clocks start together and the first frame resets to rest.
@@ -196,8 +202,9 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
             }
         }
 
-        long? previousCount = ChainSegmentContact.ClosestPointEvaluationsForTests;
-        ChainSegmentContact.ClosestPointEvaluationsForTests = 0;
+        var previousCounts = ChainContactCounts.Active;
+        var counts = new ChainContactCounts();
+        ChainContactCounts.Active = counts;
         try
         {
             int steps = 0;
@@ -210,21 +217,22 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
                     wearer.Step(frameTime);
                 }
             }
-            return steps == 0 ? null : ChainSegmentContact.ClosestPointEvaluationsForTests.GetValueOrDefault() /
-                ((double)steps * wearers.Length);
+            double samples = (double)steps * wearers.Length;
+            return samples == 0 ? (null, null) : (counts.SegmentAxis / samples, counts.TriangleAxis / samples);
         }
         finally
         {
-            ChainSegmentContact.ClosestPointEvaluationsForTests = previousCount;
+            ChainContactCounts.Active = previousCounts;
         }
     }
 
     static long Percentile(long[] sorted, double rank) => sorted[(int)Math.Ceiling(rank * sorted.Length) - 1];
 
-    sealed record Measurement(int FrameRateHz, double MeanMs, double P50Ms, double P95Ms, double MaxMs,
-        long ManagedBytesAllocated, double StepMeanMs, double WriteDrawsMeanMs)
+    sealed record Measurement(int FrameRateHz, double? MeanMs, double? P50Ms, double? P95Ms, double? MaxMs,
+        long ManagedBytesAllocated, double? StepMeanMs, double? WriteDrawsMeanMs)
     {
         public double? SegmentAxisQueriesPerSimulatedWearerStep { get; init; }
+        public double? TriangleAxisQueriesPerSimulatedWearerStep { get; init; }
     }
 
     internal static SwingCostPiece LoadPiece(OutfitRig rig, string name, AttachmentLayer layer, string anchor,

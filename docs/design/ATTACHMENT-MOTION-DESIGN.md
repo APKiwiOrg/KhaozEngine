@@ -318,8 +318,9 @@ would leave that reach replays the joint against every capsule, so skipping pres
 skips filtering when the reach is too large to bound safely. The next filter compares each placed parent's reach
 on its length sphere, including the chain radius and contact
 tolerance, with each capsule's swept bounding sphere in float. The swept sphere encloses both capsule poses so
-a crossing can still be tested. Each placement reuses the selected candidates for its position passes and
-velocity constraint. Segment lengths come from this step's rest hang, so a scaled wearer keeps its proportions.
+a crossing can still be tested. Each placement reuses the selected candidates. Later position passes bound the
+actual segment and its opening position in a tighter float sphere. Velocity uses only the current segment.
+Narrow-phase contact and its order are the same with either filter. Segment lengths come from this step's rest hang, so a scaled wearer keeps its proportions.
 
 **Known limits.** The segment solve clears the line between joints and on to the virtual tip. The sheet solve covers
 the bands of a bounded piece. Its chain radius must cover how far the drawn cloth projects from those bands.
@@ -554,9 +555,17 @@ The wearables limits are 32 wearers, at most 2 ms added CPU preparation, no mana
   before any double precision contact query. Immediate consumers share one candidate row. The width pass
   reuses one row per chain in the largest bound group so it can finish a depth's velocity constraints after solving
   width. If that scratch cannot be represented or allocated, the solve uses the chain candidate list directly.
-  The sheet pass bounds each band once at its depth and tests the same reach before its contact queries.
-  A segment reuses its opening residual
-  for a capsule throughout the placement and its current offset until a correction changes its direction.
+  The sheet pass builds an ordered candidate list and reads the larger chain radius once per band and depth.
+  Each triangle also gets a tight float bound before a double precision query. Position includes both opening
+  and current corners so it can still test the relative chord. Velocity bounds the current face.
+  The opening triangle and its signed closest result are reused across position passes and piercing velocity.
+  A band whose last pass made no move can be skipped if its corners are bit-identical. Current triangle geometry
+  is reused until a shared corner changes, including in the velocity pass if the local recheck keeps those bits.
+  Velocity approach is always recomputed. The fixed-edge result is reused within the depth, and the shared
+  diagonal is reused when its ordered endpoints and the axis match bit for bit. A finite face intersection
+  computes just the axis fraction. Unavailable optional scratch falls back to the same ordered solve.
+  A segment reuses its opening residual for a capsule throughout the placement. A placement generation marks
+  valid residuals without clearing the tier's candidate prefix.
   Constraint setup extracts the anchor rotation and skips the unused stretch.
   At the default 120 Hz simulation rate, a 144 Hz frame averages 0.83 steps and a 60 Hz frame averages two.
   A frame between grid steps rebuilds each shown chain from the last two steps. When both sample anchors carry
@@ -588,7 +597,9 @@ Run the full measurement on a GitHub-hosted runner after approval. Only that run
 KE_GPU_TESTS=0 dotnet test KhaozEngine.Render.Tests -c Release --filter 'Category=Diagnostic&FullyQualifiedName~SwingCostDiagnostics' --logger 'console;verbosity=detailed'
 ```
 
-`KE_SWING_COST_SMOKE_FRAMES` sets both frame counts to a value from 1 through 119 for a shortened harness check.
+`KE_SWING_COST_SMOKE_FRAMES` sets both frame counts to a value from 1 through 119 for a shortened harness
+check. It checks draw and allocation paths and leaves the timing fields null. A separate replay records
+segment-axis and triangle-axis queries per simulated wearer step for both cases.
 A smoke warm-up too short to reach a fixed step primes the solver before resetting for the sample.
 
 ## Byte loading

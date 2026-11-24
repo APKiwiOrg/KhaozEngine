@@ -119,6 +119,92 @@ public sealed class ChainPlacementCullTests(ITestOutputHelper output)
     }
 
     [Theory]
+    [InlineData((int)ChainContactOptimization.OpeningTriangle)]
+    [InlineData((int)ChainContactOptimization.BandCandidates)]
+    [InlineData((int)ChainContactOptimization.FixedEdge)]
+    [InlineData((int)ChainContactOptimization.CleanBands)]
+    [InlineData((int)ChainContactOptimization.CurrentTriangle)]
+    [InlineData((int)ChainContactOptimization.VelocityTriangle)]
+    [InlineData((int)ChainContactOptimization.TriangleCull)]
+    [InlineData((int)ChainContactOptimization.SegmentCull)]
+    [InlineData((int)ChainContactOptimization.OpeningStamp)]
+    [InlineData((int)ChainContactOptimization.Diagonal)]
+    [InlineData((int)ChainContactOptimization.FaceParameter)]
+    [InlineData((int)ChainContactOptimization.All)]
+    public void Contact_reuse_preserves_every_joint_frame_bit(int disabled)
+    {
+        var flags = (ChainContactOptimization)disabled;
+        CompareProbe(flags);
+        CompareLayeredSweep(flags);
+    }
+
+    private static void CompareProbe(ChainContactOptimization disabled)
+    {
+        var rig = CreateRig(layered: true);
+        var optimized = new ChainSimulation(rig, RestCapsules.Length);
+        var control = new ChainSimulation(rig, RestCapsules.Length);
+        var capsules = new ColliderCapsule[RestCapsules.Length];
+        Assert.Equal(42, rig.JointCount);
+
+        for (int step = 0; step <= Steps; step++)
+        {
+            var (anchor, wearer) = Pose(step, capsules);
+            float elapsed = step == 0 ? 0 : StepSeconds;
+            Compare(optimized, control, [anchor], capsules, wearer, elapsed, disabled, step);
+        }
+    }
+
+    private static void CompareLayeredSweep(ChainContactOptimization disabled)
+    {
+        var rig = ChainSheetContactTests.CreateSheet(bounded: true, out _, out _, layered: true);
+        var optimized = new ChainSimulation(rig, 1);
+        var control = new ChainSimulation(rig, 1);
+        var lowerNeutral = rig.Chains[2] with { Layer = null };
+        var withoutLowerContact = new ChainSimulation(new ChainRig(rig.AnchorCount,
+            [rig.Chains[0], rig.Chains[1], lowerNeutral], rig.Links), 1);
+        const int sweepFrames = 112;
+        Assert.Equal(6, rig.JointCount);
+        bool lowerContactChangedSheet = false;
+
+        for (int frame = 0; frame <= sweepFrames + 2; frame++)
+        {
+            float z = float.Lerp(-0.16f, 0.12f, Math.Min(frame, sweepFrames) / (float)sweepFrames);
+            var lower = Matrix4x4.CreateTranslation(0, -0.82f, z);
+            ColliderCapsule capsule = new(new(-0.03f, -0.32f, z), new(0.03f, -0.32f, z), 0.03f);
+            float elapsed = frame == 0 ? 0 : (frame % 2 == 0 ? 1.5f : 0.5f) * StepSeconds;
+            Compare(optimized, control, [Matrix4x4.Identity, lower], [capsule], Matrix4x4.Identity,
+                elapsed, disabled, frame);
+            withoutLowerContact.Step([Matrix4x4.Identity, lower], [capsule], Matrix4x4.Identity, elapsed);
+            var tip = rig.Chains[1].Tip;
+            lowerContactChangedSheet |= Vector3.DistanceSquared(Vector3.Transform(tip, optimized.JointsFromAnchor[4]),
+                Vector3.Transform(tip, withoutLowerContact.JointsFromAnchor[4])) > 0.000001f;
+        }
+
+        Assert.True(optimized.JointsFromAnchor[1].Translation.Z > 0.02f);
+        Assert.True(lowerContactChangedSheet, "The lower chain must change the upper sheet during the replay.");
+    }
+
+    private static void Compare(ChainSimulation optimized, ChainSimulation control,
+        ReadOnlySpan<Matrix4x4> anchors, ReadOnlySpan<ColliderCapsule> capsules, Matrix4x4 wearer,
+        float elapsed, ChainContactOptimization disabled, int frame)
+    {
+        optimized.Step(anchors, capsules, wearer, elapsed);
+        ChainContactOptimizations.DisabledForTests = disabled;
+        try
+        {
+            control.Step(anchors, capsules, wearer, elapsed);
+        }
+        finally
+        {
+            ChainContactOptimizations.DisabledForTests = default;
+        }
+
+        Assert.True(MemoryMarshal.AsBytes(optimized.JointsFromAnchor)
+            .SequenceEqual(MemoryMarshal.AsBytes(control.JointsFromAnchor)),
+            $"Joint frame bits diverged at frame {frame} with {disabled} disabled.");
+    }
+
+    [Theory]
     [InlineData(65_536, 32_768, MotionLevel.Held)]
     [InlineData(512, 96, MotionLevel.Simulated)]
     public void Independent_standalone_chains_share_placement_scratch(int chainCount, int capsuleCount, MotionLevel level)
@@ -171,21 +257,27 @@ public sealed class ChainPlacementCullTests(ITestOutputHelper output)
         output.WriteLine($"Closest-point queries per layered wearer step over {Steps} steps");
         WriteCounts("Placement filter enabled", Count(disable: false));
         WriteCounts("Placement filter disabled", Count(disable: true));
+        WriteCounts("Exact cuts disabled", Count(disable: false, ChainContactOptimization.All));
     }
 
-    private void WriteCounts(string label, (long Segments, long Triangles) counts) =>
-        output.WriteLine($"{label}: {counts.Segments / (double)Steps:F2} segment-axis, " +
-            $"{counts.Triangles / (double)Steps:F2} triangle-axis");
+    private void WriteCounts(string label, ChainContactCounts counts)
+    {
+        output.WriteLine($"{label}: {counts.SegmentAxis / (double)Steps:F2} segment-axis, " +
+            $"{counts.TriangleAxis / (double)Steps:F2} triangle-axis");
+        foreach (var kind in Enum.GetValues<ChainContactQuery>())
+            output.WriteLine($"{label} {kind}: {counts[kind] / (double)Steps:F2}");
+    }
 
-    private static (long Segments, long Triangles) Count(bool disable)
+    private static ChainContactCounts Count(bool disable, ChainContactOptimization disabledOptimizations = default)
     {
         var simulation = new ChainSimulation(CreateRig(layered: true), RestCapsules.Length);
         var capsules = new ColliderCapsule[RestCapsules.Length];
         var (openingAnchor, openingWearer) = Pose(0, capsules);
         simulation.Step([openingAnchor], capsules, openingWearer, 0);
+        var counts = new ChainContactCounts();
         ChainPlacementCull.DisableForTests = disable;
-        ChainSegmentContact.ClosestPointEvaluationsForTests = 0;
-        ChainSheetContact.ClosestPointEvaluationsForTests = 0;
+        ChainContactOptimizations.DisabledForTests = disabledOptimizations;
+        ChainContactCounts.Active = counts;
         try
         {
             for (int step = 1; step <= Steps; step++)
@@ -194,14 +286,13 @@ public sealed class ChainPlacementCullTests(ITestOutputHelper output)
                 simulation.Step([anchor], capsules, wearer, StepSeconds);
             }
 
-            return (ChainSegmentContact.ClosestPointEvaluationsForTests.GetValueOrDefault(),
-                ChainSheetContact.ClosestPointEvaluationsForTests.GetValueOrDefault());
+            return counts;
         }
         finally
         {
             ChainPlacementCull.DisableForTests = false;
-            ChainSegmentContact.ClosestPointEvaluationsForTests = null;
-            ChainSheetContact.ClosestPointEvaluationsForTests = null;
+            ChainContactOptimizations.DisabledForTests = default;
+            ChainContactCounts.Active = null;
         }
     }
 

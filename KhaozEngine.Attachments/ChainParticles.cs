@@ -5,6 +5,8 @@ namespace KhaozEngine.Attachments;
 
 internal sealed class ChainParticles
 {
+    private int _openingStamp;
+
     internal ChainParticles(ChainRig rig, int colliderCount = 0, int placementRows = 1)
     {
         Rig = rig;
@@ -25,6 +27,7 @@ internal sealed class ChainParticles
         CapsuleAxes = new ChainCapsuleCollision.Axis[colliderCount];
         PreviousCapsuleAxes = new ChainCapsuleCollision.Axis[colliderCount];
         OpeningResiduals = new ChainCapsuleCollision.Offset?[colliderCount];
+        OpeningStamps = new int[colliderCount];
     }
 
     internal ChainRig Rig { get; }
@@ -44,6 +47,17 @@ internal sealed class ChainParticles
     internal ChainCapsuleCollision.Axis[] CapsuleAxes { get; }
     internal ChainCapsuleCollision.Axis[] PreviousCapsuleAxes { get; }
     internal ChainCapsuleCollision.Offset?[] OpeningResiduals { get; }
+    internal int[] OpeningStamps { get; }
+
+    internal int NextOpeningStamp()
+    {
+        if (unchecked(++_openingStamp) == 0)
+        {
+            Array.Clear(OpeningStamps);
+            _openingStamp = 1;
+        }
+        return _openingStamp;
+    }
 
     internal void SnapshotOpening() => Positions.AsSpan(0, OpeningPositions.Length).CopyTo(OpeningPositions);
 

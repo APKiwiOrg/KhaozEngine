@@ -30,14 +30,6 @@ internal static partial class ChainCapsuleCollision
 
         internal Offset ClosestResidual(in ChainSegmentContact.Segment segment, out double fraction, out double along)
         {
-            if (ChainSegmentContact.ClosestPointEvaluationsForTests is { } count)
-                ChainSegmentContact.ClosestPointEvaluationsForTests = count + 1;
-
-            return ClosestResidualUncounted(segment, out fraction, out along);
-        }
-
-        internal Offset ClosestResidualUncounted(in ChainSegmentContact.Segment segment, out double fraction, out double along)
-        {
             var root = segment.Root;
             var displacement = segment.Displacement;
             double segmentSquared = displacement.LengthSquared;
@@ -70,6 +62,22 @@ internal static partial class ChainCapsuleCollision
         {
             fraction = Math.Clamp(-Offset.Dot(fromEnd, displacement) / segmentSquared, 0, 1);
             return fromEnd + displacement * fraction;
+        }
+
+        // Match Residual's endpoint tests and operation order. A face intersection
+        // only needs the axis fraction and can skip the barrel cross products.
+        internal double Along(Offset root, Offset fromRoot)
+        {
+            if (_inverseSquared == 0)
+                return 0;
+            double tipProjection = Offset.Dot(fromRoot, _axis);
+            double axisProjection = Offset.Dot(root - _start, _axis) + tipProjection;
+            if (axisProjection <= 0)
+                return 0;
+            if (Offset.Dot(root - _end, _axis) + tipProjection >= 0)
+                return 1;
+
+            return axisProjection * _inverseSquared;
         }
 
         internal Offset Residual(Offset root, Offset tipFromRoot, out double along)

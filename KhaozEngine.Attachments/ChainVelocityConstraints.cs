@@ -114,9 +114,17 @@ internal ref struct ChainVelocityConstraints
         var segment = new ChainSegmentContact.Segment(_particles.Positions[parent], length, direction);
         ref var velocity = ref _particles.Velocities[parent + 1];
         var parentVelocity = _particles.Velocities[parent];
+        bool tightCull = ChainContactOptimizations.Use(ChainContactOptimization.SegmentCull) && !ChainPlacementCull.DisableForTests;
+        var bound = tightCull
+            ? ChainPlacementCull.SegmentReach(segment, default, _radius + (float)ChainCapsuleCollision.TouchTolerance, includeOpening: false)
+            : default;
         ChainCapsuleCollision.Axis scratch = default;
         for (int index = 0; index < capsules.Count; index++)
         {
+            int obstacle = capsules.OriginalIndex(index);
+            if (tightCull && !_particles.PlacementCull.ReachesTight(obstacle, bound))
+                continue;
+
             ref readonly var capsule = ref capsules[index];
             ref readonly var axis = ref capsules.ReadAxis(index, ref scratch);
             if (!ChainSegmentContact.TryContact(segment, _radius, capsule, axis, out var normal,
@@ -128,7 +136,7 @@ internal ref struct ChainVelocityConstraints
                 continue;
 
             var surface = ChainCapsuleCollision.SurfaceVelocity(capsule,
-                _previousColliders[capsules.OriginalIndex(index)], along, normal, _carry, _seconds);
+                _previousColliders[obstacle], along, normal, _carry, _seconds);
             if (fraction == 1)
             {
                 float approach = Vector3.Dot(velocity - surface, tangent);

@@ -10,6 +10,10 @@ internal readonly ref struct ChainOpeningContact
     private readonly ChainSegmentContact.Segment _segment;
     private readonly ReadOnlySpan<Axis> _axes;
     private readonly Span<Offset?> _residuals;
+    private readonly Span<int> _stamps;
+    private readonly int _stamp;
+
+    internal ChainSegmentContact.Segment Segment => _segment;
 
     internal ChainOpeningContact(ChainParticles particles, int parent, int obstacleCount)
     {
@@ -18,12 +22,27 @@ internal readonly ref struct ChainOpeningContact
         _segment = new ChainSegmentContact.Segment(root, tip - root);
         _axes = particles.PreviousCapsuleAxes;
         _residuals = particles.OpeningResiduals.AsSpan(0, obstacleCount);
-        _residuals.Clear();
+        _stamps = particles.OpeningStamps.AsSpan(0, obstacleCount);
+        if (ChainContactOptimizations.Use(ChainContactOptimization.OpeningStamp))
+            _stamp = particles.NextOpeningStamp();
+        else
+        {
+            _stamp = 0;
+            _residuals.Clear();
+            ChainContactCounts.Record(ChainContactQuery.OpeningSlotsCleared, obstacleCount);
+        }
     }
 
     internal bool Crossed(int index, Offset current, double radiusSquared, out Vector3 side)
     {
-        var opening = _residuals[index] ??= _axes[index].ClosestResidual(_segment, out _, out _);
+        if (_stamp == 0 ? !_residuals[index].HasValue : _stamps[index] != _stamp)
+        {
+            ChainContactCounts.Record(ChainContactQuery.SegmentOpening);
+            _residuals[index] = _axes[index].ClosestResidual(_segment, out _, out _);
+            _stamps[index] = _stamp;
+        }
+
+        var opening = _residuals[index].GetValueOrDefault();
         bool crossed = Crossed(opening, current, radiusSquared);
         side = crossed ? (opening * (1 / Math.Sqrt(opening.LengthSquared))).ToVector3() : Vector3.Zero;
         return crossed;

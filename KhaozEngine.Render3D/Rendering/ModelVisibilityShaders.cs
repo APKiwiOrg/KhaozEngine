@@ -6,7 +6,7 @@ using KhaozEngine.Render3D.Internal;
 namespace KhaozEngine.Render3D.Rendering;
 
 /// <summary>Owns layout-selected opaque output variants without changing the base or motion programs.</summary>
-internal sealed class ModelVisibilityShaders : IDisposable
+internal sealed class ModelVisibilityShaders(bool releaseOnFallback = true) : IDisposable
 {
     readonly Dictionary<(string Vertex, string Fragment, int VisibilitySlot, int AmbientSlot, bool Preserve, bool Precise), IGpuShaderSet> _sets = new();
 
@@ -18,6 +18,8 @@ internal sealed class ModelVisibilityShaders : IDisposable
         int ambient = AmbientDiffuseTarget.IsAttached(outputs) ? outputs.Colour.Length - 1 : -1;
         if (visibility < 0 && ambient < 0)
         {
+            // The opaque renderer changes outputs transactionally and handles retirement after publication.
+            if (releaseOnFallback) Dispose();
             shaders = null!;
             return false;
         }

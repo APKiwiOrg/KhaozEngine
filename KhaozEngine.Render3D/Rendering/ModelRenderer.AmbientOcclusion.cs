@@ -44,13 +44,23 @@ internal sealed partial class ModelRenderer
         old.Retire(_retired);
         if (!ReferenceEquals(_motion, oldMotion)) _retired.Retire(oldMotion);
         AmbientOutputActive = enabled;
-        if (!enabled) ReleaseAmbientShaders();
+        if (!enabled)
+        {
+            if (ShadowVisibilityTargets.HasVisibility(outputs)) ReleaseAmbientShaders();
+            else ReleaseOutputShaders();
+        }
     }
 
     void ReleaseAmbientShaders()
     {
         _visibilityShaders.ReleaseAmbientVariants(_retired);
         _coverageVisibility.ReleaseAmbientVariants(_retired);
+    }
+
+    void ReleaseOutputShaders()
+    {
+        _visibilityShaders.Release(_retired);
+        _coverageVisibility.Release(_retired);
     }
 
     internal void EnsureCoverageDeviceReady()

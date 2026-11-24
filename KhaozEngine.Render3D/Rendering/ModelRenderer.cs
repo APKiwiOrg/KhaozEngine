@@ -142,7 +142,7 @@ namespace KhaozEngine.Render3D.Rendering
         }
 
         readonly IGpuDevice _gd;
-        readonly ModelVisibilityShaders _visibilityShaders = new();
+        readonly ModelVisibilityShaders _visibilityShaders = new(releaseOnFallback: false);
         readonly AtmosphereBindings _atmosphere;
         readonly bool _ownsAtmosphere;
         readonly IGpuBuffer _ubo;
@@ -360,7 +360,7 @@ namespace KhaozEngine.Render3D.Rendering
         public void SetOutputs(GpuOutputDescription modelOutputs)
         {
             if (AmbientOutputActive) ReleaseAmbientShaders();
-            if (!ShadowVisibilityTargets.HasVisibility(modelOutputs)) _visibilityShaders.Release(_retired);
+            if (!ShadowVisibilityTargets.HasVisibility(modelOutputs)) ReleaseOutputShaders();
             _retired.Retire(_pipeline); _retired.Retire(_splatPipeline); _retired.Retire(_dissolvePipeline); RetireTileGroundPipelines();
             _retired.Retire(_skinnedPipeline); _retired.Retire(_skinnedDissolvePipeline);
             _retired.Retire(_cpuSkinnedMotionPipeline); _cpuSkinnedMotionPipeline = null;

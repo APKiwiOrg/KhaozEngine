@@ -7,7 +7,7 @@ namespace KhaozEngine.Render3D.Rendering;
 internal sealed partial class ModelRenderer
 {
     CoveragePulledResources _coveragePull = null!;
-    readonly ModelVisibilityShaders _coverageVisibility = new();
+    readonly ModelVisibilityShaders _coverageVisibility = new(releaseOnFallback: false);
     bool _coverageReady, _coverageRefused, _coverageRebuildPending;
     internal bool CoverageRefused => _coverageRefused;
     IGpuShaderSet _coverageShaders = null!, _coverageDissolveShaders = null!;

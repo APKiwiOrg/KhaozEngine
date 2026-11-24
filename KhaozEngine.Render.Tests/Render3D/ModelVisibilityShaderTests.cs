@@ -35,11 +35,13 @@ public sealed class ModelVisibilityShaderTests
         else Assert.Same(fallback, selected);
     }
 
-    [Fact]
-    public void SelectingFallbackDisposesCachedVisibilityShadersButLeavesFallbackWithItsOwner()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void SelectingFallbackUsesTheOwnersRetirementPolicy(bool releaseOnFallback)
     {
         using var device = new FakeGpuDevice();
-        using var shaders = new ModelVisibilityShaders();
+        using ModelVisibilityShaders shaders = releaseOnFallback ? new() : new(releaseOnFallback: false);
         using var fallback = new FakeShaderSet("fallback vertex", "fallback fragment");
         IGpuShaderSet Select(bool visibility) => shaders.TrySelect(device.Factory,
             TemporalVisibilityLayoutTests.Layout(motion: true, visibility), ShaderSources.SilhouetteVert,
@@ -50,8 +52,9 @@ public sealed class ModelVisibilityShaderTests
         Assert.Same(visibilityShaders, Select(visibility: true));
         Assert.False(visibilityShaders.Disposed);
         Assert.Same(fallback, Select(visibility: false));
-        Assert.True(visibilityShaders.Disposed);
+        Assert.Equal(releaseOnFallback, visibilityShaders.Disposed);
         shaders.Dispose();
+        Assert.True(visibilityShaders.Disposed);
         Assert.False(fallback.Disposed);
     }
 

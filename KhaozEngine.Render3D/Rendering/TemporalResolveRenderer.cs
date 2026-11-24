@@ -117,10 +117,10 @@ namespace KhaozEngine.Render3D.Rendering
             GpuOutputDescription outputs) => Fullscreen(f, shaders, [layout], outputs);
 
         internal static IGpuPipeline Fullscreen(IGpuResourceFactory f, IGpuShaderSet shaders,
-            IGpuResourceLayout[] layouts, GpuOutputDescription outputs)
+            IGpuResourceLayout[] layouts, GpuOutputDescription outputs, GpuBlendAttachment? blend = null)
         {
             var blends = new GpuBlendAttachment[outputs.Colour.Length];
-            Array.Fill(blends, GpuBlendAttachment.OverrideBlend);
+            Array.Fill(blends, blend ?? GpuBlendAttachment.OverrideBlend);
             return f.CreateGraphicsPipeline(new GpuPipelineDescription
             {
                 BlendFactor = Vector4.Zero,

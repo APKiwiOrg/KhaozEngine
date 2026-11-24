@@ -12,7 +12,7 @@ internal sealed partial class ModelRenderer
     {
         using (profiling?.Pass(cl, "opaque.clear") ?? default)
         {
-            cl.SetFramebuffer(res.ModelFB);
+            cl.SetFramebuffer(res.OpaqueModelFB);
             // All three colour targets are cleared to the background, and alpha 0 marks "background" for the
             // starfield composite while the model writes alpha 1. That is what this pass wants on every backend.
             //
@@ -36,6 +36,8 @@ internal sealed partial class ModelRenderer
             if (res.MotionAllocated) cl.ClearColorTarget(MotionMath.Attachment, MotionMath.SentinelColor);
         using (profiling?.Pass(cl, "opaque.visibility-clear", executed: res.VisibilityAllocated) ?? default)
             if (res.VisibilityAllocated) cl.ClearColorTarget((uint)ShadowVisibilityTargets.Attachment(res.MotionAllocated), Color.White);
+        if (res.AmbientOcclusion is not null)
+            cl.ClearColorTarget((uint)(res.OpaqueModelFB.Outputs.Colour.Length - 1), Color.Transparent);
         using (profiling?.Pass(cl, "opaque.depth-clear") ?? default) cl.ClearDepthStencil(1f);
     }
 

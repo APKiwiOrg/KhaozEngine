@@ -36,7 +36,7 @@ namespace KhaozEngine.Render3D
         void RebuildMrtRenderers()
         {
             var modelOut = _res.ModelFB.Outputs;
-            _model.SetOutputs(modelOut);
+
             _texBillboards.SetOutputs(modelOut, _retired);
             _beams.SetOutputs(modelOut, _retired);
             _trails.SetOutputs(modelOut, _retired);
@@ -111,11 +111,12 @@ namespace KhaozEngine.Render3D
             // it bakes, so gaining or losing it rebuilds them exactly like a sample-count or colour-format change.
             bool motion = TemporalActive, visibility = Internal.ShadowVisibilityTargets.Requested(motion || _requestLitVisibility, _gd);
             bool motionChanged = _res.MotionAllocated != motion || _res.VisibilityAllocated != visibility;
+            bool aoWasActive = _res.AmbientOcclusion is not null;
+            bool rebuild = sampleChanged || hdrChanged || motionChanged;
             if (_res.Width != tw || _res.Height != th || _res.Mipped != wantMips || sampleChanged || bloomChanged || hdrChanged
                 || motionChanged)
             {
                 // Outgoing targets, bindings and pipelines share the scene completion queue.
-                bool rebuild = sampleChanged || hdrChanged || motionChanged;
                 _res.Resize(tw, th, wantMips, samples, bloom, Post.Hdr.Enabled, motion, pings, visibility);
                 if (!_frameResolves) _post.BindTargets(_res, _retired);   // a resolving frame keeps _post on the display targets
                 _transitions.BindTargets(_res, _retired);
@@ -125,6 +126,13 @@ namespace KhaozEngine.Render3D
             {
                 _res.EnsurePings(pings);
                 _res.EnsureBloom(bloom);
+            }
+            if (rebuild) _model.SetOutputs(_res.ModelFB.Outputs);
+            ConfigureAmbientOcclusion(aoWasActive && !rebuild);
+            if (_res.AmbientOcclusion is null)
+            {
+                if (aoWasActive && !rebuild) _model.SetOutputs(_res.ModelFB.Outputs);
+                _decalRenderer.ReleaseAmbientBlobPipeline();
             }
             // Aspect uses the true viewport (the post target is blit-stretched to fill it), not the clamped target.
             Camera.AspectRatio = viewportH > 0 ? (float)viewportW / viewportH : Camera.AspectRatio;

@@ -97,6 +97,12 @@ namespace KhaozEngine.Render3D
         /// <see cref="HdrSettings"/> for exposure, the operator choices, and the unclamped-Color authoring note.</summary>
         public HdrSettings Hdr = new();
 
+        /// <summary>Game-supplied display colour grading, bypassed by default.</summary>
+        public ColorGradeSettings ColorGrade { get; } = new();
+
+        /// <summary>Ambient occlusion for opaque indirect diffuse light, disabled by default.</summary>
+        public AmbientOcclusionSettings AmbientOcclusion { get; } = new();
+
         /// <summary>Temporal rendering settings: the camera-cut thresholds that decide when a camera move drops
         /// temporal history, and the upscale preset or ratio that sizes the internal target under
         /// <see cref="Render3D.RenderScale.Temporal"/>. See <see cref="TemporalSettings"/>.</summary>

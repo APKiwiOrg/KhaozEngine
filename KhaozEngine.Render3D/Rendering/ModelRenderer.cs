@@ -359,6 +359,11 @@ namespace KhaozEngine.Render3D.Rendering
         /// materials survive the rebuild.</summary>
         public void SetOutputs(GpuOutputDescription modelOutputs)
         {
+            if (!AmbientDiffuseTarget.IsAttached(modelOutputs))
+            {
+                _visibilityShaders.ReleaseAmbientVariants(_retired);
+                _coverageVisibility.ReleaseAmbientVariants(_retired);
+            }
             if (!ShadowVisibilityTargets.HasVisibility(modelOutputs)) _visibilityShaders.Release(_retired);
             _retired.Retire(_pipeline); _retired.Retire(_splatPipeline); _retired.Retire(_dissolvePipeline); RetireTileGroundPipelines();
             _retired.Retire(_skinnedPipeline); _retired.Retire(_skinnedDissolvePipeline);
@@ -366,13 +371,13 @@ namespace KhaozEngine.Render3D.Rendering
             BuildPipelines(_gd.Factory, modelOutputs);
         }
 
-        void BuildPipelines(IGpuResourceFactory factory, GpuOutputDescription modelOutputs)
+        void BuildPipelines(IGpuResourceFactory factory, GpuOutputDescription modelOutputs, bool failOnCoverageRefusal = false)
         {
             // First: the foliage rebuild just below builds its temporal variant against these resources.
             bool temporal = MotionMath.IsTemporal(modelOutputs);
             EnsureMotionResources(temporal);
             SetFoliageOutputs(modelOutputs);
-            BuildCoveragePipelines(factory, modelOutputs);
+            BuildCoveragePipelines(factory, modelOutputs, failOnCoverageRefusal);
             // Slot 0: per-vertex geometry (locations 0..4).
             var vertexLayout = new GpuVertexLayoutDescription(
                 new GpuVertexElement("Position", GpuVertexElementFormat.Float3),

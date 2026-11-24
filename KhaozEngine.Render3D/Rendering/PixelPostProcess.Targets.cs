@@ -68,6 +68,7 @@ namespace KhaozEngine.Render3D.Rendering
             // sample-count / bloom / HDR toggles), so the sets can never outlive the textures they reference.
             if (ReferenceEquals(_bound, res) && res.Generation == _boundGen) return;
             DisposeSets(retired);
+            ReleaseColorGradeSets(retired);
             _sharpen?.ReleaseSets(retired);   // its cached sets reference the targets being replaced
             var f = _gd.Factory;
             var samp = _gd.PointSampler;
@@ -164,6 +165,7 @@ namespace KhaozEngine.Render3D.Rendering
             _blurPipe = FullscreenPipeline(f, _blurFrag, _blurLayout, pingOut);
             _compositePipe = FullscreenPipeline(f, _compositeFrag, _compositeLayout, pingOut);
             _applyPipe = FullscreenPipeline(f, _applyFrag, _applyLayout, pingOut);
+            ReleaseColorGrade(retired);
             _sharpen?.Rebuild(pingOut, retired);
             _pingOutput = pingOut;
         }

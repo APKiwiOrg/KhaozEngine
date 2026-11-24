@@ -57,7 +57,8 @@ namespace KhaozEngine.Render3D
         /// kept so the key names the temporal ratio. The display size is keyed because a capped or fixed internal size
         /// can hide a display resize.</summary>
         readonly record struct TemporalFrameKey(AntiAliasing AntiAliasing, RenderScale RenderScale, float ViewportScale,
-            bool HdrColor, float UpscaleRatio, int DisplayWidth, int DisplayHeight, TemporalHistoryDetail HistoryDetail);
+            bool HdrColor, float UpscaleRatio, int DisplayWidth, int DisplayHeight, TemporalHistoryDetail HistoryDetail,
+            Vector2 AmbientOcclusion);
 
         /// <summary>Whether this frame's history can be read, and why it was last reset.</summary>
         internal TemporalHistory TemporalHistory { get; } = new();
@@ -87,7 +88,8 @@ namespace KhaozEngine.Render3D
             bool active = TemporalActive;
             var key = new TemporalFrameKey(ResolvedAa(), Post.EffectiveRenderScale, Post.EffectiveViewportScale,
                 _res.HdrColor, Post.EffectiveUpscaleRatio, _latchedDisplayWidth, _latchedDisplayHeight,
-                TemporalHistoryDetailInEffect);
+                TemporalHistoryDetailInEffect, _res.AmbientOcclusion is null ? Vector2.Zero :
+                    new Vector2(Post.AmbientOcclusion.RadiusMeters, Post.AmbientOcclusion.Strength));
             // The camera is read only while temporal rendering is active, so a frame with it off does no added work.
             Vector3 eye = default, forward = default;
             if (active)
@@ -145,6 +147,8 @@ namespace KhaozEngine.Render3D
                 reason = TemporalResetPrecedence.Higher(reason, TemporalResetReason.Resize);
             if (key.HistoryDetail != _historyKey.HistoryDetail)
                 reason = TemporalResetPrecedence.Higher(reason, TemporalResetReason.HistoryDetail);
+            if (key.AmbientOcclusion != _historyKey.AmbientOcclusion)
+                reason = TemporalResetPrecedence.Higher(reason, TemporalResetReason.AmbientOcclusion);
             if (_cameraCutRequested)
                 reason = TemporalResetPrecedence.Higher(reason, TemporalResetReason.CameraCutRequested);
             if (CameraMovedPastCutThresholds(eye, forward) || RenderOriginJumped(last.RenderOrigin, view.RenderOrigin))

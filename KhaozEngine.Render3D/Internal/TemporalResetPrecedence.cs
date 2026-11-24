@@ -20,6 +20,7 @@ internal static class TemporalResetPrecedence
         TemporalResetReason.RenderScale,
         TemporalResetReason.Resize,
         TemporalResetReason.HistoryDetail,
+        TemporalResetReason.AmbientOcclusion,
         TemporalResetReason.CameraCutRequested,
         TemporalResetReason.CameraCutDetected,
     ];

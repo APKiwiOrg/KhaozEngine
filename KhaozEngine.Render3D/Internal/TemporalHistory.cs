@@ -29,7 +29,7 @@ internal sealed partial class TemporalHistory
     /// or not a defined reason.</exception>
     public void Invalidate(TemporalResetReason reason)
     {
-        if (reason <= TemporalResetReason.None || reason > TemporalResetReason.HistoryDetail)
+        if (reason == TemporalResetReason.None || !Enum.IsDefined(reason))
             throw new ArgumentOutOfRangeException(nameof(reason), reason, "A reset needs a defined reason other than None.");
         IsValid = false;
         LastReset = reason;

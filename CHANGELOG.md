@@ -4,6 +4,20 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 24.10.0
+
+2026-11-25
+
+**Added.**
+
+- Optional contact ambient occlusion in `Scene3D`. A half-resolution horizon pass removes part of
+  opaque indirect diffuse lighting before TAA and bloom, preserving direct light, emissive and fog
+  in-scatter. Set `Post.AmbientOcclusion.Enabled` on the single-sample HDR path when the device has
+  a spare colour attachment. The starting radius is 1.05 m and the starting attenuation cap is 50%.
+- Optional display colour grading with a game-supplied `ColorGradeLut`. The HDR tonemap applies the
+  trilinear 32 cubed lookup and blends the result before palette effects and GUI. A null look,
+  identity cube or zero strength preserves the ungraded pixels.
+
 ## 24.9.0
 
 2026-11-24

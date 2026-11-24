@@ -5,28 +5,31 @@ using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Render3D.Rendering;
 
-/// <summary>Owns layout-selected visibility variants without changing the base or motion programs.</summary>
+/// <summary>Owns layout-selected opaque output variants without changing the base or motion programs.</summary>
 internal sealed class ModelVisibilityShaders : IDisposable
 {
-    readonly Dictionary<(string Vertex, string Fragment, bool Motion, bool Preserve, bool Precise), IGpuShaderSet> _sets = new();
+    readonly Dictionary<(string Vertex, string Fragment, int VisibilitySlot, int AmbientSlot, bool Preserve, bool Precise), IGpuShaderSet> _sets = new();
 
     internal bool TrySelect(IGpuResourceFactory factory, in GpuOutputDescription outputs,
         string vertex, string fragment, bool preserve, out IGpuShaderSet shaders, GpuShaderCompileOptions options = default)
     {
-        if (!ShadowVisibilityTargets.HasVisibility(outputs))
+        bool motion = MotionMath.IsTemporal(outputs);
+        int visibility = ShadowVisibilityTargets.HasVisibility(outputs) ? ShadowVisibilityTargets.Attachment(motion) : -1;
+        int ambient = AmbientDiffuseTarget.IsAttached(outputs) ? outputs.Colour.Length - 1 : -1;
+        if (visibility < 0 && ambient < 0)
         {
-            Dispose();
             shaders = null!;
             return false;
         }
-        var key = (vertex, fragment, MotionMath.IsTemporal(outputs), preserve, options.PreciseMath);
+        var key = (vertex, fragment, visibility, ambient, preserve, options.PreciseMath);
         if (_sets.TryGetValue(key, out IGpuShaderSet? found))
         {
             shaders = found;
             return true;
         }
-        shaders = factory.CreateShadersFromSpirv(vertex,
-            ShadowVisibilityTargets.Fragment(fragment, key.Item3, preserve), options);
+        if (visibility >= 0) fragment = ShadowVisibilityTargets.Fragment(fragment, motion, preserve);
+        if (ambient >= 0) fragment = AmbientDiffuseTarget.Fragment(fragment, ambient);
+        shaders = factory.CreateShadersFromSpirv(vertex, fragment, options);
         _sets.Add(key, shaders);
         return true;
     }
@@ -36,6 +39,19 @@ internal sealed class ModelVisibilityShaders : IDisposable
     internal void EnsureCompilationReady()
     {
         foreach (var shaders in _sets.Values) shaders.EnsureCompilationReady();
+    }
+
+    internal void ReleaseAmbientVariants(GpuRetireQueue retired)
+    {
+        List<(string Vertex, string Fragment, int VisibilitySlot, int AmbientSlot, bool Preserve, bool Precise)>? remove = null;
+        foreach (var (key, shaders) in _sets)
+        {
+            if (key.AmbientSlot < 0) continue;
+            retired.Retire(shaders);
+            (remove ??= []).Add(key);
+        }
+        if (remove is not null)
+            foreach (var key in remove) _sets.Remove(key);
     }
 
     internal void Release(GpuRetireQueue? retired)

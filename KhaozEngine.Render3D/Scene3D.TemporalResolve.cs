@@ -140,6 +140,7 @@ namespace KhaozEngine.Render3D
         (PixelPostProcess Chain, IPostChainTargets Targets) PrepareTemporalResolve(IGpuCommandList cl, int displayWidth,
             int displayHeight)
         {
+            PrepareAmbientOcclusion(cl);
             if (!_frameResolves)
             {
                 ReleaseTemporalResolve();
@@ -199,6 +200,7 @@ namespace KhaozEngine.Render3D
         /// </summary>
         void CaptureOpaqueForTemporal(IGpuCommandList cl)
         {
+            ApplyAmbientOcclusion(cl);
             if (!_resolveThisRender) { SkipProfilePass(cl, "copy.opaque-temporal"); return; }
             DrawBackground(cl);
             // A framebuffer change ends the model pass, so a clear with no draw after it (a Solid background with

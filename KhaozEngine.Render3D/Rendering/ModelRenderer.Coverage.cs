@@ -99,7 +99,7 @@ internal sealed partial class ModelRenderer
         CoveragePullObserverForTests?.Invoke("main", new(draw));
     }
 
-    void BuildCoveragePipelines(IGpuResourceFactory factory, GpuOutputDescription outputs)
+    void BuildCoveragePipelines(IGpuResourceFactory factory, GpuOutputDescription outputs, bool failOnRefusal)
     {
         _coverageOutputs = outputs;
         // Ordinary output rebuilds must never resurrect a refused or incomplete coverage owner.
@@ -108,7 +108,7 @@ internal sealed partial class ModelRenderer
         _coverageRebuildPending = true;
         // Compilation joins after the scene finishes this batch, so these variants cannot delay later renderers.
         try { CreateCoveragePipelines(factory, outputs); }
-        catch (Exception error) when (error is NotSupportedException or ShaderValidationException)
+        catch (Exception error) when (!failOnRefusal && error is (NotSupportedException or ShaderValidationException))
         {
             // Earlier frames may still reference shared coverage owners. Retire the whole refused family
             // behind completion rather than destroying an in-flight program or retaining a failed variant.

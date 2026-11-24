@@ -5055,6 +5055,7 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   display sizes, the preset and the effective `UpscaleRatio`. `LastReset` is a `TemporalResetReason`: `None`,
   `FirstFrame`, `Resize`, `RenderScale`, `AntiAliasing`, `CameraCutRequested` for a `CameraCut()` call,
   `CameraCutDetected` for a move or turn past the thresholds or an origin jump, `DeviceReset` for the HDR toggle,
+  `AmbientOcclusion` for a change to the effective AO radius, strength or enablement,
   and `HistoryDetail` for a change of the colour history grid in effect. A Fine creation failure can reset
   history on the frame that falls back to Display. Subsequent frames at the held size can continue that history.
   A frame with both a call and a detected cut reports the call. `scene.RequestTemporalCounts()` samples
@@ -6115,8 +6116,8 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     want them to bloom and saturate. In legacy mode those same over-1.0 values simply clamp at the UNorm boundary as
     before, so authoring is forward-compatible either way.
   - **Chain order and the retro path**: in HDR mode the order is Bloom (pre-tonemap, over-range input) -> Tonemap ->
-    Quantize -> Outline -> FXAA -> Blit. The retro passes (palette quantize, pixelation) and FXAA run AFTER the
-    tonemap, on the tonemapped LDR values, so the per-game retro/pixel look survives on top of HDR (it just operates
+    optional Colour Grade -> Quantize -> Outline -> FXAA -> Blit. The retro passes (palette quantize, pixelation)
+    and FXAA run after the tonemap, on the tonemapped LDR values, so the per-game retro/pixel look survives on top of HDR (it just operates
     on a filmic-mapped image instead of a raw-clamped one). Consequence: with bloom AND quantize both on, the halo is
     quantized too (bloom composites before the palette pass), the historical anti-banding "bloom after quantize" order
     is a property of legacy mode. Everything after the blit (overlay renderers, Gui, 2D) is unchanged in both modes.
@@ -6143,6 +6144,33 @@ Water preparation and recording report `WaterFrameRefusal`. `AbsoluteQueueCountM
 `PreparedOceanDemand` and `ActualOceanDemand`, or `OpticsInputsChangedOrUnprepared` with `Prepared`,
 `PreparedPlaneCount` and `ActualPlaneCount`, including the pipeline fallback. The last successful plane count
 is retained after a failed preparation and is zero before the first success. Unrelated state identifiers are null.
+
+### Ambient occlusion and colour grading
+
+Both options are off by default and can be used separately. Start with the short contact radius and
+strength when using HDR with Native TAA.
+
+```csharp
+scene.Post.AmbientOcclusion.Enabled = true;
+scene.Post.AmbientOcclusion.RadiusMeters = 1.05f;
+scene.Post.AmbientOcclusion.Strength = 0.5f;
+scene.Post.ColorGrade.Look = new ColorGradeLut(displayRgbSamples);
+scene.Post.ColorGrade.Strength = 0.8f;
+```
+
+The game supplies `displayRgbSamples` as 32,768 `Vector3` values in [0, 1] in red-fastest,
+then green, then blue order. Sample index `r + 32 * (g + 32 * b)` maps the display input
+`(r, g, b) / 31`. The cube snapshots the input. Assign a null look, use `ColorGradeLut.Identity`,
+or set strength to zero to restore the exact ungraded path. An authored identity lattice with the
+exact grid coordinates takes the same bypass. The grade follows ACES or the selected HDR tonemap
+operator and precedes palette effects and GUI. It preserves alpha and keeps the existing TAA history.
+
+AO affects only opaque indirect diffuse lighting and sees visible depth. HDR, a single-sample
+render target and a spare colour attachment are required. With Native TAA the normal six-attachment
+layout retains key-shadow visibility and motion. Devices without a spare slot keep the existing
+lighting and AA. Check `scene.EffectiveAmbientOcclusion` after preparation. GPU allocation failures
+are reported by `scene.AmbientOcclusionFailure` and `scene.ColorGradeFailure`. See the
+[render pipeline](RENDER-PIPELINE.md#opaque-ambient-occlusion) for pass order and resource lifetime.
 
 - **Water** (`Scene3D.DrawWater(in WaterPlane)` + `Post.Water`, a `WaterSettings`, **default off/no-op**): an opt-in
   stylized ocean surface - a Gerstner swell displacing the surface grid, a domain-warped three-layer procedural
@@ -10019,7 +10047,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="24.9.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="24.10.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -10630,7 +10658,7 @@ See the [Movement arrival contract](../KhaozEngine.Movement/README.md#range-stee
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="24.9.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="24.10.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -11641,7 +11669,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="24.9.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="24.10.0" />
 ```
 
 ```csharp
@@ -21666,7 +21694,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="24.9.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="24.10.0" />
 ```
 
 ```csharp
@@ -21702,7 +21730,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="24.9.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="24.10.0" />
 ```
 
 ```csharp
@@ -21953,7 +21981,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="24.9.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="24.10.0" />
 ```
 
 ```csharp
@@ -26899,7 +26927,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="24.9.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="24.10.0" />
 </ItemGroup>
 ```
 
@@ -27716,13 +27744,14 @@ The effect, copy and display owners add these keys. Every occurrence is zero unl
 | `ocean.mip-copy`, `ocean.mips` | Base-level seed copy per array layer (occurrence is layer), then the existing whole-chain mip-generation command |
 | `water.surface` | Surface uploads, route binds and all queued water draws, after FFT work |
 | `copy.blob-depth-resolve`, `.depth-normal-resolve`, `.color-resolve` | Existing MSAA resolves, explicitly skipped on single-sample targets |
+| `opaque.ao-horizon`, `opaque.ao-composite` | Half-resolution opaque occlusion and full-resolution indirect diffuse subtraction |
 | `copy.opaque-temporal`, `copy.transition-snapshot` | Opaque temporal copy and its existing target restores, previous resolved frame snapshot on transition activation |
 | `effects.textured-billboards`, `.beams`, `.trails`, `.overlay-meshes`, `.silhouettes` | Transparent model-target routes and their uploads |
 | `effects.blob-decals`, `.decals`, `.particles`, `.depth-lines`, `.distortion` | Blob and ground decals, particles, depth-tested lines and offset field |
 | `temporal.uniforms`, `.outline-inputs`, `.resolve`, `.depth-store` | Resolve UBOs, the one MRT outline-input draw, fused-entry resolve and separate depth store |
 | `temporal.visibility-store` | Existing once-per-resolved-frame R8 visibility history copy after either entry point, separate from depth storage |
 | `temporal.prepare`, `.accumulate` | Split-entry draws instead of fused resolve and depth store. The prepare draw also stores depth, so there is no independent depth-store duration |
-| `post.uniforms`, `.distortion-apply`, `.tonemap`, `.sharpen`, `.quantize`, `.edge`, `.fxaa` | Shared post UBOs and individual fullscreen draws, inactive draws are skipped |
+| `post.uniforms`, `.distortion-apply`, `.tonemap`, `.tonemap-grade`, `.sharpen`, `.quantize`, `.edge`, `.fxaa` | Shared post UBOs and individual fullscreen draws, inactive draws are skipped |
 | `post.bloom.bright`, `.horizontal`, `.vertical`, `.composite` | Each of the four existing bloom draws, including both blur directions |
 | `post.mips`, `post.blit` | Existing source mip generation, final display bind/clear/blit |
 | `outline.uploads`, `.mask`, `.mask-resolve`, `.mask-mips`, `.visible-mask`, `.visible-resolve`, `.visible-mips`, `.composite` | Per-group target outlines, occurrence is the frame-local group index. Width growth is part of the composite shader, with no separate draw or duration |

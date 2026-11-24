@@ -27,5 +27,7 @@ namespace KhaozEngine.Render3D
         DeviceReset,
         /// <summary>The colour history grid in effect changed between Display and Fine.</summary>
         HistoryDetail,
+        /// <summary>The configured opaque ambient occlusion affecting history changed.</summary>
+        AmbientOcclusion,
     }
 }

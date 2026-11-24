@@ -390,6 +390,7 @@ namespace KhaozEngine.Render3D.Internal
         {
             if (retired is null && (ModelFB != null || ColorTex != null)) _gd.WaitForIdle();   // includes partial allocation
             DisposeDistortion(retired);
+            ReleaseAmbientOcclusion(retired);
             ResourceRetirement.Free(ModelFB, retired); ResourceRetirement.Free(ColorDepthFB, retired);
             ResourceRetirement.Free(ColorTex, retired); ResourceRetirement.Free(NormalTex, retired); ResourceRetirement.Free(DepthColorTex, retired); ResourceRetirement.Free(DepthStencil, retired);
             ResourceRetirement.Free(MsColor, retired); ResourceRetirement.Free(MsNormal, retired); ResourceRetirement.Free(MsDepthColor, retired);

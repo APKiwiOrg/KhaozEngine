@@ -12,6 +12,10 @@ internal static class ChainSegmentContact
     [ThreadStatic]
     private static Vector3? _firstCorrectionDirectionForTests;
 
+    // Counts complete segment-axis queries, including the opening pose and velocity contacts.
+    [ThreadStatic]
+    internal static long? ClosestPointEvaluationsForTests;
+
     internal static void SetFirstCorrectionDirectionForTests(Vector3? direction) =>
         _firstCorrectionDirectionForTests = direction;
 
@@ -21,24 +25,27 @@ internal static class ChainSegmentContact
             : this(new Offset(root), new Offset(direction) * length) { }
     }
 
-    internal static Vector3 Clear(ChainParticles particles, int parent, Vector3 direction, float length,
-        float chainRadius, ChainCapsuleCandidates capsules, out bool replayedAll)
+    internal static Vector3 Clear(ChainParticles particles, int chain, int parent, Vector3 direction, float length,
+        float chainRadius, ChainCapsuleCandidates capsules, out bool replayedAll, out int placementCount)
     {
-        replayedAll = capsules.IsFiltered && !ChainCapsuleCull.FitsReach(direction);
-        if (replayedAll)
-            capsules = capsules.All;
-        if (capsules.Count == 0)
+        var start = particles.Positions[parent];
+        bool fitsReach = ChainCapsuleCull.FitsReach(direction);
+        var placement = fitsReach ? particles.PlacementCull.Select(chain, start, length, chainRadius, capsules) : capsules.All;
+        replayedAll = !fitsReach && capsules.IsFiltered;
+        placementCount = placement.Count;
+        if (placementCount == 0)
             return direction;
 
-        var start = particles.Positions[parent];
         var opening = new ChainOpeningContact(particles, parent);
         var initial = direction;
-        direction = ClearPasses(start, direction, length, chainRadius, capsules, opening, out bool outsideReach);
+        direction = ClearPasses(start, direction, length, chainRadius, placement, opening, out bool outsideReach);
         if (!outsideReach)
             return direction;
 
         replayedAll = true;
-        return ClearPasses(start, initial, length, chainRadius, capsules.All, opening, out _);
+        var all = capsules.All;
+        placementCount = all.Count;
+        return ClearPasses(start, initial, length, chainRadius, all, opening, out _);
     }
 
     private static Vector3 ClearPasses(Vector3 start, Vector3 direction, float length, float chainRadius,

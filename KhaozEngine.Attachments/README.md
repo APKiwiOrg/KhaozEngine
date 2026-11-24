@@ -672,9 +672,9 @@ simulation step. A fast collider can overlap the
 displayed chain while the simulated shape already clears it.
 
 Segment lengths use the posed rest scale. Capsule correction keeps the root and segment lengths fixed
-and can exceed the bend limit to clear a collider. The solver can skip capsules outside each chain's
-reach without changing the result. A standalone simulation with more than 64 capsules uses the full
-list. Bend, length, capsule and width corrections move positions without turning the correction into
+and can exceed the bend limit to clear a collider. The solver can filter capsules by chain reach and
+by each segment's placement against the swept capsule bounds without changing the result. A standalone
+simulation with more than 64 capsules uses the placement filter alone. Bend, length, capsule and width corrections move positions without turning the correction into
 speed. Velocity constraints remove motion that would leave the segment length,
 bend limit or width band. Capsule contact uses the velocity at the contact along the segment and limits
 the child's stop to the capsule's speed along the contact direction in the segment's tangent plane. The position solve handles the part of the push along the segment. Both

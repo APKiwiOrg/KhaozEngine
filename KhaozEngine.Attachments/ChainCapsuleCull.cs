@@ -81,6 +81,7 @@ internal readonly ref struct ChainCapsuleCandidates
     internal int Count { get; }
     internal bool IsFiltered => Count != _colliders.Length;
     internal ChainCapsuleCandidates All => new(_colliders, _axes);
+    internal ChainCapsuleCandidates WithIndices(ReadOnlySpan<int> indices) => new(_colliders, _axes, indices);
     internal int OriginalIndex(int index) => IsFiltered ? _indices[index] : index;
     internal ref readonly ColliderCapsule this[int index] => ref _colliders[OriginalIndex(index)];
 

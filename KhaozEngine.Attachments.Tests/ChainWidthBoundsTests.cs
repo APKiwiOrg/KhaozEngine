@@ -301,7 +301,7 @@ public sealed class ChainWidthBoundsTests(ITestOutputHelper output)
         const float radius = 0.15f;
         var center = particles.Positions[1] + radius * Vector3.UnitX;
         ColliderCapsule sphere = new(center, center, radius);
-        particles.SetCapsuleAxes(0, sphere, sphere);
+        particles.SetCapsuleGeometry(0, sphere, sphere);
         FinishTipPair(particles, [sphere]);
 
         var tip = particles.Positions[1];

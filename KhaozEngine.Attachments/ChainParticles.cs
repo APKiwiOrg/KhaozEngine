@@ -20,6 +20,7 @@ internal sealed class ChainParticles
         PreviousAnchorRotations = new Quaternion[rig.AnchorCount];
         StepAnchorRotations = new Quaternion[rig.AnchorCount];
         StepCarries = new ChainCarry[rig.Chains.Count];
+        PlacementCull = new ChainPlacementCull(rig.Chains.Count, colliderCount);
         CapsuleAxes = new ChainCapsuleCollision.Axis[colliderCount];
         PreviousCapsuleAxes = new ChainCapsuleCollision.Axis[colliderCount];
         OpeningResiduals = new ChainCapsuleCollision.Offset?[colliderCount];
@@ -38,16 +39,18 @@ internal sealed class ChainParticles
     internal Quaternion[] StepAnchorRotations { get; private set; }
     internal ChainCarry[] StepCarries { get; }
     internal ChainCapsuleCull CapsuleCull { get; } = new();
+    internal ChainPlacementCull PlacementCull { get; }
     internal ChainCapsuleCollision.Axis[] CapsuleAxes { get; }
     internal ChainCapsuleCollision.Axis[] PreviousCapsuleAxes { get; }
     internal ChainCapsuleCollision.Offset?[] OpeningResiduals { get; }
 
     internal void SnapshotOpening() => Positions.AsSpan(0, OpeningPositions.Length).CopyTo(OpeningPositions);
 
-    internal void SetCapsuleAxes(int index, in ColliderCapsule current, in ColliderCapsule previous)
+    internal void SetCapsuleGeometry(int index, in ColliderCapsule current, in ColliderCapsule previous)
     {
         CapsuleAxes[index] = new ChainCapsuleCollision.Axis(current);
         PreviousCapsuleAxes[index] = new ChainCapsuleCollision.Axis(previous);
+        PlacementCull.SetBounds(index, current, previous);
     }
 
     internal void SetRest(ReadOnlySpan<Matrix4x4> anchors, bool reset)

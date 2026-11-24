@@ -253,15 +253,20 @@ allows a small margin for rounding the direction and endpoint to float, because 
 segment's parent. Each chain can skip capsules farther from its first joint than the chain's reach plus both radii,
 the contact tolerance and a rounding margin far above double precision error. A correction that
 would leave that reach replays the joint against every capsule, so skipping preserves the result. A standalone
-simulation with more than 64 capsules, or a reach too large to bound safely, uses the full list. Segment lengths
-come from this step's rest hang, so a scaled wearer keeps its proportions.
+simulation with more than 64 capsules, or a reach too large to bound safely, skips the per-chain reach test. The
+next filter compares each placed parent's reach on its length sphere, including the chain radius and contact
+tolerance, with each capsule's swept bounding sphere in float. The swept sphere encloses both capsule poses so
+a crossing can still be tested. Each placement reuses the selected candidates for its position passes and
+velocity constraint. Segment lengths come from this step's rest hang, so a scaled wearer keeps its proportions.
 
 **Known limits.** The segment solve clears the line between joints and on to the virtual tip. Opening-side
 contact follows a straight relative path between steps. A collider can still leave a segment behind if it moves
 farther than the segment can reach in one step. The shown shape is up to one step behind the latest solved shape
 relative to its anchor. A collider moving fast relative to the anchor can overlap the shown chain by up to one
 step of that motion while the stepped chain clears it. While a held chain blends back to the live one, the shown
-chain can overlap a capsule for at most the blend time, while the live chain already clears it.
+chain can overlap a capsule for at most the blend time, while the live chain already clears it. When linked panels
+sit on opposing sides of a capsule, contact can prevent them from reaching their width band. The conflicting
+constraints can leave small movements even when the pose is fixed.
 
 Each chain joint's result is kept relative to its anchor, and drawing composes it on the anchor's current world
 transform. The shown result interpolates the last two steps' anchor relative frames at the frame time's place between
@@ -477,8 +482,11 @@ The wearables limits are 32 wearers, at most 2 ms added CPU preparation, no mana
   Each depth and the tip group run up to eight position sweeps over their bounded pairs, recheck contact and bends
   for moved points, then apply the velocity constraints. A reach test selects candidates once per chain per pass,
   with a full capsule replay if a contact correction leaves the conservative reach. The cull and both contact
-  passes share the capsule axes prepared once per step. A segment reuses its opening residual for a capsule
-  throughout the placement and its current offset until a correction changes its direction. Constraint setup extracts the anchor rotation and skips the unused stretch.
+  passes share the capsule axes and swept bounds prepared once per step. Each placement runs the float filter
+  before any double precision contact query. Its preallocated candidate storage holds a row per chain so the
+  depth pass can finish each chain's velocity constraints after solving width. A segment reuses its opening residual
+  for a capsule throughout the placement and its current offset until a correction changes its direction.
+  Constraint setup extracts the anchor rotation and skips the unused stretch.
   At the default 120 Hz simulation rate, a 144 Hz frame averages 0.83 steps and a 60 Hz frame averages two.
   A frame between grid steps rebuilds each shown chain from the last two steps. When both sample anchors carry
   by a positive similarity and the bases are well conditioned, the display transports and slerps cached swings
@@ -542,8 +550,9 @@ All headless, on synthetic skeletons built in code.
   times from 1 ms to 500 ms, hitches included, stay finite. A 10 m teleport shows no whip. Whole segments clear
   thin and moving capsules, including long capsule axes. A soft chain settles on the side of a capsule it fell onto.
   A capsule that crosses a segment within one step pushes it ahead. Bends stay within the limit except where
-  capsule clearance takes precedence. Trail 0 keeps the chain's shape in the wearer's space while the
-  wearer moves steadily, and trail 1 lags it. A hold and a resume move no joint further in a frame than the blend
+  capsule clearance takes precedence. Disabling the placement filter preserves every joint frame bit, including
+  for very long axes. A diagnostic counts segment-axis queries per wearer step with the filter enabled and disabled.
+  Trail 0 keeps the chain's shape in the wearer's space while the wearer moves steadily, and trail 1 lags it. A hold and a resume move no joint further in a frame than the blend
   allows. Linked chains keep their spacing when a collider pushes one. Nothing allocates once warm.
 - **Velocity rule.** A one joint chain on a still anchor, with no spring or gravity, sent into its limit and a capsule
   never gains kinetic energy, including with contact in the middle of the segment. A chain released from tip

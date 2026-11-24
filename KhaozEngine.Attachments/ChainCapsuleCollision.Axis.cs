@@ -25,6 +25,9 @@ internal static partial class ChainCapsuleCollision
 
         internal Offset ClosestResidual(in ChainSegmentContact.Segment segment, out double fraction, out double along)
         {
+            if (ChainSegmentContact.ClosestPointEvaluationsForTests is { } count)
+                ChainSegmentContact.ClosestPointEvaluationsForTests = count + 1;
+
             var root = segment.Root;
             var displacement = segment.Displacement;
             double segmentSquared = displacement.LengthSquared;

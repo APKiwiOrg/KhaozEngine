@@ -215,7 +215,7 @@ public sealed class ChainSimulation
         for (int collider = 0; collider < ColliderCount; collider++)
         {
             _stepColliders[collider] = Interpolate(_previousFrameColliders[collider], colliders[collider], fraction);
-            _particles.SetCapsuleAxes(collider, _stepColliders[collider], _previousStepColliders[collider]);
+            _particles.SetCapsuleGeometry(collider, _stepColliders[collider], _previousStepColliders[collider]);
         }
 
         var (position, rotation) = SampleWearer(wearer, fraction);

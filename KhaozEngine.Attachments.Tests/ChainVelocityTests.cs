@@ -22,7 +22,7 @@ public sealed class ChainVelocityTests(ITestOutputHelper output)
         particles.SetRest([Matrix4x4.Identity], reset: true);
         var center = strikesMiddle ? new Vector3(-0.08f, -0.58f, 0) : new Vector3(-0.06f, -1.16f, 0);
         ColliderCapsule sphere = new(center, center, strikesMiddle ? 0.12f : 0.2f);
-        particles.SetCapsuleAxes(0, sphere, sphere);
+        particles.SetCapsuleGeometry(0, sphere, sphere);
 
         Predict(Vector3.UnitX * (13 / step));
         Project();

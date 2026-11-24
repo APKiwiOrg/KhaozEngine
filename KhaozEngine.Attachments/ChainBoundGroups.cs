@@ -141,7 +141,7 @@ internal sealed class ChainBoundGroups
             var step = _placed[chain];
             if (particles.Positions[step.Particle + 1] == step.End)
                 continue;
-            _placed[chain] = ChainConstraints.ReapplyLimits(particles, step,
+            _placed[chain] = ChainConstraints.ReapplyLimits(particles, chain, step,
                 ChainConstraints.BendCosine(settings[chain]), settings[chain].Radius, Capsules(chain, colliders));
             if (_placed[chain].ReplayedAll)
                 _capsuleCounts[chain] = colliders.Length;
@@ -165,7 +165,8 @@ internal sealed class ChainBoundGroups
             if (step.Joint == first)
                 velocity.Start(rig.Chains[chain].Anchor);
             _incomingTurns[chain] = velocity.FrameTurn;
-            velocity.ApplyLocal(step.Particle, step.Length, step.Direction, step.Rest, step.Clamped, Capsules(chain, colliders));
+            var placement = particles.PlacementCull.Selected(chain, Capsules(chain, colliders), step.PlacementCount);
+            velocity.ApplyLocal(step.Particle, step.Length, step.Direction, step.Rest, step.Clamped, placement);
             ChainConstraints.WriteSwing(particles, step);
         }
     }

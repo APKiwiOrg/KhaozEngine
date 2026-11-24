@@ -1,4 +1,5 @@
 using KhaozEngine.Gpu;
+using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Render3D.Rendering;
 
@@ -6,23 +7,25 @@ internal sealed partial class ModelRenderer
 {
     internal bool AmbientOutputActive { get; private set; }
 
-    // Switching the diffuse attachment preserves all layouts, materials and motion resources. Keep the
-    // working pipelines until the extended output graph is usable, including every already-used variant.
+    // Keep the working opaque graph until the replacement pipelines, including foliage, are usable.
+    // An AA layout change can replace motion resources as part of the same transaction.
     internal void ReplaceAmbientOutput(in GpuOutputDescription outputs, bool enabled)
     {
         var old = new OpaqueOutputState(this);
+        ModelMotionResources? oldMotion = _motion;
+        if (!MotionMath.IsTemporal(outputs)) _motion = null;
         new OpaqueOutputState().Restore(this);
         try
         {
             _coverageReady = old.CoverageReady;
             _coverageRebuildPending = old.CoveragePending;
             BuildPipelines(_gd.Factory, outputs, failOnCoverageRefusal: true);
+            if (enabled || old.Foliage is not null) EnsureFoliagePipeline();
+            if (enabled || old.OpaqueFoliage is not null) OpaqueFoliagePipeline();
+            if (enabled || old.PreparedFoliage is not null) EnsurePreparedFoliagePipeline();
+            if (enabled || old.PreparedOpaqueFoliage is not null) EnsurePreparedFoliagePipeline(opaqueMaterial: true);
             if (enabled)
             {
-                EnsureFoliagePipeline();
-                OpaqueFoliagePipeline();
-                EnsurePreparedFoliagePipeline();
-                EnsurePreparedFoliagePipeline(opaqueMaterial: true);
                 if (_tileGroundReliefPipeline is null) BuildTileGroundReliefPipeline(_gd.Factory, hex: false);
                 if (_tileGroundReliefHexPipeline is null) BuildTileGroundReliefPipeline(_gd.Factory, hex: true);
             }
@@ -32,11 +35,14 @@ internal sealed partial class ModelRenderer
         catch
         {
             new OpaqueOutputState(this).Retire(_retired);
+            if (!ReferenceEquals(_motion, oldMotion)) _retired.Retire(_motion);
+            _motion = oldMotion;
             old.Restore(this);
             if (enabled) ReleaseAmbientShaders();
             throw;
         }
         old.Retire(_retired);
+        if (!ReferenceEquals(_motion, oldMotion)) _retired.Retire(oldMotion);
         AmbientOutputActive = enabled;
         if (!enabled) ReleaseAmbientShaders();
     }

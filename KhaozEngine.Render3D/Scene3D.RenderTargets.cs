@@ -12,6 +12,7 @@ namespace KhaozEngine.Render3D
     /// </summary>
     public sealed partial class Scene3D
     {
+        bool _mrtOutputsPending;
         readonly bool _requestLitVisibility;   // explicit visibility-only request from standalone readback fixtures
         /// <summary>The anti-aliasing selection resolved against THIS device's capabilities (never throws): an MSAA
         /// request is clamped to a member of <see cref="GpuCapabilities.SupportedMsaaSampleCounts"/> or falls back
@@ -111,7 +112,7 @@ namespace KhaozEngine.Render3D
             // it bakes, so gaining or losing it rebuilds them exactly like a sample-count or colour-format change.
             bool motion = TemporalActive, visibility = Internal.ShadowVisibilityTargets.Requested(motion || _requestLitVisibility, _gd);
             bool motionChanged = _res.MotionAllocated != motion || _res.VisibilityAllocated != visibility;
-            bool rebuild = sampleChanged || hdrChanged || motionChanged;
+            _mrtOutputsPending |= sampleChanged || hdrChanged || motionChanged;
             if (_res.Width != tw || _res.Height != th || _res.Mipped != wantMips || sampleChanged || bloomChanged || hdrChanged
                 || motionChanged)
             {
@@ -119,14 +120,21 @@ namespace KhaozEngine.Render3D
                 _res.Resize(tw, th, wantMips, samples, bloom, Post.Hdr.Enabled, motion, pings, visibility);
                 if (!_frameResolves) _post.BindTargets(_res, _retired);   // a resolving frame keeps _post on the display targets
                 _transitions.BindTargets(_res, _retired);
-                if (rebuild) RebuildMrtRenderers();   // match the renderers' pipelines to the new MRT
             }
             else
             {
                 _res.EnsurePings(pings);
                 _res.EnsureBloom(bloom);
             }
-            if (rebuild) _model.SetOutputs(_res.ModelFB.Outputs);
+            // A device refusal can leave the new framebuffers published before their pipelines are ready.
+            // Retry the output rebuild even when the next frame has exactly the same size and settings.
+            if (_mrtOutputsPending)
+            {
+                RebuildMrtRenderers();
+                if (_model.AmbientOutputActive) _model.ReplaceAmbientOutput(_res.ModelFB.Outputs, enabled: false);
+                else _model.SetOutputs(_res.ModelFB.Outputs);
+                _mrtOutputsPending = false;
+            }
             ConfigureAmbientOcclusion();
             // Aspect uses the true viewport (the post target is blit-stretched to fill it), not the clamped target.
             Camera.AspectRatio = viewportH > 0 ? (float)viewportW / viewportH : Camera.AspectRatio;

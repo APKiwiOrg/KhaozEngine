@@ -24,18 +24,19 @@ internal readonly ref struct ChainOpeningContact
     internal bool Crossed(int index, Offset current, double radiusSquared, out Vector3 side)
     {
         var opening = _residuals[index] ??= _axes[index].ClosestResidual(_segment, out _, out _);
-        side = Vector3.Zero;
+        bool crossed = Crossed(opening, current, radiusSquared);
+        side = crossed ? (opening * (1 / Math.Sqrt(opening.LengthSquared))).ToVector3() : Vector3.Zero;
+        return crossed;
+    }
+
+    internal static bool Crossed(Offset opening, Offset current, double radiusSquared)
+    {
         if (Offset.Dot(opening, current) >= 0)
             return false;
 
         // Opposite residuals put the chord's nearest point strictly between its ends.
         var chord = current - opening;
         var closest = opening - chord * (Offset.Dot(opening, chord) / chord.LengthSquared);
-        if (closest.LengthSquared >= radiusSquared)
-            return false;
-
-        double length = Math.Sqrt(opening.LengthSquared);
-        side = (opening * (1 / length)).ToVector3();
-        return true;
+        return closest.LengthSquared < radiusSquared;
     }
 }

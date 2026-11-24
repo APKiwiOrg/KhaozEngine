@@ -120,6 +120,14 @@ for upper layers. This lets a swinging strap push the next garment away without 
 Mutual contact would need masses that the format does not carry and iteration between both layers during the
 root-to-tip pass. Those belong to the cloth solver ([#1870](https://github.com/APKiwiOrg/KhaozEngine/issues/1870)).
 
+### 9. Bounded links give the sheet triangle contact
+
+A bounded link forms two triangles between each pair of rows, from the anchored roots through the linked joints
+to the tips. A diagonal and cross segments would leave holes in each band. Widening the chain radius to cover
+those holes would hold the cloth farther from the wearer at rest. Triangles cover the interior and let the
+declared chain radius describe the thickness around the sheet. Links without a width bound leave each strip
+free to fan out and keep contact on the chains.
+
 ## Chains
 
 A chain is an ordered list of joints in a skinned part's own skin, from the joint nearest the body to the tip.
@@ -179,6 +187,8 @@ at bind, so the radius there is the authored radius before wearer scaling.
 - A worn set may add colliders while it is worn, so outerwear clears the armour under it. They use the same space
   and bind the same way.
 - Every chain of a wearer collides with every collider of that wearer, the body's and those of all its worn sets.
+- A bounded part also keeps the bands between linked chains clear of these obstacles. Each band adds the larger
+  linked chain radius to the obstacle radius.
 - Each segment in a strictly lower layer on the same wearer acts as a capsule. Its axis joins the two solved
   particles, from the anchored root through the joints to the virtual tip. Its radius is the lower chain's radius.
   The previous axis joins the same particles at the substep opening, so contact sees the lower chain's motion.
@@ -257,12 +267,28 @@ sees only body and worn set capsules.
    targets inside the margin to avoid chasing roundoff at its edge. Alternating sweeps stop when every pair fits
    within the current margin or after eight sweeps. The bend limit and capsules are applied again to each moved
    particle because they outrank the bound.
+   Then test each band ending at the current row, with the row above fixed. For an uneven pair, the last band
+   joins the last common row directly to the two tips. A float sphere enclosing both moving corners' length
+   spheres and the fixed corners is compared with each obstacle's swept sphere. For the surviving axes, find
+   the closest points to both triangles in double precision. An opening-to-current residual chord that crosses
+   the inflated axis preserves the opening side. When an axis pierces a face, the face normal takes that side.
+   If a reset puts the axis into the plane between chains, the triangle winding chooses a side until the sheet
+   has separated. Each moving corner takes its barycentric share of a separation correction, capped at one
+   segment length, and returns to its length sphere. The correction accounts for the radial motion lost
+   in that projection. Any clearance deficit in the fixed row stays with that row. A small position margin
+   keeps grazing contacts from switching on a full push. Up to eight passes clear the bands, then the bend limit
+   and each chain's own contact run again on moved corners.
    The impulse that stops escaping width velocity increases continuously across the 0.5 mm approach margin inside
    the band, reaching a full stop at the edge within rounding tolerance. This avoids switching between free
    separation and a full stop while springs and gravity act on a cape at rest. The width velocity constraint runs
-   before the length, limit and contact velocity constraints, which keep the last word. Tip pairs are solved
-   together after all joint depths, because a short chain's tip can be linked to a longer chain's. A pair whose
-   segments point straight apart turns both toward one shared perpendicular, since its tangents give no leverage.
+   before the length, limit and segment contact velocity constraints. Sheet contact runs after those local
+   velocity rules. It measures approach using all three corners' weighted velocities against the obstacle's
+   surface, measured in each chain's carried frame. It raises only the moving corners' velocities, along
+   each segment's tangent to the contact normal, up to the surface speed in that direction. The stop eases
+   in over its touch margin and fades as the contact moves toward the fixed row.
+   Tip pairs are solved together after all joint depths, because a short chain's tip can be linked to a
+   longer chain's. A pair whose segments point straight apart turns both toward one shared perpendicular,
+   since its tangents give no leverage.
    Coincident endpoints turn to opposite sides of it, so a gap can open. A bound applied after the whole pass
    has to drag the joints below a corrected particle without their speed, and the next step pushes them back out.
    Placing a depth only from final parents keeps lengths exact and drags nothing.
@@ -285,9 +311,10 @@ tolerance, with each capsule's swept bounding sphere in float. The swept sphere 
 a crossing can still be tested. Each placement reuses the selected candidates for its position passes and
 velocity constraint. Segment lengths come from this step's rest hang, so a scaled wearer keeps its proportions.
 
-**Known limits.** The segment solve clears the line between joints and on to the virtual tip. Opening-side
-contact follows a straight relative path between steps. A collider can still leave a segment behind if it moves
-farther than the segment can reach in one step. The shown shape is up to one step behind the latest solved shape
+**Known limits.** The segment solve clears the line between joints and on to the virtual tip. The sheet solve covers
+the bands of a bounded piece. Its chain radius must cover how far the drawn cloth projects from those bands.
+Opening-side contact follows a straight relative path between steps. A collider can still leave a segment
+behind if it moves farther than the segment can reach in one step. The shown shape is up to one step behind the latest solved shape
 relative to its anchor. A collider moving fast relative to the anchor can overlap the shown chain by up to one
 step of that motion while the stepped chain clears it. While a held chain blends back to the live one, the shown
 chain can overlap a capsule for at most the blend time, while the live chain already clears it. When linked panels
@@ -494,7 +521,8 @@ The [coverage claim check reference](../../KhaozEngine.Attachments/README.md#cov
   garment palette. Cloth will give a per wearer deformed mesh, which the same draw overloads substitute for the
   part's shared mesh.
 - The kinds share the fixed step loop, collider posing and the reset and hold rules, and a cloth solver reuses the
-  particles, the velocity rule, distance constraints, the width bound's strain limit and capsule collision.
+  particles, the velocity rule, distance constraints, the width bound's strain limit and capsule contact
+  against segments and triangles.
 
 Live reshape ([#1869](https://github.com/APKiwiOrg/KhaozEngine/issues/1869)) is untouched. Chains bind per fitted
 body, like everything else in a piece.
@@ -516,6 +544,7 @@ The wearables limits are 32 wearers, at most 2 ms added CPU preparation, no mana
   before any double precision contact query. Immediate consumers share one candidate row. The width pass
   reuses one row per chain in the largest bound group so it can finish a depth's velocity constraints after solving
   width. If that scratch cannot be represented or allocated, the solve uses the chain candidate list directly.
+  The sheet pass bounds each band once at its depth and tests the same reach before its contact queries.
   A segment reuses its opening residual
   for a capsule throughout the placement and its current offset until a correction changes its direction.
   Constraint setup extracts the anchor rotation and skips the unused stretch.
@@ -586,7 +615,7 @@ All headless, on synthetic skeletons built in code.
   near-parent contact stays near its tangent cone. A soft chain settles on the side of a capsule it fell onto.
   A capsule that crosses a segment within one step pushes it ahead. Bends stay within the limit except where
   capsule clearance takes precedence. Disabling the placement filter preserves every joint frame bit, including
-  for very long axes. A diagnostic counts segment-axis queries per wearer step with the filter enabled and disabled.
+  for very long axes. The contact counting probe compares each placement filter with its unfiltered control.
   A sweeping lower chain pushes an upper chain, including across a full crossing in one step. The lower chain's
   frames match a run without the upper chain bit for bit. Same-layer and unlayered chains pass through each other.
   A soft upper chain settles on a still lower chain at fixed and uneven frame times. Layered contact allocates
@@ -610,6 +639,11 @@ All headless, on synthetic skeletons built in code.
   same chains without it leave it. The second pass keeps them clear of capsules and within their limits. A soft
   bounded cape at rest against a frozen capsule stops moving at fixed and uneven frame pacing, including at low
   damping with the bend limit disabled. Coincident tips separate into their band.
+- **Sheet contact.** A capsule swept between linked chains clears their bands, including when it crosses the
+  cloth in a single step. An unbounded link lets it pass. A lower layer segment clears the band that ends at
+  the tips of unequal upper chains. The frozen capsule between chains settles at both frame cadences.
+  A capsule that strikes the middle of a band and stops never throws the corners faster than it moved.
+  Warm steps allocate nothing. The counting probe records triangle-axis and segment-axis evaluations.
 - **Formats.** Formats 4 and 6 and the body collider file round trip. Each refusal sits beside a passing control that
   differs only in the broken rule. Format 1 to 5 bytes and hashes are unchanged.
 - **Binding and draws.** A chained garment binds and draws. Each binding refusal is reached. Without a motion, chain
@@ -624,10 +658,10 @@ All headless, on synthetic skeletons built in code.
 
 ## Not supported
 
-The chain solver has no cloth, live reshape or wind input. Links constrain spacing within a part. Layered
-contact works along chain segments on one wearer. `WornMotion` has no ground query. Rigid attachments bind to host
-joints and cannot bind to chain joints or follow a bending surface. Skin a hanging rigid piece to a one-joint chain
-to give it swing.
+The chain solver has no mesh cloth simulation, live reshape or wind input. Layered contact works on one
+wearer, with lower chain segments as obstacles for upper segments and bounded bands. `WornMotion` has no
+ground query. Rigid attachments bind to host joints and cannot bind to chain joints or follow a bending surface.
+Skin a hanging rigid piece to a one-joint chain to give it swing.
 
 ## Signatures corrected against the code
 

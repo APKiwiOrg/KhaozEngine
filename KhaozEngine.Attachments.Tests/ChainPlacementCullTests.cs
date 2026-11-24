@@ -126,14 +126,18 @@ public sealed class ChainPlacementCullTests(ITestOutputHelper output)
 
     [Fact]
     [Trait("Category", "Diagnostic")]
-    public void Counts_segment_axis_queries_per_wearer_step()
+    public void Counts_contact_queries_per_wearer_step()
     {
-        output.WriteLine($"Segment-axis queries per layered wearer step over {Steps} steps");
-        output.WriteLine($"Placement filter enabled: {Count(disable: false) / (double)Steps:F2}");
-        output.WriteLine($"Placement filter disabled: {Count(disable: true) / (double)Steps:F2}");
+        output.WriteLine($"Closest-point queries per layered wearer step over {Steps} steps");
+        WriteCounts("Placement filter enabled", Count(disable: false));
+        WriteCounts("Placement filter disabled", Count(disable: true));
     }
 
-    private static long Count(bool disable)
+    private void WriteCounts(string label, (long Segments, long Triangles) counts) =>
+        output.WriteLine($"{label}: {counts.Segments / (double)Steps:F2} segment-axis, " +
+            $"{counts.Triangles / (double)Steps:F2} triangle-axis");
+
+    private static (long Segments, long Triangles) Count(bool disable)
     {
         var simulation = new ChainSimulation(CreateRig(layered: true), RestCapsules.Length);
         var capsules = new ColliderCapsule[RestCapsules.Length];
@@ -141,6 +145,7 @@ public sealed class ChainPlacementCullTests(ITestOutputHelper output)
         simulation.Step([openingAnchor], capsules, openingWearer, 0);
         ChainPlacementCull.DisableForTests = disable;
         ChainSegmentContact.ClosestPointEvaluationsForTests = 0;
+        ChainSheetContact.ClosestPointEvaluationsForTests = 0;
         try
         {
             for (int step = 1; step <= Steps; step++)
@@ -149,12 +154,14 @@ public sealed class ChainPlacementCullTests(ITestOutputHelper output)
                 simulation.Step([anchor], capsules, wearer, StepSeconds);
             }
 
-            return ChainSegmentContact.ClosestPointEvaluationsForTests.GetValueOrDefault();
+            return (ChainSegmentContact.ClosestPointEvaluationsForTests.GetValueOrDefault(),
+                ChainSheetContact.ClosestPointEvaluationsForTests.GetValueOrDefault());
         }
         finally
         {
             ChainPlacementCull.DisableForTests = false;
             ChainSegmentContact.ClosestPointEvaluationsForTests = null;
+            ChainSheetContact.ClosestPointEvaluationsForTests = null;
         }
     }
 

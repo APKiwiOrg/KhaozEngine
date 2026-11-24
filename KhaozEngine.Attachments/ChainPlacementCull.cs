@@ -46,6 +46,22 @@ internal sealed class ChainPlacementCull(int rowCount, int colliderCount)
         return Selected(row, capsules, count);
     }
 
+    internal static SweptSphere BandReach(Vector3 firstParent, float firstLength,
+        Vector3 secondParent, float secondLength, Vector3 firstUpper, Vector3 secondUpper, float radius)
+    {
+        // The convex hull bridges the gap between length spheres. The fixed corners of
+        // an unequal-length tip band can also be different from the actual tip parents.
+        var center = Midpoint(firstParent, secondParent);
+        float reach = MathF.Max(Vector3.Distance(center, firstParent) + firstLength * DirectionLengthBound,
+            Vector3.Distance(center, secondParent) + secondLength * DirectionLengthBound);
+        reach = MathF.Max(reach, MathF.Max(Vector3.Distance(center, firstUpper), Vector3.Distance(center, secondUpper)));
+        reach += radius + (float)ChainCapsuleCollision.TouchTolerance;
+        return new SweptSphere(center, reach + FloatRoundingMargin * (MaxAbs(center) + reach));
+    }
+
+    internal bool ReachesBand(int index, in SweptSphere band) =>
+        DisableForTests || _bounds[index].CanReach(band.Center, band.Radius);
+
     internal ChainCapsuleCandidates Selected(int row, ChainCapsuleCandidates capsules, int count) =>
         count == capsules.Count ? capsules : capsules.WithIndices(Indices(row)[..count]);
 
@@ -79,7 +95,7 @@ internal sealed class ChainPlacementCull(int rowCount, int colliderCount)
         return MathF.Max(absolute.X, MathF.Max(absolute.Y, absolute.Z));
     }
 
-    private readonly record struct SweptSphere(Vector3 Center, float Radius)
+    internal readonly record struct SweptSphere(Vector3 Center, float Radius)
     {
         internal bool CanReach(Vector3 parent, float reach)
         {

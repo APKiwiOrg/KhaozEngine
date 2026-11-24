@@ -184,7 +184,8 @@ Format 6 adds optional `linkStretch` beside `links` in a skinned part's chain mo
 the spacing of corresponding movable joints and both tips can depart from rest, as a fraction of rest spacing.
 For example, `"links": [[0, 1]], "linkStretch": 0.15` sets a band from 85% to 115% of rest spacing.
 The value must be finite, greater than zero and at most one, and the part must declare at least one link.
-Omit it to use only the link springs. Formats 4 and 5 refuse the member as unknown.
+The bound also enables contact across the bands between linked chains. Omit it to use the link springs
+and individual chain contact. Formats 4 and 5 refuse the member as unknown.
 
 Set `ChainMotionDefinition.LinkStretch` to declare the bound in code. Set definitions take only chain
 indices in each `ChainLink`. The wearer binding copies the part's bound to `ChainLink.Stretch` on the rig

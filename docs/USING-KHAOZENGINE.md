@@ -7768,9 +7768,11 @@ beside `links` in the part's `motion` object:
 ```
 
 For every link in the part, the solver aims to keep corresponding movable joints and both tips between
-85% and 115% of their rest spacing, subject to bend limits and capsule clearance. Omit `linkStretch`
-for looser panels that use the link springs alone. Move every reader to 24.8.0 or later before publishing
-format 6.
+85% and 115% of their rest spacing, subject to bend limits and capsule clearance. The bound also makes
+the bands between linked chains contact capsules and lower layer segments. Set the chain radius to cover
+the depth of the drawn cloth from those bands. Each band uses the larger of its two chains' radii.
+Omit `linkStretch` for looser panels that use the link springs and contact along individual chains.
+Move every reader to 24.8.0 or later before publishing format 6.
 
 Load the body collider file and bind when the outfit changes. The example uses the cache, loaded body
 regions, map and host mesh from the preceding section, a loaded `cape` set and an animation clip for the

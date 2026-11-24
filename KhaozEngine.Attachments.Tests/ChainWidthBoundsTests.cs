@@ -295,11 +295,12 @@ public sealed class ChainWidthBoundsTests(ITestOutputHelper output)
         var (particles, _) = CreateTipPair(1, colliderCount: 1);
         PredictPair(particles, Vector3.Zero, Quaternion.Identity);
         float y = -MathF.Sqrt(1 - 0.06f * 0.06f);
-        particles.Positions[1] = new Vector3(-0.06f, y, 0);
-        particles.Positions[3] = particles.Positions[2] + new Vector3(0.06f, y, 0);
-        particles.Velocities[3] = new Vector3(-y, 0.06f, 0);
+        // Compression drives the left tip toward the capsule outside the sheet.
+        particles.Positions[1] = new Vector3(0.06f, y, 0);
+        particles.Positions[3] = particles.Positions[2] + new Vector3(-0.06f, y, 0);
+        particles.Velocities[3] = new Vector3(y, 0.06f, 0);
         const float radius = 0.15f;
-        var center = particles.Positions[1] + radius * Vector3.UnitX;
+        var center = particles.Positions[1] - radius * Vector3.UnitX;
         ColliderCapsule sphere = new(center, center, radius);
         particles.SetCapsuleGeometry(0, sphere, sphere);
         FinishTipPair(particles, [sphere]);

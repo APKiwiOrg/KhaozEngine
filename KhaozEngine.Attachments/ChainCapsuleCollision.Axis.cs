@@ -23,11 +23,21 @@ internal static partial class ChainCapsuleCollision
             _crossedEnds = Offset.Cross(_start, _end);
         }
 
+        internal Offset Direction => _axis;
+        internal bool IsPoint => _inverseSquared == 0;
+        internal Offset Start => _start;
+        internal Offset End => _end;
+
         internal Offset ClosestResidual(in ChainSegmentContact.Segment segment, out double fraction, out double along)
         {
             if (ChainSegmentContact.ClosestPointEvaluationsForTests is { } count)
                 ChainSegmentContact.ClosestPointEvaluationsForTests = count + 1;
 
+            return ClosestResidualUncounted(segment, out fraction, out along);
+        }
+
+        internal Offset ClosestResidualUncounted(in ChainSegmentContact.Segment segment, out double fraction, out double along)
+        {
             var root = segment.Root;
             var displacement = segment.Displacement;
             double segmentSquared = displacement.LengthSquared;

@@ -112,14 +112,16 @@ namespace KhaozEngine.Render3D.Rendering
         /// Called by relief material loads, outside frame recording.</summary>
         internal void EnsureTileGroundRelief(bool hex = false)
         {
-            if ((hex ? _tileGroundReliefHexPipeline : _tileGroundReliefPipeline) is not null) return;
+            // AO preflights the extended pipelines for both programs. Loading material still registers
+            // the ordinary variant so it can be restored if the scene disables AO.
             if (hex)
                 _tileGroundReliefHexShaders ??= _gd.Factory.CreateShadersFromSpirv(ShaderSources.TileGroundVert,
                     ShaderSources.TileGroundReliefHexFrag);
             else
                 _tileGroundReliefShaders ??= _gd.Factory.CreateShadersFromSpirv(ShaderSources.TileGroundVert,
                     ShaderSources.TileGroundReliefFrag);
-            BuildTileGroundReliefPipeline(_gd.Factory, hex);
+            if ((hex ? _tileGroundReliefHexPipeline : _tileGroundReliefPipeline) is null)
+                BuildTileGroundReliefPipeline(_gd.Factory, hex);
         }
 
         void BuildTileGroundReliefPipeline(IGpuResourceFactory factory, bool hex)

@@ -111,7 +111,6 @@ namespace KhaozEngine.Render3D
             // it bakes, so gaining or losing it rebuilds them exactly like a sample-count or colour-format change.
             bool motion = TemporalActive, visibility = Internal.ShadowVisibilityTargets.Requested(motion || _requestLitVisibility, _gd);
             bool motionChanged = _res.MotionAllocated != motion || _res.VisibilityAllocated != visibility;
-            bool aoWasActive = _res.AmbientOcclusion is not null;
             bool rebuild = sampleChanged || hdrChanged || motionChanged;
             if (_res.Width != tw || _res.Height != th || _res.Mipped != wantMips || sampleChanged || bloomChanged || hdrChanged
                 || motionChanged)
@@ -128,12 +127,7 @@ namespace KhaozEngine.Render3D
                 _res.EnsureBloom(bloom);
             }
             if (rebuild) _model.SetOutputs(_res.ModelFB.Outputs);
-            ConfigureAmbientOcclusion(aoWasActive && !rebuild);
-            if (_res.AmbientOcclusion is null)
-            {
-                if (aoWasActive && !rebuild) _model.SetOutputs(_res.ModelFB.Outputs);
-                _decalRenderer.ReleaseAmbientBlobPipeline();
-            }
+            ConfigureAmbientOcclusion();
             // Aspect uses the true viewport (the post target is blit-stretched to fill it), not the clamped target.
             Camera.AspectRatio = viewportH > 0 ? (float)viewportW / viewportH : Camera.AspectRatio;
         }

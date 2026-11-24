@@ -47,6 +47,15 @@ public sealed class WorldLookGoldenTests
             Assert.Equal(baseline[i], graded[i]);
         Assert.Equal(0, graded[3]);
         Assert.Equal(255, graded[center + 3]);
+
+        int displayPixels = 0;
+        for (int i = 0; i < baseline.Length; i += 4)
+        {
+            if (baseline[i] != 255 || baseline[i + 1] != 0 || baseline[i + 2] != 255) continue;
+            Assert.True(baseline.AsSpan(i, 4).SequenceEqual(graded.AsSpan(i, 4)));
+            displayPixels++;
+        }
+        Assert.True(displayPixels > 5, "Expected an on-screen display overlay to survive grading.");
     }
 
     [GpuFact]
@@ -112,8 +121,13 @@ public sealed class WorldLookGoldenTests
             scene.Post.ColorGrade.Look = look;
             scene.Post.ColorGrade.Strength = strength;
             box = scene.LoadMesh(MeshPrimitives.Box());
-        }, scene => scene.Draw(box, Matrix4x4.CreateTranslation(0, 0.7f, 0),
-            Color.Black, new Material(new Color(0.173f, 0.325f, 0.69f, 1), 0, 1)));
+        }, scene =>
+        {
+            scene.Draw(box, Matrix4x4.CreateTranslation(0, 0.7f, 0),
+                Color.Black, new Material(new Color(0.173f, 0.325f, 0.69f, 1), 0, 1));
+            scene.DebugFilledQuad(new Vector3(-1.1f, 0.8f, 0f), Vector3.UnitZ, Vector3.UnitX,
+                new Vector2(.25f), new Color(1f, 0f, 1f, 1f));
+        });
     }
 
     static byte[] CaptureContact(bool enabled, bool indirect)
@@ -129,6 +143,7 @@ public sealed class WorldLookGoldenTests
             box = scene.LoadMesh(MeshPrimitives.Box());
         }, scene =>
         {
+            if (!indirect) scene.AddLight(new Vector3(-1, 1.3f, -1), new Color(1f, .6f, .2f, 1f), 4f, 1.5f);
             scene.Draw(ground, Matrix4x4.Identity, Color.White);
             scene.Draw(box, Matrix4x4.CreateTranslation(0, 0.5f, 0), Color.White,
                 indirect ? Material.None : new Material(new Color(.75f, .25f, .125f, 1), 0, 1));

@@ -74,7 +74,8 @@ void main() {
     vec3 n = viewNormal(p);
     bool ortho = ProjectionScale.z == 0.0;
     vec3 toEye = ortho ? vec3(0.0, 0.0, 1.0) : normalize(-center);
-    vec2 radiusPixels = ProjectionScale.xy * (Params.x / (ortho ? 1.0 : max(1e-4, -center.z * ProjectionScale.z)));
+    vec2 radiusPixels = min(vec2(fullSize()) * 2.0,
+        ProjectionScale.xy * (Params.x / (ortho ? 1.0 : max(1e-4, -center.z * ProjectionScale.z))));
     if (max(radiusPixels.x, radiusPixels.y) < 1.0) return;
     float visibility = 0.0, unoccluded = 0.0;
 

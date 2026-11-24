@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using KhaozEngine.Gpu;
+using KhaozEngine.Render3D.Rendering;
 
 namespace KhaozEngine.Render3D;
 
@@ -112,7 +113,14 @@ public sealed partial class Scene3D
         // Sets and dynamic windows are cold-reserved before the host opens its list.
         try
         {
-            _model.ReserveCoverage(draws);
+            try { _model.ReserveCoverage(draws); }
+            catch (AmbientCoverageOutputException error)
+            {
+                // A first-use AO variant can fail after the other opaque outputs were prepared.
+                // Retry through the ordinary coverage pipeline before classifying the device.
+                RefuseAmbientOcclusion(error.InnerException!);
+                _model.ReserveCoverage(draws);
+            }
             _targetOutlines.ReserveCoverage(Math.Max(draws, _meshOutlinePartCount));
             _pointShadows?.ReserveCoverage(draws);
             // Every graphics program is queued before any owner joins its CPU work. Native realization

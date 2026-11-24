@@ -37,7 +37,7 @@ internal sealed class ColorGradeTonemap : IDisposable
             layout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(T("Src"), S("Samp"), U("Tone"), T("Grade")));
             shaders = factory.CreateShadersFromSpirv(ShaderSources.FullscreenVert, ShaderSources.ColorGradeTonemap());
             pipeline = TemporalResolveRenderer.Fullscreen(factory, shaders, layout, output);
-            shaders.EnsureCompilationReady();
+            pipeline.EnsureDeviceReady();
             _atlas = atlas;
             _layout = layout;
             _shaders = shaders;

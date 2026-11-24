@@ -577,6 +577,9 @@ What it owns today:
   [Equipment coverage](../docs/EQUIPMENT-COVERAGE.md#runtime-carry-refusal-and-history) requests this
   policy for its carry and pulling graphics variants. Its native correctness and cost acceptance remain
   separate from headless compiler and scheduling evidence.
+- **Native graphics-pipeline readiness.** `IGpuPipeline.EnsureDeviceReady()` completes any deferred
+  native creation without recording commands. Use it before publishing an optional pipeline whose
+  refusal should leave a working fallback. Eager backend factories already complete this step.
 - **Explicit CPU compilation readiness** - `IGpuShaderSet.EnsureCompilationReady()` and
   `IGpuComputeShader.EnsureCompilationReady()` finish deferred CPU compiler work and deliver its original
   failure without creating or binding native device objects. Queue the complete cold shader/pipeline batch

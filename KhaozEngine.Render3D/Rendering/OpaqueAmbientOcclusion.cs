@@ -54,8 +54,8 @@ internal sealed class OpaqueAmbientOcclusion : IDisposable
             _horizon = Own(TemporalResolveRenderer.Fullscreen(factory, horizonShaders, horizonLayout, _horizonTarget.Outputs));
             _composite = Own(TemporalResolveRenderer.Fullscreen(factory, compositeShaders, [compositeLayout],
                 targets.ColorDepthFB.Outputs, SubtractRgb));
-            horizonShaders.EnsureCompilationReady();
-            compositeShaders.EnsureCompilationReady();
+            _horizon.EnsureDeviceReady();
+            _composite.EnsureDeviceReady();
         }
         catch
         {

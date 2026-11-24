@@ -655,8 +655,10 @@ shimmer from frame to frame. The bands a river shows sit short of focus, where t
 - A refused request stays latched until the request changes, so a steady frame never retries it.
 - The consumer can read the refusal, and the scene logs it once.
 
-The cascade shadow layout, point shadow atlas, material anisotropy sampler and fine temporal history
-follow this rule. Each defines which request changes allow a retry.
+The cascade shadow layout, point shadow atlas, material anisotropy sampler, fine temporal history,
+opaque AO and display colour grading follow this rule. AO validates its extended graphics pipelines
+before publication. If a covered mesh's first-use AO variant fails, its ordinary coverage path retries
+before the scene classifies the device. Each quality feature defines which request changes allow a retry.
 
 ## Where to look in the code
 

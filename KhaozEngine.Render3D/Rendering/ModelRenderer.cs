@@ -359,16 +359,13 @@ namespace KhaozEngine.Render3D.Rendering
         /// materials survive the rebuild.</summary>
         public void SetOutputs(GpuOutputDescription modelOutputs)
         {
-            if (!AmbientDiffuseTarget.IsAttached(modelOutputs))
-            {
-                _visibilityShaders.ReleaseAmbientVariants(_retired);
-                _coverageVisibility.ReleaseAmbientVariants(_retired);
-            }
+            if (AmbientOutputActive) ReleaseAmbientShaders();
             if (!ShadowVisibilityTargets.HasVisibility(modelOutputs)) _visibilityShaders.Release(_retired);
             _retired.Retire(_pipeline); _retired.Retire(_splatPipeline); _retired.Retire(_dissolvePipeline); RetireTileGroundPipelines();
             _retired.Retire(_skinnedPipeline); _retired.Retire(_skinnedDissolvePipeline);
             _retired.Retire(_cpuSkinnedMotionPipeline); _cpuSkinnedMotionPipeline = null;
             BuildPipelines(_gd.Factory, modelOutputs);
+            AmbientOutputActive = AmbientDiffuseTarget.IsAttached(modelOutputs);
         }
 
         void BuildPipelines(IGpuResourceFactory factory, GpuOutputDescription modelOutputs, bool failOnCoverageRefusal = false)

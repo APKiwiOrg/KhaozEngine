@@ -39,6 +39,7 @@ internal sealed class CoverageDeferredGraphicsPipeline(IGpuPipeline inner, Cover
     : IGpuPipeline, ICoverageDeferredPipeline
 {
     public void Bind() => shader.Bind();
+    public void EnsureDeviceReady() => shader.EnsureCompilationReady();
     public void Dispose() => inner.Dispose();
 }
 internal sealed class CoverageDeferredComputePipeline(IGpuComputePipeline inner, CoverageDeferredComputeShader shader)

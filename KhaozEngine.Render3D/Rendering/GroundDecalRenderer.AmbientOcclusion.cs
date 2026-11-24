@@ -23,7 +23,7 @@ internal sealed partial class GroundDecalRenderer
             GpuBlendAttachment attenuate = new(true, GpuBlendFactor.Zero, GpuBlendFactor.InverseSourceAlpha,
                 GpuBlendFunction.Add, GpuBlendFactor.Zero, GpuBlendFactor.One, GpuBlendFunction.Add);
             pipeline = Pipe(_gd.Factory, outputs, GpuBlendAttachment.AlphaBlend, GpuComparison.Greater, shaders, attenuate);
-            shaders.EnsureCompilationReady();
+            pipeline.EnsureDeviceReady();
             _ambientBlobShaders = shaders;
             _ambientBlobPipeline = pipeline;
         }

@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Numerics;
+using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
@@ -68,6 +69,25 @@ public sealed class CoverageDeferredCompilationTests
         Assert.All(fixture.Device.DeferredPrograms, program => Assert.True(program.Disposed));
         Assert.NotEmpty(fixture.Device.Resources.Pipelines);
         Assert.All(fixture.Device.Resources.Pipelines, pipeline => Assert.True(pipeline.Disposed));
+    }
+
+    [Fact]
+    public void FirstUseAoVariantRefusalKeepsOrdinaryCoveredDraws()
+    {
+        using var fixture = new CoveragePublicationFixture(deferred: true,
+            deferredFailure: (vertex, fragment) => vertex == ShaderSources.CoverageModelVert
+                && fragment?.Contains("oAmbientDiffuse", StringComparison.Ordinal) == true);
+        fixture.Scene.Post.AmbientOcclusion.Enabled = true;
+        fixture.Begin(); fixture.Queue(); fixture.Record(); fixture.Submit();
+
+        Assert.NotEmpty(fixture.Evidence);
+        Assert.Equal(AmbientOcclusionStatus.ResourceUnavailable, fixture.Scene.EffectiveAmbientOcclusion);
+        Assert.IsType<ShaderValidationException>(fixture.Scene.AmbientOcclusionFailure);
+        Assert.Equal(0, fixture.Scene.AmbientOcclusionTextureBytes);
+
+        fixture.Begin(); fixture.Queue(); fixture.Record(); fixture.Submit();
+        Assert.NotEmpty(fixture.Evidence);
+        Assert.Equal(AmbientOcclusionStatus.ResourceUnavailable, fixture.Scene.EffectiveAmbientOcclusion);
     }
 
     static int Pipelines(CoveragePublicationFixture fixture, string vertex)

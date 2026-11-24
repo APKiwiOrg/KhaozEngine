@@ -38,9 +38,26 @@ internal sealed partial class ModelRenderer
                     ShaderSources.SkinnedModelFrag, new(PreciseMath: true));
                 _coverageDissolveShaders = _gd.Factory.CreateShadersFromSpirv(ShaderSources.CoverageModelVert,
                     ShaderSources.SkinnedModelDissolveFrag, new(PreciseMath: true));
-                CreateCoveragePipelines(_gd.Factory, _coverageOutputs);
+                if (AmbientOutputActive)
+                {
+                    try
+                    {
+                        CreateCoveragePipelines(_gd.Factory, _coverageOutputs);
+                        EnsureCoverageDeviceReady();
+                    }
+                    catch (Exception error)
+                    {
+                        throw new AmbientCoverageOutputException(error);
+                    }
+                }
+                else CreateCoveragePipelines(_gd.Factory, _coverageOutputs);
                 _coveragePull.Reserve(count);
                 ReserveCoverageShadows(count);
+            }
+            catch (AmbientCoverageOutputException)
+            {
+                DisposeCoveragePulling();
+                throw;
             }
             catch
             {

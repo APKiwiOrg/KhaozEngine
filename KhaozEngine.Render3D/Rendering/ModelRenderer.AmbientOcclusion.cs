@@ -4,9 +4,11 @@ namespace KhaozEngine.Render3D.Rendering;
 
 internal sealed partial class ModelRenderer
 {
-    // Adding the diffuse attachment preserves all layouts, materials and motion resources. Keep the
+    internal bool AmbientOutputActive { get; private set; }
+
+    // Switching the diffuse attachment preserves all layouts, materials and motion resources. Keep the
     // working pipelines until the extended output graph is usable, including every already-used variant.
-    internal void EnableAmbientOutput(in GpuOutputDescription outputs)
+    internal void ReplaceAmbientOutput(in GpuOutputDescription outputs, bool enabled)
     {
         var old = new OpaqueOutputState(this);
         new OpaqueOutputState().Restore(this);
@@ -15,22 +17,42 @@ internal sealed partial class ModelRenderer
             _coverageReady = old.CoverageReady;
             _coverageRebuildPending = old.CoveragePending;
             BuildPipelines(_gd.Factory, outputs, failOnCoverageRefusal: true);
-            if (old.Foliage is not null) EnsureFoliagePipeline();
-            if (old.OpaqueFoliage is not null) OpaqueFoliagePipeline();
-            if (old.PreparedFoliage is not null) EnsurePreparedFoliagePipeline();
-            if (old.PreparedOpaqueFoliage is not null) EnsurePreparedFoliagePipeline(opaqueMaterial: true);
-            _visibilityShaders.EnsureCompilationReady();
-            _coverageVisibility.EnsureCompilationReady();
+            if (enabled)
+            {
+                EnsureFoliagePipeline();
+                OpaqueFoliagePipeline();
+                EnsurePreparedFoliagePipeline();
+                EnsurePreparedFoliagePipeline(opaqueMaterial: true);
+                if (_tileGroundReliefPipeline is null) BuildTileGroundReliefPipeline(_gd.Factory, hex: false);
+                if (_tileGroundReliefHexPipeline is null) BuildTileGroundReliefPipeline(_gd.Factory, hex: true);
+            }
+
+            new OpaqueOutputState(this).EnsureDeviceReady();
         }
         catch
         {
             new OpaqueOutputState(this).Retire(_retired);
             old.Restore(this);
-            _visibilityShaders.ReleaseAmbientVariants(_retired);
-            _coverageVisibility.ReleaseAmbientVariants(_retired);
+            if (enabled) ReleaseAmbientShaders();
             throw;
         }
         old.Retire(_retired);
+        AmbientOutputActive = enabled;
+        if (!enabled) ReleaseAmbientShaders();
+    }
+
+    void ReleaseAmbientShaders()
+    {
+        _visibilityShaders.ReleaseAmbientVariants(_retired);
+        _coverageVisibility.ReleaseAmbientVariants(_retired);
+    }
+
+    internal void EnsureCoverageDeviceReady()
+    {
+        _coveragePipeline?.EnsureDeviceReady();
+        _coverageDissolvePipeline?.EnsureDeviceReady();
+        _coverageMotionPipeline?.EnsureDeviceReady();
+        _coverageDissolveMotionPipeline?.EnsureDeviceReady();
     }
 
     readonly struct OpaqueOutputState
@@ -74,6 +96,17 @@ internal sealed partial class ModelRenderer
                 (PreparedFoliage, PreparedOpaqueFoliage, _preparedOutputs);
             (model._preparedFoliageShaders, model._preparedFoliageOpaqueShaders) =
                 (_preparedFoliageShaders, _preparedOpaqueFoliageShaders);
+        }
+
+        internal void EnsureDeviceReady()
+        {
+            _rigid?.EnsureDeviceReady(); _dissolve?.EnsureDeviceReady(); _cpuSkinnedMotion?.EnsureDeviceReady();
+            _skinned?.EnsureDeviceReady(); _skinnedDissolve?.EnsureDeviceReady(); _splat?.EnsureDeviceReady();
+            _tile?.EnsureDeviceReady(); _tileRelief?.EnsureDeviceReady(); _tileHex?.EnsureDeviceReady();
+            _coverage?.EnsureDeviceReady(); _coverageDissolve?.EnsureDeviceReady();
+            _coverageMotion?.EnsureDeviceReady(); _coverageDissolveMotion?.EnsureDeviceReady();
+            Foliage?.EnsureDeviceReady(); OpaqueFoliage?.EnsureDeviceReady();
+            PreparedFoliage?.EnsureDeviceReady(); PreparedOpaqueFoliage?.EnsureDeviceReady();
         }
 
         internal void Retire(GpuRetireQueue retired)

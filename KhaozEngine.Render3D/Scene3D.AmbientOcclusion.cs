@@ -35,22 +35,22 @@ public sealed partial class Scene3D
         return AmbientOcclusionStatus.Active;
     }
 
-    void ConfigureAmbientOcclusion(bool modelAlreadyExtended)
+    (int Width, int Height, int ColorAttachments) AmbientOcclusionLayout() =>
+        (_res.Width, _res.Height, _res.ModelFB.Outputs.Colour.Length);
+
+    void ConfigureAmbientOcclusion()
     {
-        EffectiveAmbientOcclusion = RequestedAmbientOcclusion();
-        var layout = (_res.Width, _res.Height, _res.ModelFB.Outputs.Colour.Length);
-        if (EffectiveAmbientOcclusion != AmbientOcclusionStatus.Active || _failedAoLayout != layout)
+        AmbientOcclusionStatus requested = RequestedAmbientOcclusion();
+        if (requested != AmbientOcclusionStatus.Active)
         {
+            RestoreOrdinaryOpaqueOutput();
             _failedAoLayout = null;
             AmbientOcclusionFailure = null;
-        }
-        if (EffectiveAmbientOcclusion != AmbientOcclusionStatus.Active)
-        {
-            _res.ReleaseAmbientOcclusion(_retired);
+            EffectiveAmbientOcclusion = requested;
             return;
         }
         if (_res.AmbientOcclusion is not null) return;
-        if (_failedAoLayout == layout)
+        if (_failedAoLayout == AmbientOcclusionLayout())
         {
             EffectiveAmbientOcclusion = AmbientOcclusionStatus.ResourceUnavailable;
             return;
@@ -61,17 +61,35 @@ public sealed partial class Scene3D
         {
             candidate = new OpaqueAmbientOcclusion(_gd, _res);
             _decalRenderer.EnsureAmbientBlobPipeline(candidate.BlobFramebuffer.Outputs);
-            if (!modelAlreadyExtended) _model.EnableAmbientOutput(candidate.ModelFramebuffer.Outputs);
+            if (!_model.AmbientOutputActive) _model.ReplaceAmbientOutput(candidate.ModelFramebuffer.Outputs, enabled: true);
             _res.AmbientOcclusion = candidate;
+            _failedAoLayout = null;
+            AmbientOcclusionFailure = null;
+            EffectiveAmbientOcclusion = AmbientOcclusionStatus.Active;
         }
         catch (Exception failure)
         {
             candidate?.Dispose();
-            _failedAoLayout = layout;
-            AmbientOcclusionFailure = failure;
-            EffectiveAmbientOcclusion = AmbientOcclusionStatus.ResourceUnavailable;
-            Log.For<Scene3D>().Error($"Could not prepare ambient occlusion. {failure.Message}");
+            RefuseAmbientOcclusion(failure);
         }
+    }
+
+    void RefuseAmbientOcclusion(Exception failure)
+    {
+        RestoreOrdinaryOpaqueOutput();
+        _failedAoLayout = AmbientOcclusionLayout();
+        AmbientOcclusionFailure = failure;
+        EffectiveAmbientOcclusion = AmbientOcclusionStatus.ResourceUnavailable;
+        Log.For<Scene3D>().Error($"Could not prepare ambient occlusion. {failure.Message}");
+    }
+
+    void RestoreOrdinaryOpaqueOutput()
+    {
+        // Publish ordinary pipelines before freeing any AO target. If a required replacement throws,
+        // the previous pipeline and framebuffer still match, and the request can be retried.
+        if (_model.AmbientOutputActive) _model.ReplaceAmbientOutput(_res.ModelFB.Outputs, enabled: false);
+        _res.ReleaseAmbientOcclusion(_retired);
+        _decalRenderer.ReleaseAmbientBlobPipeline();
     }
 
     void PrepareAmbientOcclusion(IGpuCommandList cl) =>

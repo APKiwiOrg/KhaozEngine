@@ -528,15 +528,20 @@ The wearables limits are 32 wearers, at most 2 ms added CPU preparation, no mana
 - GPU: no shader, pass or draw count changes. A chained part adds palette entries within the 128 joint limit.
 - Allocation is tested per call, as outfit draws are.
 
-`SwingCostDiagnostics` reports CPU preparation for 32 wearers with independent outfits and motion. Each wearer
-uses 12 body capsules and a cloak whose neighbouring chains have a 25% width bound. It measures
-`WornMotion.Step` and `BoundOutfit.WriteDraws` for every worn set, excluding host animation and scene submission.
-After 120 warm frames per rate it reports the mean, p50, p95 and maximum frame cost in milliseconds, total managed
-bytes on the preparation thread and the runner environment in one JSON line. Each rate samples 600 frames at
-a simulated frame rate of 144 Hz or 60 Hz. Each wearer's motion step is immediately followed by its draws. The
-diagnostic sums the spans around those calls and includes their timestamps in the frame total. A third sample
-uses the same 32 wearers held at 144 Hz to measure preparation with no physics steps. The held
-sample shows steady held presentation and draws. Timing is report only and excluded from default CI.
+`SwingCostDiagnostics` measures CPU preparation for two outfits, each on 32 wearers in the same circling walk.
+The reference outfit has 12 body capsules, five linked five-joint cloak chains with a 25% width bound and four
+three-joint strap chains. It reports all 32 simulated in `measurements` and all 32 held at 144 Hz in `heldMeasurement`.
+The layered outfit has five linked six-joint cape chains with an 8% width bound over four three-joint tails.
+It uses 12 body capsules and four capsules from each of two lower sets. Its first 16 wearers simulate and the
+other 16 hold, representing a nearest-16 cap. Both groups step and write draws in `layeredMeasurements`.
+
+After 120 warm frames, each simulated rate samples 600 frames at 144 Hz or 60 Hz. One JSON line reports the mean,
+p50, p95 and maximum frame milliseconds, the mean spans for `WornMotion.Step` and `BoundOutfit.WriteDraws`, total
+warm managed bytes on the preparation thread and the runner environment. Each wearer's step is followed by
+its draws. The frame span includes the call timestamps and excludes host animation and scene submission.
+An untimed replay counts segment-axis queries per simulated wearer per fixed solver step, excluding warm frames.
+The count is null for the all-held sample or when a shortened sample takes no fixed steps. Timing is report only
+and excluded from default CI.
 
 Run the full measurement on a GitHub-hosted runner after approval. Only that run supplies timing evidence.
 
@@ -545,6 +550,7 @@ KE_GPU_TESTS=0 dotnet test KhaozEngine.Render.Tests -c Release --filter 'Categor
 ```
 
 `KE_SWING_COST_SMOKE_FRAMES` sets both frame counts to a value from 1 through 119 for a shortened harness check.
+A smoke warm-up too short to reach a fixed step primes the solver before resetting for the sample.
 
 ## Byte loading
 

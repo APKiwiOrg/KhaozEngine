@@ -92,7 +92,7 @@ public sealed class ChainCapsuleCullTests
         var culled = AtRest(capsules);
         var withoutFarCapsule = AtRest(nearOnly);
         const float step = 1f / 120;
-        ChainCapsuleCollision.SetFirstCorrectionDirectionForTests(new Vector3(1.5f, 0, 0));
+        ChainSegmentContact.SetFirstCorrectionDirectionForTests(new Vector3(1.5f, 0, 0));
         try
         {
             StepWithAllCapsules(all, anchors, capsules, Matrix4x4.Identity, step);
@@ -105,7 +105,7 @@ public sealed class ChainCapsuleCullTests
         }
         finally
         {
-            ChainCapsuleCollision.SetFirstCorrectionDirectionForTests(null);
+            ChainSegmentContact.SetFirstCorrectionDirectionForTests(null);
         }
 
         Assert.NotEqual(withoutFarCapsule.JointsFromAnchor[0], all.JointsFromAnchor[0]);

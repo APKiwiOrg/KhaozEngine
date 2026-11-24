@@ -110,14 +110,17 @@ internal ref struct ChainVelocityConstraints
         if (capsules.Count == 0)
             return;
 
-        var tip = new ChainCapsuleCollision.Tip(_particles.Positions[parent], length, direction);
+        const double minimumFraction = 1e-12;
+        var segment = new ChainSegmentContact.Segment(_particles.Positions[parent], length, direction);
         ref var velocity = ref _particles.Velocities[parent + 1];
+        var parentVelocity = _particles.Velocities[parent];
         ChainCapsuleCollision.Axis scratch = default;
         for (int index = 0; index < capsules.Count; index++)
         {
             ref readonly var capsule = ref capsules[index];
             ref readonly var axis = ref capsules.ReadAxis(index, ref scratch);
-            if (!ChainCapsuleCollision.TryContact(tip, _radius, capsule, axis, out var normal, out double along))
+            if (!ChainSegmentContact.TryContact(segment, _radius, capsule, axis, out var normal,
+                out double fraction, out double along) || fraction <= minimumFraction)
                 continue;
 
             var tangent = ChainMath.Tangent(normal, direction);
@@ -126,11 +129,14 @@ internal ref struct ChainVelocityConstraints
 
             var surface = ChainCapsuleCollision.SurfaceVelocity(capsule,
                 _previousColliders[capsules.OriginalIndex(index)], along, normal, _carry, _seconds);
-            // Like length and bend, contact projects velocity along one unit direction.
-            // The position solve handles a push along the segment so it cannot inject swing speed.
-            float approach = Vector3.Dot(velocity - surface, tangent);
-            if (approach < 0)
-                velocity -= approach * tangent;
+            double childSpeed = Vector3.Dot(velocity, tangent);
+            double parentSpeed = Vector3.Dot(parentVelocity, tangent);
+            double surfaceSpeed = Vector3.Dot(surface, tangent);
+            // Limit repeated interior pushes to the surface speed. The position solve handles
+            // any remaining approach along the tangent and any push along the segment.
+            double target = Math.Min((surfaceSpeed - (1 - fraction) * parentSpeed) / fraction, surfaceSpeed);
+            if (double.IsFinite(target) && childSpeed < target)
+                velocity += (float)(target - childSpeed) * tangent;
         }
     }
 }

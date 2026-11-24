@@ -99,6 +99,18 @@ Format 4, body colliders, the solver, motion and the byte loaders add types, mem
 interface gains a member, so the release is additive. 24.8.0 adds format 6 and two init only members and changes how
 every chain moves, so it is a minor too.
 
+### 7. Capsule contact follows the whole segment and keeps its opening side
+
+A segment can cross a thin capsule between its joints. Even if the tip touches, the tip's contact circle can lie
+past the segment's tangent point, folding the segment through the capsule. Use the tangent cone when the segment
+reaches that point and the tip's contact circle for shorter segments. Both keep the authored segment length.
+An anchored parent inside a capsule can clear only its endpoint.
+
+A segment takes its side from its opening positions before the wearer carry when the residuals to the capsule point
+to opposite sides and the straight path between them crosses the capsule. A capsule can then push a segment ahead
+of it even when their closing poses are already separated. If the capsule is beyond the segment's reach at closing,
+there is no correction.
+
 ## Chains
 
 A chain is an ordered list of joints in a skinned part's own skin, from the joint nearest the body to the tip.
@@ -175,7 +187,7 @@ leaves velocities untouched, and the first kept step measures capsule motion, th
 motion from its own opening poses. Measuring them from the last step before the dropped time divided all the skipped
 motion by one step, so a slow capsule could throw a tip at many times its own speed. Within each step of length `h`:
 
-1. **Trail.** Every particle's position and velocity move with `(1 - trail)` of the wearer's rigid movement over the
+1. **Trail.** Snapshot the opening positions before carrying. Every particle's position and velocity move with `(1 - trail)` of the wearer's rigid movement over the
    step, which starts from the previous step's wearer pose, sometimes in the previous frame. Velocities turn with the
    carried turn.
 2. **Predict.** Velocity is damped by `exp(-damping * h)` and gains gravity times `h`. The position moves by the damped
@@ -190,21 +202,23 @@ motion by one step, so a slow capsule could throw a tip at many times its own sp
      by `2c / h`, which keeps the spring stable for any step. The start offset is measured from the parent's position
      at the start of the step. Measuring it from the parent's end of step position coupled the spring to the parent's
      speed by an amount that changed with `h`.
-   - The bend is clamped to `angleLimit`, the particle is pushed out of every collider on the sphere of its segment
-     length, and the length is restored. These move the position only.
+   - The bend is clamped to `angleLimit`. Capsule contacts turn the segment about its parent on its length
+     sphere. If the opening and current residuals cross a capsule, the correction keeps the opening side. These
+     moves only change positions.
    - Then the velocity constraints of decision 2. The velocity along the segment relative to the parent is removed.
      When the bend limit acted, the limit's wall moves with the parent particle's velocity and with the turning rate of
      the parent's frame. The first joint's frame turns with the anchor's whole rotation over the step relative to the
      carried frame, twist included. Each later frame keeps the twist about its parent segment and adds that segment's
      swing rate from its endpoint velocities, so an anchor twisting about the first segment still moves every wall
      below it. The child's outward velocity relative to that wall is removed, half from the child and half given to
-     the parent particle, or all from the child when the parent is the anchored first joint. When a capsule pushed the
-     particle, the approach of its velocity relative to the capsule's moving surface is removed along the contact
-     normal's direction within the segment's tangent plane. That surface moves with the capsule's axis and with any
-     change of its radius along the contact normal, so an animated radius pushes as a moving capsule does. Each
-     velocity constraint is thus a projection along one unit
-     direction, and the part of a push along the segment moves the position only, so a capsule driving along a
-     segment cannot flick its tip and a tip held at a shallow angle keeps no speed. Capsule motion, the anchor's turn
+     the parent particle, or all from the child when the parent is the anchored first joint. Capsule contact
+     projects the child speed, parent speed and surface speed onto the contact normal's direction in the segment's
+     tangent plane. At fraction `s`, with parent speed `b` and surface speed `w`, the solver raises the child's speed
+     along that direction to at most `min((w - (1 - s) * b) / s, w)`. It skips contacts too near the parent to divide
+     safely. At the tip, the target is the surface speed. At interior contacts the cap keeps repeated pushes from
+     accumulating to a child speed greater than the surface speed and prevents the parent's motion from flicking
+     the child. Any remaining approach and pushes along the segment are handled by positions. The surface moves
+     with its axis and with radius changes along the contact normal. Capsule motion, the anchor's turn
      and the first joint's velocity are measured in the chain's carried frame, where its velocities live, so a capsule
      or a limit that moves with the wearer never pushes a chain that trails nothing.
    - The joint's rotation is the swing that turns its rest direction onto the simulated one, applied to its unswung
@@ -231,17 +245,20 @@ motion by one step, so a slow capsule could throw a tip at many times its own sp
    Placing a depth only from final parents keeps lengths exact and drags nothing.
 
 Corrections never write velocity. A chain whose one movable joint hangs from a still anchor never gains kinetic
-energy from its limit, static contacts or length. A chain released from a capsule it rested on starts from rest. The
+energy from its limit, static contacts or length. A tip released from contact at its endpoint starts from rest. The
 anchored first joint and segment lengths always hold. A collider outranks the bend limit, because a pass through
 looks worse than an extra bend. Contact solves the capsule locally as a sphere at the closest point of its axis, up to
-eight passes, in double precision. Each chain can skip capsules farther from its first joint than the chain's reach
-plus both radii, the contact tolerance and a rounding margin far above double precision error. A correction that
+eight passes, in double precision. Use the axis point closest to the segment being placed. The contact correction
+allows a small margin for rounding the direction and endpoint to float, because that endpoint becomes the next
+segment's parent. Each chain can skip capsules farther from its first joint than the chain's reach plus both radii,
+the contact tolerance and a rounding margin far above double precision error. A correction that
 would leave that reach replays the joint against every capsule, so skipping preserves the result. A standalone
 simulation with more than 64 capsules, or a reach too large to bound safely, uses the full list. Segment lengths
 come from this step's rest hang, so a scaled wearer keeps its proportions.
 
-Known limits: contact acts on joints and tips, so a long segment can cross a thin capsule between its ends, and the
-fitting step uses enough joints to avoid it. The shown shape is up to one step behind the latest solved shape
+**Known limits.** The segment solve clears the line between joints and on to the virtual tip. Opening-side
+contact follows a straight relative path between steps. A collider can still leave a segment behind if it moves
+farther than the segment can reach in one step. The shown shape is up to one step behind the latest solved shape
 relative to its anchor. A collider moving fast relative to the anchor can overlap the shown chain by up to one
 step of that motion while the stepped chain clears it. While a held chain blends back to the live one, the shown
 chain can overlap a capsule for at most the blend time, while the live chain already clears it.
@@ -460,8 +477,8 @@ The wearables limits are 32 wearers, at most 2 ms added CPU preparation, no mana
   Each depth and the tip group run up to eight position sweeps over their bounded pairs, recheck contact and bends
   for moved points, then apply the velocity constraints. A reach test selects candidates once per chain per pass,
   with a full capsule replay if a contact correction leaves the conservative reach. The cull and both contact
-  passes share the capsule axis prepared once per step. A segment reuses its tip offset until a position
-  correction changes its direction. Constraint setup extracts the anchor rotation and skips the unused stretch.
+  passes share the capsule axes prepared once per step. A segment reuses its opening residual for a capsule
+  throughout the placement and its current offset until a correction changes its direction. Constraint setup extracts the anchor rotation and skips the unused stretch.
   At the default 120 Hz simulation rate, a 144 Hz frame averages 0.83 steps and a 60 Hz frame averages two.
   A frame between grid steps rebuilds each shown chain from the last two steps. When both sample anchors carry
   by a positive similarity and the bases are well conditioned, the display transports and slerps cached swings
@@ -522,13 +539,15 @@ All headless, on synthetic skeletons built in code.
 
 - **Solver.** A chain released level falls and settles below its anchor. It settles to the same pose at 30, 60, 144
   and 240 Hz within 1 cm at the tip, and its first swing peaks within 10 percent across those rates. Random frame
-  times from 1 ms to 500 ms, hitches included, stay finite. A 10 m teleport shows no whip. No particle ends a step
-  inside a collider. Bends stay within the limit. Trail 0 keeps the chain's shape in the wearer's space while the
+  times from 1 ms to 500 ms, hitches included, stay finite. A 10 m teleport shows no whip. Whole segments clear
+  thin and moving capsules, including long capsule axes. A soft chain settles on the side of a capsule it fell onto.
+  A capsule that crosses a segment within one step pushes it ahead. Bends stay within the limit except where
+  capsule clearance takes precedence. Trail 0 keeps the chain's shape in the wearer's space while the
   wearer moves steadily, and trail 1 lags it. A hold and a resume move no joint further in a frame than the blend
   allows. Linked chains keep their spacing when a collider pushes one. Nothing allocates once warm.
 - **Velocity rule.** A one joint chain on a still anchor, with no spring or gravity, sent into its limit and a capsule
-  never gains kinetic energy. A chain released from a capsule it rested on moves exactly as far as gravity alone
-  moves it from rest. A cape of five linked chains with tight limits and stiff springs, on an anchor that runs with a
+  never gains kinetic energy, including with contact in the middle of the segment. A chain released from tip
+  contact moves exactly as far as gravity alone moves it from rest. A cape of five linked chains with tight limits and stiff springs, on an anchor that runs with a
   sway and stops, has a lower peak tip speed after the stop than while running, at 30, 60, 144 and 240 Hz. A capsule
   that strikes a limp chain and stops never throws it faster than the capsule moved. A pure anchor twist moves a
   downstream limit's wall, and a growing sphere passes its surface speed to a tip.
@@ -554,8 +573,8 @@ All headless, on synthetic skeletons built in code.
 
 ## Not supported
 
-The chain solver has no cloth, live reshape or wind input. It tests joint and tip contact against the supplied
-capsules. Links constrain spacing within a part, with no chain-to-chain contact. `WornMotion` takes only body and
+The chain solver has no cloth, live reshape or wind input. Links constrain spacing within a part, with no
+chain-to-chain contact. `WornMotion` takes only body and
 worn set capsules and has no ground query. Rigid attachments bind to host joints, and cannot bind to chain joints
 or follow a bending surface. Skin a hanging rigid piece to a one-joint chain to give it swing.
 

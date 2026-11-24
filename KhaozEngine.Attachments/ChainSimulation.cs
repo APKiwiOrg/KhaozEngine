@@ -210,11 +210,12 @@ public sealed class ChainSimulation
     private void Substep(ReadOnlySpan<ColliderCapsule> colliders, in ChainPose wearer, float fraction)
     {
         float seconds = Options.MaxStepSeconds;
+        _particles.SnapshotOpening();
         SampleAnchors(fraction);
         for (int collider = 0; collider < ColliderCount; collider++)
         {
             _stepColliders[collider] = Interpolate(_previousFrameColliders[collider], colliders[collider], fraction);
-            _particles.CapsuleAxes[collider] = new ChainCapsuleCollision.Axis(_stepColliders[collider]);
+            _particles.SetCapsuleAxes(collider, _stepColliders[collider], _previousStepColliders[collider]);
         }
 
         var (position, rotation) = SampleWearer(wearer, fraction);

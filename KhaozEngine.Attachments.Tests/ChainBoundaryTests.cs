@@ -38,7 +38,7 @@ public sealed class ChainBoundaryTests
     public void A_capped_frame_keeps_the_capsules_actual_contact_speed()
     {
         // #1883: pose time dropped from the grid must not become a one-step impulse.
-        var start = new Vector3(1, -0.49f, 0);
+        var start = new Vector3(1.03f, -0.49f, 0);
         var end = start + 0.25f * Vector3.UnitY;
         float speed = ReleasedTipSpeed(new(start, start, 0.25f), new(end, end, 0.25f), 0.25f);
         Assert.InRange(speed, 0.98f, 1.02f);
@@ -48,7 +48,7 @@ public sealed class ChainBoundaryTests
     public void A_growing_sphere_passes_its_surface_speed_to_the_tip()
     {
         // #1882: an expanding surface moves even when its axis points are still.
-        var center = new Vector3(1, -0.25f, 0);
+        var center = new Vector3(1.03f, -0.25f, 0);
         float speed = ReleasedTipSpeed(new(center, center, 0.25f), new(center, center, 0.25f + StepSeconds), StepSeconds);
         Assert.InRange(speed, 0.98f, 1.02f);
     }

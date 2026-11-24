@@ -92,7 +92,8 @@ public sealed class ChainFixedStepTests(ITestOutputHelper output)
             previous = current;
         }
         float clearance = sphere.Radius + chain.Settings.Radius;
-        Assert.InRange(MathF.Abs(Vector3.Distance(previous, center) - clearance), 0, 0.00002f);
+        float distance = ChainSegmentContactTests.DistanceToSegment(center, Vector3.Zero, previous);
+        Assert.InRange(MathF.Abs(distance - clearance), 0, 0.00002f);
         Assert.InRange(fixedPeak, 0, 0.000003f);
         float peakTravel = 0;
         var random = new Random(1883);

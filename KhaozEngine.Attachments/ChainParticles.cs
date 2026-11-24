@@ -12,6 +12,7 @@ internal sealed class ChainParticles
         Positions = new Vector3[count];
         Velocities = new Vector3[count];
         SubstepStarts = new Vector3[count];
+        OpeningPositions = colliderCount == 0 ? [] : new Vector3[count];
         RestPositions = new Vector3[count];
         Lengths = new float[rig.JointCount];
         JointWorlds = new Matrix4x4[rig.JointCount];
@@ -20,6 +21,8 @@ internal sealed class ChainParticles
         StepAnchorRotations = new Quaternion[rig.AnchorCount];
         StepCarries = new ChainCarry[rig.Chains.Count];
         CapsuleAxes = new ChainCapsuleCollision.Axis[colliderCount];
+        PreviousCapsuleAxes = new ChainCapsuleCollision.Axis[colliderCount];
+        OpeningResiduals = new ChainCapsuleCollision.Offset?[colliderCount];
     }
 
     internal ChainRig Rig { get; }
@@ -27,6 +30,7 @@ internal sealed class ChainParticles
     internal Vector3[] Velocities { get; }
     internal Vector3[] RestPositions { get; }
     internal Vector3[] SubstepStarts { get; }
+    internal Vector3[] OpeningPositions { get; }
     internal float[] Lengths { get; }
     internal Matrix4x4[] JointWorlds { get; }
     internal Quaternion[] JointSwings { get; }
@@ -35,6 +39,16 @@ internal sealed class ChainParticles
     internal ChainCarry[] StepCarries { get; }
     internal ChainCapsuleCull CapsuleCull { get; } = new();
     internal ChainCapsuleCollision.Axis[] CapsuleAxes { get; }
+    internal ChainCapsuleCollision.Axis[] PreviousCapsuleAxes { get; }
+    internal ChainCapsuleCollision.Offset?[] OpeningResiduals { get; }
+
+    internal void SnapshotOpening() => Positions.AsSpan(0, OpeningPositions.Length).CopyTo(OpeningPositions);
+
+    internal void SetCapsuleAxes(int index, in ColliderCapsule current, in ColliderCapsule previous)
+    {
+        CapsuleAxes[index] = new ChainCapsuleCollision.Axis(current);
+        PreviousCapsuleAxes[index] = new ChainCapsuleCollision.Axis(previous);
+    }
 
     internal void SetRest(ReadOnlySpan<Matrix4x4> anchors, bool reset)
     {

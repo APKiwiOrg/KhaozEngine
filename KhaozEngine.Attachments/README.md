@@ -651,7 +651,8 @@ direction. Damping is a nonnegative velocity decay rate per second.
 Gravity scales world gravity from 0 to 10. It contributes the constant-acceleration displacement to the
 position prediction and the full velocity change to the stored velocity. Trail ranges from 0, carrying
 the chain with the wearer's rigid movement, to 1, giving the chain full inertia. The bend limit is
-greater than zero and at most pi radians. The nonnegative chain radius adds clearance against capsules.
+greater than zero and at most pi radians. The nonnegative chain radius adds clearance along each segment against
+capsules, including the last joint to the virtual tip.
 `Tune` applies settings starting at the next simulation step.
 
 Chains advance on a fixed grid. `MaxStepSeconds` is the fixed step duration, from 0.0001 s through
@@ -675,8 +676,8 @@ and can exceed the bend limit to clear a collider. The solver can skip capsules 
 reach without changing the result. A standalone simulation with more than 64 capsules uses the full
 list. Bend, length, capsule and width corrections move positions without turning the correction into
 speed. Velocity constraints remove motion that would leave the segment length,
-bend limit or width band. Capsule contact removes relative approach along the contact direction within
-the segment's tangent plane. The position solve handles the part of the push along the segment. Both
+bend limit or width band. Capsule contact uses the velocity at the contact along the segment and limits
+the child's stop to the capsule's speed along the contact direction in the segment's tangent plane. The position solve handles the part of the push along the segment. Both
 capsule surface motion and bend limit turn account for the chain's carried rigid movement. A movable
 parent shares the stop at a bend limit.
 

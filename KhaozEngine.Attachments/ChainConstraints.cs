@@ -84,7 +84,7 @@ internal static class ChainConstraints
             var limited = ClampBend(direction, step.Rest, cosine);
             clamped = limited != direction;
             direction = limited;
-            direction = ChainCapsuleCollision.Clear(direction, step.Start, step.Length, radius, capsules, out replayedAll);
+            direction = ChainSegmentContact.Clear(particles, step.Particle, direction, step.Length, radius, capsules, out replayedAll);
         }
 
         var end = step.Start + step.Length * direction;

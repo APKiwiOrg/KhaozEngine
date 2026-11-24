@@ -9,32 +9,35 @@ namespace KhaozEngine.Tests.Attachments;
 
 public sealed class ChainVelocityTests(ITestOutputHelper output)
 {
-    [Fact]
-    public void Bend_and_sphere_projections_do_not_add_energy_to_a_single_tip()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Bend_and_sphere_projections_do_not_add_energy_to_a_single_tip(bool strikesMiddle)
     {
-        // #1882: a sideways kick crosses a grazing sphere before reaching the bend limit.
+        // #1882: a sideways kick grazes a sphere before reaching the bend limit.
         const float step = 1f / 120;
         var settings = new ChainSettings(0, 0, 1, 1, 0.23f, 0);
         var definition = Chain(-Vector3.UnitY, settings, Joint(Vector3.Zero));
-        var particles = new ChainParticles(new ChainRig(1, [definition], []));
+        var particles = new ChainParticles(new ChainRig(1, [definition], []), colliderCount: 1);
         particles.SetRest([Matrix4x4.Identity], reset: true);
-        var center = new Vector3(0.1f, -0.8f, 0);
-        ColliderCapsule sphere = new(center, center, 0.2f);
+        var center = strikesMiddle ? new Vector3(-0.08f, -0.58f, 0) : new Vector3(-0.06f, -1.16f, 0);
+        ColliderCapsule sphere = new(center, center, strikesMiddle ? 0.12f : 0.2f);
+        particles.SetCapsuleAxes(0, sphere, sphere);
 
         Predict(Vector3.UnitX * (13 / step));
         Project();
+        bool touched = TouchesSphere(particles.Positions[1]);
         Predict(Vector3.Zero);
         float previousEnergy = SquaredSpeed();
         Assert.True(previousEnergy > 0);
         float largestGain = 0;
-        bool touched = false;
         bool reachedBendLimit = false;
         for (int frame = 0; frame < 8; frame++)
         {
             Project();
             var tip = particles.Positions[1];
             reachedBendLimit |= MathF.Abs(Vector3.Dot(-Vector3.UnitY, tip) - MathF.Cos(settings.AngleLimit)) < 0.0001f;
-            touched |= MathF.Abs(Vector3.Distance(tip, center) - sphere.Radius) < 0.0001f;
+            touched |= TouchesSphere(tip);
             Predict(Vector3.Zero);
             float energy = SquaredSpeed();
             largestGain = MathF.Max(largestGain, energy - previousEnergy);
@@ -49,8 +52,18 @@ public sealed class ChainVelocityTests(ITestOutputHelper output)
         void Project() => ChainConstraints.FollowChain(particles, 0, Matrix4x4.Identity, [sphere], [sphere], settings, step,
             pullTowardRest: true);
 
-        void Predict(Vector3 gravity) => particles.Predict(0, settings, gravity, step,
-            Vector3.Zero, Vector3.Zero, Quaternion.Identity);
+        void Predict(Vector3 gravity)
+        {
+            particles.SnapshotOpening();
+            particles.Predict(0, settings, gravity, step, Vector3.Zero, Vector3.Zero, Quaternion.Identity);
+        }
+
+        bool TouchesSphere(Vector3 tip)
+        {
+            float distance = strikesMiddle ? ChainSegmentContactTests.DistanceToSegment(center, Vector3.Zero, tip)
+                : Vector3.Distance(tip, center);
+            return MathF.Abs(distance - sphere.Radius) < 0.0001f;
+        }
 
         // A force-free prediction reads velocity without counting position corrections as motion.
         float SquaredSpeed() => ((particles.Positions[1] - particles.SubstepStarts[1]) / step).LengthSquared();
@@ -58,7 +71,7 @@ public sealed class ChainVelocityTests(ITestOutputHelper output)
 
     [Theory]
     [InlineData(0, 1)]
-    [InlineData(0.96f, 0.28f)]
+    [InlineData(-0.96f, 0.28f)]
     public void Tip_released_from_sphere_contact_falls_from_rest(float normalX, float normalY)
     {
         // #1882: the gravity held back by a sphere must leave no stored speed on release.
@@ -183,8 +196,10 @@ public sealed class ChainVelocityTests(ITestOutputHelper output)
         Assert.InRange(stoppedPeak, 0, runningPeak);
     }
 
-    [Fact]
-    public void A_moving_capsule_does_not_throw_the_struck_tip_faster_than_it_moved()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_moving_capsule_does_not_throw_the_struck_tip_faster_than_it_moved(bool strikesMiddle)
     {
         const float step = 1f / 120;
         const float speed = 1.2f;
@@ -197,7 +212,8 @@ public sealed class ChainVelocityTests(ITestOutputHelper output)
 
         const int stopFrame = 14;
         const float radius = 0.2f;
-        Vector3 CenterAt(int frame) => new(-0.13f + Math.Min(frame, stopFrame) * (speed * step), -0.81f, 0);
+        Vector3 CenterAt(int frame) =>
+            new(-0.13f + Math.Min(frame, stopFrame) * (speed * step), strikesMiddle ? -0.55f : -1.16f, 0);
 
         for (int frame = 0; frame <= 26; frame++)
         {
@@ -206,13 +222,16 @@ public sealed class ChainVelocityTests(ITestOutputHelper output)
             simulation.Step([anchor], [capsule], anchor, frame == 0 ? 0 : step);
             var tip = Vector3.Transform(-Vector3.UnitY, simulation.JointsFromAnchor[0]);
             int shownFrame = Math.Max(0, frame - 1);
-            touched |= MathF.Abs(Vector3.Distance(tip, CenterAt(shownFrame)) - radius) < 0.0001f;
+            var shownCenter = CenterAt(shownFrame);
+            float distance = strikesMiddle ? ChainSegmentContactTests.DistanceToSegment(shownCenter, Vector3.Zero, tip)
+                : Vector3.Distance(tip, shownCenter);
+            touched |= MathF.Abs(distance - radius) < 0.0001f;
             if (shownFrame > stopFrame)
                 afterStopPeak = MathF.Max(afterStopPeak, Vector3.Distance(tip, previous) / step);
             previous = tip;
         }
 
-        Assert.True(touched, "The capsule must strike the tip.");
+        Assert.True(touched, "The capsule must strike the segment.");
         output.WriteLine($"Capsule {speed:F6} m/s, tip after stop {afterStopPeak:F6} m/s");
         Assert.InRange(afterStopPeak, 0, speed + 0.005f);
     }

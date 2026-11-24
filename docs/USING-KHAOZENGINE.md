@@ -7746,7 +7746,9 @@ optional root `colliders` for capsules contributed by the worn set. Either addit
 A separate body collider file declares capsules against the body's `rig-v1` identity. Capsules name a host skin
 joint and use endpoints and a radius in the body's rest model space. Chains collide with the body and all worn
 set capsules on that wearer. In the bind pose the radius keeps its authored size before wearer scaling.
-During motion it follows the largest axis scale of the composed rest-to-world transform.
+During motion it follows the largest axis scale of the composed rest-to-world transform. A chain's `radius`
+sets extra clearance along every segment, including the last joint to its virtual tip. Soft drapes can come to rest
+against capsules along their lengths.
 The [format 4 reference](../KhaozEngine.Attachments/README.md#format-4) gives the schema and limits.
 
 Publish format 4 after every reader moves to 24.5.0 or later. A 24.4.0 reader raises

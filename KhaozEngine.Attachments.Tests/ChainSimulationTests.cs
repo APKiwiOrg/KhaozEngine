@@ -261,6 +261,10 @@ public class ChainSimulationTests
             Vector3 tip = Tip(simulation);
             Assert.InRange(Clearance(joint, capsule), 0.374f, 4);
             Assert.InRange(Clearance(tip, capsule), 0.374f, 4);
+            // When the capsule reaches the anchored root, only its segment's end can clear.
+            if (Clearance(Vector3.Zero, capsule) >= capsule.Radius + chain.Settings.Radius)
+                Assert.InRange(DistanceToVerticalCapsule(Vector3.Zero, joint, capsule), 0.374f, 4);
+            Assert.InRange(DistanceToVerticalCapsule(joint, tip, capsule), 0.374f, 4);
             Assert.InRange(Vector3.Distance(joint, tip), 0.999f, 1.001f);
         }
     }
@@ -387,7 +391,8 @@ public class ChainSimulationTests
         Vector3 previous = Tip(simulation);
         AssertNear(capsule.Start, previous);
         const int frames = 4;
-        float clearanceAngle = 2 * MathF.Asin(capsule.Radius / 2);
+        // The unit segment reaches the tangent point before its tip.
+        float clearanceAngle = MathF.Asin(capsule.Radius);
         float maximumTravel = 2 * MathF.Sin(clearanceAngle / (2 * frames));
         for (int frame = 0; frame < frames; frame++)
         {
@@ -399,7 +404,7 @@ public class ChainSimulationTests
             previous = shown;
         }
 
-        Assert.InRange(Vector3.Distance(previous, capsule.Start), 0.349f, 0.351f);
+        Assert.InRange(ChainSegmentContactTests.DistanceToSegment(capsule.Start, Vector3.Zero, previous), 0.349f, 0.351f);
     }
 
     [Fact]
@@ -532,6 +537,10 @@ public class ChainSimulationTests
         int warmFrames = bounded ? 20 : 2;
         for (int call = 0; call < warmFrames; call++)
             AdvanceAndCompose();
+        if (!bounded)
+            Assert.InRange(DistanceToVerticalCapsule(output[^1].Translation,
+                Vector3.Transform(Vector3.UnitX, output[^1]), capsules[1]), 0.299f, 0.301f);
+
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (var call = 0; call < 100; call++)
             AdvanceAndCompose();
@@ -626,6 +635,20 @@ public class ChainSimulationTests
 
     private static void AssertNear(Vector3 expected, Vector3 actual, float tolerance = 0.0001f) =>
         Assert.True(Vector3.Distance(expected, actual) <= tolerance, $"Expected {expected}, got {actual}.");
+
+    private static float DistanceToVerticalCapsule(Vector3 start, Vector3 end, ColliderCapsule capsule)
+    {
+        var flatStart = new Vector2(start.X - capsule.Start.X, start.Z - capsule.Start.Z);
+        var flatSegment = new Vector2(end.X - start.X, end.Z - start.Z);
+        float along = flatSegment == Vector2.Zero ? 0 :
+            Math.Clamp(-Vector2.Dot(flatStart, flatSegment) / flatSegment.LengthSquared(), 0, 1);
+        float y = float.Lerp(start.Y, end.Y, along);
+        if (y >= MathF.Min(capsule.Start.Y, capsule.End.Y) && y <= MathF.Max(capsule.Start.Y, capsule.End.Y))
+            return (flatStart + along * flatSegment).Length();
+        return MathF.Min(ChainSegmentContactTests.DistanceToSegment(capsule.Start, start, end),
+            ChainSegmentContactTests.DistanceToSegment(capsule.End, start, end));
+    }
+
 
     private static float DistanceToCapsuleAxis(Vector3 point, ColliderCapsule capsule)
     {

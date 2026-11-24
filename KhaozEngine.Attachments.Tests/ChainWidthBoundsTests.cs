@@ -93,8 +93,8 @@ public sealed class ChainWidthBoundsTests(ITestOutputHelper output)
                     float restLength = rig.SegmentOffset(index).Length();
                     Assert.InRange(MathF.Abs(segment.Length() - restLength), 0, 0.00002f);
 
-                    float distance = Vector3.Distance(center, end);
-                    Assert.True(distance >= clearance - 0.00002f);
+                    float distance = ChainSegmentContactTests.DistanceToSegment(center, start, end);
+                    Assert.True(distance >= clearance - 0.00002f, $"Frame {frame}, chain {chain}, joint {joint}, distance {distance:G9}, start {start}, end {end}.");
                     bool atContact = MathF.Abs(distance - clearance) <= 0.0002f;
                     touched |= atContact;
                     var unswung = rig.RestLocal(index) * parent;
@@ -155,13 +155,13 @@ public sealed class ChainWidthBoundsTests(ITestOutputHelper output)
         Assert.InRange((particles.Velocities[1] + particles.Velocities[3]).Length(), 0, 0.00001f);
     }
 
-    private static (ChainParticles Particles, ChainWidthBounds Bounds) CreateTipPair(float firstTrail)
+    private static (ChainParticles Particles, ChainWidthBounds Bounds) CreateTipPair(float firstTrail, int colliderCount = 0)
     {
         var settings = new ChainSettings(0, 0, 0, 1, MathF.PI, 0);
         ChainRigChain first = new(0, [new(Vector3.Zero, Quaternion.Identity, Vector3.One)], -Vector3.UnitY,
             settings with { Trail = firstTrail });
         var second = first with { Anchor = 1, Settings = settings };
-        var particles = new ChainParticles(new ChainRig(2, [first, second], [new(0, 1) { Stretch = 0.1f }]));
+        var particles = new ChainParticles(new ChainRig(2, [first, second], [new(0, 1) { Stretch = 0.1f }]), colliderCount);
         particles.SetRest([Matrix4x4.Identity, Matrix4x4.CreateTranslation(0.5f, 0, 0)], reset: true);
         var bounds = new ChainWidthBounds([new(new(0, 1, 0), new(1, 3, 2), 0.1f)]);
         return (particles, bounds);
@@ -169,6 +169,7 @@ public sealed class ChainWidthBoundsTests(ITestOutputHelper output)
 
     private static void PredictPair(ChainParticles particles, Vector3 movement, Quaternion turn)
     {
+        particles.SnapshotOpening();
         for (int chain = 0; chain < 2; chain++)
         {
             var rig = particles.Rig;
@@ -291,7 +292,7 @@ public sealed class ChainWidthBoundsTests(ITestOutputHelper output)
     public void A_bounded_tip_does_not_approach_a_capsule_holding_it()
     {
         // #1884: the other tip's escape impulse must not undo the contact stop.
-        var (particles, _) = CreateTipPair(1);
+        var (particles, _) = CreateTipPair(1, colliderCount: 1);
         PredictPair(particles, Vector3.Zero, Quaternion.Identity);
         float y = -MathF.Sqrt(1 - 0.06f * 0.06f);
         particles.Positions[1] = new Vector3(-0.06f, y, 0);
@@ -300,12 +301,15 @@ public sealed class ChainWidthBoundsTests(ITestOutputHelper output)
         const float radius = 0.15f;
         var center = particles.Positions[1] + radius * Vector3.UnitX;
         ColliderCapsule sphere = new(center, center, radius);
+        particles.SetCapsuleAxes(0, sphere, sphere);
         FinishTipPair(particles, [sphere]);
 
         var tip = particles.Positions[1];
-        Assert.InRange(Vector3.Distance(tip, center), radius - 0.00001f, radius + 0.00001f);
-        var segment = Vector3.Normalize(tip - particles.Positions[0]);
-        var normal = Vector3.Normalize(tip - center);
+        var root = particles.Positions[0];
+        var contact = ChainSegmentContactTests.ClosestPointOnSegment(center, root, tip);
+        Assert.InRange(Vector3.Distance(contact, center), radius - 0.00001f, radius + 0.00001f);
+        var segment = Vector3.Normalize(tip - root);
+        var normal = Vector3.Normalize(contact - center);
         var tangent = Vector3.Normalize(normal - Vector3.Dot(normal, segment) * segment);
         Assert.True(Vector3.Dot(particles.Velocities[1], tangent) >= -0.00001f,
             $"The held tip approaches the surface at {Vector3.Dot(particles.Velocities[1], tangent):F6} m/s.");

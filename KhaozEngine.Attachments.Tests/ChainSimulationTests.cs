@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using KhaozEngine.Attachments;
 using Xunit;
 
@@ -143,6 +144,36 @@ public class ChainSimulationTests
                 AssertNear(a, b, 0.00005f);
             }
         }
+    }
+
+    [Fact]
+    public void An_unlinked_chain_keeps_its_pose_when_other_chains_need_a_link_solve()
+    {
+        var linkEnd = Chain(-Vector3.UnitY, Settings with { Gravity = 0 }, Joint(Vector3.Zero));
+        var independent = Chain(Vector3.UnitX, Settings with { Stiffness = 5 },
+            Joint(Vector3.Zero), Joint(Vector3.UnitX)) with { Anchor = 2 };
+        ChainRigChain[] chains = [linkEnd, linkEnd with { Anchor = 1 }, independent];
+        var linked = new ChainSimulation(new ChainRig(3, chains, [new(0, 1)]), 0);
+        var uncoupled = new ChainSimulation(new ChainRig(3, chains, []), 0);
+        var left = Matrix4x4.CreateTranslation(-1, 0, 0);
+        const float stepSeconds = 1f / 120;
+        bool linkChangedPose = false;
+        Assert.Equal(4, linked.Rig.JointCount);
+        Assert.Equal(4, uncoupled.Rig.JointCount);
+
+        for (int frame = 0; frame < 48; frame++)
+        {
+            var right = Matrix4x4.CreateRotationZ(frame * 0.07f);
+            var anchor = Matrix4x4.CreateScale(1.1f, 1.25f, 0.9f) * Matrix4x4.CreateRotationZ(frame * 0.03f);
+            float elapsed = frame == 0 ? 0 : stepSeconds;
+            linked.Step([left, right, anchor], [], Matrix4x4.Identity, elapsed);
+            uncoupled.Step([left, right, anchor], [], Matrix4x4.Identity, elapsed);
+            Assert.True(MemoryMarshal.AsBytes(linked.JointsFromAnchor[2..])
+                .SequenceEqual(MemoryMarshal.AsBytes(uncoupled.JointsFromAnchor[2..])));
+            linkChangedPose |= !linked.JointsFromAnchor[..2].SequenceEqual(uncoupled.JointsFromAnchor[..2]);
+        }
+
+        Assert.True(linkChangedPose);
     }
 
     [Fact]
@@ -514,15 +545,22 @@ public class ChainSimulationTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Warm_step_and_compose_do_not_allocate(bool bounded)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void Warm_step_and_compose_do_not_allocate(bool bounded, bool layered)
     {
-        var simulation = bounded
-            ? new ChainSimulation(ChainSwingFixture.CreateRig(0.12f, wideLimits: true), 2)
-            : Create(Chain(Vector3.UnitX, Settings, Joint(Vector3.Zero), Joint(Vector3.UnitX)), 2);
+        var upper = Chain(Vector3.UnitX, Settings, Joint(Vector3.Zero), Joint(Vector3.UnitX));
+        ColliderCapsule distant = new(new(8, 0, 0), new(8, -1, 0), 0.3f);
+        ColliderCapsule contact = new(new(2, -0.1f, 0), new(2, -1, 0), 0.3f);
+        var lower = Chain(contact.End - contact.Start, Settings with { Gravity = 0, Radius = contact.Radius }, Joint(contact.Start))
+            with { Layer = AttachmentLayer.Armour };
+        var rig = bounded ? ChainSwingFixture.CreateRig(0.12f, wideLimits: true) :
+            layered ? new ChainRig(1, [lower, upper with { Layer = AttachmentLayer.Outerwear }], []) :
+            new ChainRig(1, [upper], []);
+        ColliderCapsule[] capsules = layered ? [distant] : [distant, contact];
+        var simulation = new ChainSimulation(rig, capsules.Length);
         Matrix4x4[] anchors = [Matrix4x4.Identity];
-        ColliderCapsule[] capsules = [new(new(8, 0, 0), new(8, -1, 0), 0.3f), new(new(2, -0.1f, 0), new(2, -1, 0), 0.3f)];
         var output = new Matrix4x4[simulation.Rig.JointCount];
         int frame = 0;
         void AdvanceAndCompose()
@@ -539,7 +577,7 @@ public class ChainSimulationTests
             AdvanceAndCompose();
         if (!bounded)
             Assert.InRange(DistanceToVerticalCapsule(output[^1].Translation,
-                Vector3.Transform(Vector3.UnitX, output[^1]), capsules[1]), 0.299f, 0.301f);
+                Vector3.Transform(Vector3.UnitX, output[^1]), contact), 0.299f, 0.301f);
 
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (var call = 0; call < 100; call++)

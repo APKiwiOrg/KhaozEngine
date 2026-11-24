@@ -3,10 +3,9 @@ using System.Numerics;
 
 namespace KhaozEngine.Attachments;
 
-internal sealed class ChainCapsuleCull
+internal sealed class ChainCapsuleCull(int colliderCount)
 {
-    // Worn motion caps a wearer at 64 colliders. Standalone simulations may supply more.
-    private readonly int[] _indices = new int[64];
+    private readonly int[] _indices = new int[colliderCount];
     private ChainCapsuleCollision.Axis[]? _axes;
 
     // The squared-length check leaves room for its own float rounding in this upper bound.
@@ -79,6 +78,7 @@ internal readonly ref struct ChainCapsuleCandidates
     }
 
     internal int Count { get; }
+    internal int ObstacleCount => _colliders.Length;
     internal bool IsFiltered => Count != _colliders.Length;
     internal ChainCapsuleCandidates All => new(_colliders, _axes);
     internal ChainCapsuleCandidates WithIndices(ReadOnlySpan<int> indices) => new(_colliders, _axes, indices);

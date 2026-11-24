@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using System.Text.Json.Nodes;
 using KhaozEngine.Attachments;
 using KhaozEngine.Attachments.Render3D;
 using KhaozEngine.Render3D;
@@ -262,6 +263,58 @@ public sealed class WornMotionTests
         Assert.Throws<ArgumentOutOfRangeException>(() => noChain.Tune(0, ChainPartId, 0, FallSettings));
         Assert.Throws<ArgumentOutOfRangeException>(() => motion.Tune(2, ChainPartId, 0, FallSettings));
         Assert.Throws<ArgumentOutOfRangeException>(() => motion.Tune(1, ChainPartId, 1, FallSettings));
+    }
+
+    [Fact]
+    public void Outfit_motion_keeps_an_outer_chain_outside_an_inner_sets_chain()
+    {
+        using var rig = new OutfitRig();
+        var upperMesh = rig.Source.Mesh("outer.glb", SkinnedAttachmentGlbFixture.Chained().Build());
+        var upperPart = (SkinnedAttachmentPartDefinition)Assert.Single(ChainSet(upperMesh).Parts);
+        var outer = rig.Wear("outer.json", new([upperPart], AttachmentLayer.Outerwear, []));
+
+        var support = SkinnedAttachmentGlbFixture.Chained();
+        // Dyadic offsets keep the transverse segment axis exact through the model-space round trip.
+        support.Nodes[2]!["translation"] = new JsonArray(.5f, -.125f, -.5f);
+        support.Nodes[3]!["translation"] = new JsonArray(0, 0, 1);
+        support.SetInverseBind(0, Matrix4x4.CreateTranslation(-.5f, -.875f, -.5f));
+        support.SetInverseBind(2, Matrix4x4.CreateTranslation(-.5f, -.875f, .5f));
+        var lowerMesh = rig.Source.Mesh("inner.glb", support.Build());
+        const float lowerRadius = .05f;
+        var lowerChain = new ChainDefinition(["left0", "left1"], .5f * Vector3.UnitZ,
+            FallSettings with { Gravity = 0, Radius = lowerRadius });
+        var lowerPart = upperPart with { Mesh = lowerMesh, Motion = new ChainMotionDefinition([lowerChain], []) };
+        var inner = rig.Wear("inner.json", new([lowerPart], AttachmentLayer.Armour, []));
+        using var outfit = rig.Cache.BindOutfit(rig.BodyRegions(new RegionRun(0, 4)), [outer, inner]);
+        Assert.Equal(1, outfit.DrawCount(0));
+        Assert.Equal(1, outfit.DrawCount(1));
+        var motion = outfit.CreateMotion(null);
+        var upperPose = Assert.Single(rig.Draws(outer)).BoneMatrices.ToArray();
+        var lowerPose = Assert.Single(rig.Draws(inner)).BoneMatrices.ToArray();
+        float minimum = float.PositiveInfinity;
+        float radius = lowerRadius + FallSettings.Radius;
+
+        for (int frame = 0; frame < 90; frame++)
+        {
+            Step(rig, motion);
+            motion.CopyChainPalette(0, ChainPartId, rig.Palette, upperPose);
+            motion.CopyChainPalette(1, ChainPartId, rig.Palette, lowerPose);
+            // The lower segment spans the upper chain's XY plane perpendicularly.
+            var lowerRoot = lowerPose[2].Translation;
+            var lowerNext = lowerPose[0].Translation;
+            Assert.InRange(lowerRoot.Z, -.501f, -.499f);
+            Assert.InRange(lowerNext.Z, .499f, .501f);
+            Assert.Equal(new Vector2(lowerRoot.X, lowerRoot.Y), new Vector2(lowerNext.X, lowerNext.Y));
+            var center = new Vector3(lowerRoot.X, lowerRoot.Y, 0);
+            var root = upperPose[2].Translation;
+            var segment = upperPose[0].Translation - root;
+            Assert.InRange(MathF.Max(MathF.Abs(root.Z), MathF.Abs(upperPose[0].Translation.Z)), 0, .000001f);
+            float along = Math.Clamp(Vector3.Dot(center - root, segment) / segment.LengthSquared(), 0, 1);
+            float clearance = Vector3.Distance(center, root + segment * along);
+            minimum = MathF.Min(minimum, clearance);
+        }
+
+        Assert.InRange(minimum, radius - .0002f, radius + .0002f);
     }
 
     [Fact]

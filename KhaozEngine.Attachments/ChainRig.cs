@@ -32,7 +32,11 @@ public readonly record struct ChainJointRest(Vector3 Translation, Quaternion Rot
 }
 
 /// <summary>An ordered chain on an anchor, with a virtual tip in its last joint's local frame.</summary>
-public sealed record ChainRigChain(int Anchor, IReadOnlyList<ChainJointRest> Joints, Vector3 Tip, ChainSettings Settings);
+public sealed record ChainRigChain(int Anchor, IReadOnlyList<ChainJointRest> Joints, Vector3 Tip, ChainSettings Settings)
+{
+    /// <summary>The wearer's attachment layer, or null if the chain neither gives nor takes layered contact.</summary>
+    public AttachmentLayer? Layer { get; init; }
+}
 
 /// <summary>The immutable rest data and output layout of a collection of chains.</summary>
 public sealed class ChainRig
@@ -65,6 +69,9 @@ public sealed class ChainRig
                 throw new ArgumentException($"Chain {chain} must have a finite nonzero tip.", nameof(chains));
             if (definition.Settings.FirstInvalidMember() is { } member)
                 throw new ArgumentException($"Chain {chain} has an out-of-range {member}.", nameof(chains));
+
+            if (definition.Layer is { } layer && !Enum.IsDefined(layer))
+                throw new ArgumentException($"Chain {chain} must name a defined attachment layer.", nameof(chains));
 
             snapshot[chain] = definition with { Joints = ImmutableArray.CreateRange(definition.Joints.ToArray()) };
             _firstJoints[chain] = jointCount;
@@ -109,6 +116,8 @@ public sealed class ChainRig
         {
             if ((uint)link.First >= (uint)snapshot.Length || (uint)link.Second >= (uint)snapshot.Length || link.First == link.Second)
                 throw new ArgumentException("A link must name two distinct existing chains.", nameof(links));
+            if (snapshot[link.First].Layer != snapshot[link.Second].Layer)
+                throw new ArgumentException("A link must join two chains of the same layer.", nameof(links));
             if (link.Stretch is { } stretch && !ChainLink.IsValidStretch(stretch))
                 throw new ArgumentException("A link's stretch must be finite, greater than zero and at most one.", nameof(links));
             if (!pairs.Add((Math.Min(link.First, link.Second), Math.Max(link.First, link.Second))))

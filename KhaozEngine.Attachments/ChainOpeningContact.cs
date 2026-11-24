@@ -11,13 +11,13 @@ internal readonly ref struct ChainOpeningContact
     private readonly ReadOnlySpan<Axis> _axes;
     private readonly Span<Offset?> _residuals;
 
-    internal ChainOpeningContact(ChainParticles particles, int parent)
+    internal ChainOpeningContact(ChainParticles particles, int parent, int obstacleCount)
     {
         var root = new Offset(particles.OpeningPositions[parent]);
         var tip = new Offset(particles.OpeningPositions[parent + 1]);
         _segment = new ChainSegmentContact.Segment(root, tip - root);
         _axes = particles.PreviousCapsuleAxes;
-        _residuals = particles.OpeningResiduals;
+        _residuals = particles.OpeningResiduals.AsSpan(0, obstacleCount);
         _residuals.Clear();
     }
 

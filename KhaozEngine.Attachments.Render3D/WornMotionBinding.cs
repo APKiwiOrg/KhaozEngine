@@ -49,7 +49,7 @@ internal static class WornMotionBinding
                         anchors.Add(chain.AnchorBone, anchor);
                         anchorBones.Add(chain.AnchorBone);
                     }
-                    chains.Add(new ChainRigChain(anchor, chain.RestLocals, chain.Tip, chain.Settings));
+                    chains.Add(new ChainRigChain(anchor, chain.RestLocals, chain.Tip, chain.Settings) { Layer = set.Definition.Layer });
                 }
                 foreach (ChainLink link in motion.Links)
                     links.Add(new ChainLink(start + link.First, start + link.Second) { Stretch = motion.LinkStretch });

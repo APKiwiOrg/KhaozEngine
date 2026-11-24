@@ -265,7 +265,7 @@ public sealed class ChainWidthBoundsTests(ITestOutputHelper output)
         var tilt = new Vector3(MathF.Sin(0.35f), -MathF.Cos(0.35f), 0);
         particles.Positions[5] = particles.Positions[4] + 0.5f * tilt;
         particles.Positions[6] = particles.Positions[5] + 0.5f * tilt;
-        new ChainLinks(rig).FinishStep(particles, anchors, [], [], [settings, settings, settings], StepSeconds);
+        new ChainLinks(rig, rig.Links, 0).FinishStep(particles, anchors, [], [], [settings, settings, settings], StepSeconds);
 
         Assert.InRange(Vector3.Distance(particles.Positions[1], particles.Positions[3]), 0.447f, 0.553f);
         Assert.InRange(Vector3.Distance(particles.Positions[1], particles.Positions[6]), 0.447f, 0.553f);
@@ -338,7 +338,7 @@ public sealed class ChainWidthBoundsTests(ITestOutputHelper output)
     }
 
     private static void FinishTipPair(ChainParticles particles, ReadOnlySpan<ColliderCapsule> colliders) =>
-        new ChainLinks(particles.Rig).FinishStep(particles, [Matrix4x4.Identity, Matrix4x4.CreateTranslation(0.5f, 0, 0)],
+        new ChainLinks(particles.Rig, particles.Rig.Links, colliders.Length).FinishStep(particles, [Matrix4x4.Identity, Matrix4x4.CreateTranslation(0.5f, 0, 0)],
             colliders, colliders, [particles.Rig.Chains[0].Settings, particles.Rig.Chains[1].Settings], StepSeconds);
 
     private static Vector3 Particle(ChainRig rig, ReadOnlySpan<Matrix4x4> frames, int chain, int joint)

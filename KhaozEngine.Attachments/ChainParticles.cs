@@ -20,6 +20,7 @@ internal sealed class ChainParticles
         PreviousAnchorRotations = new Quaternion[rig.AnchorCount];
         StepAnchorRotations = new Quaternion[rig.AnchorCount];
         StepCarries = new ChainCarry[rig.Chains.Count];
+        CapsuleCull = new ChainCapsuleCull(colliderCount);
         PlacementCull = new ChainPlacementCull(placementRows, colliderCount);
         CapsuleAxes = new ChainCapsuleCollision.Axis[colliderCount];
         PreviousCapsuleAxes = new ChainCapsuleCollision.Axis[colliderCount];
@@ -38,7 +39,7 @@ internal sealed class ChainParticles
     internal Quaternion[] PreviousAnchorRotations { get; private set; }
     internal Quaternion[] StepAnchorRotations { get; private set; }
     internal ChainCarry[] StepCarries { get; }
-    internal ChainCapsuleCull CapsuleCull { get; } = new();
+    internal ChainCapsuleCull CapsuleCull { get; }
     internal ChainPlacementCull PlacementCull { get; }
     internal ChainCapsuleCollision.Axis[] CapsuleAxes { get; }
     internal ChainCapsuleCollision.Axis[] PreviousCapsuleAxes { get; }

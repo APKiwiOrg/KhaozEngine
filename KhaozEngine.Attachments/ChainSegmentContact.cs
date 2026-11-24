@@ -41,7 +41,7 @@ internal static class ChainSegmentContact
         if (placementCount == 0)
             return direction;
 
-        var opening = new ChainOpeningContact(particles, parent);
+        var opening = new ChainOpeningContact(particles, parent, capsules.ObstacleCount);
         var initial = direction;
         direction = ClearPasses(start, direction, length, chainRadius, placement, opening, out bool outsideReach);
         if (!outsideReach)

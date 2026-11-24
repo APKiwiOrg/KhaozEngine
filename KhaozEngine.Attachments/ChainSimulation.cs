@@ -7,7 +7,7 @@ namespace KhaozEngine.Attachments;
 public sealed class ChainSimulation
 {
     private readonly ChainParticles _particles;
-    private readonly ChainLinks _links;
+    private readonly ChainSolveTiers _tiers;
     private readonly ChainPresentationBlend _blend;
     private readonly ChainStepPresentation _stepPresentation;
     private ChainStepClock _clock;
@@ -39,8 +39,8 @@ public sealed class ChainSimulation
         Rig = rig;
         ColliderCount = colliderCount;
         Options = options;
-        _links = new ChainLinks(rig);
-        _particles = new ChainParticles(rig, colliderCount, _links.PlacementRows);
+        _tiers = new ChainSolveTiers(rig, colliderCount);
+        _particles = new ChainParticles(rig, _tiers.ObstacleCount, _tiers.PlacementRows);
         var hierarchy = new ChainPresentationHierarchy(rig);
         _blend = new ChainPresentationBlend(rig, hierarchy);
         _stepPresentation = new ChainStepPresentation(rig, hierarchy);
@@ -56,8 +56,8 @@ public sealed class ChainSimulation
         _previousAnchors = new ChainPose[rig.AnchorCount];
         _frameAnchors = new ChainPose[rig.AnchorCount];
         _previousFrameColliders = new ColliderCapsule[colliderCount];
-        _stepColliders = new ColliderCapsule[colliderCount];
-        _previousStepColliders = new ColliderCapsule[colliderCount];
+        _stepColliders = new ColliderCapsule[_tiers.ObstacleCount];
+        _previousStepColliders = new ColliderCapsule[_tiers.ObstacleCount];
     }
 
     public ChainRig Rig { get; }
@@ -222,15 +222,8 @@ public sealed class ChainSimulation
         var turn = WearerTurn(rotation);
         _particles.SetRest(_stepAnchors, reset: false);
 
-        for (int chain = 0; chain < _settings.Length; chain++)
-        {
-            int anchor = Rig.Chains[chain].Anchor;
-            _particles.Predict(chain, _settings[chain], Options.Gravity, seconds, _stepWearerPosition, position, turn);
-            ChainConstraints.FollowChain(_particles, chain, _stepAnchors[anchor],
-                _stepColliders, _previousStepColliders, _settings[chain], seconds, pullTowardRest: true);
-        }
-
-        _links.FinishStep(_particles, _stepAnchors, _stepColliders, _previousStepColliders, _settings, seconds);
+        _tiers.Solve(_particles, _stepAnchors, _stepColliders, _previousStepColliders,
+            _settings, Options.Gravity, seconds, _stepWearerPosition, position, turn);
 
         _stepWearerPosition = position;
         _stepWearerRotation = rotation;

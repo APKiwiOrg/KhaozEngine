@@ -14,20 +14,25 @@ public sealed class ChainCapsuleCullTests
     [InlineData(0, true)]
     [InlineData(0.00005f, true)]
     [InlineData(0.125f, false)]
-    public void Chain_keeps_capsules_that_overlap_reach_or_can_stop_contact_velocity(float beyondReach, bool kept)
+    [InlineData(0, true, 80)]
+    public void Chain_keeps_capsules_that_overlap_reach_or_can_stop_contact_velocity(float beyondReach, bool kept,
+        int colliderCount = 1)
     {
-        var cull = new ChainCapsuleCull();
+        var cull = new ChainCapsuleCull(colliderCount);
         float[] lengths = [0.5f, 0.25f];
         const float chainRadius = 0.0625f, capsuleRadius = 0.125f;
         var root = new Vector3(2, 1, -1);
         float boundary = lengths[0] + lengths[1] + chainRadius + capsuleRadius;
         var axisCenter = root + Vector3.UnitX * (boundary + beyondReach);
-        ColliderCapsule[] capsules = [new(axisCenter - Vector3.UnitY, axisCenter + Vector3.UnitY, capsuleRadius)];
+        var capsules = new ColliderCapsule[colliderCount];
+        var far = root + 8 * Vector3.UnitX;
+        Array.Fill(capsules, new ColliderCapsule(far, far, capsuleRadius));
+        capsules[^1] = new(axisCenter - Vector3.UnitY, axisCenter + Vector3.UnitY, capsuleRadius);
 
         var candidates = cull.Select(root, lengths, chainRadius, capsules);
 
         Assert.Equal(kept ? 1 : 0, candidates.Count);
-        if (kept) Assert.Equal(0, candidates.OriginalIndex(0));
+        if (kept) Assert.Equal(colliderCount - 1, candidates.OriginalIndex(0));
     }
 
     [Theory]
@@ -82,7 +87,7 @@ public sealed class ChainCapsuleCullTests
         var near = new Vector3(0.875f, 0, 0);
         var far = new Vector3(1.5f, 0.125f, 0);
         ColliderCapsule[] capsules = [new(near, near, 0.25f), new(far, far, 0.25f)];
-        var kept = new ChainCapsuleCull().Select(Vector3.Zero, [chain.Tip.Length()], chain.Settings.Radius, capsules);
+        var kept = new ChainCapsuleCull(capsules.Length).Select(Vector3.Zero, [chain.Tip.Length()], chain.Settings.Radius, capsules);
         Assert.Equal(1, kept.Count);
         Assert.Equal(0, kept.OriginalIndex(0));
 

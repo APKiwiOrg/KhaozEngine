@@ -314,9 +314,10 @@ is alive. A bound set or outfit refuses colliders loaded for another skeleton in
 `BodyCollidersMismatch`. An outfit also compares the file's rig with its body region map.
 
 Call `outfit.CreateMotion(bodyColliders, options)` or `bound.CreateMotion(bodyColliders, options)`
-once per wearer. The motion combines the visible chains on their distinct host anchors and copies
-each part's [format 6 `linkStretch`](../KhaozEngine.Attachments/README.md#format-6) to its rig links.
-It uses capsules from the body file and all worn sets, with a limit of 64 per wearer. Passing null
+once per wearer. The motion combines the visible chains in worn order, copies each set's layer to its chains
+and copies each part's [format 6 `linkStretch`](../KhaozEngine.Attachments/README.md#format-6) to its rig links.
+Within one wearer, chains clear segments of strictly lower layers. The motion uses authored capsules from the
+body file and all worn sets, with a limit of 64 authored capsules per wearer. Passing null
 for body colliders still includes worn set capsules. In each frame, the host inverse bind, current
 joint matrix and model compose the rest-to-world transform. It places the endpoints and scales
 the radius by its largest axis scale. The bind pose preserves the authored radius before wearer

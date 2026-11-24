@@ -111,6 +111,13 @@ to opposite sides and the straight path between them crosses the capsule. A caps
 of it even when their closing poses are already separated. If the capsule is beyond the segment's reach at closing,
 there is no correction.
 
+### 8. Chains push outward by layer
+
+Solve a wearer's chains from the innermost layer outward. A lower layer's solved segments act as moving capsules
+for upper layers. This lets a swinging strap push the next garment away without changing the strap's motion.
+Mutual contact would need masses that the format does not carry and iteration between both layers during the
+root-to-tip pass. Those belong to the cloth solver ([#1870](https://github.com/APKiwiOrg/KhaozEngine/issues/1870)).
+
 ## Chains
 
 A chain is an ordered list of joints in a skinned part's own skin, from the joint nearest the body to the tip.
@@ -170,7 +177,10 @@ at bind, so the radius there is the authored radius before wearer scaling.
 - A worn set may add colliders while it is worn, so outerwear clears the armour under it. They use the same space
   and bind the same way.
 - Every chain of a wearer collides with every collider of that wearer, the body's and those of all its worn sets.
-- Chains do not collide with each other or with other wearers.
+- Each segment in a strictly lower layer on the same wearer acts as a capsule. Its axis joins the two solved
+  particles, from the anchored root through the joints to the virtual tip. Its radius is the lower chain's radius.
+  The previous axis joins the same particles at the substep opening, so contact sees the lower chain's motion.
+  Chains in the same layer, unlayered chains and chains on different wearers never meet through layered contact.
 
 Caps bound the cost and are refused past: 32 colliders in a body file, 8 in a worn set and 64 in one wearer's
 motion. A part holds at most 32 chains and 64 links, and a chain at most 16 joints. The garment skin keeps its 128
@@ -185,11 +195,17 @@ with older time dropped. The anchors, colliders and wearer are interpolated at e
 frame's poses and this frame's. Dropped time is crossed by the wearer's trail carry alone, which moves positions and
 leaves velocities untouched, and the first kept step measures capsule motion, the anchor's turn and the first joint's
 motion from its own opening poses. Measuring them from the last step before the dropped time divided all the skipped
-motion by one step, so a slow capsule could throw a tip at many times its own speed. Within each step of length `h`:
+motion by one step, so a slow capsule could throw a tip at many times its own speed.
 
-1. **Trail.** Snapshot the opening positions before carrying. Every particle's position and velocity move with `(1 - trail)` of the wearer's rigid movement over the
-   step, which starts from the previous step's wearer pose, sometimes in the previous frame. Velocities turn with the
-   carried turn.
+Each step snapshots the opening positions before carrying and prepares the interpolated capsules. It then solves
+the unlayered tier first, if present, followed by occupied layers in ascending order. All chains of a tier see the
+same obstacles, starting with the body and worn set capsules. Once the tier finishes the steps below, its solved
+segments and their opening poses are appended for the higher tiers if the tier has a layer. The unlayered tier
+sees only body and worn set capsules.
+
+1. **Trail.** Every particle's position and velocity move with `(1 - trail)` of the wearer's rigid movement over the
+   step of length `h`, which starts from the previous step's wearer pose, sometimes in the previous frame. Velocities
+   turn with the carried turn.
 2. **Predict.** Velocity is damped by `exp(-damping * h)` and gains gravity times `h`. The position moves by the damped
    velocity times `h` plus gravity's `a * h^2 / 2`, so a chain released from rest falls exactly as constant
    acceleration predicts.
@@ -225,8 +241,9 @@ motion by one step, so a slow capsule could throw a tip at many times its own sp
    - The joint's rotation is the swing that turns its rest direction onto the simulated one, applied to its unswung
      rotation, which keeps the animation's twist.
 4. **Links.** Every linked pair reads the same snapshot, and each particle takes the mean of its pairs' midpoint
-   corrections, so a particle in several links never takes a stiffer step and the update stays stable. Then a second
-   root to tip pass without the stiffness spring restores the bend limit, collisions and lengths.
+   corrections, so a particle in several links never takes a stiffer step and the update stays stable. A second
+   root-to-tip pass without the stiffness spring restores the bend limit, collisions and lengths for chains moved by
+   a link spring.
 5. **Width bound.** Chains joined by links of a part that states `linkStretch` run that second pass together, depth by
    depth. Each depth's particles are placed from their final parents. Bound pairs at that depth then move both
    particles on their own length spheres toward the band. The first sweep uses the position solve's rounding
@@ -256,9 +273,9 @@ endpoint, weighted by the contact fraction. This accounts for coarse float spaci
 near-parent corrections near their tangent cone. Each chain can skip capsules farther from its first joint than
 the chain's reach plus both radii,
 the contact tolerance and a rounding margin far above double precision error. A correction that
-would leave that reach replays the joint against every capsule, so skipping preserves the result. A standalone
-simulation with more than 64 capsules, or a reach too large to bound safely, skips the per-chain reach test. The
-next filter compares each placed parent's reach on its length sphere, including the chain radius and contact
+would leave that reach replays the joint against every capsule, so skipping preserves the result. The reach test
+skips filtering when the reach is too large to bound safely. The next filter compares each placed parent's reach
+on its length sphere, including the chain radius and contact
 tolerance, with each capsule's swept bounding sphere in float. The swept sphere encloses both capsule poses so
 a crossing can still be tested. Each placement reuses the selected candidates for its position passes and
 velocity constraint. Segment lengths come from this step's rest hang, so a scaled wearer keeps its proportions.
@@ -400,16 +417,18 @@ Its canonical bytes and SHA-256 follow the region map's rules.
 - `ColliderDefinition`, `AttachmentSetDefinition.Colliders` and a constructor overload that takes them.
 - `BodyColliderSet`, `BodyCollidersJson`, `BodyCollidersRefusal` and `BodyCollidersDataException`.
 - `ChainRig` (immutable rest data for one wearer's chains), `ChainSimulation` (one wearer's particles, allocated once)
-  and `ChainSimulationOptions`. Plain numbers go in and joint frames come out, so a tool can drive it from exported
-  poses.
+  and `ChainSimulationOptions`. `ChainRigChain.Layer` is init only and null for a chain that neither gives nor takes
+  layered contact. A rig refuses an undefined layer with `ArgumentException` naming `chains` and a link between
+  different layers with `ArgumentException` naming `links`. Plain numbers go in and joint frames come out, so a tool
+  can drive it from exported poses.
 - `MotionLevel` (`Simulated`, `Held`) and `MotionLevels.Assign`.
 
 `KhaozEngine.Attachments.Render3D`:
 
 - `AttachmentSetCache.GetBodyColliders(key, expectedSha256, bodyRigIdentity, hostMesh)` returns `LoadedBodyColliders`.
 - `BoundOutfit.CreateMotion` and `BoundAttachmentSet.CreateMotion` take the body colliders, or none, and options, and
-  return a `WornMotion`. They require collider data loaded for the binding's skeleton instance. With no body
-  colliders the chains collide with worn set colliders only.
+  return a `WornMotion`. They require supplied body collider data to belong to the binding's skeleton instance.
+  Worn set capsules and lower chain segments still contribute when there are no body colliders.
 - `WornMotion.Step(skeleton, palette, model, deltaSeconds, level)`, `Reset()`, and `Tune(wornIndex, partId, chain, settings)`
   for a live tuner.
 - Overloads of `BoundOutfit.WriteDraws` and `QueueOutline`, and of `BoundAttachmentSet.WriteDraws`, `Queue` and
@@ -423,8 +442,8 @@ Its canonical bytes and SHA-256 follow the region map's rules.
 ## Binding and drawing
 
 - **Binding.** `Bind` resolves garment chain joints and host anchors and checks each chain's shape and inverse
-  binds. `CreateMotion` combines the visible chains across worn sets, resolves colliders against the host skin and
-  allocates every buffer the wearer needs.
+  binds. `CreateMotion` combines the visible chains in worn order and copies each set's layer to its chains.
+  It resolves authored colliders against the host skin and allocates every buffer the wearer needs.
 - **Frame order.** Animate the body, step the motion once, then write draws and outlines through the motion as often
   as needed. Draw calls only read the motion, so a draw and an outline always agree.
 - **Palettes.** A chained part's palette stays in garment skin order. Host joints come from the host palette as
@@ -481,12 +500,14 @@ The wearables limits are 32 wearers, at most 2 ms added CPU preparation, no mana
 1.3 ms added GPU time at 32 characters on a T4.
 
 - CPU: a cloak of five chains of five joints and four strap tails of three joints has 37 movable points, including
-  the tips. Each step runs a root-to-tip solve against capsules within each chain's reach. When link springs move
-  particles, chains outside bounded groups get a second pass. Bounded groups always get a second pass by depth.
+  the tips. Each step runs a root-to-tip solve against capsules within each chain's reach. Outside bounded
+  groups, only chains moved by link springs get a second pass. Bounded groups always get a second pass by depth.
   Each depth and the tip group run up to eight position sweeps over their bounded pairs, recheck contact and bends
   for moved points, then apply the velocity constraints. A reach test selects candidates once per chain per pass,
   with a full capsule replay if a contact correction leaves the conservative reach. The cull and both contact
-  passes share the capsule axes and swept bounds prepared once per step. Each placement runs the float filter
+  passes share the capsule axes and swept bounds. Authored capsules are prepared once per step. Lower-tier
+  segments are prepared once after their tier finishes, in buffers sized for the most obstacles any tier sees.
+  Each placement runs the float filter
   before any double precision contact query. Immediate consumers share one candidate row. The width pass
   reuses one row per chain in the largest bound group so it can finish a depth's velocity constraints after solving
   width. If that scratch cannot be represented or allocated, the solve uses the chain candidate list directly.
@@ -559,6 +580,10 @@ All headless, on synthetic skeletons built in code.
   A capsule that crosses a segment within one step pushes it ahead. Bends stay within the limit except where
   capsule clearance takes precedence. Disabling the placement filter preserves every joint frame bit, including
   for very long axes. A diagnostic counts segment-axis queries per wearer step with the filter enabled and disabled.
+  A sweeping lower chain pushes an upper chain, including across a full crossing in one step. The lower chain's
+  frames match a run without the upper chain bit for bit. Same-layer and unlayered chains pass through each other.
+  A soft upper chain settles on a still lower chain at fixed and uneven frame times. Layered contact allocates
+  nothing once warm.
   Trail 0 keeps the chain's shape in the wearer's space while the wearer moves steadily, and trail 1 lags it. A hold and a resume move no joint further in a frame than the blend
   allows. Linked chains keep their spacing when a collider pushes one. Nothing allocates once warm.
 - **Velocity rule.** A one joint chain on a still anchor, with no spring or gravity, sent into its limit and a capsule
@@ -580,8 +605,9 @@ All headless, on synthetic skeletons built in code.
   differs only in the broken rule. Format 1 to 5 bytes and hashes are unchanged.
 - **Binding and draws.** A chained garment binds and draws. Each binding refusal is reached. Without a motion, chain
   joints sit at their rest hang. After steps the palette's chain joints move and its host joints do not. Draws and
-  outlines read the same palette. A motion from another outfit refuses. Grown bounds contain the reach. Steps and
-  draws allocate nothing once warm.
+  outlines read the same palette. An outfit with two worn layers keeps the upper chain's drawn segment outside
+  the lower chain. A motion from another outfit refuses. Grown bounds contain the reach. Steps and draws allocate
+  nothing once warm.
 - **Coverage claim.** A claim that rests only on swinging triangles is reported uncovered. A part with motion
   and no vertex mask is refused.
 - **Byte loading.** The byte entries match the path entries for a GLB with embedded images and refuse a relative path
@@ -589,10 +615,10 @@ All headless, on synthetic skeletons built in code.
 
 ## Not supported
 
-The chain solver has no cloth, live reshape or wind input. Links constrain spacing within a part, with no
-chain-to-chain contact. `WornMotion` takes only body and
-worn set capsules and has no ground query. Rigid attachments bind to host joints, and cannot bind to chain joints
-or follow a bending surface. Skin a hanging rigid piece to a one-joint chain to give it swing.
+The chain solver has no cloth, live reshape or wind input. Links constrain spacing within a part. Layered
+contact works along chain segments on one wearer. `WornMotion` has no ground query. Rigid attachments bind to host
+joints and cannot bind to chain joints or follow a bending surface. Skin a hanging rigid piece to a one-joint chain
+to give it swing.
 
 ## Signatures corrected against the code
 

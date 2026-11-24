@@ -25,6 +25,9 @@ public class ChainRigTests
     [InlineData("trail")]
     [InlineData("angleLimit")]
     [InlineData("radius")]
+    [InlineData("undefined layer")]
+    [InlineData("different layers")]
+    [InlineData("layer linked to null")]
     [InlineData("missing chain")]
     [InlineData("self link")]
     [InlineData("duplicate link")]
@@ -37,6 +40,8 @@ public class ChainRigTests
     {
         var joint = Joint(Vector3.Zero);
         var chain = Chain(Vector3.UnitY, Settings, joint);
+        if (invalid is "undefined layer" or "different layers" or "layer linked to null")
+            chain = chain with { Layer = AttachmentLayer.Armour };
         ChainRig Build(bool change)
         {
             var chosen = change ? invalid : "";
@@ -56,6 +61,9 @@ public class ChainRigTests
                 "trail" => chain with { Settings = Settings with { Trail = 1.01f } },
                 "angleLimit" => chain with { Settings = Settings with { AngleLimit = 0 } },
                 "radius" => chain with { Settings = Settings with { Radius = -1 } },
+                "undefined layer" => chain with { Layer = (AttachmentLayer)255 },
+                "different layers" => chain with { Layer = AttachmentLayer.Outerwear },
+                "layer linked to null" => chain with { Layer = null },
                 _ => chain,
             };
             var firstLink = new ChainLink(0, 1) { Stretch = invalid == "link stretch" ? (change ? stretch : 1f) : null };
@@ -74,7 +82,10 @@ public class ChainRigTests
 
         Assert.Equal(invalid == "anchor count" ? 0 : 3, Build(false).JointCount);
         var error = Assert.ThrowsAny<ArgumentException>(() => Build(true));
-        if (invalid == "link stretch") Assert.Equal("links", error.ParamName);
+        if (invalid is "link stretch" or "different layers" or "layer linked to null")
+            Assert.Equal("links", error.ParamName);
+        if (invalid == "undefined layer")
+            Assert.Equal("chains", error.ParamName);
     }
 
     [Fact]

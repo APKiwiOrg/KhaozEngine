@@ -10,17 +10,22 @@ internal sealed class ChainLinks
     private readonly (int First, int Second)[] _pairs;
     private readonly Vector3[] _corrections;
     private readonly int[] _degrees;
+    private readonly int[] _linkedChains;
+    private readonly bool[] _moved;
     private readonly ChainBoundGroups _boundGroups;
 
-    internal ChainLinks(ChainRig rig)
+    internal ChainLinks(ChainRig rig, IReadOnlyList<ChainLink> links, int colliderCount)
     {
-        int capacity = rig.Links.Count == 0 ? 0 : checked(rig.JointCount + rig.Chains.Count);
+        int capacity = links.Count == 0 ? 0 : checked(rig.JointCount + rig.Chains.Count);
         _corrections = new Vector3[capacity];
         _degrees = new int[capacity];
         var pairs = new List<(int, int)>();
         var widthPairs = new List<ChainWidthBounds.Pair>();
-        foreach (var link in rig.Links)
+        var linkedChains = new SortedSet<int>();
+        foreach (var link in links)
         {
+            linkedChains.Add(link.First);
+            linkedChains.Add(link.Second);
             int firstCount = rig.Chains[link.First].Joints.Count;
             int secondCount = rig.Chains[link.Second].Joints.Count;
             int first = rig.FirstJoint(link.First) + link.First;
@@ -41,15 +46,18 @@ internal sealed class ChainLinks
         }
 
         _pairs = pairs.ToArray();
-        _boundGroups = new ChainBoundGroups(rig, widthPairs);
+        _linkedChains = [.. linkedChains];
+        _moved = new bool[_linkedChains.Length];
+        _boundGroups = new ChainBoundGroups(rig, widthPairs, colliderCount);
     }
 
     internal int PlacementRows => _boundGroups.PlacementRows;
 
-    internal bool Apply(ChainParticles particles, float seconds)
+    private void Apply(ChainParticles particles, float seconds)
     {
+        Array.Clear(_moved);
         if (_pairs.Length == 0 || seconds == 0)
-            return false;
+            return;
 
         Array.Clear(_corrections);
         float halfWeight = 0.5f * ChainMath.MidpointSpringWeight(LinkFrequency, seconds);
@@ -67,34 +75,38 @@ internal sealed class ChainLinks
             _corrections[second] -= correction;
         }
 
-        bool moved = false;
-        for (int particle = 0; particle < _corrections.Length; particle++)
+        var rig = particles.Rig;
+        for (int index = 0; index < _linkedChains.Length; index++)
         {
-            if (_corrections[particle] == Vector3.Zero)
-                continue;
+            int chain = _linkedChains[index];
+            int root = rig.FirstJoint(chain) + chain;
+            int tip = root + rig.Chains[chain].Joints.Count;
+            for (int particle = root + 1; particle <= tip; particle++)
+            {
+                if (_corrections[particle] == Vector3.Zero)
+                    continue;
 
-            // Each pair reads the same snapshot. Averaging keeps shared particles from
-            // taking a stiffer step simply because several links touch them.
-            particles.ApplySpring(particle, _corrections[particle] / _degrees[particle], seconds);
-            moved = true;
+                // Each pair reads the same snapshot. Averaging keeps shared particles from
+                // taking a stiffer step simply because several links touch them.
+                particles.ApplySpring(particle, _corrections[particle] / _degrees[particle], seconds);
+                _moved[index] = true;
+            }
         }
-
-        return moved;
     }
 
     internal void FinishStep(ChainParticles particles, ReadOnlySpan<Matrix4x4> anchors, ReadOnlySpan<ColliderCapsule> colliders,
         ReadOnlySpan<ColliderCapsule> previousColliders, ReadOnlySpan<ChainSettings> settings, float seconds)
     {
-        if (Apply(particles, seconds))
+        Apply(particles, seconds);
+        for (int index = 0; index < _linkedChains.Length; index++)
         {
-            for (int chain = 0; chain < settings.Length; chain++)
-            {
-                if (_boundGroups.Contains(chain))
-                    continue;
-                int anchor = particles.Rig.Chains[chain].Anchor;
-                ChainConstraints.FollowChain(particles, chain, anchors[anchor], colliders, previousColliders,
-                    settings[chain], seconds, pullTowardRest: false);
-            }
+            int chain = _linkedChains[index];
+            if (!_moved[index] || _boundGroups.Contains(chain))
+                continue;
+
+            int anchor = particles.Rig.Chains[chain].Anchor;
+            ChainConstraints.FollowChain(particles, chain, anchors[anchor], colliders, previousColliders,
+                settings[chain], seconds, pullTowardRest: false);
         }
 
         _boundGroups.Follow(particles, anchors, colliders, previousColliders, settings, seconds);

@@ -128,14 +128,14 @@ public sealed class ChainPlacementCullTests(ITestOutputHelper output)
     [Trait("Category", "Diagnostic")]
     public void Counts_segment_axis_queries_per_wearer_step()
     {
-        output.WriteLine($"Segment-axis queries per wearer step over {Steps} steps");
+        output.WriteLine($"Segment-axis queries per layered wearer step over {Steps} steps");
         output.WriteLine($"Placement filter enabled: {Count(disable: false) / (double)Steps:F2}");
         output.WriteLine($"Placement filter disabled: {Count(disable: true) / (double)Steps:F2}");
     }
 
     private static long Count(bool disable)
     {
-        var simulation = new ChainSimulation(CreateRig(), RestCapsules.Length);
+        var simulation = new ChainSimulation(CreateRig(layered: true), RestCapsules.Length);
         var capsules = new ColliderCapsule[RestCapsules.Length];
         var (openingAnchor, openingWearer) = Pose(0, capsules);
         simulation.Step([openingAnchor], capsules, openingWearer, 0);
@@ -158,7 +158,8 @@ public sealed class ChainPlacementCullTests(ITestOutputHelper output)
         }
     }
 
-    private static ChainRig CreateRig() => ChainSwingFixture.CreateRig(stretch: 0.08f, capeJoints: 6);
+    private static ChainRig CreateRig(bool layered = false) =>
+        ChainSwingFixture.CreateRig(stretch: 0.08f, capeJoints: 6, layered: layered);
 
     private static (Matrix4x4 Anchor, Matrix4x4 Wearer) Pose(int step, Span<ColliderCapsule> capsules)
     {

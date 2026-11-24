@@ -7747,8 +7747,11 @@ A separate body collider file declares capsules against the body's `rig-v1` iden
 joint and use endpoints and a radius in the body's rest model space. Chains collide with the body and all worn
 set capsules on that wearer. In the bind pose the radius keeps its authored size before wearer scaling.
 During motion it follows the largest axis scale of the composed rest-to-world transform. A chain's `radius`
-sets extra clearance along every segment, including the last joint to its virtual tip. Soft drapes can come to rest
-against capsules along their lengths.
+sets extra clearance along every segment, including the last joint to its virtual tip. A segment also acts as a
+moving capsule for chains in higher layers on the same wearer, using the lower chain's `radius` as its thickness
+around the segment. For example, a swinging armour strap pushes outerwear away without being pushed back.
+The motion takes layers from the worn sets. Chains in the same layer or on different wearers do not meet.
+Soft drapes can come to rest against capsules and lower chains along their lengths.
 The [format 4 reference](../KhaozEngine.Attachments/README.md#format-4) gives the schema and limits.
 
 Publish format 4 after every reader moves to 24.5.0 or later. A 24.4.0 reader raises

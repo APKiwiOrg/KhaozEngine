@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
@@ -35,43 +34,75 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
         (int warmFrames, int measuredFrames) = FrameCounts();
         using var rig = new OutfitRig();
         LoadedBodyRegions body = rig.BodyRegions(new RegionRun(0, 4));
-        LoadedAttachmentSet cloak = LoadPiece(rig, "cloak", AttachmentLayer.Outerwear, "hip",
-            CloakChains, CloakJoints, new Vector3(-.24f, 0, -.17f), linkNeighbours: true);
-        LoadedAttachmentSet straps = LoadPiece(rig, "straps", AttachmentLayer.Garment, "knee",
-            StrapChains, StrapJoints, new Vector3(-.18f, 0, .16f), linkNeighbours: false);
+        SwingCostPiece cloak = LoadPiece(rig, "cloak", AttachmentLayer.Outerwear, "hip",
+            CloakChains, CloakJoints, new Vector3(-.24f, 0, -.17f), linkStretch: .25f);
+        SwingCostPiece straps = LoadPiece(rig, "straps", AttachmentLayer.Garment, "knee",
+            StrapChains, StrapJoints, new Vector3(-.18f, 0, .16f));
         LoadedBodyColliders colliders = LoadColliders(rig);
+        var (measurements, heldMeasurement) = MeasureOutfit(rig, body, colliders, [cloak, straps],
+            WearerCount, warmFrames, measuredFrames, includeHeldSample: true);
+        var (layeredMeasurements, _) = MeasureOutfit(rig, body, colliders, LayeredSwingCostOutfit.Load(rig),
+            LayeredSwingCostOutfit.SimulatedWearers, warmFrames, measuredFrames, includeHeldSample: false);
 
-        var wearers = new List<Wearer>(WearerCount);
+        string json = JsonSerializer.Serialize(new
+        {
+            diagnostic = nameof(SwingCostDiagnostics),
+            wearerCount = WearerCount,
+            warmFrames,
+            measuredFrames,
+            environment = new
+            {
+                processorCount = Environment.ProcessorCount,
+                os = RuntimeInformation.OSDescription,
+                runtime = RuntimeInformation.FrameworkDescription,
+            },
+            measurements,
+            heldMeasurement,
+            layeredSimulatedWearerCount = LayeredSwingCostOutfit.SimulatedWearers,
+            layeredHeldWearerCount = WearerCount - LayeredSwingCostOutfit.SimulatedWearers,
+            layeredMeasurements,
+        }, JsonSerializerOptions.Web);
+        output.WriteLine(json);
+    }
+
+    static (Measurement[] Measurements, Measurement? HeldMeasurement) MeasureOutfit(OutfitRig rig,
+        LoadedBodyRegions body, LoadedBodyColliders colliders, SwingCostPiece[] pieces, int simulatedWearers,
+        int warmFrames, int measuredFrames, bool includeHeldSample)
+    {
+        var wearers = new Wearer[WearerCount];
+        var options = new ChainSimulationOptions();
         try
         {
-            for (int index = 0; index < WearerCount; index++)
-                wearers.Add(new Wearer(rig, body, cloak, straps, colliders, index));
+            for (int index = 0; index < wearers.Length; index++)
+                wearers[index] = new Wearer(rig, body, pieces, colliders, options, index);
 
-            string json = JsonSerializer.Serialize(new
+            const int fastestFrameRate = 144;
+            ReadOnlySpan<Wearer> simulated = wearers.AsSpan(0, simulatedWearers);
+            // Frame zero resets motion. A very short smoke sample can finish warming before the first grid step.
+            if ((warmFrames - 1) * (1f / fastestFrameRate) < options.MaxStepSeconds)
+                PrimeSolver(simulated, options.MaxStepSeconds);
+
+            Measurement[] measurements =
+            [
+                Measure(wearers, fastestFrameRate, warmFrames, measuredFrames, simulatedWearers),
+                Measure(wearers, 60, warmFrames, measuredFrames, simulatedWearers),
+            ];
+            Measurement? heldMeasurement = includeHeldSample ?
+                Measure(wearers, fastestFrameRate, warmFrames, measuredFrames, 0) : null;
+            for (int index = 0; index < measurements.Length; index++)
             {
-                diagnostic = nameof(SwingCostDiagnostics),
-                wearerCount = wearers.Count,
-                warmFrames,
-                measuredFrames,
-                environment = new
+                Measurement sample = measurements[index];
+                measurements[index] = sample with
                 {
-                    processorCount = Environment.ProcessorCount,
-                    os = RuntimeInformation.OSDescription,
-                    runtime = RuntimeInformation.FrameworkDescription,
-                },
-                measurements = new[]
-                {
-                    Measure(wearers, 144, warmFrames, measuredFrames, MotionLevel.Simulated),
-                    Measure(wearers, 60, warmFrames, measuredFrames, MotionLevel.Simulated),
-                },
-                heldMeasurement = Measure(wearers, 144, warmFrames, measuredFrames, MotionLevel.Held),
-            }, JsonSerializerOptions.Web);
-            output.WriteLine(json);
-            Console.WriteLine(json);
+                    SegmentAxisQueriesPerSimulatedWearerStep = CountQueries(
+                        simulated, options, 1f / sample.FrameRateHz, warmFrames, measuredFrames),
+                };
+            }
+            return (measurements, heldMeasurement);
         }
         finally
         {
-            foreach (Wearer wearer in wearers) wearer.Dispose();
+            foreach (Wearer wearer in wearers) wearer?.Dispose();
         }
     }
 
@@ -85,16 +116,30 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
         return (count, count);
     }
 
-    static Measurement Measure(List<Wearer> wearers, int frameRate, int warmFrames, int measuredFrames, MotionLevel level)
+    static void PrimeSolver(ReadOnlySpan<Wearer> wearers, float stepTime)
+    {
+        foreach (Wearer wearer in wearers)
+        {
+            wearer.Reset(MotionLevel.Simulated);
+            wearer.Pose(0);
+            wearer.Step(0);
+            wearer.Pose(stepTime);
+            wearer.Step(stepTime);
+            wearer.WriteDraws();
+        }
+    }
+
+    static Measurement Measure(Wearer[] wearers, int frameRate, int warmFrames, int measuredFrames, int simulatedWearers)
     {
         float frameTime = 1f / frameRate;
-        foreach (Wearer wearer in wearers) wearer.Reset();
+        for (int index = 0; index < wearers.Length; index++)
+            wearers[index].Reset(index < simulatedWearers ? MotionLevel.Simulated : MotionLevel.Held);
         for (int frame = 0; frame < warmFrames; frame++)
         {
             foreach (Wearer wearer in wearers) wearer.Pose(frame * frameTime);
             foreach (Wearer wearer in wearers)
             {
-                wearer.Step(frameTime, level);
+                wearer.Step(frameTime);
                 wearer.WriteDraws();
             }
         }
@@ -113,7 +158,7 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
                 foreach (Wearer wearer in wearers)
                 {
                     long beforeStep = Stopwatch.GetTimestamp();
-                    wearer.Step(frameTime, level);
+                    wearer.Step(frameTime);
                     long afterStep = Stopwatch.GetTimestamp();
                     wearer.WriteDraws();
                     long afterDraws = Stopwatch.GetTimestamp();
@@ -134,13 +179,56 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
             stepTicks * msPerTick / measuredFrames, drawTicks * msPerTick / measuredFrames);
     }
 
+    static double? CountQueries(ReadOnlySpan<Wearer> wearers, ChainSimulationOptions options,
+        float frameTime, int warmFrames, int measuredFrames)
+    {
+        // Replay only the simulated wearers. Their clocks start together and the first frame resets to rest.
+        // The circling walk has no gaps or teleports, so all wearers take the same fixed substeps after frame zero.
+        foreach (Wearer wearer in wearers) wearer.Reset(MotionLevel.Simulated);
+        var clock = new ChainStepClock(options.MaxStepSeconds, options.MaxStepsPerFrame);
+        for (int frame = 0; frame < warmFrames; frame++)
+        {
+            if (frame > 0) clock.Advance(frameTime, out _);
+            foreach (Wearer wearer in wearers)
+            {
+                wearer.Pose(frame * frameTime);
+                wearer.Step(frameTime);
+            }
+        }
+
+        long? previousCount = ChainSegmentContact.ClosestPointEvaluationsForTests;
+        ChainSegmentContact.ClosestPointEvaluationsForTests = 0;
+        try
+        {
+            int steps = 0;
+            for (int frame = 0; frame < measuredFrames; frame++)
+            {
+                steps += clock.Advance(frameTime, out _);
+                foreach (Wearer wearer in wearers)
+                {
+                    wearer.Pose((warmFrames + frame) * frameTime);
+                    wearer.Step(frameTime);
+                }
+            }
+            return steps == 0 ? null : ChainSegmentContact.ClosestPointEvaluationsForTests.GetValueOrDefault() /
+                ((double)steps * wearers.Length);
+        }
+        finally
+        {
+            ChainSegmentContact.ClosestPointEvaluationsForTests = previousCount;
+        }
+    }
+
     static long Percentile(long[] sorted, double rank) => sorted[(int)Math.Ceiling(rank * sorted.Length) - 1];
 
     sealed record Measurement(int FrameRateHz, double MeanMs, double P50Ms, double P95Ms, double MaxMs,
-        long ManagedBytesAllocated, double StepMeanMs, double WriteDrawsMeanMs);
+        long ManagedBytesAllocated, double StepMeanMs, double WriteDrawsMeanMs)
+    {
+        public double? SegmentAxisQueriesPerSimulatedWearerStep { get; init; }
+    }
 
-    static LoadedAttachmentSet LoadPiece(OutfitRig rig, string name, AttachmentLayer layer, string anchor,
-        int chainCount, int chainLength, Vector3 firstRoot, bool linkNeighbours)
+    internal static SwingCostPiece LoadPiece(OutfitRig rig, string name, AttachmentLayer layer, string anchor,
+        int chainCount, int chainLength, Vector3 firstRoot, float? linkStretch = null, ColliderDefinition[]? colliders = null)
     {
         var glb = new SkinnedAttachmentGlbFixture(HostBones + chainCount * chainLength);
         Vector3 hip = ModelBindPosition(rig, "hip");
@@ -158,7 +246,7 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
         glb.SetInverseBind(1, rig.Body.InverseBind[rig.Map.Bone("knee")]);
 
         var chains = new ChainDefinition[chainCount];
-        var links = new ChainLink[linkNeighbours ? chainCount - 1 : 0];
+        var links = new ChainLink[linkStretch.HasValue ? chainCount - 1 : 0];
         var settings = new ChainSettings(8f, 3f, 1f, .85f, MathF.PI * .65f, .02f);
         var segment = new Vector3(0, -.18f, 0);
         Vector3 anchorPosition = onHip ? hip : knee;
@@ -193,15 +281,17 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
         var part = new SkinnedAttachmentPartDefinition(1, rig.Source.Mesh(name + ".glb", glb.Build()))
         {
             Regions = [new NamedRegionRun("alpha", 1)],
-            Motion = new ChainMotionDefinition(chains, links) { LinkStretch = linkNeighbours ? .25f : null },
+            Motion = new ChainMotionDefinition(chains, links) { LinkStretch = linkStretch },
         };
-        return rig.Load(name + ".json", new AttachmentSetDefinition([part], layer, []));
+        var loaded = rig.Load(name + ".json", new AttachmentSetDefinition([part], layer, [], colliders ?? []));
+        return new SwingCostPiece(loaded, HostBones + chainCount * chainLength);
     }
 
     static JsonArray Translation(Vector3 position) => new(position.X, position.Y, position.Z);
 
     // OutfitRig's synthetic inverse binds are pure translations.
-    static Vector3 ModelBindPosition(OutfitRig rig, string joint) => -rig.Body.InverseBind[rig.Map.Bone(joint)].Translation;
+    internal static Vector3 ModelBindPosition(OutfitRig rig, string joint) =>
+        -rig.Body.InverseBind[rig.Map.Bone(joint)].Translation;
 
     static LoadedBodyColliders LoadColliders(OutfitRig rig)
     {
@@ -231,11 +321,13 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
         readonly int hip, knee;
         readonly float phase;
         readonly MotionKey key;
-        readonly AttachmentDraw[][] draws = [new AttachmentDraw[1], new AttachmentDraw[1]];
+        readonly SwingCostPiece[] pieces;
+        readonly AttachmentDraw[][] draws;
+        MotionLevel level;
         Matrix4x4 model;
 
-        internal Wearer(OutfitRig rig, LoadedBodyRegions body, LoadedAttachmentSet cloak, LoadedAttachmentSet straps,
-            LoadedBodyColliders colliders, int index)
+        internal Wearer(OutfitRig rig, LoadedBodyRegions body, SwingCostPiece[] pieces,
+            LoadedBodyColliders colliders, ChainSimulationOptions options, int index)
         {
             skeleton = rig.Skeleton;
             locals = (JointPose[])skeleton.RestLocal.Clone();
@@ -244,13 +336,15 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
             knee = skeleton.IndexOf("knee");
             phase = MathF.Tau * index / WearerCount;
             key = MotionKey.From((ulong)(index + 1));
+            this.pieces = pieces;
+            draws = pieces.Select(_ => new AttachmentDraw[1]).ToArray();
 
-            // Each wearer's two bindings have independent draw scratch as well as independent motion.
-            outfit = rig.Cache.BindOutfit(body, [rig.Bind(cloak), rig.Bind(straps)]);
+            // Each wearer has independent draw scratch as well as independent motion.
+            outfit = rig.Cache.BindOutfit(body, pieces.Select(piece => rig.Bind(piece.Set)).ToArray());
             try
             {
                 for (int worn = 0; worn < draws.Length; worn++) Assert.Equal(draws[worn].Length, outfit.DrawCount(worn));
-                motion = outfit.CreateMotion(colliders);
+                motion = outfit.CreateMotion(colliders, options);
             }
             catch
             {
@@ -259,7 +353,11 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
             }
         }
 
-        internal void Reset() => motion.Reset();
+        internal void Reset(MotionLevel level)
+        {
+            this.level = level;
+            motion.Reset();
+        }
 
         internal void Pose(float seconds)
         {
@@ -276,7 +374,7 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
             model = Matrix4x4.CreateRotationY(-turn) * Matrix4x4.CreateTranslation(position);
         }
 
-        internal void Step(float frameTime, MotionLevel level) => motion.Step(skeleton, palette, model, frameTime, level);
+        internal void Step(float frameTime) => motion.Step(skeleton, palette, model, frameTime, level);
 
         internal void WriteDraws()
         {
@@ -286,19 +384,30 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
 
         internal void ValidateDraws()
         {
-            Validate(draws[0][0], HostBones + CloakChains * CloakJoints);
-            Validate(draws[1][0], HostBones + StrapChains * StrapJoints);
+            for (int worn = 0; worn < draws.Length; worn++)
+            {
+                AttachmentDraw draw = draws[worn][0];
+                Assert.Equal(1u, draw.PartId);
+                Assert.Equal(pieces[worn].PaletteBones.HasValue, draw.IsSkinned);
+                if (pieces[worn].PaletteBones is int joints)
+                {
+                    ValidateMatrix(draw.Skinned.Model);
+                    ReadOnlySpan<Matrix4x4> palette = draw.BoneMatrices.Span;
+                    Assert.Equal(joints, palette.Length);
+                    foreach (Matrix4x4 pose in palette) ValidateMatrix(pose);
+                }
+                else
+                {
+                    ValidateMatrix(draw.Rigid.World);
+                }
+            }
         }
 
-        static void Validate(AttachmentDraw draw, int joints)
+        static void ValidateMatrix(in Matrix4x4 matrix)
         {
-            Assert.True(draw.IsSkinned);
-            ReadOnlySpan<Matrix4x4> palette = draw.BoneMatrices.Span;
-            Assert.Equal(joints, palette.Length);
-            foreach (Matrix4x4 pose in palette)
-                for (int row = 0; row < 4; row++)
-                    for (int column = 0; column < 4; column++)
-                        Assert.True(float.IsFinite(pose[row, column]), "A drawn joint matrix is non-finite.");
+            for (int row = 0; row < 4; row++)
+                for (int column = 0; column < 4; column++)
+                    Assert.True(float.IsFinite(matrix[row, column]), "A draw matrix is non-finite.");
         }
 
         public void Dispose() => outfit.Dispose();

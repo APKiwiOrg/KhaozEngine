@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
@@ -15,7 +16,7 @@ namespace KhaozEngine.Tests.Render3D;
 
 [Collection("AllocSensitive")]
 [Trait("Category", "Diagnostic")]
-public sealed class SwingCostDiagnostics(ITestOutputHelper output)
+public sealed partial class SwingCostDiagnostics(ITestOutputHelper output)
 {
     const int WearerCount = 32;
     const int WarmFrames = 120;
@@ -90,13 +91,10 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
         MeasureOutfit(OutfitRig rig, LoadedBodyRegions body, LoadedBodyColliders colliders, SwingCostPiece[] pieces,
             int simulatedWearers, int warmFrames, int measuredFrames, bool includeHeldSample, IJobScheduler? scheduler = null)
     {
-        var wearers = new SwingCostWearer[WearerCount];
         var options = new ChainSimulationOptions();
+        SwingCostWearer[] wearers = CreateWearers(rig, body, colliders, pieces, options);
         try
         {
-            for (int index = 0; index < wearers.Length; index++)
-                wearers[index] = new SwingCostWearer(rig, body, pieces, colliders, options, index, WearerCount);
-
             const int fastestFrameRate = 144;
             ReadOnlySpan<SwingCostWearer> simulated = wearers.AsSpan(0, simulatedWearers);
             // Frame zero resets motion. A very short smoke sample can finish warming before the first grid step.
@@ -128,8 +126,30 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
         }
         finally
         {
-            foreach (SwingCostWearer wearer in wearers) wearer?.Dispose();
+            DisposeWearers(wearers);
         }
+    }
+
+    static SwingCostWearer[] CreateWearers(OutfitRig rig, LoadedBodyRegions body, LoadedBodyColliders colliders,
+        SwingCostPiece[] pieces, ChainSimulationOptions options)
+    {
+        var wearers = new SwingCostWearer[WearerCount];
+        try
+        {
+            for (int index = 0; index < wearers.Length; index++)
+                wearers[index] = new SwingCostWearer(rig, body, pieces, colliders, options, index, WearerCount);
+            return wearers;
+        }
+        catch
+        {
+            DisposeWearers(wearers);
+            throw;
+        }
+    }
+
+    static void DisposeWearers(SwingCostWearer[] wearers)
+    {
+        foreach (SwingCostWearer wearer in wearers) wearer?.Dispose();
     }
 
     static (int Warm, int Measured) FrameCounts()
@@ -156,7 +176,8 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
     }
 
     static Measurement Measure(SwingCostWearer[] wearers, int frameRate, int warmFrames, int measuredFrames,
-        int simulatedWearers, IJobScheduler? scheduler = null)
+        int simulatedWearers, IJobScheduler? scheduler = null,
+        Dictionary<int, TimedWearerJobs.WorkerAllocation>? workerAllocations = null)
     {
         bool measureTiming = measuredFrames == MeasuredFrames;
         var timedJobs = scheduler is null ? null : new TimedWearerJobs(scheduler, wearers.Length, measureTiming);
@@ -232,6 +253,7 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
                         CallerJob = split is { FirstAllocatingJob: >= 0 } ? split.Value.FirstAllocatingJob : null,
                     };
                 }
+                if (workerAllocations is not null) timedJobs!.AccumulateWorkerAllocations(workerAllocations);
                 if (!measureTiming) continue;
                 ticks[frame] = end - start;
                 if (timedJobs is not null)

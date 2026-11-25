@@ -599,7 +599,7 @@ The wearables limits are 32 wearers, at most 2 ms added CPU preparation, no mana
 - GPU: no shader, pass or draw count changes. A chained part adds palette entries within the 128 joint limit.
 - Allocation is tested per call, as outfit draws are.
 
-`SwingCostDiagnostics` measures CPU preparation for two outfits, each on 32 wearers in the same circling walk.
+`SwingCostDiagnostics` measures CPU preparation for layered outfits on 32 wearers in the same circling walk.
 The reference outfit has 12 body capsules, five linked five-joint cloak chains with a 25% width bound and four
 three-joint strap chains. It reports all 32 simulated in `measurements` and all 32 held at 144 Hz in `heldMeasurement`.
 The layered outfit has five linked six-joint cape chains with an 8% width bound over four three-joint tails.
@@ -607,6 +607,11 @@ It uses 12 body capsules and four capsules from each of two lower sets. Its firs
 other 16 hold, representing a nearest-16 cap. Both groups step and write draws in `layeredMeasurements`.
 `parallelLayeredMeasurements` repeats that scenario at both rates with a batch and one dedicated worker per
 logical processor besides the caller.
+
+`Report_seven_guide_swing_preparation_cost` uses the layered fixture with seven linked five-joint cape guides
+and four three-joint tails. It keeps the same span between the outer guides and uses distinct front and rear
+tail settings. The first 8, 10, 12, 14 or 16 wearers simulate and the rest hold. Each count runs at 144 and
+60 Hz with three dedicated workers plus the caller. All 32 wearers still step and write draws.
 
 Each timed case first runs 1,200 discarded settle frames so the JIT and instrumentation can initialize.
 It resets to rest, runs 120 warm frames and samples 600 frames at the case's frame rate. The JSON records
@@ -626,6 +631,8 @@ Within a batch, `batchOutsideSchedulerBytes` covers preparation and scope cleanu
 job wrappers, and `callerJobBytes` counts only solve bodies on the measuring thread. `probeOverheadBytes`
 includes the batch and job wrappers' probe bytes and the residual outside the three top-level windows.
 The scheduler allocation test uses each worker's own allocation counter between warm calls.
+The seven-guide report also records each worker's counter delta from its first measured job entry to its last
+measured job exit. This includes allocations between that worker's measured jobs. Absent workers have no sample.
 
 An untimed replay counts segment-axis queries per simulated wearer per fixed solver step, excluding warm frames.
 The count is null for the all-held sample or when a shortened sample takes no fixed steps. Timing is report only
@@ -639,7 +646,7 @@ KE_GPU_TESTS=0 dotnet test KhaozEngine.Render.Tests -c Release --filter 'Categor
 
 `KE_SWING_COST_SMOKE_FRAMES` sets both frame counts to a value from 1 through 119 for a shortened harness
 check without settle frames. It checks draw and allocation paths and leaves the timing fields null. A separate replay records
-segment-axis queries per simulated wearer step for both cases.
+segment-axis queries per simulated wearer step for the original diagnostic.
 A smoke warm-up too short to reach a fixed step primes the solver before resetting for the sample.
 
 ## Byte loading

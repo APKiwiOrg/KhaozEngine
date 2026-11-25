@@ -10,14 +10,17 @@ internal static class LayeredSwingCostOutfit
 {
     internal const int SimulatedWearers = 16;
 
-    internal static SwingCostPiece[] Load(OutfitRig rig)
+    internal static SwingCostPiece[] Load(OutfitRig rig, bool sevenGuideCape = false)
     {
-        SwingCostPiece cape = SwingCostFixture.LoadPiece(rig, "cape", AttachmentLayer.Outerwear, "hip",
-            5, 6, new Vector3(-.24f, 0, -.23f), linkStretch: .08f);
+        var capeRoot = new Vector3(-.24f, 0, -.23f);
+        SwingCostPiece cape = sevenGuideCape
+            ? SevenGuideSwingCostFixture.LoadCape(rig, capeRoot)
+            : SwingCostFixture.LoadPiece(rig, "cape", AttachmentLayer.Outerwear, "hip", 5, 6, capeRoot, linkStretch: .08f);
         // The knee's pitch sweeps the tails across the cape between panels during the walk.
         SwingCostPiece tails = SwingCostFixture.LoadPiece(rig, "tails", AttachmentLayer.Armour, "knee",
             4, 3, new Vector3(-.18f, .28f, -.26f),
-            colliders: Hardware(rig, "hip", new Vector3(-.18f, -.52f, -.20f)));
+            colliders: Hardware(rig, "hip", new Vector3(-.18f, -.52f, -.20f)),
+            settingsForChain: sevenGuideCape ? SevenGuideSwingCostFixture.TailSettings : null);
         AttachmentMeshRef mesh = rig.Source.Mesh("plates.glb", AttachmentTestSource.Glb());
         var plate = new RigidAttachmentPartDefinition(1, mesh, "knee", Matrix4x4.Identity) { Region = "alpha" };
         var plates = rig.Load("plates.json", new AttachmentSetDefinition([plate], AttachmentLayer.Garment, [],

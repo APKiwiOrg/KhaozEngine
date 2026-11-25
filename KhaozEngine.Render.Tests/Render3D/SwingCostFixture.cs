@@ -13,7 +13,8 @@ internal static class SwingCostFixture
     const int BodyColliders = 12;
 
     internal static SwingCostPiece LoadPiece(OutfitRig rig, string name, AttachmentLayer layer, string anchor,
-        int chainCount, int chainLength, Vector3 firstRoot, float? linkStretch = null, ColliderDefinition[]? colliders = null)
+        int chainCount, int chainLength, Vector3 firstRoot, float? linkStretch = null, ColliderDefinition[]? colliders = null,
+        float chainSpacing = .12f, Func<int, ChainSettings>? settingsForChain = null)
     {
         var glb = new SkinnedAttachmentGlbFixture(HostBones + chainCount * chainLength);
         Vector3 hip = ModelBindPosition(rig, "hip");
@@ -40,7 +41,7 @@ internal static class SwingCostFixture
             int first = HostBones + chain * chainLength;
             anchorChildren.Add(first);
             var joints = new string[chainLength];
-            Vector3 root = firstRoot + Vector3.UnitX * (.12f * chain);
+            Vector3 root = firstRoot + Vector3.UnitX * (chainSpacing * chain);
             for (int joint = 0; joint < joints.Length; joint++)
             {
                 int node = first + joint;
@@ -50,7 +51,7 @@ internal static class SwingCostFixture
                 if (joint + 1 < joints.Length) glb.Nodes[node]!["children"] = new JsonArray(node + 1);
                 glb.SetInverseBind(node, Matrix4x4.CreateTranslation(-(anchorPosition + root + joint * segment)));
             }
-            chains[chain] = new ChainDefinition(joints, segment, settings);
+            chains[chain] = new ChainDefinition(joints, segment, settingsForChain?.Invoke(chain) ?? settings);
         }
         for (int link = 0; link < links.Length; link++) links[link] = new ChainLink(link, link + 1);
 

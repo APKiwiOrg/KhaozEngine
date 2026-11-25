@@ -107,7 +107,9 @@ policy, and cancellation. A restart uses the configured day length and resets ti
   first failure, and the caller gets that exception back with its stack after the running jobs finish. Top-level
   calls are serialized, and calls from inside a job run inline. After finishing its jobs, the caller
   spins and yields until the active workers finish. Idle workers block on their wake events. Dedicated workers
-  restore their synchronization context after each job. An interrupt during completion or disposal remains
-  pending for the caller's next blocking operation after cleanup. Dispose the scheduler outside its jobs.
+  restore their synchronization context after each job. An interrupt that a finished job leaves pending on
+  a worker is discarded if it reaches the worker's private idle wait. An interrupt during caller completion
+  or disposal remains pending for the caller's next blocking operation after cleanup. Internal shutdown joins
+  bypass the caller's synchronization context. Dispose the scheduler outside its jobs.
 
 Part of the MMO netcode stack (sub-project 0B). Depends on `KhaozEngine.Determinism` and nothing else.

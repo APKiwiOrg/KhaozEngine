@@ -9,7 +9,8 @@ namespace KhaozEngine.Simulation;
 /// <remarks>
 /// The caller also runs jobs. Top-level calls on this scheduler are serialized. A call made from inside a
 /// <see cref="WorkerJobScheduler"/> job runs inline on that job's thread, including calls to another instance.
-/// Warm calls allocate no managed memory in the scheduler. Dispose the pool from outside its jobs.
+/// Warm calls allocate no managed memory in the scheduler. A dedicated worker discards a pending job
+/// interrupt if it reaches the private idle wait after that job has completed. Dispose the pool from outside its jobs.
 /// </remarks>
 public sealed class WorkerJobScheduler : IJobScheduler, IDisposable
 {
@@ -25,6 +26,8 @@ public sealed class WorkerJobScheduler : IJobScheduler, IDisposable
     private readonly object _gate = new();
     private readonly Worker[] _workers;
     private volatile bool _disposed;
+    private int _shutdownSignals;
+    private int _cleanedUpWorkers;
 
     private Action<int>? _body;
     private int _count;
@@ -197,7 +200,8 @@ public sealed class WorkerJobScheduler : IJobScheduler, IDisposable
                 }
             }
 
-            if (!_disposed) StopWorkers(_workers.Length, ref interrupted);
+            if (!_disposed || _cleanedUpWorkers < _workers.Length)
+                StopWorkers(_workers.Length, ref interrupted);
         }
         finally
         {
@@ -209,8 +213,30 @@ public sealed class WorkerJobScheduler : IJobScheduler, IDisposable
     private void StopWorkers(int count, ref bool interrupted)
     {
         _disposed = true;
-        for (int i = 0; i < count; i++) _workers[i].Wake.Set();
-        for (int i = 0; i < count; i++) _workers[i].Join(ref interrupted);
+
+        // Keep signal and cleanup progress separate so a retry never signals an already disposed handle.
+        while (_shutdownSignals < count)
+        {
+            _workers[_shutdownSignals].Wake.Set();
+            _shutdownSignals++;
+        }
+
+        if (_cleanedUpWorkers == count) return;
+        SynchronizationContext? context = SynchronizationContext.Current;
+        // Thread.Join can forward to a wait-notifying context. Internal shutdown must not run application code.
+        if (context is not null) SynchronizationContext.SetSynchronizationContext(null);
+        try
+        {
+            while (_cleanedUpWorkers < count)
+            {
+                _workers[_cleanedUpWorkers].Join(ref interrupted);
+                _cleanedUpWorkers++;
+            }
+        }
+        finally
+        {
+            if (context is not null) SynchronizationContext.SetSynchronizationContext(context);
+        }
     }
 
     private sealed class Worker
@@ -239,7 +265,15 @@ public sealed class WorkerJobScheduler : IJobScheduler, IDisposable
             s_isDedicatedWorker = true;
             while (true)
             {
-                Wake.WaitOne();
+                try
+                {
+                    Wake.WaitOne();
+                }
+                catch (ThreadInterruptedException)
+                {
+                    // This wait belongs to the pool. The job that left the interrupt has already returned.
+                    continue;
+                }
                 if (_scheduler._disposed) return;
                 s_insideJob = true;
                 _scheduler.Drain(_scheduler._body!, _scheduler._count);

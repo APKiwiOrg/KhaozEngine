@@ -77,8 +77,10 @@ internal sealed class ChainSheetWorkspace
 
         internal Corners Current = current;
         internal int Revision = 1;
+        private int _secondRevision = 1;
         internal int CandidateCount;
         internal int LastNoOpRevision;
+        internal int Visits;
 
         private TightBound _firstPosition, _secondPosition, _firstVelocity, _secondVelocity;
 
@@ -87,25 +89,32 @@ internal sealed class ChainSheetWorkspace
             ref var position = ref (second ? ref row._secondPosition : ref row._firstPosition);
             ref var current = ref (second ? ref row._secondVelocity : ref row._firstVelocity);
             ref var cached = ref (velocity ? ref current : ref position);
-            if (cached.Revision != row.Revision)
+            int revision = row.TriangleRevision(second);
+            if (cached.Revision != revision)
             {
                 cached.Sphere = ChainPlacementCull.TriangleReach(row.Current.Points(second), row.Opening.Points(second),
                     row.Radius + (float)TouchTolerance, includeOpening: !velocity);
-                cached.Revision = row.Revision;
+                cached.Revision = revision;
             }
 
             return cached.Sphere;
         }
 
+        internal readonly int TriangleRevision(bool second) =>
+            second && ChainContactOptimizations.Use(ChainContactOptimization.PerTriangleRevision) ? _secondRevision : Revision;
+
         internal readonly ChainContactTriangle OpeningTriangle(bool second) => second ? _openingSecond : _openingFirst;
 
         internal void Refresh(Corners corners)
         {
-            if (Current.SameLowerCorners(corners))
+            bool secondUnchanged = Current.SameSecondLower(corners);
+            if (secondUnchanged && Current.SameFirstLower(corners))
                 return;
 
             Current = corners;
             Revision++;
+            if (!secondUnchanged)
+                _secondRevision++;
         }
     }
 
@@ -121,8 +130,8 @@ internal sealed class ChainSheetWorkspace
             ? new(FirstUpper, SecondLower, SecondUpper)
             : new(FirstUpper, FirstLower, SecondLower);
 
-        internal bool SameLowerCorners(Corners other) =>
-            SameBits(FirstLower, other.FirstLower) && SameBits(SecondLower, other.SecondLower);
+        internal bool SameFirstLower(Corners other) => SameBits(FirstLower, other.FirstLower);
+        internal bool SameSecondLower(Corners other) => SameBits(SecondLower, other.SecondLower);
 
         internal (Vector3 A, Vector3 B, Vector3 C) Points(bool second) =>
             second ? (FirstUpper, SecondLower, SecondUpper) : (FirstUpper, FirstLower, SecondLower);

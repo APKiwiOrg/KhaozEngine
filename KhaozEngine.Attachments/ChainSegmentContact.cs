@@ -6,7 +6,7 @@ namespace KhaozEngine.Attachments;
 
 internal static class ChainSegmentContact
 {
-    private const int ContactPasses = 8;
+    internal const int ContactPasses = 8;
 
     [ThreadStatic]
     private static Vector3? _firstCorrectionDirectionForTests;
@@ -57,24 +57,32 @@ internal static class ChainSegmentContact
         Axis scratch = default;
         outsideReach = false;
         bool tightCull = ChainContactOptimizations.Use(ChainContactOptimization.SegmentCull) && !ChainPlacementCull.DisableForTests;
+        bool axisCull = ChainPlacementCull.AxisCullEnabled;
+        bool useTolerance = ChainContactOptimizations.Use(ChainContactOptimization.PassTolerance);
+        float contactReach = chainRadius + (float)TouchTolerance;
+        var parentBound = new ChainPlacementCull.SweptSphere(start, contactReach);
         var tightBound = default(ChainPlacementCull.SweptSphere);
+        var counts = ChainContactCounts.Active;
+        int passes = 0;
         for (int pass = 0; pass < ContactPasses; pass++)
         {
+            passes++;
             bool useTight = tightCull && pass > 0;
-            if (useTight)
-                tightBound = ChainPlacementCull.SegmentReach(segment, opening.Segment, chainRadius, includeOpening: true);
+            if (useTight || axisCull)
+                tightBound = ChainPlacementCull.SegmentReach(segment, opening.Segment, contactReach, includeOpening: true);
 
             bool changed = false;
             for (int index = 0; index < capsules.Count; index++)
             {
                 int obstacle = capsules.OriginalIndex(index);
-                if (useTight && !cull.ReachesTight(obstacle, tightBound))
+                if ((useTight && !cull.ReachesTight(obstacle, tightBound)) ||
+                    (axisCull && !cull.ReachesAxis(obstacle, tightBound, swept: true)))
                     continue;
 
                 ref readonly var axis = ref capsules.ReadAxis(index, ref scratch);
                 double radius = (double)capsules[index].Radius + chainRadius;
                 ChainContactCounts.Record(ChainContactQuery.SegmentPlacement);
-                var residual = axis.ClosestResidual(segment, out double fraction, out _);
+                var residual = axis.ClosestResidual(segment, out double fraction, out double along);
                 double squared = residual.LengthSquared;
                 double radiusSquared = radius * radius;
                 bool crossed = opening.Crossed(obstacle, residual, radiusSquared, out var side);
@@ -82,14 +90,20 @@ internal static class ChainSegmentContact
                     continue;
 
                 var center = segment.Displacement * fraction - residual;
-                bool parentInside = axis.Residual(segment.Root, default, out _).LengthSquared < radiusSquared;
+                bool parentInside = (!axisCull || cull.ReachesAxis(obstacle, parentBound, swept: false)) &&
+                    axis.Residual(segment.Root, default, out _).LengthSquared < radiusSquared;
                 if (parentInside)
                 {
                     // The parent cannot move off the capsule. Clear only the end, as with point contact.
-                    var tipResidual = axis.Residual(segment.Root, segment.Displacement, out _);
+                    var endpoint = new ChainPlacementCull.SweptSphere((segment.Root + segment.Displacement).ToVector3(), contactReach);
+                    if (axisCull && !cull.ReachesAxis(obstacle, endpoint, swept: false))
+                        continue;
+                    var tipResidual = axis.Residual(segment.Root, segment.Displacement, out along);
                     if (tipResidual.LengthSquared >= radiusSquared)
                         continue;
                     center = segment.Displacement - tipResidual;
+                    residual = tipResidual;
+                    fraction = 1;
                     crossed = false;
                 }
                 else if (crossed && squared >= radiusSquared && center.LengthSquared >= Square(length + radius))
@@ -100,25 +114,30 @@ internal static class ChainSegmentContact
 
                 var corrected = firstCorrectionForTests ??
                     ChainContactProjection.Clear(start, length, direction, center, radius,
-                        crossed ? side : direction, parentInside, axis);
+                        crossed ? side : direction, parentInside, axis, along, cull, obstacle, chainRadius,
+                        new ChainContactProjection.AxisSample(segment.Displacement, residual, fraction));
                 firstCorrectionForTests = null;
                 if (capsules.IsFiltered && !ChainCapsuleCull.FitsReach(corrected))
                 {
                     outsideReach = true;
+                    counts?.RecordSegmentPasses(passes);
                     return corrected;
                 }
 
-                changed |= corrected != direction;
+                var nextSegment = Segment.FromStoredEndpoint(start, length, corrected);
+                changed |= useTolerance ? ChainContactPass.Moved(segment.Displacement, nextSegment.Displacement) :
+                    corrected != direction;
                 direction = corrected;
-                segment = Segment.FromStoredEndpoint(start, length, direction);
-                if (useTight)
-                    tightBound = ChainPlacementCull.SegmentReach(segment, opening.Segment, chainRadius, includeOpening: true);
+                segment = nextSegment;
+                if (useTight || axisCull)
+                    tightBound = ChainPlacementCull.SegmentReach(segment, opening.Segment, contactReach, includeOpening: true);
             }
 
             if (!changed)
                 break;
         }
 
+        counts?.RecordSegmentPasses(passes);
         return direction;
     }
 

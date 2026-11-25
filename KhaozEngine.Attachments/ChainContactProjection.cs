@@ -8,8 +8,11 @@ internal static class ChainContactProjection
 {
     private const int RoundingRefinements = 4;
 
+    internal readonly record struct AxisSample(Offset Displacement, Offset Residual, double Fraction);
+
     internal static Vector3 Clear(Vector3 start, float length, Vector3 direction, Offset center, double radius,
-        Vector3 side, bool parentInside, in Axis capsule)
+        Vector3 side, bool parentInside, in Axis capsule, double along,
+        ChainPlacementCull cull, int obstacle, float chainRadius, AxisSample last)
     {
         double distance = Math.Sqrt(center.LengthSquared);
         if (distance == 0)
@@ -24,18 +27,46 @@ internal static class ChainContactProjection
         tangent *= 1 / Math.Sqrt(tangent.LengthSquared);
 
         double projectedRadius = radius;
+        double slack = 1e-15 * (radius + distance);
+        bool checkMargin = ChainContactOptimizations.Use(ChainContactOptimization.RoundingMargin);
+        bool axisCull = ChainPlacementCull.AxisCullEnabled;
+        bool reuse = ChainContactOptimizations.Use(ChainContactOptimization.RoundingReuse);
         for (int refinement = 0; ; refinement++)
         {
             var projected = Boundary(length, distance, projectedRadius, axis, tangent, useCone: !parentInside);
             direction = projected.ToVector3();
 
+            if (checkMargin && refinement == RoundingRefinements)
+                return direction;
+
             var stored = ChainSegmentContact.Segment.FromStoredEndpoint(start, length, direction);
-            double fraction = 1;
-            if (!parentInside)
-                ChainContactCounts.Record(ChainContactQuery.RoundingRecheck);
-            var residual = parentInside
-                ? capsule.Residual(stored.Root, stored.Displacement, out _)
-                : capsule.ClosestResidual(stored, out fraction, out _);
+            var projectedOffset = projected * length;
+            double fraction;
+            Offset residual;
+            if (reuse && last.Displacement.SameBits(stored.Displacement))
+            {
+                // The previous exact query already tested these stored bits.
+                residual = last.Residual;
+                fraction = last.Fraction;
+            }
+            else
+            {
+                var boundSegment = parentInside ? new ChainSegmentContact.Segment(stored.Root + stored.Displacement, default) : stored;
+                if (axisCull && !cull.ReachesAxis(obstacle,
+                    ChainPlacementCull.SegmentReach(boundSegment, default, chainRadius + (float)TouchTolerance,
+                        includeOpening: false), swept: false))
+                    return direction;
+                if (checkMargin && !ChainRoundingMargin.NeedsRecheck(stored, projectedOffset, capsule, along, radius, slack, parentInside))
+                    return direction;
+
+                fraction = 1;
+                if (!parentInside)
+                    ChainContactCounts.Record(ChainContactQuery.RoundingRecheck);
+                residual = parentInside ? capsule.Residual(stored.Root, stored.Displacement, out _) :
+                    capsule.ClosestResidual(stored, out fraction, out _);
+                if (reuse)
+                    last = new AxisSample(stored.Displacement, residual, fraction);
+            }
             double squared = residual.LengthSquared;
             if (squared >= radius * radius || refinement == RoundingRefinements)
                 return direction;
@@ -43,10 +74,9 @@ internal static class ChainContactProjection
             // The error in the stored child contributes only its share at the closest point.
             // A larger deficit means the closest point on the capsule has moved. The next
             // ordinary contact pass can then choose a different local sphere.
-            var rounding = (stored.Displacement - projected * length) * fraction;
+            var rounding = (stored.Displacement - projectedOffset) * fraction;
             double error = Math.Sqrt(rounding.LengthSquared);
             double deficit = radius - Math.Sqrt(squared);
-            double slack = 1e-15 * (radius + distance);
             if (deficit > error + slack)
                 return direction;
 

@@ -233,7 +233,10 @@ sees only body and worn set capsules.
      speed by an amount that changed with `h`.
    - The bend is clamped to `angleLimit`. Capsule contacts turn the segment about its parent on its length
      sphere. If the opening and current residuals cross a capsule, the correction keeps the opening side. These
-     moves only change positions.
+     moves only change positions. A segment stops its contact passes once the largest correction is at most
+     0.25 micrometres, measured in double precision from its parent-relative stored endpoints. This is above
+     local float direction noise at metre scale and below the settled travel limit. The threshold stays absolute
+     when the wearer is translated, so coarse world coordinates do not permit a larger correction to settle early.
    - Then the velocity constraints of decision 2. The velocity along the segment relative to the parent is removed.
      When the bend limit acted, the limit's wall moves with the parent particle's velocity and with the turning rate of
      the parent's frame. The first joint's frame turns with the anchor's whole rotation over the step relative to the
@@ -282,8 +285,9 @@ sees only body and worn set capsules.
    segment length, and returns to its length sphere. The correction accounts for the radial motion lost
    in that projection. The margin is the smaller of 2 micrometres and 0.01 percent of the inflated radius.
    It keeps grazing contacts from switching on a full push. The fixed row retains its share of any clearance
-   deficit. Up to eight passes resolve the reachable contact. The bend limit and each chain's own contact
-   then run again on moved corners. Unavailable leverage, a fixed edge, or a wedge between these constraints
+   deficit. The sheet uses the same 0.25 micrometre threshold on the largest parent-relative corner correction
+   in a pass and the same eight-pass cap. The bend limit and each chain's own contact then run again on moved
+   corners. Unavailable leverage, a fixed edge, or a wedge between these constraints
    can leave a remaining overlap.
    The impulse that stops escaping width velocity increases continuously across the 0.5 mm approach margin inside
    the band, reaching a full stop at the edge within rounding tolerance. This avoids switching between free
@@ -307,20 +311,27 @@ Corrections never write velocity. A chain whose one movable joint hangs from a s
 energy from its limit, static contacts or length. A tip released from contact at its endpoint starts from rest. The
 anchored first joint and segment lengths always hold. A collider outranks the bend limit, because a pass through
 looks worse than an extra bend. Contact solves the capsule locally as a sphere at the closest point of its axis, up to
-eight passes, in double precision. Use the axis point closest to the segment being placed. Each correction
-checks the segment with its world-space float endpoint, because that endpoint becomes the next segment's parent.
-If rounding introduces penetration, refine the correction using the difference between the projected and stored
-endpoint, weighted by the contact fraction. This accounts for coarse float spacing far from the origin and keeps
-near-parent corrections near their tangent cone. Each chain can skip capsules farther from its first joint than
+eight passes, in double precision. Use the axis point closest to the segment being placed. The world-space
+float endpoint becomes the next segment's parent. Rechecks of that stored endpoint are useful when the analytic
+clearance could fall within its rounding error. A point capsule supplies both clearance bounds. A finite axis
+point can also witness penetration too deep for rounding to explain. A poorly conditioned projection stays in
+the recheck path. If rounding introduces penetration, refine the correction using the difference between the
+projected and stored endpoint, weighted by the contact fraction. This accounts for coarse float spacing far from the origin and keeps
+near-parent corrections near their tangent cone. When a projection stores the exact same endpoint bits, the
+solver reuses the previous closest-point result while still evaluating the new rounding error. Each chain can skip capsules farther from its first joint than
 the chain's reach plus both radii,
 the contact tolerance and a rounding margin far above double precision error. A correction that
 would leave that reach replays the joint against every capsule, so skipping preserves the result. The reach test
 skips filtering when the reach is too large to bound safely. The next filter compares each placed parent's reach
 on its length sphere, including the chain radius and contact
 tolerance, with each capsule's swept bounding sphere in float. The swept sphere encloses both capsule poses so
-a crossing can still be tested. Each placement reuses the selected candidates. Later position passes bound the
-actual segment and its opening position in a tighter float sphere. Velocity uses only the current segment.
-Narrow-phase contact and its order are the same with either filter. Segment lengths come from this step's rest hang, so a scaled wearer keeps its proportions.
+a crossing can still be tested. Each placement reuses the selected candidates. A tighter float test measures
+from each query sphere's centre to the obstacle axis segment, with the radii, touch tolerance and rounding
+margin included. The swept axis joins the midpoint of each endpoint's motion and grows by the larger endpoint
+excursion. It encloses the hull of both posed axes, so both the sheet and the obstacle can move before the chord
+is tested. Position bounds the opening and current shape. Velocity and fixed-edge or rounding rechecks use the
+current shape and axis. Overflow or an indeterminate float distance keeps the candidate. Narrow-phase contact
+and its order are the same with either filter. Segment lengths come from this step's rest hang, so a scaled wearer keeps its proportions.
 
 **Known limits.** The segment solve clears the line between joints and on to the virtual tip. The sheet solve covers
 the bands of a bounded piece. Its chain radius must cover how far the drawn cloth projects from those bands.
@@ -556,16 +567,18 @@ The wearables limits are 32 wearers, at most 2 ms added CPU preparation, no mana
   reuses one row per chain in the largest bound group so it can finish a depth's velocity constraints after solving
   width. If that scratch cannot be represented or allocated, the solve uses the chain candidate list directly.
   The sheet pass builds an ordered candidate list and reads the larger chain radius once per band and depth.
-  Each triangle also gets a tight float bound before a double precision query. Position includes both opening
+  The tight bounds reject against the prepared capsule axes before a double precision query. Position includes both opening
   and current corners so it can still test the relative chord. Velocity bounds the current face.
   The opening triangle and its signed closest result are reused across position passes and piercing velocity.
   A band whose last pass made no move can be skipped if its corners are bit-identical. Current triangle geometry
-  is reused until a shared corner changes, including in the velocity pass if the local recheck keeps those bits.
+  is reused until one of that triangle's corners changes, including in the velocity pass if the local recheck
+  keeps those bits.
   Velocity approach is always recomputed. The fixed-edge result is reused within the depth, and the shared
   diagonal is reused when its ordered endpoints and the axis match bit for bit. A finite face intersection
   computes just the axis fraction. Unavailable optional scratch falls back to the same ordered solve.
   A segment reuses its opening residual for a capsule throughout the placement. A placement generation marks
-  valid residuals without clearing the tier's candidate prefix.
+  valid residuals without clearing the tier's candidate prefix. The contact counting probe separates query kinds
+  and reports histograms of segment passes and actual band visits, including the exact-settling control.
   Constraint setup extracts the anchor rotation and skips the unused stretch.
   At the default 120 Hz simulation rate, a 144 Hz frame averages 0.83 steps and a 60 Hz frame averages two.
   A frame between grid steps rebuilds each shown chain from the last two steps. When both sample anchors carry

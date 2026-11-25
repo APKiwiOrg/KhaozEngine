@@ -16,7 +16,8 @@ internal sealed class ChainCapsuleCull(int colliderCount)
     internal static bool DisableForTests;
 
     internal ChainCapsuleCandidates Select(Vector3 root, ReadOnlySpan<float> lengths, float chainRadius,
-        ReadOnlySpan<ColliderCapsule> colliders, ChainCapsuleCollision.Axis[]? axes = null)
+        ReadOnlySpan<ColliderCapsule> colliders, ChainCapsuleCollision.Axis[]? axes = null,
+        ChainPlacementCull? placement = null)
     {
         _axes = axes;
         var all = new ChainCapsuleCandidates(colliders, axes);
@@ -36,10 +37,16 @@ internal sealed class ChainCapsuleCull(int colliderCount)
         reach += lengths.Length * PositionRoundingBound * positionScale;
         double contactReach = reach + chainRadius + ChainCapsuleCollision.TouchTolerance;
         int count = 0;
+        bool useAxis = placement is not null && ChainPlacementCull.AxisCullEnabled;
+        var bound = new ChainPlacementCull.SweptSphere(root, (float)contactReach);
         ChainCapsuleCollision.Axis scratch = default;
         for (int index = 0; index < colliders.Length; index++)
         {
+            if (useAxis && !placement!.ReachesAxis(index, bound, swept: false))
+                continue;
+
             ref readonly var axis = ref all.ReadAxis(index, ref scratch);
+            ChainContactCounts.Record(ChainContactQuery.ChainReach);
             if (!ChainCapsuleCollision.BeyondReach(root, contactReach, colliders[index], axis))
                 _indices[count++] = index;
         }

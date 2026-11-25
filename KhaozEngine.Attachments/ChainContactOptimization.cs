@@ -16,7 +16,12 @@ internal enum ChainContactOptimization
     OpeningStamp = 1 << 8,
     Diagonal = 1 << 9,
     FaceParameter = 1 << 10,
-    All = (1 << 11) - 1,
+    AxisCull = 1 << 11,
+    RoundingMargin = 1 << 12,
+    RoundingReuse = 1 << 13,
+    PerTriangleRevision = 1 << 14,
+    All = (1 << 15) - 1,
+    PassTolerance = 1 << 15,
 }
 
 internal static class ChainContactOptimizations

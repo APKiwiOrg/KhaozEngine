@@ -6,12 +6,21 @@ internal enum ChainContactQuery
 {
     SegmentPlacement, SegmentOpening, SegmentVelocity, RoundingRecheck, FixedEdge,
     SheetCurrent, SheetOpening, SheetVelocity, SheetDiagonal, FaceBarrelResidual,
-    BandFilter, BandVisit, OpeningSlotsCleared,
+    BandFilter, BandVisit, OpeningSlotsCleared, ChainReach,
 }
 
 internal sealed class ChainContactCounts
 {
-    private readonly long[] _counts = new long[(int)ChainContactQuery.OpeningSlotsCleared + 1];
+    private readonly long[] _counts = new long[(int)ChainContactQuery.ChainReach + 1];
+
+    private readonly long[] _segmentPasses = new long[ChainSegmentContact.ContactPasses + 1];
+    private readonly long[] _bandPasses = new long[ChainSheetContact.MaxPasses + 1];
+
+    internal ReadOnlySpan<long> SegmentPasses => _segmentPasses;
+    internal ReadOnlySpan<long> BandPasses => _bandPasses;
+
+    internal void RecordSegmentPasses(int passes) => _segmentPasses[passes]++;
+    internal void RecordBandPasses(int visits) => _bandPasses[visits]++;
 
     [ThreadStatic]
     internal static ChainContactCounts? Active;

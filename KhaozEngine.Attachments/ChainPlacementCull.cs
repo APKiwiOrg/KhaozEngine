@@ -9,6 +9,8 @@ internal sealed class ChainPlacementCull(int rowCount, int colliderCount)
     private const float DirectionLengthBound = 1.000002f;
     private const float FloatRoundingMargin = 1f / (1 << 19);
     private readonly SweptSphere[] _bounds = new SweptSphere[colliderCount];
+    private readonly ChainFloatAxis[] _currentAxes = new ChainFloatAxis[colliderCount];
+    private readonly ChainFloatAxis[] _sweptAxes = new ChainFloatAxis[colliderCount];
     private readonly float[] _sheetInflation = new float[colliderCount];
     private readonly int[] _indices = AllocateIndices(rowCount, colliderCount);
 
@@ -26,6 +28,8 @@ internal sealed class ChainPlacementCull(int rowCount, int colliderCount)
         _bounds[index] = new SweptSphere(center, radius + FloatRoundingMargin * (MaxAbs(center) + radius));
         // The chord uses the current radius even at the opening end.
         _sheetInflation[index] = MathF.Max(0, current.Radius - previous.Radius);
+        _currentAxes[index] = new ChainFloatAxis(current.Start, current.End, current.Radius);
+        _sweptAxes[index] = ChainFloatAxis.Sweep(current, previous);
     }
 
     internal ChainCapsuleCandidates Select(int row, Vector3 parent, float length, float chainRadius,
@@ -72,12 +76,22 @@ internal sealed class ChainPlacementCull(int rowCount, int colliderCount)
     internal bool ReachesBand(int index, in SweptSphere band)
     {
         ChainContactCounts.Record(ChainContactQuery.BandFilter);
-        return DisableForTests || _bounds[index].CanReach(band.Center, band.Radius + _sheetInflation[index]);
+        return DisableForTests || (_bounds[index].CanReach(band.Center, band.Radius + _sheetInflation[index]) &&
+            (!AxisCullEnabled || ReachesAxis(index, band, swept: true)));
     }
 
     internal bool ReachesTight(int index, in SweptSphere reach) =>
         DisableForTests || (uint)index >= (uint)_bounds.Length || _bounds[index].Radius == 0 ||
         _bounds[index].CanReach(reach.Center, reach.Radius + _sheetInflation[index]);
+
+    internal static bool AxisCullEnabled =>
+        !DisableForTests && ChainContactOptimizations.Use(ChainContactOptimization.AxisCull);
+
+    internal bool ReachesAxis(int index, in SweptSphere reach, bool swept)
+    {
+        var axes = swept ? _sweptAxes : _currentAxes;
+        return (uint)index >= (uint)axes.Length || axes[index].Reaches(reach.Center, reach.Radius);
+    }
 
     internal static SweptSphere TriangleReach((Vector3 A, Vector3 B, Vector3 C) current,
         (Vector3 A, Vector3 B, Vector3 C) opening, float radius, bool includeOpening)

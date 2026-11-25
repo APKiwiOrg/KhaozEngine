@@ -40,7 +40,7 @@ internal static class ChainConstraints
     {
         int first = particles.Rig.FirstJoint(chain);
         return cull.Select(particles.Positions[first + chain],
-            particles.Lengths.AsSpan(first, particles.Rig.Chains[chain].Joints.Count), radius, colliders, particles.CapsuleAxes);
+            particles.Lengths.AsSpan(first, particles.Rig.Chains[chain].Joints.Count), radius, colliders, particles.CapsuleAxes, particles.PlacementCull);
     }
 
     internal static float BendCosine(in ChainSettings settings) =>

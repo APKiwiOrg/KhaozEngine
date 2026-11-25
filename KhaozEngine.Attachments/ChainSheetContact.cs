@@ -8,7 +8,7 @@ namespace KhaozEngine.Attachments;
 
 internal sealed class ChainSheetContact
 {
-    private const int MaxPasses = 8;
+    internal const int MaxPasses = 8;
     private const double MinimumWeight = 1e-12;
     private const double SideTolerance = 2.5e-7;
     private const double MaximumPositionMargin = 2e-6;
@@ -82,7 +82,9 @@ internal sealed class ChainSheetContact
         }
 
         bool skipNoOps = ChainContactOptimizations.Use(ChainContactOptimization.CleanBands);
+        bool useTolerance = ChainContactOptimizations.Use(ChainContactOptimization.PassTolerance);
         Candidate temporary = default;
+        var counts = ChainContactCounts.Active;
         for (int pass = 0; pass < MaxPasses; pass++)
         {
             bool moved = false;
@@ -95,7 +97,11 @@ internal sealed class ChainSheetContact
                 if (skipNoOps && row.LastNoOpRevision == revision)
                     continue;
 
-                ChainContactCounts.Record(ChainContactQuery.BandVisit);
+                if (counts is not null)
+                {
+                    row.Visits++;
+                    ChainContactCounts.Record(ChainContactQuery.BandVisit);
+                }
                 bool bandMoved = false;
                 float radius = useCandidates ? row.Radius : Radius(band, settings);
                 var indices = useCandidates ? _workspace.Indices(index)[..row.CandidateCount] : default;
@@ -108,8 +114,8 @@ internal sealed class ChainSheetContact
 
                     ref var entry = ref _workspace.ForObstacle(index, obstacle, ref temporary);
                     double thickness = (double)radius + obstacles[obstacle].Radius;
-                    bandMoved |= ProjectTriangle(particles, band, false, placed, obstacle, thickness, ref row, ref entry);
-                    bandMoved |= ProjectTriangle(particles, band, true, placed, obstacle, thickness, ref row, ref entry);
+                    bandMoved |= ProjectTriangle(particles, band, false, placed, obstacle, thickness, ref row, ref entry, useTolerance);
+                    bandMoved |= ProjectTriangle(particles, band, true, placed, obstacle, thickness, ref row, ref entry, useTolerance);
                 }
 
                 row.LastNoOpRevision = bandMoved ? 0 : revision;
@@ -119,13 +125,18 @@ internal sealed class ChainSheetContact
             if (!moved)
                 break;
         }
+
+        if (counts is not null)
+            for (int index = 0; index < bands.Length; index++)
+                counts.RecordBandPasses(_workspace.Rows[index].Visits);
     }
 
     private bool CanReuseCandidates =>
         _workspace.CanStoreCandidates && ChainContactOptimizations.Use(ChainContactOptimization.BandCandidates);
 
     private static bool ProjectTriangle(ChainParticles particles, in Band band, bool secondTriangle,
-        ChainConstraints.JointStep[] placed, int obstacle, double thickness, ref Row row, ref Candidate entry)
+        ChainConstraints.JointStep[] placed, int obstacle, double thickness, ref Row row, ref Candidate entry,
+        bool useTolerance)
     {
         row.Refresh(band.ReadCorners(particles.Positions));
         if (!TryCurrent(particles, ref row, ref entry, obstacle, secondTriangle, velocity: false, out var sample))
@@ -178,7 +189,7 @@ internal sealed class ChainSheetContact
             if (fixedWeight > 0)
             {
                 // Only the preceding depth can clear its residual.
-                separation -= fixedWeight * ReadFixedDeficit(particles, band, secondTriangle, obstacle, thickness, ref entry);
+                separation -= fixedWeight * ReadFixedDeficit(particles, band, secondTriangle, obstacle, thickness, row.Radius, ref entry);
             }
         }
         // Leave a small margin before applying the lever. Starting the correction at
@@ -191,8 +202,8 @@ internal sealed class ChainSheetContact
         double leverage = NormalLeverage(particles.Positions, first, normal, firstWeight) +
             NormalLeverage(particles.Positions, second, normal, secondWeight);
         double correction = (separation - positionMargin) / Math.Max(leverage, 0.05 * movableSquared);
-        bool moved = Move(particles.Positions, first, normal, correction * firstWeight);
-        return Move(particles.Positions, second, normal, correction * secondWeight) | moved;
+        bool moved = Move(particles.Positions, first, normal, correction * firstWeight, useTolerance);
+        return Move(particles.Positions, second, normal, correction * secondWeight, useTolerance) | moved;
     }
 
     private static Offset Facing(Offset normal, Offset openingNormal, double openingSide, double tolerance)
@@ -222,7 +233,7 @@ internal sealed class ChainSheetContact
         return squared == 0 ? 0 : weight * weight * tangent.LengthSquared / squared;
     }
 
-    private static bool Move(Vector3[] positions, in ChainConstraints.JointStep step, Offset normal, double distance)
+    private static bool Move(Vector3[] positions, in ChainConstraints.JointStep step, Offset normal, double distance, bool useTolerance)
     {
         if (distance <= 0 || step.Length <= 0)
             return false;
@@ -231,8 +242,13 @@ internal sealed class ChainSheetContact
         var initial = positions[child];
         var offset = new Offset(initial) - new Offset(step.Start) + normal * Math.Min(distance, step.Length);
         var direction = ChainMath.Direction(offset.ToVector3(), step.Direction);
-        positions[child] = step.Start + step.Length * direction;
-        return positions[child] != initial;
+        var next = step.Start + step.Length * direction;
+        positions[child] = next;
+        if (!useTolerance)
+            return next != initial;
+
+        var parent = new Offset(step.Start);
+        return ChainContactPass.Moved(new Offset(initial) - parent, new Offset(next) - parent);
     }
 
     internal void StopVelocities(ChainParticles particles, int depth, ChainConstraints.JointStep[] placed,
@@ -337,16 +353,24 @@ internal sealed class ChainSheetContact
     private static bool TryCurrent(ChainParticles particles, ref Row row, ref Candidate entry, int obstacle,
         bool second, bool velocity, out Sample sample)
     {
-        if (ChainContactOptimizations.Use(ChainContactOptimization.TriangleCull) && !ChainPlacementCull.DisableForTests &&
-            !particles.PlacementCull.ReachesTight(obstacle, Row.TriangleReach(ref row, second, velocity)))
+        bool sphereCull = !ChainPlacementCull.DisableForTests &&
+            ChainContactOptimizations.Use(ChainContactOptimization.TriangleCull);
+        bool axisCull = ChainPlacementCull.AxisCullEnabled;
+        if (sphereCull || axisCull)
         {
-            sample = default;
-            return false;
+            var reach = Row.TriangleReach(ref row, second, velocity);
+            if ((sphereCull && !particles.PlacementCull.ReachesTight(obstacle, reach)) ||
+                (axisCull && !particles.PlacementCull.ReachesAxis(obstacle, reach, swept: !velocity)))
+            {
+                sample = default;
+                return false;
+            }
         }
 
         ref var cache = ref Candidate.Triangle(ref entry, second);
         var reuse = velocity ? ChainContactOptimization.VelocityTriangle : ChainContactOptimization.CurrentTriangle;
-        if (ChainContactOptimizations.Use(reuse) && cache.Revision == row.Revision)
+        int revision = row.TriangleRevision(second);
+        if (ChainContactOptimizations.Use(reuse) && cache.Revision == revision)
         {
             sample = cache.Current;
             return true;
@@ -356,7 +380,7 @@ internal sealed class ChainSheetContact
         var hit = row.Current.Triangle(second).Closest(particles.CapsuleAxes[obstacle], second, ref entry.CurrentDiagonal, out var normal);
         sample = new Sample(hit, normal, Offset.Dot(normal, hit.Residual));
         cache.Current = sample;
-        cache.Revision = row.Revision;
+        cache.Revision = revision;
         return true;
     }
 
@@ -381,7 +405,7 @@ internal sealed class ChainSheetContact
     }
 
     private static double ReadFixedDeficit(ChainParticles particles, in Band band, bool second, int obstacle,
-        double thickness, ref Candidate entry)
+        double thickness, float chainRadius, ref Candidate entry)
     {
         ref var cache = ref Candidate.Triangle(ref entry, second);
         bool reuse = ChainContactOptimizations.Use(ChainContactOptimization.FixedEdge);
@@ -389,18 +413,18 @@ internal sealed class ChainSheetContact
             return deficit;
 
         var upperStart = new Offset(particles.Positions[band.FirstUpper]);
-        ref readonly var axis = ref particles.CapsuleAxes[obstacle];
-        ChainContactCounts.Record(ChainContactQuery.FixedEdge);
-        Offset residual;
-        if (!second && reuse)
-            residual = axis.Residual(upperStart, default, out _);
-        else
+        var upperEdge = second ? new Offset(particles.Positions[band.SecondUpper]) - upperStart : default;
+        var segment = new ChainSegmentContact.Segment(upperStart, upperEdge);
+        double value = 0;
+        if (!ChainPlacementCull.AxisCullEnabled || particles.PlacementCull.ReachesAxis(obstacle,
+            ChainPlacementCull.SegmentReach(segment, default, chainRadius + (float)TouchTolerance, includeOpening: false), swept: false))
         {
-            var upperEdge = second ? new Offset(particles.Positions[band.SecondUpper]) - upperStart : default;
-            residual = axis.ClosestResidual(new ChainSegmentContact.Segment(upperStart, upperEdge), out _, out _);
+            ref readonly var axis = ref particles.CapsuleAxes[obstacle];
+            ChainContactCounts.Record(ChainContactQuery.FixedEdge);
+            var residual = !second && reuse ? axis.Residual(upperStart, default, out _) :
+                axis.ClosestResidual(segment, out _, out _);
+            value = Math.Max(0, thickness - Math.Sqrt(residual.LengthSquared));
         }
-
-        double value = Math.Max(0, thickness - Math.Sqrt(residual.LengthSquared));
         if (reuse)
             cache.FixedDeficit = value;
         return value;

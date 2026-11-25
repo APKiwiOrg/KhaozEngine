@@ -115,14 +115,16 @@ internal ref struct ChainVelocityConstraints
         ref var velocity = ref _particles.Velocities[parent + 1];
         var parentVelocity = _particles.Velocities[parent];
         bool tightCull = ChainContactOptimizations.Use(ChainContactOptimization.SegmentCull) && !ChainPlacementCull.DisableForTests;
-        var bound = tightCull
+        bool axisCull = ChainPlacementCull.AxisCullEnabled;
+        var bound = tightCull || axisCull
             ? ChainPlacementCull.SegmentReach(segment, default, _radius + (float)ChainCapsuleCollision.TouchTolerance, includeOpening: false)
             : default;
         ChainCapsuleCollision.Axis scratch = default;
         for (int index = 0; index < capsules.Count; index++)
         {
             int obstacle = capsules.OriginalIndex(index);
-            if (tightCull && !_particles.PlacementCull.ReachesTight(obstacle, bound))
+            if ((tightCull && !_particles.PlacementCull.ReachesTight(obstacle, bound)) ||
+                (axisCull && !_particles.PlacementCull.ReachesAxis(obstacle, bound, swept: false)))
                 continue;
 
             ref readonly var capsule = ref capsules[index];

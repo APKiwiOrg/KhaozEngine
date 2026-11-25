@@ -130,12 +130,23 @@ public sealed class ChainPlacementCullTests(ITestOutputHelper output)
     [InlineData((int)ChainContactOptimization.OpeningStamp)]
     [InlineData((int)ChainContactOptimization.Diagonal)]
     [InlineData((int)ChainContactOptimization.FaceParameter)]
+    [InlineData((int)ChainContactOptimization.AxisCull)]
+    [InlineData((int)ChainContactOptimization.RoundingMargin)]
+    [InlineData((int)ChainContactOptimization.RoundingReuse)]
+    [InlineData((int)ChainContactOptimization.PerTriangleRevision)]
     [InlineData((int)ChainContactOptimization.All)]
     public void Contact_reuse_preserves_every_joint_frame_bit(int disabled)
     {
         var flags = (ChainContactOptimization)disabled;
         CompareProbe(flags);
         CompareLayeredSweep(flags);
+    }
+
+    [Fact]
+    public void Settling_tolerance_keeps_the_pose_close_to_exact_settling()
+    {
+        CompareProbe(ChainContactOptimization.PassTolerance);
+        CompareLayeredSweep(ChainContactOptimization.PassTolerance);
     }
 
     private static void CompareProbe(ChainContactOptimization disabled)
@@ -199,9 +210,46 @@ public sealed class ChainPlacementCullTests(ITestOutputHelper output)
             ChainContactOptimizations.DisabledForTests = default;
         }
 
-        Assert.True(MemoryMarshal.AsBytes(optimized.JointsFromAnchor)
-            .SequenceEqual(MemoryMarshal.AsBytes(control.JointsFromAnchor)),
-            $"Joint frame bits diverged at frame {frame} with {disabled} disabled.");
+        if (disabled == ChainContactOptimization.PassTolerance)
+        {
+            // Each depth has at most eight passes. Compare both the joint and the
+            // drawn tip because a tip can move while its last joint stays fixed.
+            for (int chain = 0; chain < optimized.Rig.Chains.Count; chain++)
+            {
+                var definition = optimized.Rig.Chains[chain];
+                int first = optimized.Rig.FirstJoint(chain);
+                int count = definition.Joints.Count;
+                double bound = ChainContactPass.Tolerance * ChainSegmentContact.ContactPasses * count;
+                for (int joint = first; joint < first + count; joint++)
+                    AssertDistance(optimized.JointsFromAnchor[joint].Translation, control.JointsFromAnchor[joint].Translation, bound);
+                AssertDistance(Vector3.Transform(definition.Tip, optimized.JointsFromAnchor[first + count - 1]),
+                    Vector3.Transform(definition.Tip, control.JointsFromAnchor[first + count - 1]), bound);
+            }
+        }
+        else
+        {
+            Assert.True(MemoryMarshal.AsBytes(optimized.JointsFromAnchor)
+                .SequenceEqual(MemoryMarshal.AsBytes(control.JointsFromAnchor)),
+                $"Joint frame bits diverged at frame {frame} with {disabled} disabled.");
+        }
+
+        void AssertDistance(Vector3 actual, Vector3 reference, double bound)
+        {
+            float distance = Vector3.Distance(actual, reference);
+            Assert.True(distance <= bound, $"Frame {frame}: deviation {distance} m exceeds {bound} m.");
+        }
+    }
+
+    [Fact]
+    public void A_swept_axis_keeps_contact_between_separated_endpoint_poses()
+    {
+        var opening = new ColliderCapsule(new(-0.5f, -0.375f, 0), new(0.5f, -0.375f, 0), 0.03125f);
+        var current = new ColliderCapsule(new(-0.5f, 0.375f, 0), new(0.5f, 0.375f, 0), 0.03125f);
+        const float reach = 0.03125f;
+
+        Assert.False(new ChainFloatAxis(opening.Start, opening.End, opening.Radius).Reaches(Vector3.Zero, reach));
+        Assert.False(new ChainFloatAxis(current.Start, current.End, current.Radius).Reaches(Vector3.Zero, reach));
+        Assert.True(ChainFloatAxis.Sweep(current, opening).Reaches(Vector3.Zero, reach));
     }
 
     [Theory]
@@ -257,7 +305,9 @@ public sealed class ChainPlacementCullTests(ITestOutputHelper output)
         output.WriteLine($"Closest-point queries per layered wearer step over {Steps} steps");
         WriteCounts("Placement filter enabled", Count(disable: false));
         WriteCounts("Placement filter disabled", Count(disable: true));
-        WriteCounts("Exact cuts disabled", Count(disable: false, ChainContactOptimization.All));
+        WriteCounts("Exact settling", Count(disable: false, ChainContactOptimization.PassTolerance));
+        WriteCounts("Exact cuts disabled", Count(disable: false,
+            ChainContactOptimization.All | ChainContactOptimization.PassTolerance));
     }
 
     private void WriteCounts(string label, ChainContactCounts counts)
@@ -266,6 +316,8 @@ public sealed class ChainPlacementCullTests(ITestOutputHelper output)
             $"{counts.TriangleAxis / (double)Steps:F2} triangle-axis");
         foreach (var kind in Enum.GetValues<ChainContactQuery>())
             output.WriteLine($"{label} {kind}: {counts[kind] / (double)Steps:F2}");
+        output.WriteLine($"{label} Segment passes 1-{ChainSegmentContact.ContactPasses}: {string.Join(",", counts.SegmentPasses[1..].ToArray())}");
+        output.WriteLine($"{label} Band visits 1-{ChainSheetContact.MaxPasses}: {string.Join(",", counts.BandPasses[1..].ToArray())}");
     }
 
     private static ChainContactCounts Count(bool disable, ChainContactOptimization disabledOptimizations = default)

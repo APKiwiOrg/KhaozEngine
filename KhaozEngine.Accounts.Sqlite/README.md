@@ -66,10 +66,15 @@ The reasons are `AccountDataRefusal` members.
 | `TimestampMalformed` | a stored `ban_until`, `created_at_utc` or `updated_at_utc` that is not a date and time, on any read | `ColumnName` |
 | `UpsertReturnedNoRow` | a find-or-create the table discarded, so the statement returned no row | none |
 | `UpsertReturnedDifferentAccount` | a find-or-create that returned a row whose subject is not the minted one | none |
+| `UpdateReturnedNoRow` | the table discarded a whitelist or ban change for an existing account | none |
 
 The constructor changes nothing in a table it refuses. Both find-or-create refusals roll the write back.
 `UpsertReturnedNoRow` comes from something the ensure does not inspect, a trigger calling `RAISE(IGNORE)` or a
 constraint declared `ON CONFLICT IGNORE`.
+
+Whitelist changes, bans and unbans check for the subject inside the write transaction. A missing account returns
+`null`. If the account exists and the table discards the update, the store reports `UpdateReturnedNoRow` and
+rolls back any writes made by the trigger.
 
 ## Legacy rows
 

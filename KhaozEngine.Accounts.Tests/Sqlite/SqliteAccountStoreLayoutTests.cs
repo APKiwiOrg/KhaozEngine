@@ -422,6 +422,30 @@ public sealed class SqliteAccountStoreLayoutTests : IDisposable
         Assert.Equal("discord:2", (await store.FindOrCreateAsync(SignIn("2", "Weasel"))).Subject);
     }
 
+    [Fact]
+    public async Task DiscardedUpdateOfAnExistingAccount_IsRefusedAndRolledBack()
+    {
+        // #1718: an adopted table can discard an update after its trigger has written to another table.
+        string path = scratch.NewPath();
+        SqliteAccountStore store = Open(path);
+        AccountRecord account = await store.FindOrCreateAsync(SignIn("1", "Ferret"));
+        SqliteScratch.Execute(path,
+            "CREATE TABLE update_audit (subject TEXT NOT NULL);" +
+            "CREATE TRIGGER discard_update BEFORE UPDATE ON accounts BEGIN " +
+            "INSERT INTO update_audit VALUES (OLD.subject); SELECT RAISE(IGNORE); END;");
+
+        Assert.Null(await store.SetWhitelistedAsync("discord:unknown", true));
+        AccountDataException refusal = await Assert.ThrowsAsync<AccountDataException>(
+            () => store.SetWhitelistedAsync(account.Subject, true));
+        Assert.Equal(AccountDataRefusal.UpdateReturnedNoRow, refusal.Reason);
+        AssertNamesNothing(refusal);
+        Assert.Equal(account, await store.FindAsync(account.Subject));
+        Assert.Empty(SqliteScratch.Query(path, "SELECT subject FROM update_audit;"));
+
+        SqliteScratch.Execute(path, "DROP TRIGGER discard_update;");
+        Assert.True((await store.SetWhitelistedAsync(account.Subject, true))?.Whitelisted);
+    }
+
     private static void AssertNamesNothing(AccountDataException refusal)
     {
         Assert.Null(refusal.TableName);

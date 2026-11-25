@@ -95,6 +95,28 @@ public sealed class ChainLayerContactTests
         Assert.InRange(Clearance(worlds, Upper), ContactDistance - ClearanceTolerance, ContactDistance + ClearanceTolerance);
     }
 
+    [Fact]
+    public void A_near_parent_lower_chain_arrives_and_leaves_without_exceeding_the_bend_limit()
+    {
+        const float bend = 0.16f;
+        var upper = Chain(-Vector3.UnitY, Settings with { Gravity = 0, AngleLimit = bend, Radius = UpperRadius },
+            Joint(Vector3.Zero)) with { Layer = AttachmentLayer.Outerwear };
+        var lower = Lower with { Settings = Lower.Settings with { Radius = 0.03f } };
+        var simulation = new ChainSimulation(new ChainRig(2, [upper, lower], []), 0);
+        var far = Matrix4x4.CreateTranslation(0.10f, -0.04f, 0);
+        var near = Matrix4x4.CreateTranslation(0.015f, -0.04f, 0);
+        simulation.Step([UpperAnchor, far], [], far, 0);
+        simulation.Step([UpperAnchor, near], [], near, StepSeconds);
+        simulation.Step([UpperAnchor, far], [], far, StepSeconds);
+        var arrived = Vector3.Transform(upper.Tip, simulation.JointsFromAnchor[0]);
+        simulation.Step([UpperAnchor, far], [], far, StepSeconds);
+        var released = Vector3.Transform(upper.Tip, simulation.JointsFromAnchor[0]);
+        float maximumTurn = 2 * MathF.Sin(bend / 2);
+        Assert.True(arrived.X < -ClearanceTolerance, $"The lower segment made no progress: {arrived}.");
+        Assert.InRange(Vector3.Distance(upper.Tip, arrived), 0, maximumTurn + ClearanceTolerance);
+        Assert.InRange(Vector3.Distance(arrived, released), 0, maximumTurn + ClearanceTolerance);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

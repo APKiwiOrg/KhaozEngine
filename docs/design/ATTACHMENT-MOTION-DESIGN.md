@@ -108,15 +108,26 @@ past the segment's tangent point, folding the segment through the capsule. Use t
 reaches that point and the tip's contact circle for shorter segments. Both keep the authored segment length.
 An anchored parent inside a capsule can clear only its endpoint.
 
-A segment takes its side from its opening positions before the wearer carry when the residuals to the capsule point
-to opposite sides and the straight path between them crosses the capsule. A capsule can then push a segment ahead
-of it even when their closing poses are already separated. If the capsule is beyond the segment's reach at closing,
-there is no correction.
+A segment compares its accepted opening positions before wearer carry with its unconstrained prediction. The
+prediction includes the midpoint spring in the predicted parent frames, before length, bend, width or contact
+corrections move any parent. The sweep compares the same fractions of the segment and capsule axis across the two
+poses. Opposing residuals whose chord enters the capsule latch an opening side for the placement. If the opening
+segment is already embedded, the solver depenetrates from the current side. A latched side can push the segment
+ahead of a capsule even when their closing poses are separated, within the segment's current reach.
+
+When solid corrections oppose each other, the solver tests the initial direction, the sequential result and the
+intersections of their supporting planes on the unit direction sphere. It checks those directions against the
+actual capsules and favors smaller solid residuals, then smaller layer residuals and shorter turns. A candidate
+that still penetrates solids can turn by at most a quarter radian from the initial direction. This bounds progress
+in a wedge while a feasible turn can clear opposing contacts without picking a distant side.
 
 ### 8. Chains push outward by layer
 
 Solve a wearer's chains from the innermost layer outward. A lower layer's solved segments act as moving capsules
 for upper layers. This lets a swinging strap push the next garment away without changing the strap's motion.
+In the first eighth of an upper segment, a lower contact respects the upper segment's bend wall. When a solid also
+constrains that turn, the response takes at most 0.16 radian from the placement's initial direction and may leave a
+residual on the lower segment to preserve solid clearance.
 Mutual contact would need masses that the format does not carry and iteration between both layers during the
 root-to-tip pass. Those belong to the cloth solver ([#1870](https://github.com/APKiwiOrg/KhaozEngine/issues/1870)).
 
@@ -232,7 +243,7 @@ sees only body and worn set capsules.
      at the start of the step. Measuring it from the parent's end of step position coupled the spring to the parent's
      speed by an amount that changed with `h`.
    - The bend is clamped to `angleLimit`. Capsule contacts turn the segment about its parent on its length
-     sphere. If the opening and current residuals cross a capsule, the correction keeps the opening side. These
+     sphere. A swept crossing latches the opening side from the unprojected prediction as described above. These
      moves only change positions. A segment stops its contact passes once the largest correction is at most
      0.25 micrometres, measured in double precision from its parent-relative stored endpoints. This is above
      local float direction noise at metre scale and below the settled travel limit. The threshold stays absolute
@@ -339,7 +350,7 @@ a crossing can still be tested. Each placement reuses the selected candidates. A
 from each query sphere's centre to the obstacle axis segment, with the radii, touch tolerance and rounding
 margin included. The swept axis joins the midpoint of each endpoint's motion and grows by the larger endpoint
 excursion. It encloses the hull of both posed axes, so both the sheet and the obstacle can move before the chord
-is tested. Position bounds the opening and current shape. Velocity and fixed-edge or rounding rechecks use the
+is tested. Segment position bounds the opening, unprojected prediction and current shape. Velocity and fixed-edge or rounding rechecks use the
 current shape and axis. Overflow or an indeterminate float distance keeps the candidate. Narrow-phase contact
 and its order are the same with either filter. Segment lengths come from this step's rest hang, so a scaled wearer keeps its proportions.
 
@@ -591,8 +602,9 @@ The wearables limits are 32 wearers, at most 2 ms added CPU preparation, no mana
   Velocity approach is always recomputed. The fixed-edge result is reused within the depth, and the shared
   diagonal is reused when its ordered endpoints and the axis match bit for bit. A finite face intersection
   computes just the axis fraction. Unavailable optional scratch falls back to the same ordered solve.
-  A segment reuses its opening residual for a capsule throughout the placement. A placement generation marks
-  valid residuals without clearing the tier's candidate prefix. The contact counting probe separates query kinds
+  A segment reuses its swept side decision for a capsule throughout the placement. A placement generation marks
+  valid decisions without clearing the tier's candidate prefix. A bound on relative endpoint travel skips the
+  witness query when the material points cannot reach opposite sides. The contact counting probe separates query kinds
   and reports histograms of segment passes and actual band visits, including the exact-settling control.
   Constraint setup extracts the anchor rotation and skips the unused stretch.
   At the default 120 Hz simulation rate, a 144 Hz frame averages 0.83 steps and a 60 Hz frame averages two.
@@ -668,13 +680,17 @@ All headless, on synthetic skeletons built in code.
   Whole segments clear
   thin and moving capsules, including long capsule axes. A translated endpoint clears after rounding, and a tiny
   near-parent contact stays near its tangent cone. A soft chain settles on the side of a capsule it fell onto.
-  A capsule that crosses a segment within one step pushes it ahead. Bends stay within the limit except where
-  capsule clearance takes precedence. Disabling the placement filter preserves every joint frame bit, including
+  A capsule that crosses a segment within one step pushes it ahead. An upstream projection cannot turn a clear
+  predicted sweep into a crossing, and an embedded opening depenetrates toward its predicted side. Competing
+  solids take the closest clear turn or keep a local residual when even the endpoint cannot clear. Bends stay
+  within the limit except where solid clearance takes precedence. Disabling the placement filter preserves every joint frame bit, including
   for very long axes. The contact counting probe compares each placement filter with its unfiltered control.
   A sweeping lower chain pushes an upper chain, including across a full crossing in one step. The lower chain's
   frames match a run without the upper chain bit for bit. Same-layer and unlayered chains pass through each other.
-  A soft upper chain settles on a still lower chain at fixed and uneven frame times. Layered contact allocates
-  nothing once warm.
+  A soft upper chain settles on a still lower chain at fixed and uneven frame times. An approaching and departing
+  lower capsule near the parent leaves the upper bend in charge. Layered contact allocates nothing once warm.
+  Tolerance is compared across full histories in the controlled sweep and a single step from the same saved state
+  in the embedded dense probe. This isolates early settling from accumulated motion in incompatible constraints.
   Trail 0 keeps the chain's shape in the wearer's space while the wearer moves steadily, and trail 1 lags it. A hold and a resume move no joint further in a frame than the blend
   allows. Linked chains keep their spacing when a collider pushes one. Nothing allocates once warm.
 - **Velocity rule.** A one joint chain on a still anchor, with no spring or gravity, sent into its limit and a capsule

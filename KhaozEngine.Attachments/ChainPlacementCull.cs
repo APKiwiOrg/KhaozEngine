@@ -114,7 +114,8 @@ internal sealed class ChainPlacementCull(int rowCount, int colliderCount)
     }
 
     internal static SweptSphere SegmentReach(in ChainSegmentContact.Segment segment,
-        in ChainSegmentContact.Segment opening, float radius, bool includeOpening)
+        in ChainSegmentContact.Segment opening, float radius, bool includeOpening,
+        ChainSegmentContact.Segment? prediction = null)
     {
         var start = segment.Root.ToVector3();
         var end = (segment.Root + segment.Displacement).ToVector3();
@@ -127,6 +128,11 @@ internal sealed class ChainPlacementCull(int rowCount, int colliderCount)
         float reach = MathF.Max(Vector3.Distance(start, center), Vector3.Distance(end, center));
         if (includeOpening)
             reach = MathF.Max(reach, MathF.Max(Vector3.Distance(openingStart, center), Vector3.Distance(openingEnd, center)));
+        if (prediction is { } raw)
+        {
+            reach = MathF.Max(reach, MathF.Max(Vector3.Distance(center, raw.Root.ToVector3()),
+                Vector3.Distance(center, (raw.Root + raw.Displacement).ToVector3())));
+        }
         return Pad(center, reach + radius);
     }
 

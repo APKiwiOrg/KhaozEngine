@@ -89,6 +89,14 @@ internal static class ChainContactProjection
         }
     }
 
+    internal static double BoundaryCosine(double length, double distance, double radius, bool useCone)
+    {
+        double tangentSquared = (distance - radius) * (distance + radius);
+        double lengthSquared = length * length;
+        return useCone && lengthSquared >= tangentSquared ? Math.Sqrt(Math.Max(0, tangentSquared)) / distance :
+            Math.Clamp((lengthSquared + tangentSquared) / (2 * length * distance), -1, 1);
+    }
+
     private static Offset Boundary(double length, double distance, double radius, Offset axis, Offset tangent, bool useCone)
     {
         double tangentSquared = (distance - radius) * (distance + radius);
@@ -99,7 +107,7 @@ internal static class ChainContactProjection
             return axis * cosine + tangent * (radius / distance);
         }
 
-        double tipCosine = Math.Clamp((lengthSquared + tangentSquared) / (2 * length * distance), -1, 1);
+        double tipCosine = BoundaryCosine(length, distance, radius, useCone: false);
         double tipSine = Math.Sqrt((1 - tipCosine) * (1 + tipCosine));
         return axis * tipCosine + tangent * tipSine;
     }

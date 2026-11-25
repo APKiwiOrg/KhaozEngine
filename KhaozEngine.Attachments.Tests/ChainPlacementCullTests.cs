@@ -149,8 +149,47 @@ public sealed class ChainPlacementCullTests(ITestOutputHelper output)
     [Fact]
     public void Settling_tolerance_keeps_the_pose_close_to_exact_settling()
     {
-        CompareProbe(ChainContactOptimization.PassTolerance);
+        // Compare full histories in the reachable sweep. The embedded dense
+        // workload compares a single step in Settling_tolerance_keeps_a_dense_step_close_from_the_same_state.
         CompareLayeredSweep(ChainContactOptimization.PassTolerance);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(39)]
+    [InlineData(146)]
+    [InlineData(201)]
+    [InlineData(221)]
+    public void Settling_tolerance_keeps_a_dense_step_close_from_the_same_state(int target)
+    {
+        var rig = CreateRig(layered: true);
+        var first = new ChainSimulation(rig, RestCapsules.Length);
+        var exact = new ChainSimulation(rig, RestCapsules.Length);
+        var capsules = new ColliderCapsule[RestCapsules.Length];
+        for (int frame = 0; frame < target; frame++)
+        {
+            var (anchor, wearer) = Pose(frame, capsules);
+            float seconds = frame == 0 ? 0 : StepSeconds;
+            first.Step([anchor], capsules, wearer, seconds);
+            exact.Step([anchor], capsules, wearer, seconds);
+        }
+
+        var (endAnchor, endWearer) = Pose(target, capsules);
+        first.Step([endAnchor], capsules, endWearer, StepSeconds);
+        ChainContactOptimizations.DisabledForTests = ChainContactOptimization.PassTolerance;
+        try
+        {
+            exact.Step([endAnchor], capsules, endWearer, StepSeconds);
+        }
+        finally
+        {
+            ChainContactOptimizations.DisabledForTests = default;
+        }
+
+        // Show the new solution without stepping a second time from different states.
+        first.Step([endAnchor], capsules, endWearer, StepSeconds / 2);
+        exact.Step([endAnchor], capsules, endWearer, StepSeconds / 2);
+        AssertSettledPose(first, exact, target);
     }
 
     private static void CompareProbe(ChainContactOptimization disabled, bool bounded = true)
@@ -215,26 +254,28 @@ public sealed class ChainPlacementCullTests(ITestOutputHelper output)
         }
 
         if (disabled == ChainContactOptimization.PassTolerance)
-        {
-            // Each depth has at most eight passes. Compare both the joint and the
-            // drawn tip because a tip can move while its last joint stays fixed.
-            for (int chain = 0; chain < optimized.Rig.Chains.Count; chain++)
-            {
-                var definition = optimized.Rig.Chains[chain];
-                int first = optimized.Rig.FirstJoint(chain);
-                int count = definition.Joints.Count;
-                double bound = ChainContactPass.Tolerance * ChainSegmentContact.ContactPasses * count;
-                for (int joint = first; joint < first + count; joint++)
-                    AssertDistance(optimized.JointsFromAnchor[joint].Translation, control.JointsFromAnchor[joint].Translation, bound);
-                AssertDistance(Vector3.Transform(definition.Tip, optimized.JointsFromAnchor[first + count - 1]),
-                    Vector3.Transform(definition.Tip, control.JointsFromAnchor[first + count - 1]), bound);
-            }
-        }
+            AssertSettledPose(optimized, control, frame);
         else
-        {
             Assert.True(MemoryMarshal.AsBytes(optimized.JointsFromAnchor)
                 .SequenceEqual(MemoryMarshal.AsBytes(control.JointsFromAnchor)),
                 $"Joint frame bits diverged at frame {frame} with {disabled} disabled.");
+    }
+
+    private static void AssertSettledPose(ChainSimulation optimized, ChainSimulation control, int frame)
+    {
+        Assert.Equal(optimized.Rig.JointCount, control.JointsFromAnchor.Length);
+        // Each depth has at most eight passes. Compare both the joint and the
+        // drawn tip because a tip can move while its last joint stays fixed.
+        for (int chain = 0; chain < optimized.Rig.Chains.Count; chain++)
+        {
+            var definition = optimized.Rig.Chains[chain];
+            int first = optimized.Rig.FirstJoint(chain);
+            int count = definition.Joints.Count;
+            double bound = ChainContactPass.Tolerance * ChainSegmentContact.ContactPasses * count;
+            for (int joint = first; joint < first + count; joint++)
+                AssertDistance(optimized.JointsFromAnchor[joint].Translation, control.JointsFromAnchor[joint].Translation, bound);
+            AssertDistance(Vector3.Transform(definition.Tip, optimized.JointsFromAnchor[first + count - 1]),
+                Vector3.Transform(definition.Tip, control.JointsFromAnchor[first + count - 1]), bound);
         }
 
         void AssertDistance(Vector3 actual, Vector3 reference, double bound)

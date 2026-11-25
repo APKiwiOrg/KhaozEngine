@@ -16,6 +16,8 @@ internal static class ChainConstraints
         int first = rig.FirstJoint(chain);
         int last = first + rig.Chains[chain].Joints.Count - 1;
         float springWeight = pullTowardRest ? ChainMath.MidpointSpringWeight(settings.Stiffness, seconds) : 0;
+        if (!colliders.IsEmpty)
+            particles.SweepPrediction?.Capture(particles, chain, anchor, springWeight);
         bool reuseCosine = ChainContactOptimizations.Use(ChainContactOptimization.BendCosine);
         float cosine = !pullTowardRest && reuseCosine && firstPass?.BendCosine is { } previousCosine
             ? previousCosine : BendCosine(settings);
@@ -86,7 +88,7 @@ internal static class ChainConstraints
         if (springWeight > 0)
         {
             var started = particles.SubstepStarts[end] - particles.SubstepStarts[particle];
-            var correction = springWeight * (length * rest - 0.5f * (started + predicted));
+            var correction = SpringCorrection(springWeight, length, rest, started, predicted);
             particles.ApplySpring(end, correction, seconds);
             predicted += correction;
         }
@@ -94,6 +96,9 @@ internal static class ChainConstraints
         var step = new JointStep(joint, particle, start, length, world, rest, default, false, default, false, capsules.Count);
         return PlaceOnSphere(particles, placementRow, step, predicted, cosine, radius, capsules);
     }
+
+    internal static Vector3 SpringCorrection(float weight, float length, Vector3 rest, Vector3 started, Vector3 predicted) =>
+        weight * (length * rest - 0.5f * (started + predicted));
 
     internal static JointStep ReapplyLimits(ChainParticles particles, int placementRow, in JointStep step,
         float cosine, float radius, ChainCapsuleCandidates capsules) =>
@@ -111,7 +116,7 @@ internal static class ChainConstraints
             clamped = limited != direction;
             direction = limited;
             direction = ChainSegmentContact.Clear(particles, placementRow, step.Particle, direction, step.Length, radius,
-                capsules, out replayedAll, out placementCount);
+                capsules, out replayedAll, out placementCount, step.Particle - step.Joint, step.Rest, cosine);
         }
 
         var end = step.Start + step.Length * direction;
@@ -132,7 +137,7 @@ internal static class ChainConstraints
         return world;
     }
 
-    private static Vector3 ClampBend(Vector3 direction, Vector3 rest, float cosine)
+    internal static Vector3 ClampBend(Vector3 direction, Vector3 rest, float cosine)
     {
         if (Vector3.Dot(direction, rest) >= cosine)
             return direction;

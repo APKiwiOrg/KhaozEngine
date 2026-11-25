@@ -26,7 +26,9 @@ internal sealed class ChainParticles
         PlacementCull = new ChainPlacementCull(placementRows, colliderCount);
         CapsuleAxes = new ChainCapsuleCollision.Axis[colliderCount];
         PreviousCapsuleAxes = new ChainCapsuleCollision.Axis[colliderCount];
-        OpeningResiduals = new ChainCapsuleCollision.Offset?[colliderCount];
+        SweepPrediction = colliderCount == 0 ? null : new ChainSweepPrediction(count, rig.Chains.Count);
+        PreviousCapsuleRadii = new float[colliderCount];
+        OpeningSides = new Vector3?[colliderCount];
         OpeningStamps = new int[colliderCount];
     }
 
@@ -46,8 +48,12 @@ internal sealed class ChainParticles
     internal ChainPlacementCull PlacementCull { get; }
     internal ChainCapsuleCollision.Axis[] CapsuleAxes { get; }
     internal ChainCapsuleCollision.Axis[] PreviousCapsuleAxes { get; }
-    internal ChainCapsuleCollision.Offset?[] OpeningResiduals { get; }
+    internal ChainSweepPrediction? SweepPrediction { get; }
+    internal float[] PreviousCapsuleRadii { get; }
+    internal Vector3?[] OpeningSides { get; }
     internal int[] OpeningStamps { get; }
+
+    internal int SolidCapsuleCount { get; init; } = int.MaxValue;
 
     internal int NextOpeningStamp()
     {
@@ -59,12 +65,17 @@ internal sealed class ChainParticles
         return _openingStamp;
     }
 
-    internal void SnapshotOpening() => Positions.AsSpan(0, OpeningPositions.Length).CopyTo(OpeningPositions);
+    internal void SnapshotOpening()
+    {
+        Positions.AsSpan(0, OpeningPositions.Length).CopyTo(OpeningPositions);
+        SweepPrediction?.Begin();
+    }
 
     internal void SetCapsuleGeometry(int index, in ColliderCapsule current, in ColliderCapsule previous)
     {
         CapsuleAxes[index] = new ChainCapsuleCollision.Axis(current);
         PreviousCapsuleAxes[index] = new ChainCapsuleCollision.Axis(previous);
+        PreviousCapsuleRadii[index] = previous.Radius;
         PlacementCull.SetBounds(index, current, previous);
     }
 

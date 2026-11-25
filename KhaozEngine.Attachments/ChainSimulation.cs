@@ -40,7 +40,7 @@ public sealed class ChainSimulation
         ColliderCount = colliderCount;
         Options = options;
         _tiers = new ChainSolveTiers(rig, colliderCount);
-        _particles = new ChainParticles(rig, _tiers.ObstacleCount, _tiers.PlacementRows);
+        _particles = new ChainParticles(rig, _tiers.ObstacleCount, _tiers.PlacementRows) { SolidCapsuleCount = colliderCount };
         var hierarchy = new ChainPresentationHierarchy(rig);
         _blend = new ChainPresentationBlend(rig, hierarchy);
         _stepPresentation = new ChainStepPresentation(rig, hierarchy);

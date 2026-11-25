@@ -10,6 +10,8 @@ namespace KhaozEngine.TileWorld.Physics;
 /// <summary>Water above one captured drawn triangle, clipped at its body's level surface.</summary>
 internal sealed class TileWaterPrism
 {
+    readonly string _joinedTriangleBoundaryId;
+
     internal TileWaterColumn Column { get; }
     internal int ColumnIndex { get; }
     internal DrawnGroundTriangle Triangle { get; }
@@ -24,9 +26,11 @@ internal sealed class TileWaterPrism
     internal double HorizontalError { get; }
     internal double RepresentationError { get; }
 
-    internal TileWaterPrism(TileWaterColumn column, DrawnGroundTriangle triangle, int x, int z, float tileSize, int columnIndex)
+    internal TileWaterPrism(TileWaterColumn column, DrawnGroundTriangle triangle, int x, int z, float tileSize,
+        int columnIndex, string? joinedTriangleBoundaryId = null)
     {
         Column = column;
+        _joinedTriangleBoundaryId = joinedTriangleBoundaryId ?? CaptureJoinedTriangleBoundaryId(column);
         ColumnIndex = columnIndex;
         Triangle = triangle;
         TileX = x;
@@ -69,6 +73,9 @@ internal sealed class TileWaterPrism
         Witness = new(this);
     }
 
+    internal static string CaptureJoinedTriangleBoundaryId(TileWaterColumn column) =>
+        column.BedBoundaryId + "/joined-triangle";
+
     static P Edge(Vector3 a, Vector3 b, Vector3 inside)
     {
         double nx = (double)b.Z - a.Z, nz = (double)a.X - b.X;
@@ -107,6 +114,6 @@ internal sealed class TileWaterPrism
         if (a.X == b.X && a.X == TileSize) return Column.MaxXBoundaryId;
         if (a.Z == b.Z && a.Z == -TileSize) return Column.MinZBoundaryId;
         if (a.Z == b.Z && a.Z == 0) return Column.MaxZBoundaryId;
-        return Column.BedBoundaryId + "/joined-triangle";
+        return _joinedTriangleBoundaryId;
     }
 }

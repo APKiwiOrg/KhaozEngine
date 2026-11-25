@@ -69,7 +69,7 @@ internal class TileWaterTraceStorage
                 {
                     MovementDomainContact contact = _contacts[i * _contactLimit + c];
                     // Only the caller's space and identity are output stamps. Immutable geometry ids
-                    // retain their references, except fresh joined-triangle ids whose value is the contract.
+                    // retain their references. Joined-triangle ids have a value-only contract.
                     contacts[c] = new(contact.Domain, space, contact.Interval, contact.IntervalColumnXZ,
                         contact.Normal, contact.Fraction, contact.BoundaryId, contact.CoverageRegionHandle,
                         contact.Overlap, contact.SpanOverlap);

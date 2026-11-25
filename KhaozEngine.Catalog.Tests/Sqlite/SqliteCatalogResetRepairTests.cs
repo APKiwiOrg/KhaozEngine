@@ -31,10 +31,18 @@ public class SqliteCatalogResetRepairTests
     static int Standing => SqliteCatalogSchemaInventory.Tables.Count - 3;
 
     [Fact]
-    public async Task ADatabaseCarryingNoCatalogTableIsCreatedRatherThanRefused()
+    public async Task AFirstResetCreatesTheCatalogOnceItsTableNamesAreFree()
     {
         using var database = new TemporaryCatalogDatabase();
         database.Execute("CREATE TABLE host_own_table(id INTEGER NOT NULL PRIMARY KEY);");
+
+        // #1731: the first reset also needs the names of tables other than metadata.
+        database.Execute("CREATE VIEW catalog_family AS SELECT id FROM host_own_table;");
+        var collision = await Assert.ThrowsAsync<ContentAuthoringException>(() =>
+            SqliteCatalogReset.ResetAsync(database.ConnectionString, Actor, Operator, "first release"));
+        Assert.Equal(ContentAuthoringRefusal.SchemaObjectUnexpected, collision.Refusal);
+        Assert.Equal("view:catalog_family", collision.ObjectName);
+        database.Execute("DROP VIEW catalog_family;");
 
         ContentCatalogResetResult reset = await SqliteCatalogReset.ResetAsync(
             database.ConnectionString, Actor, Operator, "first release");

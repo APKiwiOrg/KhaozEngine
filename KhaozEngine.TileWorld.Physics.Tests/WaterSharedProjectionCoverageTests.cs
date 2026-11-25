@@ -72,8 +72,6 @@ public sealed class WaterSharedProjectionCoverageTests(ITestOutputHelper output)
     [InlineData("bypassed")]
     public void WarmTracesAllocateNothingWhetherOrNotTheyShare(string mode)
     {
-        // Surface faces only. A contact on a diagonal side face builds its joined-triangle boundary id
-        // string, an allocation outside the projection path that these sharing rows do not measure.
         var geometry = ManyParents(mode == "exhausted" ? TileWaterSharedProjections.Slots + 4 : 2);
         var query = Moving();
         using var bypass = new SharedProjectionBypass(mode == "bypassed");

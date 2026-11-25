@@ -858,8 +858,8 @@ may reuse the canonical proposal rotation's Boolean. Their owners, keys and stor
 [Bepu support footprints](../KhaozEngine.Physics.Bepu/README.md). Neither skips fresh lease/pin authentication,
 producer-output validation, water-level consistency, selection reconstruction or cold placement. Query-result
 reuse and buffer cleanup preserve movement publication bits, including commitment state. Executed-work counters
-may decrease on hits. Sticky FP status and fresh joined-boundary string reference identity are outside the water
-replay guarantee, while FP controls remain exact numeric inputs and lookups never change the caller's environment.
+may decrease on hits. Replay compares joined-triangle boundary IDs by value and excludes sticky FP status.
+FP controls remain exact numeric inputs and lookups never change the caller's environment.
 
 `MovementQueryLease.EnumerateSupport` and `TraceWater` use cleared private scratch and validate the
 complete producer result before publishing caller buffers. Refusal or a provider exception leaves

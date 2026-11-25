@@ -22,7 +22,7 @@ namespace KhaozEngine.TileWorld.Physics;
 /// and 48 contacts per entry. Query bits, buffer lengths, space and floating point controls must match.
 /// A fixed hash index locates the FIFO slot and always checks the complete key for equality.
 /// A hit reproduces every output bit, caller-owned references, caller buffer contents, refusals and validation
-/// outside the kernel. A freshly allocated boundary id string is replayed by value. Sticky floating point status
+/// outside the kernel. Joined-triangle boundary ids replay by string value. Sticky floating point status
 /// is excluded because the kernel itself can leave different status across compiled tiers for the same inputs.
 /// Work counters report executed work rather than replayed work. Entries survive ticks until oldest-insertion
 /// eviction. A hit is an optimization, never a guarantee. Readers without a table or a supported control reader

@@ -179,10 +179,11 @@ referencing the catalog fails the reset at its commit instead, and the whole res
 references to the catalog out of foreign keys, or declare them `NO ACTION` and clear the referencing rows
 before a reset.
 
-A metadata-shaped view and its INSTEAD OF insert trigger can also stand outside the table inventory and
-intercept the metadata seed. Recreating does not prove the epoch is a TEXT value. A missing epoch uses
-`SchemaValidationMetadataMissing`, while a nontext epoch uses `StoredScalarTypeMismatch` with expected
-CLR type `string` and the actual scalar type. A refusal rolls back that trigger's writes too.
+SQLite's `CREATE TABLE IF NOT EXISTS` leaves a view in place if its name matches the table being created.
+Before dropping any table, reset checks for host views occupying a declared table name, including names
+that differ only in case. It refuses with `SchemaObjectUnexpected` even with `force`. `ObjectName` carries
+`view:` followed by the view's stored name. Move the view to an unused name before retrying. The host's
+view, its triggers and the catalog rows all survive the refusal.
 
 Drop and recreate rather than `DELETE`, because a delete leaves the `sqlite_sequence` marks behind the
 `AUTOINCREMENT` columns on `catalog_family`, `catalog_draft_edit`, `catalog_audit`, `catalog_draft_text_edit` and
@@ -193,7 +194,8 @@ the next family created after a reimport would land above the bundle's ids. Drop
 It is a separate type taking its own connection string rather than a member on `IContentAuthoringStore`,
 because a reset is DDL and the everyday authoring path is DML. A production deployment should not give its
 application role DDL at all, so the reset runs under the migration credential and the authoring seam keeps the
-surface it had. It opens its own connection, so the connection string has to name a durable database: a plain
+surface it had. Reset opens a fresh, unpooled connection so its schema inventory and writes use the same
+database without inheriting host TEMP objects or connection settings. A plain
 `Data Source=:memory:` database belongs to the connection that opened it, so the reset would open a second
 empty one, create a schema into it and throw both away. Under `Cache=Shared` an in-memory database is shared
 by NAME for as long as one connection to it stays open, and a reset does reach the store its holder is using.

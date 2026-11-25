@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using KhaozEngine.Catalog.Authoring;
 using Microsoft.Data.Sqlite;
 
 namespace KhaozEngine.Catalog.Sqlite;
@@ -103,7 +104,8 @@ internal static class SqliteCatalogSchemaInventory
 
     /// <summary>
     /// The inventory INTERSECTED with what the database actually holds, in name order. An empty answer means
-    /// the file carries no catalog table at all, and a short one means a partial catalog.
+    /// the file carries no catalog table at all, and a short one means a partial catalog. A view occupying
+    /// a declared table name blocks the reset because SQLite's CREATE TABLE IF NOT EXISTS leaves it in place.
     /// </summary>
     /// <param name="connection">An open connection to the database.</param>
     /// <param name="transaction">The transaction to read under, or null.</param>
@@ -115,16 +117,27 @@ internal static class SqliteCatalogSchemaInventory
 
         using SqliteCommand command = connection.CreateCommand();
         command.Transaction = transaction;
-        command.CommandText = "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name COLLATE BINARY;";
+        command.CommandText = "SELECT name, type FROM sqlite_master WHERE type IN ('table', 'view') ORDER BY name COLLATE BINARY;";
         var names = new List<string>();
         using SqliteDataReader reader = command.ExecuteReader();
         while (reader.Read())
         {
             string name = reader.GetString(0);
-            if (Tables.Contains(name))
+            if (!Tables.Contains(name)) continue;
+
+            if (reader.GetString(1) == "view")
             {
-                names.Add(name);
+                throw new ContentAuthoringException(ContentAuthoringRefusal.SchemaObjectUnexpected,
+                    $"The SQLite catalog reset needs '{name}' for a table. Move the host view with that name before retrying.",
+                    default, 0, ContentAuthoringException.SchemaMismatchReason)
+                {
+                    ObjectName = "view:" + name,
+                    ExpectedVersion = SqliteCatalogSchema.CurrentVersion,
+                    RequiredMigration = SqliteCatalogSchema.RequiredMigration,
+                };
             }
+
+            names.Add(name);
         }
 
         return names;

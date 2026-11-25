@@ -33,7 +33,7 @@ public sealed partial class TileMediumSampler
         var key = controls ? new TileWaterTraceMemo.Key(query, physicsOrigin, spans.Length, contacts.Length,
             state) : default;
         // A hit preserves every output bit, current-caller references, caller buffers, refusals
-        // and validation outside the kernel. Freshly allocated boundary ids replay by value.
+        // and validation outside the kernel. Joined-triangle boundary ids replay by string value.
         // Sticky FP status is excluded because compiled kernel tiers can leave different status
         // for the same inputs. Executed-work counters are excluded too. Controls stay in the key.
         if (memoizable && table!.TryRead(key, query.Body.CurrentSpace, identity, spans, contacts, out var cached))

@@ -39,7 +39,7 @@ internal static class WaterCoverageComparison
         Assert.Same(a.Space.LocalId, b.Space.LocalId);
         Assert.Same(a.Interval.LowerBoundaryId, b.Interval.LowerBoundaryId);
         Assert.Same(a.Interval.UpperBoundaryId, b.Interval.UpperBoundaryId);
-        // Joined triangle IDs are newly constructed by an uncached evaluation. Their value is the contract.
+        // The frozen evaluator constructs joined-triangle IDs on every trace, so compare their values.
         if (a.BoundaryId?.EndsWith("/joined-triangle", StringComparison.Ordinal) != true)
             Assert.Same(a.BoundaryId, b.BoundaryId);
         Bits(a.Interval.LowerY, b.Interval.LowerY);

@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 
 namespace KhaozEngine.Catalog.Authoring;
 
-/// <summary>The row-only draft freeze and the policy's read under that freeze.</summary>
+/// <summary>The row-only draft freeze and the read of the change set held by it.</summary>
 internal static class ContentPublishDraftFreeze
 {
     /// <summary>
@@ -49,7 +49,28 @@ internal static class ContentPublishDraftFreeze
             };
         }
 
-        ContentDraft? draft = await store.GetOpenDraftAsync(cancellationToken).ConfigureAwait(false);
+        RequirePendingEdits(await store.GetOpenDraftAsync(cancellationToken).ConfigureAwait(false));
+        await store.FreezeDraftAsync(baseline.VersionNumber, cancellationToken).ConfigureAwait(false);
+
+        // The store freezes separately from the initial draft read. The candidate uses the changes held
+        // by the marker, including edits saved between the initial read and the freeze.
+        ContentDraft? frozen = await store.GetOpenDraftAsync(cancellationToken).ConfigureAwait(false);
+        if (frozen is null || frozen.FrozenForBaseVersion != baseline.VersionNumber)
+        {
+            throw new ContentAuthoringException(ContentAuthoringRefusal.FrozenDraftLost,
+                "The row-only publish no longer holds its frozen draft.",
+                default, 0, ContentAuthoringException.BaseVersionMovedReason)
+            {
+                ExpectedBaseVersion = baseline.VersionNumber,
+            };
+        }
+
+        RequirePendingEdits(frozen);
+        return frozen;
+    }
+
+    static void RequirePendingEdits(ContentDraft? draft)
+    {
         if (draft is null || draft.EditCount == 0)
         {
             throw new ContentAuthoringException(
@@ -59,27 +80,5 @@ internal static class ContentPublishDraftFreeze
                 0,
                 ContentAuthoringException.NoOpenDraftReason);
         }
-
-        await store.FreezeDraftAsync(baseline.VersionNumber, cancellationToken).ConfigureAwait(false);
-        if (request.PublishPolicy is null)
-        {
-            return draft;
-        }
-
-        // Legacy row-only providers freeze separately from their initial draft read. A policy must inspect
-        // the changes held by the marker, including an edit that arrived between that read and the freeze.
-        ContentDraft? frozen = await store.GetOpenDraftAsync(cancellationToken).ConfigureAwait(false);
-        if (frozen is null || frozen.FrozenForBaseVersion != baseline.VersionNumber)
-        {
-            throw new ContentAuthoringException(ContentAuthoringRefusal.FrozenDraftLost,
-                "The policy publish no longer holds its frozen draft.",
-                default, 0, ContentAuthoringException.BaseVersionMovedReason)
-            {
-                ExpectedBaseVersion = baseline.VersionNumber,
-            };
-        }
-
-        return frozen;
     }
-
 }

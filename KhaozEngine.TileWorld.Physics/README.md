@@ -476,8 +476,9 @@ from the key. World membership, finite origin, query and identity validation pre
 sampler owns all captured bed, level, speed and topology dependencies. Rebuild it after authored water or bed
 changes. Identity is a current-call output stamp, never retained authority. Replay reconstructs contacts with the
 current caller's space string references and copies only written prefixes, leaving suffixes untouched.
-A joined-triangle boundary id freshly allocated by recomputation replays by string value without a reference
-identity guarantee. No lease, pin, continuity handle, active scratch or caller array is retained.
+Each captured column with water prisms supplies one shared joined-triangle boundary id to those prisms.
+The joined-triangle boundary id replays by string value. No lease, pin, continuity handle, active scratch or
+caller array is retained.
 
 Numeric capacity, precision and unresolved-geometry refusals may replay only with this complete validated key.
 They preserve all reported capacities and leave caller storage untouched. Invalid inputs, producer/lifetime
@@ -492,7 +493,7 @@ expressions in their original order. Hits allocate nothing, and warm tables add 
 The shared Physics reader covers rounding and denormal input/output controls without changing the environment.
 Windows x64 can memoize through its controls-only reader. Sticky FP status is excluded because compiled kernel
 tiers can leave different status for the same inputs and outer validation also performs arithmetic. FP controls
-remain exact inputs. Fresh joined-boundary string identity and executed kernel work are the other exclusions.
+remain exact inputs. Replay equivalence excludes joined-triangle string reference identity and executed kernel work.
 
 Internal opt-in ResultHits, ResultMisses, ResultStores and ResultBypasses describe the added tier. A miss counts
 a lookup without replay, including a prism miss whose small result stays in the original tier. A store counts

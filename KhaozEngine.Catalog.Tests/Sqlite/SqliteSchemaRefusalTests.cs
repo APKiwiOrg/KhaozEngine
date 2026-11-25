@@ -123,10 +123,9 @@ public class SqliteSchemaRefusalTests
     }
 
     [Theory]
-    [InlineData("NULL", ContentAuthoringRefusal.SchemaValidationMetadataMissing, null)]
-    [InlineData("X'01'", ContentAuthoringRefusal.StoredScalarTypeMismatch, typeof(byte[]))]
-    public async Task AViewThatInterceptsRecreationRefusesItsEpochAndRollsBackItsTriggerWrite(
-        string epoch, ContentAuthoringRefusal reason, Type? scalarType)
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AResetRefusesAViewWithValidMetadataAndPreservesItsContents(bool force)
     {
         using var database = new TemporaryCatalogDatabase();
         using (var store = new SqliteContentAuthoringStore(database.ConnectionString,
@@ -135,37 +134,31 @@ public class SqliteSchemaRefusalTests
             await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
             await SqliteCatalogResetHarness.Seed(store, "one", "two");
         }
-        // Reset inventories tables. A view and its INSTEAD OF trigger survive those drops.
-        // The full snapshot includes view-backed metadata, host epoch bytes and the trigger's side write.
-        database.Execute(FormattableString.Invariant($"""
+        // #1731: a view exposing the real epoch used to survive a successful forced reset.
+        database.Execute("""
+            CREATE TABLE host_metadata AS SELECT * FROM catalog_metadata;
             DROP TABLE catalog_metadata;
-            CREATE TABLE host_epoch(store_epoch);
-            INSERT INTO host_epoch VALUES ({epoch});
             CREATE TABLE host_recreate_probe(value TEXT NOT NULL);
-            CREATE VIEW catalog_metadata AS SELECT
-                1 AS metadata_key, 4 AS schema_version, store_epoch, 0 AS active_version,
-                NULL AS pinned_version, 0 AS updated_at_utc, NULL AS created_at_utc FROM host_epoch;
+            CREATE VIEW Catalog_Metadata AS SELECT * FROM host_metadata;
             CREATE TRIGGER host_metadata_insert INSTEAD OF INSERT ON catalog_metadata BEGIN
                 INSERT INTO host_recreate_probe VALUES ('recreate wrote');
             END;
-            """));
+            """);
         string before = SqliteCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString);
         var refused = await Assert.ThrowsAsync<ContentAuthoringException>(() =>
-            SqliteCatalogReset.ResetAsync(database.ConnectionString, "actor", "", "", force: true));
-        Assert.Equal(reason, refused.Refusal);
+            SqliteCatalogReset.ResetAsync(database.ConnectionString, "actor", "", "", force));
+        Assert.Equal(ContentAuthoringRefusal.SchemaObjectUnexpected, refused.Refusal);
         Assert.Equal("schema-mismatch", refused.Reason);
-        if (scalarType is null) Assert.Equal("catalog-v4-text-authoring", refused.RequiredMigration);
-        else
-        {
-            Assert.Equal(typeof(string), refused.ExpectedScalarType);
-            Assert.Equal(scalarType, refused.ActualScalarType);
-        }
+        Assert.Equal("view:Catalog_Metadata", refused.ObjectName);
+        Assert.Equal(SqliteCatalogSchema.CurrentVersion, refused.ExpectedVersion);
+        Assert.Equal(SqliteCatalogSchema.RequiredMigration, refused.RequiredMigration);
         Assert.Equal(before, SqliteCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString));
         Assert.Equal(0, database.Scalar("SELECT COUNT(*) FROM host_recreate_probe;"));
         Assert.Equal(1, database.Scalar("SELECT COUNT(*) FROM sqlite_master WHERE type = 'trigger' AND name = 'host_metadata_insert';"));
-        database.Execute("DROP VIEW catalog_metadata;");
+        database.Execute("DROP VIEW catalog_metadata; CREATE VIEW catalog_host_metadata AS SELECT * FROM host_metadata;");
         var reset = await SqliteCatalogReset.ResetAsync(database.ConnectionString, "actor", "", "", force: true);
-        Assert.Equal(4, reset.SchemaVersion);
-        Assert.Equal(32, reset.StoreEpoch.Length);
+        string hostEpoch = SqliteCatalogResetHarness.Text(database, "SELECT store_epoch FROM catalog_host_metadata;");
+        Assert.NotEqual(hostEpoch, reset.StoreEpoch);
+        Assert.Equal(reset.StoreEpoch, SqliteCatalogResetHarness.Text(database, "SELECT store_epoch FROM catalog_metadata;"));
     }
 }

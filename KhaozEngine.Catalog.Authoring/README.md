@@ -283,7 +283,7 @@ A consumer reads the reason and identifiers, never message wording.
 |---|---|---|
 | `BaseVersionMoved` | A row or text publish expecting another baseline version | `ExpectedBaseVersion`, `ActualBaseVersion` |
 | `NoPendingDraft` | A row publish with no open draft carrying pending edits | None |
-| `FrozenDraftLost` | A policy publish whose store no longer holds its draft frozen for this base | `ExpectedBaseVersion` |
+| `FrozenDraftLost` | A publish whose store no longer holds its draft frozen for this base | `ExpectedBaseVersion` |
 | `CandidateRejected` | A candidate rejected by validation | The complete owned read-only `Findings` snapshot |
 | `CandidateEditOperationUnsupported` | A candidate edit outside the four supported operations | `Type`, `Id`, `TypeKey`, `ActualOperation`, `EditOrdinal` |
 | `CandidateForkFlagInvalid` | A candidate fork flag absent from its schema or not Bool | `Type`, `Id`, `TypeKey`, `FieldName`, `EditOrdinal` |
@@ -344,9 +344,9 @@ includes the migration the schema check prescribes. Ordinary store
 reads retain `SchemaMetadataMissing` with no identifiers. `ResetDraftOpen` reports draft rows rather than
 the companion import's `DraftOpen` edit counts. A non-null reset scalar of the wrong CLR type reuses
 `StoredScalarTypeMismatch` with `ExpectedScalarType` and `ActualScalarType`, for integer reads and the
-post-recreation text epoch alike. Even the latter is an input check: SQLite's table inventory leaves views
-and their INSTEAD OF triggers standing, and a metadata-shaped view can intercept the seed. A missing epoch
-uses `SchemaValidationMetadataMissing`. SQL Server database DDL triggers can likewise alter the recreated
+post-recreation text epoch alike. A missing epoch uses `SchemaValidationMetadataMissing`. SQLite refuses
+a view occupying a declared table name before recreation, even with `force`. `SchemaObjectUnexpected`
+identifies it as `view:<stored name>`. SQL Server database DDL triggers can alter the recreated
 metadata table and install a seed trigger. Its post-recreation version and epoch reads therefore remain
 input checks with the same refusal members, rather than internal invariants. The refusal rolls back trigger
 writes as well as catalog changes. SQL Server schema locking carries the integer return code from
@@ -455,13 +455,14 @@ plan's public list facades can be changed after construction.
 
 ### The draft is frozen for the whole publish
 
-Step 1 marks the open draft FROZEN for the base version it is publishing, through
-`IContentAuthoringStore.FreezeDraftAsync`, and every write to the draft is refused while the marker stands:
-`ApplyEditsAsync` and `DiscardDraftAsync` both throw with the `publish-in-progress` reason.
-`ContentDraft.FrozenForBaseVersion` and `ContentDraft.IsFrozen` are how a console reads it. Without it a
-second actor's edit lands in a change set the pipeline has already read, version N publishes without it, and
-step 10 deletes the draft it was sitting in: an edit an operator saved that no version carries and no draft
-still holds.
+For a row-only publish, step 1 checks the expected base version and that the open draft has edits. It then
+marks the draft frozen through `IContentAuthoringStore.FreezeDraftAsync` and reads it back. The candidate
+uses the frozen change set, including edits saved before the marker was written. If the second read finds
+no draft with the expected marker, publication refuses with `FrozenDraftLost` and `ExpectedBaseVersion`.
+If the frozen draft has no edits, publication refuses with `NoPendingDraft`.
+
+While the marker stands, `ApplyEditsAsync` and `DiscardDraftAsync` refuse with `publish-in-progress`.
+Consoles read the marker through `ContentDraft.FrozenForBaseVersion` and `ContentDraft.IsFrozen`.
 
 **The marker is durable rather than a held lock, and that is forced rather than chosen.** A publish spans
 steps 1 to 10, step 9 writes the whole pack, and no provider holds a row lock across that: SQLite leases its

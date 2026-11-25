@@ -79,8 +79,10 @@ public sealed class ConsumerPublishPolicyTests
         Assert.Equal(1, row.Fields[1].Number);
     }
 
-    [Fact]
-    public async Task RowOnlyPublicationEvaluatesTheDraftReadUnderItsFreeze()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)] // Regression #1701. A row-only publish without a policy must include the edit at freeze time.
+    public async Task RowOnlyPublicationEvaluatesTheDraftReadUnderItsFreeze(bool configuredPolicy)
     {
         using var fixture = new ConsumerPublishPolicyFixture(false);
         await fixture.SeedAsync();
@@ -91,12 +93,22 @@ public sealed class ConsumerPublishPolicyTests
         var commit = new ContentPublishCommit(store, fixture.Packs,
             new ContentPublisher(store, (IContentIdPersistence)fixture.Store, fixture.Registry));
 
-        ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
-            () => commit.PublishAsync(fixture.Request()));
+        if (configuredPolicy)
+        {
+            ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
+                () => commit.PublishAsync(fixture.Request()));
 
-        ConsumerPublishPolicyFixture.AssertGuard(Assert.Single(refused.Findings));
-        Assert.Equal(1, await fixture.Store.GetActiveVersionAsync());
-        Assert.False((await fixture.Store.GetOpenDraftAsync())!.IsFrozen);
+            ConsumerPublishPolicyFixture.AssertGuard(Assert.Single(refused.Findings));
+            Assert.Equal(1, await fixture.Store.GetActiveVersionAsync());
+            Assert.False((await fixture.Store.GetOpenDraftAsync())!.IsFrozen);
+            return;
+        }
+
+        ContentPublishResult published = await commit.PublishAsync(PublishFixtures.Request(1));
+
+        Assert.Equal(2, published.VersionNumber);
+        ContentRow row = Assert.Single((await fixture.Store.ListRowsAsync(fixture.Type, 2, null, true, 0, 10)).Rows);
+        Assert.Equal(12, row.Fields[0].Number);
     }
 
     [Fact]

@@ -18,6 +18,15 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - The SQLite account store reports `AccountDataRefusal.UpdateReturnedNoRow` when an adopted table discards a
   whitelist change, ban or unban for an existing account. It rolls back trigger writes and returns `null` for a
   missing account. [#1718](https://github.com/APKiwiOrg/KhaozEngine/issues/1718)
+- A row-only catalog publish includes the last edit saved before the draft freezes, with or without a publish
+  policy. An empty replacement draft refuses with `NoPendingDraft`.
+  [#1701](https://github.com/APKiwiOrg/KhaozEngine/issues/1701)
+- SQLite catalog reset reports `SchemaObjectUnexpected` when a host view occupies a catalog table name, even
+  with `force`. The refusal names the view before reset changes any tables. Reset uses its own unpooled
+  connection to isolate it from a host session's temporary objects and settings.
+  [#1731](https://github.com/APKiwiOrg/KhaozEngine/issues/1731)
+- Water traces reuse the captured boundary ID for diagonal shore contacts, eliminating the per-contact
+  string allocation. [#1824](https://github.com/APKiwiOrg/KhaozEngine/issues/1824)
 
 ## 24.11.0
 

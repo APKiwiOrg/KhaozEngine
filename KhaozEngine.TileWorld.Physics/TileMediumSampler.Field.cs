@@ -89,10 +89,15 @@ public sealed partial class TileMediumSampler
                             TileWorldSpace.ToWorld(tile.X + 1, body.SurfaceY, tile.Z, document.TileSize),
                             face + "/min-x", face + "/max-x", face + "/min-z", face + "/max-z", face + "/bed", face + "/surface");
                         columns.Add(column);
+                        string? joinedTriangleBoundaryId = null;
                         foreach (DrawnGroundTriangle triangle in Ground.Triangles(tile.X, tile.Z))
                         {
                             if (MathF.Min(triangle.A.Y, MathF.Min(triangle.B.Y, triangle.C.Y)) < body.SurfaceY)
-                                prisms.Add(new(column, triangle, tile.X, tile.Z, document.TileSize, columns.Count - 1));
+                            {
+                                joinedTriangleBoundaryId ??= TileWaterPrism.CaptureJoinedTriangleBoundaryId(column);
+                                prisms.Add(new(column, triangle, tile.X, tile.Z, document.TileSize, columns.Count - 1,
+                                    joinedTriangleBoundaryId));
+                            }
                             string geometry = FormattableString.Invariant($"{(int)triangle.PlanA}/{(int)triangle.PlanB}/{(int)triangle.PlanC}/{Bits(triangle.A.Y)}/{Bits(triangle.B.Y)}/{Bits(triangle.C.Y)}\n");
                             semantic.AppendData(Encoding.UTF8.GetBytes(geometry));
                         }

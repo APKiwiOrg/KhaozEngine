@@ -11384,7 +11384,7 @@ Internal opt-in water counters separate small-tier hits/misses from added-tier h
 PrismTraces remains logical requests and MemoMisses includes a large-tier replay after a small-tier miss.
 Intersection/preparation/coefficient counters measure executed work, so hits do not fabricate skipped work.
 Admission diagnostics separately report Boolean hits/misses/bypasses. No public diagnostic API is added.
-Numeric equality excludes sticky FP status and reference identity for freshly allocated joined-boundary strings.
+Numeric equality excludes sticky FP status. Joined-triangle boundary ids replay by string value.
 Controls remain exact inputs, and no lookup installs a canonical FP environment. Complete movement-state bits,
 selection, commitment, refusal and publication contracts remain unchanged. These caches establish no timing ratio.
 See [TileWorld water reuse](../KhaozEngine.TileWorld.Physics/README.md#exact-water-query-reuse),
@@ -24579,6 +24579,10 @@ so the SQLite reset reads every host key first and refuses one declared `ON DELE
 commit instead. SQL Server refuses to drop a table any foreign key references, whatever its action, so there
 every such key fails the reset with SQL error 3726. A failed reset rolls back as a whole on both providers,
 catalog and host alike. A host that resets its catalog keeps its references to it out of foreign keys.
+
+SQLite also checks whether a host view occupies a declared catalog table name. Reset refuses with
+`SchemaObjectUnexpected` and the view's `ObjectName`, even with `force`. Move the view to a free name
+before retrying.
 
 It is a separate type per provider rather than a member on `IContentAuthoringStore`, because a reset is DDL
 and the everyday authoring path is DML: a production deployment should not give its application role DDL at

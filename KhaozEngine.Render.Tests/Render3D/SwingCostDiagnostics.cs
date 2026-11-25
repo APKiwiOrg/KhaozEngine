@@ -21,6 +21,7 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
     const int WarmFrames = 120;
     const int MeasuredFrames = 600;
     const string SmokeFramesVariable = "KE_SWING_COST_SMOKE_FRAMES";
+    const int MaxReportedAllocationFrames = 8;
     const int CloakChains = 5, CloakJoints = 5;
     const int StrapChains = 4, StrapJoints = 3;
 
@@ -162,6 +163,9 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
         foreach (SwingCostWearer wearer in wearers) wearer.ValidateDraws();
 
         var ticks = measureTiming ? new long[measuredFrames] : [];
+        // A frame that allocates is reported with the stage that allocated, so a nonzero total names its source.
+        var allocationFrames = new AllocationFrame[MaxReportedAllocationFrames];
+        int allocationFrameCount = 0;
         long allocated = 0, stepTicks = 0, drawTicks = 0, summedWearerTicks = 0;
         using (AllocationRegion.Start("swing preparation frames"))
         {
@@ -172,12 +176,15 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
                 long bytesBefore = GC.GetAllocatedBytesForCurrentThread();
                 long start = measureTiming ? Stopwatch.GetTimestamp() : 0;
                 long beforeBatch = 0;
+                long afterFill = bytesBefore, afterBatch = bytesBefore;
                 if (batch is not null)
                 {
                     FillBatch(batch, wearers, frameTime);
+                    afterFill = GC.GetAllocatedBytesForCurrentThread();
                     beforeBatch = measureTiming ? Stopwatch.GetTimestamp() : 0;
                     batch.Step();
                     if (measureTiming) stepTicks += Stopwatch.GetTimestamp() - beforeBatch;
+                    afterBatch = GC.GetAllocatedBytesForCurrentThread();
                 }
 
                 foreach (SwingCostWearer wearer in wearers)
@@ -191,7 +198,11 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
                     drawTicks += afterDraws - afterStep;
                 }
                 long end = measureTiming ? Stopwatch.GetTimestamp() : 0;
-                allocated += GC.GetAllocatedBytesForCurrentThread() - bytesBefore;
+                long afterWearers = GC.GetAllocatedBytesForCurrentThread();
+                allocated += afterWearers - bytesBefore;
+                if (afterWearers != bytesBefore && allocationFrameCount < allocationFrames.Length)
+                    allocationFrames[allocationFrameCount++] = new AllocationFrame(frame, afterFill - bytesBefore,
+                        afterBatch - afterFill, afterWearers - afterBatch);
                 if (measureTiming)
                     ticks[frame] = end - start;
                 if (timedJobs is not null)
@@ -200,8 +211,12 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
         }
         foreach (SwingCostWearer wearer in wearers) wearer.ValidateDraws();
 
+        AllocationFrame[]? reportedFrames = allocationFrameCount == 0 ? null : allocationFrames[..allocationFrameCount];
         if (!measureTiming)
-            return new Measurement(frameRate, null, null, null, null, allocated, null, null);
+            return new Measurement(frameRate, null, null, null, null, allocated, null, null)
+            {
+                AllocationFrames = reportedFrames,
+            };
 
         Array.Sort(ticks);
         double msPerTick = 1000d / Stopwatch.Frequency;
@@ -210,6 +225,7 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
             stepTicks * msPerTick / measuredFrames, drawTicks * msPerTick / measuredFrames)
         {
             SummedWearerStepMeanMs = timedJobs is null ? null : summedWearerTicks * msPerTick / measuredFrames,
+            AllocationFrames = reportedFrames,
         };
     }
 
@@ -267,5 +283,9 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
     {
         public double? SegmentAxisQueriesPerSimulatedWearerStep { get; init; }
         public double? SummedWearerStepMeanMs { get; init; }
+        public AllocationFrame[]? AllocationFrames { get; init; }
     }
+
+    // Measuring-thread bytes in one frame: batch fill, batch step, then the per-wearer step and draw loop.
+    sealed record AllocationFrame(int Frame, long FillBytes, long BatchStepBytes, long WearerLoopBytes);
 }

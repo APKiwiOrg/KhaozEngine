@@ -140,6 +140,41 @@ public sealed class PublicationRefusalTests
     }
 
     [Fact]
+    public async Task ARowOnlyPublishRefusesADraftEmptiedBeforeFreezeAndReleasesIt()
+    {
+        // Regression #1701. Draft admission also applies to the change set that was actually frozen.
+        using var root = new TemporaryRoot();
+        var pack = new FileSystemPackStore(root.Path);
+        ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing);
+        InMemoryContentAuthoringStore inner = PublishFixtures.Store(registry, pack);
+        ContentEdit add = ContentEdit.Add(Thing, Key, PublishFixtures.Fields(1));
+        await PublishFixtures.ApplyAsync(inner, add);
+        var store = new EditBeforePolicyFreezeStore(inner, async () =>
+        {
+            await inner.DiscardDraftAsync(PublishFixtures.Actor, "operator");
+            await PublishFixtures.ApplyAsync(inner);
+        });
+        var commit = new ContentPublishCommit(store, pack, new ContentPublisher(store, inner, registry));
+        ContentPublishRequest request = PublishFixtures.Request(0);
+
+        ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
+            () => commit.PublishAsync(request));
+
+        Assert.Equal(ContentAuthoringRefusal.NoPendingDraft, refused.Refusal);
+        Assert.Equal(ContentAuthoringException.NoOpenDraftReason, refused.Reason);
+        Assert.Equal(0, await inner.GetActiveVersionAsync());
+        Assert.Null(await pack.GetVersionPointerAsync(1));
+        ContentDraft draft = Assert.IsType<ContentDraft>(await inner.GetOpenDraftAsync());
+        Assert.Empty(draft.Changes.Edits);
+        Assert.False(draft.IsFrozen);
+
+        await PublishFixtures.ApplyAsync(inner, add);
+        var retryStore = new RowOnlyStoreView(inner);
+        var retry = new ContentPublishCommit(retryStore, pack, new ContentPublisher(retryStore, inner, registry));
+        Assert.Equal(1, (await retry.PublishAsync(request)).VersionNumber);
+    }
+
+    [Fact]
     public async Task RejectedCandidateCarriesTheCompleteExtensibleFindingSetAndWritesNothing()
     {
         using var root = new TemporaryRoot();

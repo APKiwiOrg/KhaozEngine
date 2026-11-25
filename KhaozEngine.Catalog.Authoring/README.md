@@ -455,13 +455,14 @@ plan's public list facades can be changed after construction.
 
 ### The draft is frozen for the whole publish
 
-Step 1 marks the open draft FROZEN for the base version it is publishing, through
-`IContentAuthoringStore.FreezeDraftAsync`, and every write to the draft is refused while the marker stands:
-`ApplyEditsAsync` and `DiscardDraftAsync` both throw with the `publish-in-progress` reason.
-`ContentDraft.FrozenForBaseVersion` and `ContentDraft.IsFrozen` are how a console reads it. Without it a
-second actor's edit lands in a change set the pipeline has already read, version N publishes without it, and
-step 10 deletes the draft it was sitting in: an edit an operator saved that no version carries and no draft
-still holds.
+For a row-only publish, step 1 checks the expected base version and that the open draft has edits. It then
+marks the draft frozen through `IContentAuthoringStore.FreezeDraftAsync` and reads it back. The candidate
+uses the frozen change set, including edits saved before the marker was written. If the second read finds
+no draft with the expected marker, publication refuses with `FrozenDraftLost` and `ExpectedBaseVersion`.
+If the frozen draft has no edits, publication refuses with `NoPendingDraft`.
+
+While the marker stands, `ApplyEditsAsync` and `DiscardDraftAsync` refuse with `publish-in-progress`.
+Consoles read the marker through `ContentDraft.FrozenForBaseVersion` and `ContentDraft.IsFrozen`.
 
 **The marker is durable rather than a held lock, and that is forced rather than chosen.** A publish spans
 steps 1 to 10, step 9 writes the whole pack, and no provider holds a row lock across that: SQLite leases its

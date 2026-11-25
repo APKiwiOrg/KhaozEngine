@@ -22,6 +22,9 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
     const int MeasuredFrames = 600;
     const string SmokeFramesVariable = "KE_SWING_COST_SMOKE_FRAMES";
     const int MaxReportedAllocationFrames = 8;
+    // About two seconds of sequential frames and over half a second of parallel ones on the development Mac,
+    // several times the tiering delay.
+    const int SettleFrames = 1200;
     const int CloakChains = 5, CloakJoints = 5;
     const int StrapChains = 4, StrapJoints = 3;
 
@@ -144,22 +147,16 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
         var timedJobs = scheduler is not null && measureTiming ? new TimedWearerJobs(scheduler, wearers.Length) : null;
         var batch = scheduler is null ? null : new WornMotionBatch(timedJobs ?? scheduler);
         float frameTime = 1f / frameRate;
-        for (int index = 0; index < wearers.Length; index++)
-            wearers[index].Reset(index < simulatedWearers ? MotionLevel.Simulated : MotionLevel.Held);
-        for (int frame = 0; frame < warmFrames; frame++)
+        // A path that is new to the process, such as the parallel batch, can still be tiering up after the warm
+        // frames, and its one-time compilation work then lands in the window. Settle it first, then restart from
+        // rest so the warm frames and the window cover the same poses as every other case.
+        if (measureTiming)
         {
-            foreach (SwingCostWearer wearer in wearers) wearer.Pose(frame * frameTime);
-            if (batch is not null)
-            {
-                FillBatch(batch, wearers, frameTime);
-                batch.Step();
-            }
-            foreach (SwingCostWearer wearer in wearers)
-            {
-                if (batch is null) wearer.Step(frameTime);
-                wearer.WriteDraws();
-            }
+            ResetWearers(wearers, simulatedWearers);
+            RunFrames(wearers, batch, frameTime, SettleFrames);
         }
+        ResetWearers(wearers, simulatedWearers);
+        RunFrames(wearers, batch, frameTime, warmFrames);
         foreach (SwingCostWearer wearer in wearers) wearer.ValidateDraws();
 
         var ticks = measureTiming ? new long[measuredFrames] : [];
@@ -235,6 +232,30 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
             SummedWearerStepMeanMs = timedJobs is null ? null : summedWearerTicks * msPerTick / measuredFrames,
             AllocationFrames = reportedFrames,
         };
+    }
+
+    static void ResetWearers(SwingCostWearer[] wearers, int simulatedWearers)
+    {
+        for (int index = 0; index < wearers.Length; index++)
+            wearers[index].Reset(index < simulatedWearers ? MotionLevel.Simulated : MotionLevel.Held);
+    }
+
+    static void RunFrames(SwingCostWearer[] wearers, WornMotionBatch? batch, float frameTime, int frames)
+    {
+        for (int frame = 0; frame < frames; frame++)
+        {
+            foreach (SwingCostWearer wearer in wearers) wearer.Pose(frame * frameTime);
+            if (batch is not null)
+            {
+                FillBatch(batch, wearers, frameTime);
+                batch.Step();
+            }
+            foreach (SwingCostWearer wearer in wearers)
+            {
+                if (batch is null) wearer.Step(frameTime);
+                wearer.WriteDraws();
+            }
+        }
     }
 
     static void FillBatch(WornMotionBatch batch, SwingCostWearer[] wearers, float frameTime)

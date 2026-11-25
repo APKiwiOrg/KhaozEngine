@@ -7,8 +7,8 @@ namespace KhaozEngine.Attachments;
 
 internal sealed class ChainBoundGroups
 {
-    internal const int TipDepth = 0;
-    private sealed record Group(int[] Chains, ChainWidthBounds?[] BoundsByDepth, ChainWidthBounds Tips, ChainSheetContact? Sheet);
+    private const int TipDepth = 0;
+    private sealed record Group(int[] Chains, ChainWidthBounds?[] BoundsByDepth, ChainWidthBounds Tips);
 
     private readonly bool[] _bounded;
     private readonly Group[] _groups;
@@ -55,8 +55,7 @@ internal sealed class ChainBoundGroups
                 else
                     depths[depth.Key] = new ChainWidthBounds(depth.ToArray());
             }
-            return new Group(chains, depths, new ChainWidthBounds(tips.ToArray()),
-                colliderCount > 0 ? new ChainSheetContact(rig, group.ToArray(), depths.Length, colliderCount) : null);
+            return new Group(chains, depths, new ChainWidthBounds(tips.ToArray()));
         }).ToArray();
         PlacementRows = _groups.Max(group => group.Chains.Length);
         _capsuleCulls = new ChainCapsuleCull[PlacementRows];
@@ -87,11 +86,6 @@ internal sealed class ChainBoundGroups
     {
         bool reuseCandidates = ChainContactOptimizations.Use(ChainContactOptimization.FirstPassCandidates);
         bool reuseBend = ChainContactOptimizations.Use(ChainContactOptimization.BendCosine);
-        float largestObstacle = 0;
-        if (_groups.Length > 0 && ChainContactOptimizations.Use(ChainContactOptimization.ThickSheet))
-            foreach (ref readonly var obstacle in colliders)
-                largestObstacle = MathF.Max(largestObstacle, obstacle.Radius);
-
         foreach (var group in _groups)
         {
             // Chains within a group need separate indices. The next group reuses these rows.
@@ -118,18 +112,17 @@ internal sealed class ChainBoundGroups
 
             for (int depth = 1; depth < group.BoundsByDepth.Length; depth++)
                 SolveDepth(particles, group.Chains, anchors, colliders, previousColliders, settings, seconds,
-                    depth, group.BoundsByDepth[depth], group.Sheet, largestObstacle);
+                    depth, group.BoundsByDepth[depth]);
 
             // All tip pairs share one solve after every possible parent has finished.
             SolveDepth(particles, group.Chains, anchors, colliders, previousColliders, settings, seconds,
-                TipDepth, group.Tips, group.Sheet, largestObstacle);
+                TipDepth, group.Tips);
         }
     }
 
     private void SolveDepth(ChainParticles particles, int[] chains, ReadOnlySpan<Matrix4x4> anchors,
         ReadOnlySpan<ColliderCapsule> colliders, ReadOnlySpan<ColliderCapsule> previousColliders,
-        ReadOnlySpan<ChainSettings> settings, float seconds, int depth, ChainWidthBounds? width, ChainSheetContact? sheet,
-        float largestObstacle)
+        ReadOnlySpan<ChainSettings> settings, float seconds, int depth, ChainWidthBounds? width)
     {
         PlaceDepth(particles, chains, anchors, colliders, settings, seconds, depth);
         if (width is not null)
@@ -138,15 +131,9 @@ internal sealed class ChainBoundGroups
             ReapplyLimits(particles, chains, colliders, settings, depth);
         }
 
-        if (sheet is not null && width is not null)
-        {
-            sheet.ProjectPositions(particles, depth, _placed, colliders, settings, largestObstacle);
-            ReapplyLimits(particles, chains, colliders, settings, depth);
-        }
         // Local velocity constraints run after the shared width impulses.
         width?.StopVelocities(particles, seconds);
         FinishDepth(particles, chains, colliders, previousColliders, settings, seconds, depth);
-        sheet?.StopVelocities(particles, depth, _placed, colliders, previousColliders, settings, seconds);
     }
 
     private static bool HasParticle(int depth, int joints) => depth == TipDepth || depth < joints;

@@ -11,7 +11,7 @@ internal sealed class ChainPlacementCull(int rowCount, int colliderCount)
     private readonly SweptSphere[] _bounds = new SweptSphere[colliderCount];
     private readonly ChainFloatAxis[] _currentAxes = new ChainFloatAxis[colliderCount];
     private readonly ChainFloatAxis[] _sweptAxes = new ChainFloatAxis[colliderCount];
-    private readonly float[] _sheetInflation = new float[colliderCount];
+    private readonly float[] _radiusGrowth = new float[colliderCount];
     private readonly int[] _indices = AllocateIndices(rowCount, colliderCount);
 
     [ThreadStatic]
@@ -27,7 +27,7 @@ internal sealed class ChainPlacementCull(int rowCount, int colliderCount)
         float radius = MathF.Max(currentReach, previousReach);
         _bounds[index] = new SweptSphere(center, radius + FloatRoundingMargin * (MaxAbs(center) + radius));
         // The chord uses the current radius even at the opening end.
-        _sheetInflation[index] = MathF.Max(0, current.Radius - previous.Radius);
+        _radiusGrowth[index] = MathF.Max(0, current.Radius - previous.Radius);
         _currentAxes[index] = new ChainFloatAxis(current.Start, current.End, current.Radius);
         _sweptAxes[index] = ChainFloatAxis.Sweep(current, previous);
     }
@@ -53,36 +53,9 @@ internal sealed class ChainPlacementCull(int rowCount, int colliderCount)
         return Selected(row, capsules, count);
     }
 
-    internal static SweptSphere BandReach(Vector3 firstParent, float firstLength,
-        Vector3 secondParent, float secondLength, Vector3 firstUpper, Vector3 secondUpper, float radius,
-        Vector3 openingFirstUpper, Vector3 openingSecondUpper, Vector3 openingFirstLower, Vector3 openingSecondLower)
-    {
-        // The convex hull bridges the gap between length spheres. The fixed corners of
-        // an unequal-length tip band can also be different from the actual tip parents.
-        var openingCenter = Midpoint(Midpoint(openingFirstUpper, openingSecondUpper),
-            Midpoint(openingFirstLower, openingSecondLower));
-        var center = Midpoint(Midpoint(firstParent, secondParent), openingCenter);
-        float reach = MathF.Max(Vector3.Distance(center, firstParent) + firstLength * DirectionLengthBound,
-            Vector3.Distance(center, secondParent) + secondLength * DirectionLengthBound);
-        reach = MathF.Max(reach, MathF.Max(Vector3.Distance(center, firstUpper), Vector3.Distance(center, secondUpper)));
-        reach = MathF.Max(reach, MathF.Max(Vector3.Distance(center, openingFirstUpper),
-            Vector3.Distance(center, openingSecondUpper)));
-        reach = MathF.Max(reach, MathF.Max(Vector3.Distance(center, openingFirstLower),
-            Vector3.Distance(center, openingSecondLower)));
-        reach += radius + (float)ChainCapsuleCollision.TouchTolerance;
-        return new SweptSphere(center, reach + FloatRoundingMargin * (MaxAbs(center) + reach));
-    }
-
-    internal bool ReachesBand(int index, in SweptSphere band)
-    {
-        ChainContactCounts.Record(ChainContactQuery.BandFilter);
-        return DisableForTests || (_bounds[index].CanReach(band.Center, band.Radius + _sheetInflation[index]) &&
-            (!AxisCullEnabled || ReachesAxis(index, band, swept: true)));
-    }
-
     internal bool ReachesTight(int index, in SweptSphere reach) =>
         DisableForTests || (uint)index >= (uint)_bounds.Length || _bounds[index].Radius == 0 ||
-        _bounds[index].CanReach(reach.Center, reach.Radius + _sheetInflation[index]);
+        _bounds[index].CanReach(reach.Center, reach.Radius + _radiusGrowth[index]);
 
     internal static bool AxisCullEnabled =>
         !DisableForTests && ChainContactOptimizations.Use(ChainContactOptimization.AxisCull);
@@ -91,26 +64,6 @@ internal sealed class ChainPlacementCull(int rowCount, int colliderCount)
     {
         var axes = swept ? _sweptAxes : _currentAxes;
         return (uint)index >= (uint)axes.Length || axes[index].Reaches(reach.Center, reach.Radius);
-    }
-
-    internal static SweptSphere TriangleReach((Vector3 A, Vector3 B, Vector3 C) current,
-        (Vector3 A, Vector3 B, Vector3 C) opening, float radius, bool includeOpening)
-    {
-        var center = Centroid(current);
-        if (includeOpening)
-            center = Midpoint(center, Centroid(opening));
-
-        float reach = Farthest(current, center);
-        if (includeOpening)
-            reach = MathF.Max(reach, Farthest(opening, center));
-        return Pad(center, reach + radius);
-
-        static Vector3 Centroid((Vector3 A, Vector3 B, Vector3 C) triangle) =>
-            triangle.A / 3 + triangle.B / 3 + triangle.C / 3;
-
-        static float Farthest((Vector3 A, Vector3 B, Vector3 C) triangle, Vector3 center) =>
-            MathF.Max(Vector3.Distance(triangle.A, center),
-                MathF.Max(Vector3.Distance(triangle.B, center), Vector3.Distance(triangle.C, center)));
     }
 
     internal static SweptSphere SegmentReach(in ChainSegmentContact.Segment segment,

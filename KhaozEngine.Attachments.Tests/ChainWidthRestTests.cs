@@ -28,8 +28,8 @@ public sealed class ChainWidthRestTests(ITestOutputHelper output)
             .Select(chain => chain with { Settings = new ChainSettings(stiffness, damping, 1, 1, angleLimit, 0.015f) }).ToArray();
         var rig = new ChainRig(fixture.AnchorCount, chains, fixture.Links);
         // The middle sphere used to send adjacent panels around opposite sides.
-        // Offset the low sphere outside the sheet so it still presses the width bound at a tip.
-        var center = betweenChains ? new Vector3(0.025f, -0.52f, -0.2f) : new Vector3(-0.435f, -1.12f, -0.2f);
+        // The low sphere presses the width bound through tip contact.
+        var center = betweenChains ? new Vector3(0.025f, -0.52f, -0.2f) : new Vector3(0.09f, -1.12f, -0.2f);
         ColliderCapsule[] colliders = [new(center, center, 0.15f)];
         var simulation = new ChainSimulation(rig, colliders.Length, new() { MaxStepSeconds = stepSeconds });
         var previous = new Vector3[chains.Length];
@@ -42,43 +42,24 @@ public sealed class ChainWidthRestTests(ITestOutputHelper output)
             previous[chain] = Tip(chain);
 
         float contactError = float.PositiveInfinity;
-        if (betweenChains)
+        Assert.Equal(rig.JointCount, simulation.JointsFromAnchor.Length);
+        for (int chain = 0; chain < chains.Length; chain++)
         {
-            foreach (var link in rig.Links)
+            int first = rig.FirstJoint(chain);
+            int count = chains[chain].Joints.Count;
+            float clearance = colliders[0].Radius + chains[chain].Settings.Radius;
+            for (int joint = 0; joint < count; joint++)
             {
-                int a = rig.FirstJoint(link.First);
-                int b = rig.FirstJoint(link.Second);
-                int count = chains[link.First].Joints.Count;
-                float clearance = colliders[0].Radius + chains[link.First].Settings.Radius;
-                for (int row = 0; row < count; row++)
-                {
-                    var a0 = simulation.JointsFromAnchor[a + row].Translation;
-                    var b0 = simulation.JointsFromAnchor[b + row].Translation;
-                    var a1 = row + 1 == count ? previous[link.First] : simulation.JointsFromAnchor[a + row + 1].Translation;
-                    var b1 = row + 1 == count ? previous[link.Second] : simulation.JointsFromAnchor[b + row + 1].Translation;
-                    contactError = MathF.Min(contactError,
-                        MathF.Abs(ChainSheetContactTests.AxisDistance(colliders[0], a0, a1, b1) - clearance));
-                    contactError = MathF.Min(contactError,
-                        MathF.Abs(ChainSheetContactTests.AxisDistance(colliders[0], a0, b1, b0) - clearance));
-                }
+                var start = simulation.JointsFromAnchor[first + joint].Translation;
+                var end = joint + 1 == count ? previous[chain] : simulation.JointsFromAnchor[first + joint + 1].Translation;
+                float distance = ChainSegmentContactTests.DistanceToSegment(center, start, end);
+                Assert.True(distance >= clearance - 0.00002f, $"Chain {chain}, segment {joint}: clearance {distance} m.");
+                contactError = MathF.Min(contactError, MathF.Abs(distance - clearance));
             }
         }
-        else
-        {
-            for (int chain = 0; chain < chains.Length; chain++)
-            {
-                int first = rig.FirstJoint(chain);
-                int count = chains[chain].Joints.Count;
-                float clearance = colliders[0].Radius + chains[chain].Settings.Radius;
-                for (int joint = 0; joint < count; joint++)
-                {
-                    var start = simulation.JointsFromAnchor[first + joint].Translation;
-                    var end = joint + 1 == count ? previous[chain] : simulation.JointsFromAnchor[first + joint + 1].Translation;
-                    float distance = ChainSegmentContactTests.DistanceToSegment(center, start, end);
-                    contactError = MathF.Min(contactError, MathF.Abs(distance - clearance));
-                }
-            }
 
+        if (!betweenChains)
+        {
             Assert.Contains(rig.Links, link =>
                 MathF.Abs(Vector3.Distance(previous[link.First], previous[link.Second]) / 0.18f - 1) >= 0.13f);
         }

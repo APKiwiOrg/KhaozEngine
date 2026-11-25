@@ -239,13 +239,39 @@ public sealed class ChainSegmentContactTests
         return particles.Positions[1];
     }
 
+    internal static float DistanceToAxis(Vector3 start, Vector3 end, in ColliderCapsule capsule)
+    {
+        if (capsule.Start == capsule.End)
+            return DistanceToSegment(capsule.Start, start, end);
+
+        // A constrained minimum is at an endpoint unless the closest pair on
+        // the two infinite lines lies inside both finite segments.
+        float nearest = MathF.Min(DistanceToSegment(start, capsule.Start, capsule.End),
+            MathF.Min(DistanceToSegment(end, capsule.Start, capsule.End),
+                MathF.Min(DistanceToSegment(capsule.Start, start, end), DistanceToSegment(capsule.End, start, end))));
+        var segment = end - start;
+        var axis = capsule.End - capsule.Start;
+        var normal = Vector3.Cross(segment, axis);
+        float squared = normal.LengthSquared();
+        if (squared <= 0)
+            return nearest;
+
+        var between = capsule.Start - start;
+        float s = Vector3.Dot(Vector3.Cross(between, axis), normal) / squared;
+        float t = Vector3.Dot(Vector3.Cross(between, segment), normal) / squared;
+        if (s is >= 0 and <= 1 && t is >= 0 and <= 1)
+            nearest = MathF.Min(nearest, Vector3.Distance(start + s * segment, capsule.Start + t * axis));
+        return nearest;
+    }
+
     internal static float DistanceToSegment(Vector3 point, Vector3 start, Vector3 end) =>
         Vector3.Distance(point, ClosestPointOnSegment(point, start, end));
 
     internal static Vector3 ClosestPointOnSegment(Vector3 point, Vector3 start, Vector3 end)
     {
         var segment = end - start;
-        float along = Math.Clamp(Vector3.Dot(point - start, segment) / segment.LengthSquared(), 0, 1);
+        float squared = segment.LengthSquared();
+        float along = squared == 0 ? 0 : Math.Clamp(Vector3.Dot(point - start, segment) / squared, 0, 1);
         return start + along * segment;
     }
 

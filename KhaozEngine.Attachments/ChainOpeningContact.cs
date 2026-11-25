@@ -95,7 +95,7 @@ internal readonly ref struct ChainOpeningContact
 
     private static Vector3 Unit(Offset direction) => (direction * (1 / Math.Sqrt(direction.LengthSquared))).ToVector3();
 
-    internal static bool Crossed(Offset opening, Offset current, double radiusSquared)
+    private static bool Crossed(Offset opening, Offset current, double radiusSquared)
     {
         if (Offset.Dot(opening, current) >= 0)
             return false;

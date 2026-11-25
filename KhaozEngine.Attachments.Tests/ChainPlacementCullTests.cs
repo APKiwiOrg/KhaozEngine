@@ -80,62 +80,12 @@ public sealed class ChainPlacementCullTests(ITestOutputHelper output)
         Assert.True(madeContact, "The moving capsules must change the solved pose.");
     }
 
-    [Fact]
-    public void Placement_cull_preserves_bits_when_a_sheet_crosses_a_stationary_obstacle()
-    {
-        var settings = ChainSimulationTests.Settings with { Gravity = 0, Stiffness = 0, Trail = 0 };
-        var tip = -0.125f * Vector3.UnitY;
-        var left = ChainSimulationTests.Chain(tip, settings, ChainSimulationTests.Joint(-0.125f * Vector3.UnitX));
-        var right = ChainSimulationTests.Chain(tip, settings, ChainSimulationTests.Joint(0.125f * Vector3.UnitX));
-        var rig = new ChainRig(1, [left, right], [new(0, 1) { Stretch = 0.1f }]);
-        var culled = new ChainSimulation(rig, 1);
-        var unfiltered = new ChainSimulation(rig, 1);
-        var noContact = new ChainSimulation(rig, 0);
-        var center = new Vector3(0, -0.09375f, 0);
-        ColliderCapsule[] obstacle = [new(center, center, 0.03125f)];
-        var before = Matrix4x4.CreateTranslation(0, 0, -0.375f);
-        var after = Matrix4x4.CreateTranslation(0, 0, 0.375f);
-
-        Cross(culled, obstacle);
-        ChainPlacementCull.DisableForTests = true;
-        try
-        {
-            Cross(unfiltered, obstacle);
-        }
-        finally
-        {
-            ChainPlacementCull.DisableForTests = false;
-        }
-        Cross(noContact, []);
-        Assert.Equal(2, culled.JointsFromAnchor.Length);
-        var reference = MemoryMarshal.AsBytes(unfiltered.JointsFromAnchor);
-        Assert.False(reference.SequenceEqual(MemoryMarshal.AsBytes(noContact.JointsFromAnchor)));
-        Assert.True(reference.SequenceEqual(MemoryMarshal.AsBytes(culled.JointsFromAnchor)));
-
-        void Cross(ChainSimulation simulation, ReadOnlySpan<ColliderCapsule> colliders)
-        {
-            simulation.Step([before], colliders, before, 0);
-            simulation.Step([after], colliders, after, StepSeconds);
-            simulation.Step([after], colliders, after, StepSeconds);
-        }
-    }
-
     [Theory]
-    [InlineData((int)ChainContactOptimization.OpeningTriangle)]
-    [InlineData((int)ChainContactOptimization.BandCandidates)]
-    [InlineData((int)ChainContactOptimization.FixedEdge)]
-    [InlineData((int)ChainContactOptimization.CleanBands)]
-    [InlineData((int)ChainContactOptimization.CurrentTriangle)]
-    [InlineData((int)ChainContactOptimization.VelocityTriangle)]
-    [InlineData((int)ChainContactOptimization.TriangleCull)]
     [InlineData((int)ChainContactOptimization.SegmentCull)]
     [InlineData((int)ChainContactOptimization.OpeningStamp)]
-    [InlineData((int)ChainContactOptimization.Diagonal)]
-    [InlineData((int)ChainContactOptimization.FaceParameter)]
     [InlineData((int)ChainContactOptimization.AxisCull)]
     [InlineData((int)ChainContactOptimization.RoundingMargin)]
     [InlineData((int)ChainContactOptimization.RoundingReuse)]
-    [InlineData((int)ChainContactOptimization.PerTriangleRevision)]
     [InlineData((int)ChainContactOptimization.FirstPassCandidates)]
     [InlineData((int)ChainContactOptimization.BendCosine)]
     [InlineData((int)ChainContactOptimization.All)]
@@ -197,9 +147,9 @@ public sealed class ChainPlacementCullTests(ITestOutputHelper output)
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void The_shown_sheet_moves_with_its_drivers_from_a_clear_reachable_rest(bool layeredSweep)
+    public void The_shown_chains_move_with_their_drivers_from_a_clear_reachable_rest(bool layeredSweep)
     {
-        var rig = layeredSweep ? ChainSheetContactTests.CreateSheet(bounded: true, out _, out _, layered: true) :
+        var rig = layeredSweep ? CreateLayeredSegmentRig() :
             CreateMotionRig();
         var capsules = new ColliderCapsule[layeredSweep ? 1 : RestCapsules.Length];
         var simulation = new ChainSimulation(rig, capsules.Length);
@@ -215,8 +165,8 @@ public sealed class ChainPlacementCullTests(ITestOutputHelper output)
             {
                 float z = float.Lerp(-0.16f, 0.12f, Math.Min(frame, 112) / 112f);
                 wearer = anchors[0] = Matrix4x4.Identity;
-                anchors[1] = Matrix4x4.CreateTranslation(0, -0.82f, z);
-                capsules[0] = new(new(-0.03f, -0.32f, z), new(0.03f, -0.32f, z), 0.03f);
+                anchors[1] = SweepLower(z);
+                capsules[0] = SweepSolid(z);
             }
             else
             {
@@ -264,7 +214,7 @@ public sealed class ChainPlacementCullTests(ITestOutputHelper output)
 
     private static void CompareLayeredSweep(ChainContactOptimization disabled)
     {
-        var rig = ChainSheetContactTests.CreateSheet(bounded: true, out _, out _, layered: true);
+        var rig = CreateLayeredSegmentRig();
         var optimized = new ChainSimulation(rig, 1);
         var control = new ChainSimulation(rig, 1);
         var lowerNeutral = rig.Chains[2] with { Layer = null };
@@ -272,25 +222,45 @@ public sealed class ChainPlacementCullTests(ITestOutputHelper output)
             [rig.Chains[0], rig.Chains[1], lowerNeutral], rig.Links), 1);
         const int sweepFrames = 112;
         Assert.Equal(6, rig.JointCount);
-        bool lowerContactChangedSheet = false;
+        bool lowerContactChangedChain = false;
 
         for (int frame = 0; frame <= sweepFrames + 2; frame++)
         {
             float z = float.Lerp(-0.16f, 0.12f, Math.Min(frame, sweepFrames) / (float)sweepFrames);
-            var lower = Matrix4x4.CreateTranslation(0, -0.82f, z);
-            ColliderCapsule capsule = new(new(-0.03f, -0.32f, z), new(0.03f, -0.32f, z), 0.03f);
+            var lower = SweepLower(z);
+            ColliderCapsule capsule = SweepSolid(z);
             float elapsed = frame == 0 ? 0 : (frame % 2 == 0 ? 1.5f : 0.5f) * StepSeconds;
             Compare(optimized, control, [Matrix4x4.Identity, lower], [capsule], Matrix4x4.Identity,
                 elapsed, disabled, frame);
             withoutLowerContact.Step([Matrix4x4.Identity, lower], [capsule], Matrix4x4.Identity, elapsed);
-            var tip = rig.Chains[1].Tip;
-            lowerContactChangedSheet |= Vector3.DistanceSquared(Vector3.Transform(tip, optimized.JointsFromAnchor[4]),
-                Vector3.Transform(tip, withoutLowerContact.JointsFromAnchor[4])) > 0.000001f;
+            var tip = rig.Chains[0].Tip;
+            lowerContactChangedChain |= Vector3.DistanceSquared(Vector3.Transform(tip, optimized.JointsFromAnchor[1]),
+                Vector3.Transform(tip, withoutLowerContact.JointsFromAnchor[1])) > 0.000001f;
         }
 
-        Assert.True(optimized.JointsFromAnchor[1].Translation.Z > 0.02f);
-        Assert.True(lowerContactChangedSheet, "The lower chain must change the upper sheet during the replay.");
+        Assert.True(optimized.JointsFromAnchor[3].Translation.Z > 0.02f);
+        Assert.True(lowerContactChangedChain, "The lower chain must change the upper chain during the replay.");
     }
+
+    private static ChainRig CreateLayeredSegmentRig()
+    {
+        var settings = ChainSimulationTests.Settings with { Gravity = 0, Radius = 0.01f };
+        var segment = -0.5f * Vector3.UnitY;
+        var left = ChainSimulationTests.Chain(segment, settings,
+            ChainSimulationTests.Joint(-0.09f * Vector3.UnitX), ChainSimulationTests.Joint(segment))
+            with { Layer = AttachmentLayer.Outerwear };
+        var right = ChainSimulationTests.Chain(segment / 2, settings,
+            ChainSimulationTests.Joint(0.09f * Vector3.UnitX), ChainSimulationTests.Joint(segment),
+            ChainSimulationTests.Joint(segment / 2)) with { Layer = AttachmentLayer.Outerwear };
+        var lower = ChainSimulationTests.Chain(0.06f * Vector3.UnitX, settings with { Radius = 0.03f, Trail = 0 },
+            ChainSimulationTests.Joint(-0.03f * Vector3.UnitX)) with { Anchor = 1, Layer = AttachmentLayer.Armour };
+        return new ChainRig(2, [left, right, lower], [new(0, 1) { Stretch = 0.14f }]);
+    }
+
+    // The authored capsule strikes the right chain and the lower segment strikes the left.
+    private static ColliderCapsule SweepSolid(float z) => new(new(0.06f, -0.32f, z), new(0.12f, -0.32f, z), 0.03f);
+
+    private static Matrix4x4 SweepLower(float z) => Matrix4x4.CreateTranslation(-0.09f, -0.82f, z);
 
     private static void Compare(ChainSimulation optimized, ChainSimulation control,
         ReadOnlySpan<Matrix4x4> anchors, ReadOnlySpan<ColliderCapsule> capsules, Matrix4x4 wearer,
@@ -403,8 +373,8 @@ public sealed class ChainPlacementCullTests(ITestOutputHelper output)
     {
         output.WriteLine($"Closest-point queries per layered wearer step over {Steps} steps");
         WriteCounts("Placement filter enabled", Count(disable: false));
-        WriteCounts("T3e changes disabled", Count(disable: false, ChainContactOptimization.ThickSheet |
-            ChainContactOptimization.FirstPassCandidates | ChainContactOptimization.BendCosine));
+        WriteCounts("Linked reuse disabled", Count(disable: false, ChainContactOptimization.FirstPassCandidates |
+            ChainContactOptimization.BendCosine));
         WriteCounts("Placement filter disabled", Count(disable: true));
         WriteCounts("Exact settling", Count(disable: false, ChainContactOptimization.PassTolerance));
         WriteCounts("Exact cuts disabled", Count(disable: false,
@@ -413,12 +383,10 @@ public sealed class ChainPlacementCullTests(ITestOutputHelper output)
 
     private void WriteCounts(string label, ChainContactCounts counts)
     {
-        output.WriteLine($"{label}: {counts.SegmentAxis / (double)Steps:F2} segment-axis, " +
-            $"{counts.TriangleAxis / (double)Steps:F2} triangle-axis");
+        output.WriteLine($"{label}: {counts.SegmentAxis / (double)Steps:F2} segment-axis");
         foreach (var kind in Enum.GetValues<ChainContactQuery>())
             output.WriteLine($"{label} {kind}: {counts[kind] / (double)Steps:F2}");
         output.WriteLine($"{label} Segment passes 1-{ChainSegmentContact.ContactPasses}: {string.Join(",", counts.SegmentPasses[1..].ToArray())}");
-        output.WriteLine($"{label} Band visits 1-{ChainSheetContact.MaxPasses}: {string.Join(",", counts.BandPasses[1..].ToArray())}");
     }
 
     private static ChainContactCounts Count(bool disable, ChainContactOptimization disabledOptimizations = default)

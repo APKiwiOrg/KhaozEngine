@@ -184,8 +184,7 @@ Format 6 adds optional `linkStretch` beside `links` in a skinned part's chain mo
 the spacing of corresponding movable joints and both tips can depart from rest, as a fraction of rest spacing.
 For example, `"links": [[0, 1]], "linkStretch": 0.15` sets a band from 85% to 115% of rest spacing.
 The value must be finite, greater than zero and at most one, and the part must declare at least one link.
-The bound also enables contact across the bands between linked chains. Omit it to use the link springs
-and individual chain contact. Formats 4 and 5 refuse the member as unknown.
+Omit it to use the link springs without a width bound. Formats 4 and 5 refuse the member as unknown.
 
 Set `ChainMotionDefinition.LinkStretch` to declare the bound in code. Set definitions take only chain
 indices in each `ChainLink`. The wearer binding copies the part's bound to `ChainLink.Stretch` on the rig
@@ -679,11 +678,10 @@ displayed chain while the simulated shape already clears it.
 
 Segment lengths use the posed rest scale. Capsule correction keeps the root and segment lengths fixed
 and can exceed the bend limit to clear a collider. The solver can filter capsules by chain reach and
-by each segment's placement against the swept capsule bounds without changing the result. Sheet contact also
-filters the swept band and its triangles. Tight float rejection measures from the query bound to the
-capsule axis before the double precision solve. A thick capsule can use verified chain-edge clearance
-to keep at least half the band thickness clear. Contact passes settle at a quarter micrometre of movement
-relative to the parent, up to eight passes. The buffers hold the authored capsules and every segment exposed to the highest tier. Bend, length, capsule and width corrections
+by each segment's placement against the swept capsule bounds without changing the result. Tight float
+rejection measures from the query bound to the capsule axis before the double precision solve.
+Contact passes settle at a quarter micrometre of movement relative to the parent, up to eight passes.
+The buffers hold the authored capsules and every segment exposed to the highest tier. Bend, length, capsule and width corrections
 move positions without turning the correction into speed. Velocity constraints remove motion that would leave the segment length,
 bend limit or width band. Capsule contact uses the velocity at the contact along the segment and limits
 the child's stop to the capsule's speed along the contact direction in the segment's tangent plane. The position solve handles the part of the push along the segment. Both
@@ -691,6 +689,8 @@ capsule surface motion and bend limit turn account for the chain's carried rigid
 parent shares the stop at a bend limit. This can leave the parent moving along a segment whose length rule
 has already run. Each finished pose keeps its segment lengths. The next step's length rule removes relative
 motion along the segment it places.
+Contact follows each chain's segments and joints. A thin obstacle can still pass through the cloth drawn
+between linked chains.
 
 The first step, `Reset()`, a teleport or a long gap places the chain at rest with zero velocity
 and resets the grid. `Held` blends from the last displayed shape to rest without stepping physics.

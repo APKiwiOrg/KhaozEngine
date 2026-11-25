@@ -34,28 +34,38 @@ internal sealed class ChainShownMotionCheck(ChainSimulation simulation)
         }
         Assert.NotEmpty(obstacles);
 
+        for (int chain = 0; chain < rig.Chains.Count; chain++)
+        {
+            var definition = rig.Chains[chain];
+            if (definition.Layer != AttachmentLayer.Outerwear)
+                continue;
+
+            for (int row = 0; row < definition.Joints.Count; row++)
+            {
+                var start = At(chain, row);
+                var end = At(chain, row + 1);
+                foreach (var obstacle in obstacles)
+                {
+                    float clearance = ChainSegmentContactTests.DistanceToAxis(start, end, obstacle);
+                    Assert.True(clearance >= definition.Settings.Radius + obstacle.Radius,
+                        $"The opening chain {chain} segment {row} intersects a capsule.");
+                }
+            }
+        }
+
         foreach (var link in rig.Links)
         {
             var left = rig.Chains[link.First];
             var right = rig.Chains[link.Second];
             int rows = Math.Min(left.Joints.Count, right.Joints.Count);
-            float radius = MathF.Max(left.Settings.Radius, right.Settings.Radius);
             float stretch = link.Stretch.GetValueOrDefault();
             for (int row = 1; row <= rows; row++)
             {
-                var a = At(link.First, row - 1);
-                var b = At(link.Second, row - 1);
-                var c = At(link.First, row == rows ? left.Joints.Count : row);
-                var d = At(link.Second, row == rows ? right.Joints.Count : row);
-                float rest = Vector3.Distance(Rest(link.First, row == rows ? left.Joints.Count : row),
-                    Rest(link.Second, row == rows ? right.Joints.Count : row));
-                Assert.InRange(Vector3.Distance(c, d), rest * (1 - stretch), rest * (1 + stretch));
-                foreach (var obstacle in obstacles)
-                {
-                    float clearance = MathF.Min(ChainSheetContactTests.AxisDistance(obstacle, a, c, d),
-                        ChainSheetContactTests.AxisDistance(obstacle, a, d, b));
-                    Assert.True(clearance >= radius + obstacle.Radius, $"The opening band intersects a capsule at row {row}.");
-                }
+                int firstRow = row == rows ? left.Joints.Count : row;
+                int secondRow = row == rows ? right.Joints.Count : row;
+                float rest = Vector3.Distance(Rest(link.First, firstRow), Rest(link.Second, secondRow));
+                float spacing = Vector3.Distance(At(link.First, firstRow), At(link.Second, secondRow));
+                Assert.InRange(spacing, rest * (1 - stretch), rest * (1 + stretch));
             }
         }
 

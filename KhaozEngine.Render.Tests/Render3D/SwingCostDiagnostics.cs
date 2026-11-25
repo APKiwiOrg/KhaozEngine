@@ -92,11 +92,10 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
             for (int index = 0; index < measurements.Length; index++)
             {
                 Measurement sample = measurements[index];
-                var counts = CountQueries(simulated, options, 1f / sample.FrameRateHz, warmFrames, measuredFrames);
                 measurements[index] = sample with
                 {
-                    SegmentAxisQueriesPerSimulatedWearerStep = counts.Segments,
-                    TriangleAxisQueriesPerSimulatedWearerStep = counts.Triangles,
+                    SegmentAxisQueriesPerSimulatedWearerStep =
+                        CountQueries(simulated, options, 1f / sample.FrameRateHz, warmFrames, measuredFrames),
                 };
             }
             return (measurements, heldMeasurement);
@@ -185,7 +184,7 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
             stepTicks * msPerTick / measuredFrames, drawTicks * msPerTick / measuredFrames);
     }
 
-    static (double? Segments, double? Triangles) CountQueries(ReadOnlySpan<Wearer> wearers, ChainSimulationOptions options,
+    static double? CountQueries(ReadOnlySpan<Wearer> wearers, ChainSimulationOptions options,
         float frameTime, int warmFrames, int measuredFrames)
     {
         // Replay only the simulated wearers. Their clocks start together and the first frame resets to rest.
@@ -218,7 +217,7 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
                 }
             }
             double samples = (double)steps * wearers.Length;
-            return samples == 0 ? (null, null) : (counts.SegmentAxis / samples, counts.TriangleAxis / samples);
+            return samples == 0 ? null : counts.SegmentAxis / samples;
         }
         finally
         {
@@ -232,7 +231,6 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
         long ManagedBytesAllocated, double? StepMeanMs, double? WriteDrawsMeanMs)
     {
         public double? SegmentAxisQueriesPerSimulatedWearerStep { get; init; }
-        public double? TriangleAxisQueriesPerSimulatedWearerStep { get; init; }
     }
 
     internal static SwingCostPiece LoadPiece(OutfitRig rig, string name, AttachmentLayer layer, string anchor,

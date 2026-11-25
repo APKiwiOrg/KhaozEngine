@@ -256,6 +256,9 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
         settings.Quality.Shadows = liveShadows;
         foreach (FieldInfo field in typeof(PixelPostProcessSettings).GetFields(BindingFlags.Public | BindingFlags.Instance))
             field.SetValue(scene.Post, field.GetValue(settings));
+        // These get-only settings are outside the field copy. A fresh scene may already have them enabled.
+        scene.Post.AmbientOcclusion.Enabled = false;
+        scene.Post.ColorGrade.Look = null;
         scene.RequestShadowMapLayout(shadowResolution, shadowCascades);
         scene.FrustumCulling = ScenePolicy.FrustumCulling;
         scene.UseGpuSkinning = ScenePolicy.GpuSkinning;

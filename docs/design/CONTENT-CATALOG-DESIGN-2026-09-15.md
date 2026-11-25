@@ -1745,7 +1745,8 @@ changes until step 10 and step 10 is a single transaction.
 ### 6.2 Step 1, freeze the draft
 
 The store reads a `ContentPublishBaseline` before preparing the plan. `expectedBaseVersion` must match
-that baseline, and the publisher reads the draft and freezes it for that base. The SQL providers persist
+that baseline. Row-only preparation checks for pending edits, freezes the draft for that base and reads
+the frozen change set to build the candidate. The SQL providers persist
 `catalog_draft.frozen_for_base_version` in a separate write transaction, while the in-memory store records
 the marker under its gate. Draft edits or discards while frozen are refused with HTTP 409 and
 `publish-in-progress`.

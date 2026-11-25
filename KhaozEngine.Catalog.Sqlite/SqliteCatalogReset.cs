@@ -120,26 +120,18 @@ public static class SqliteCatalogReset
         ArgumentNullException.ThrowIfNull(connectionString);
         ValidateAuditArguments(actor, operatorId, note);
 
-        var connection = new SqliteConnection(connectionString);
-        try
+        // A pooled handle can retain a host session's TEMP schema and connection settings.
+        var options = new SqliteConnectionStringBuilder(connectionString) { Pooling = false };
+        await using var connection = new SqliteConnection(options.ToString());
+        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+        using (SqliteCommand bootstrap = connection.CreateCommand())
         {
-            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-            using (SqliteCommand bootstrap = connection.CreateCommand())
-            {
-                bootstrap.CommandText = SqliteCatalogSchema.BootstrapSql;
-                await bootstrap.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-            }
+            bootstrap.CommandText = SqliteCatalogSchema.BootstrapSql;
+            await bootstrap.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
 
-            return await ResetAsync(connection, actor, operatorId, note, force, cancellationToken)
-                .ConfigureAwait(false);
-        }
-        finally
-        {
-            // The pool is cleared BEFORE the close, the same order SqliteStoreConnection disposes in, so the
-            // database file is genuinely released rather than parked in the provider's pool.
-            SqliteConnection.ClearPool(connection);
-            await connection.DisposeAsync().ConfigureAwait(false);
-        }
+        return await ResetAsync(connection, actor, operatorId, note, force, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     /// <summary>

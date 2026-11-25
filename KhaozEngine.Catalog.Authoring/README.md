@@ -283,7 +283,7 @@ A consumer reads the reason and identifiers, never message wording.
 |---|---|---|
 | `BaseVersionMoved` | A row or text publish expecting another baseline version | `ExpectedBaseVersion`, `ActualBaseVersion` |
 | `NoPendingDraft` | A row publish with no open draft carrying pending edits | None |
-| `FrozenDraftLost` | A policy publish whose store no longer holds its draft frozen for this base | `ExpectedBaseVersion` |
+| `FrozenDraftLost` | A publish whose store no longer holds its draft frozen for this base | `ExpectedBaseVersion` |
 | `CandidateRejected` | A candidate rejected by validation | The complete owned read-only `Findings` snapshot |
 | `CandidateEditOperationUnsupported` | A candidate edit outside the four supported operations | `Type`, `Id`, `TypeKey`, `ActualOperation`, `EditOrdinal` |
 | `CandidateForkFlagInvalid` | A candidate fork flag absent from its schema or not Bool | `Type`, `Id`, `TypeKey`, `FieldName`, `EditOrdinal` |

@@ -92,6 +92,29 @@ public class SqliteCatalogResetContentionTests
         Assert.Equal(2, reset.RowsDropped);
     }
 
+    [Fact]
+    public async Task ResetUsesAFreshConnectionAfterAHostReadOnlySession()
+    {
+        // #1731: reset must see the file through its own connection settings and schema.
+        using var database = new TemporaryCatalogDatabase();
+        using var host = new SqliteConnection(database.ConnectionString);
+        try
+        {
+            host.Open();
+            Execute(host, "PRAGMA query_only = ON;");
+            host.Close();
+
+            ContentCatalogResetResult reset = await SqliteCatalogReset.ResetAsync(
+                database.ConnectionString, SqliteCatalogResetHarness.Actor, SqliteCatalogResetHarness.Operator, "");
+            Assert.Equal(reset.StoreEpoch, SqliteCatalogResetHarness.Text(database,
+                "SELECT store_epoch FROM catalog_metadata WHERE metadata_key = 1;"));
+        }
+        finally
+        {
+            SqliteConnection.ClearPool(host);
+        }
+    }
+
     static void Execute(SqliteConnection connection, string sql)
     {
         using SqliteCommand command = connection.CreateCommand();

@@ -21,7 +21,6 @@ public sealed class WorkerJobScheduler : IJobScheduler, IDisposable
 
     private readonly object _gate = new();
     private readonly Worker[] _workers;
-    private readonly ManualResetEvent _workersDone;
     private volatile bool _disposed;
 
     private Action<int>? _body;
@@ -35,7 +34,6 @@ public sealed class WorkerJobScheduler : IJobScheduler, IDisposable
     {
         ArgumentOutOfRangeException.ThrowIfNegative(workerCount);
         _workers = new Worker[workerCount];
-        _workersDone = new ManualResetEvent(false);
         int started = 0;
         try
         {
@@ -95,7 +93,6 @@ public sealed class WorkerJobScheduler : IJobScheduler, IDisposable
     private void RunFanOut(int count, Action<int> body)
     {
         using var scope = DeterministicFpScope.Enter();
-        _workersDone.Reset();
         _body = body;
         _count = count;
         _next = -1;
@@ -106,34 +103,16 @@ public sealed class WorkerJobScheduler : IJobScheduler, IDisposable
         for (int i = 0; i < workers; i++) _workers[i].Wake.Set();
 
         Drain(body, count);
-        WaitForWorkers();
+
+        // Each worker publishes its writes with an interlocked decrement. Acquire the final one before reading the result.
+        SpinWait join = default;
+        while (Volatile.Read(ref _pendingWorkers) != 0)
+            join.SpinOnce(sleep1Threshold: -1);
 
         ExceptionDispatchInfo? failure = _failure;
         _body = null;
         _failure = null;
         failure?.Throw();
-    }
-
-    private void WaitForWorkers()
-    {
-        SynchronizationContext? context = SynchronizationContext.Current;
-        if (context is null || !context.IsWaitNotificationRequired())
-        {
-            _workersDone.WaitOne();
-            return;
-        }
-
-        // WaitHandle allocates a handle array when it routes the wait through the caller's context.
-        // The internal join only needs the event, without pumping application callbacks.
-        SynchronizationContext.SetSynchronizationContext(null);
-        try
-        {
-            _workersDone.WaitOne();
-        }
-        finally
-        {
-            SynchronizationContext.SetSynchronizationContext(context);
-        }
     }
 
     private void Drain(Action<int> body, int count)
@@ -173,7 +152,6 @@ public sealed class WorkerJobScheduler : IJobScheduler, IDisposable
         _disposed = true;
         for (int i = 0; i < count; i++) _workers[i].Wake.Set();
         for (int i = 0; i < count; i++) _workers[i].Join();
-        _workersDone.Dispose();
     }
 
     private sealed class Worker
@@ -206,8 +184,8 @@ public sealed class WorkerJobScheduler : IJobScheduler, IDisposable
                 s_insideJob = true;
                 _scheduler.Drain(_scheduler._body!, _scheduler._count);
                 s_insideJob = false;
-                if (Interlocked.Decrement(ref _scheduler._pendingWorkers) == 0)
-                    _scheduler._workersDone.Set();
+                // This is the last access to this dispatch. The wake event retains a Set that arrives before WaitOne.
+                Interlocked.Decrement(ref _scheduler._pendingWorkers);
             }
         }
 

@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.Simulation;
@@ -121,63 +122,75 @@ public sealed class WorkerJobSchedulerTests
     [InlineData(true)]
     public void Warm_fanout_can_wait_for_worker_completion_without_allocating(bool notifyWaits)
     {
+        const int warmFanouts = 4;
         using var scheduler = new WorkerJobScheduler(1);
-        Thread caller = Thread.CurrentThread;
-        Thread? worker = null;
-        bool callerDrained = false, forceWait = false, callerWaited = false;
-        Action<int> job = _ =>
-        {
-            if (Thread.CurrentThread == caller)
-            {
-                var spin = new SpinWait();
-                Thread? activeWorker;
-                while ((activeWorker = Volatile.Read(ref worker)) is null)
-                    spin.SpinOnce();
-                if (!forceWait)
-                {
-                    // Warm the already-completed path by letting the worker return to its idle wait.
-                    while ((activeWorker.ThreadState & ThreadState.WaitSleepJoin) == 0)
-                        spin.SpinOnce();
-                }
-                Volatile.Write(ref callerDrained, true);
-            }
-            else
-            {
-                Volatile.Write(ref worker, Thread.CurrentThread);
-                if (forceWait)
-                {
-                    // Release the worker only after the caller has left its last job and actually parked.
-                    var spin = new SpinWait();
-                    while (!Volatile.Read(ref callerDrained) || (caller.ThreadState & ThreadState.WaitSleepJoin) == 0)
-                        spin.SpinOnce();
-                    callerWaited = true;
-                }
-            }
-        };
-
-        SynchronizationContext? original = SynchronizationContext.Current;
         SynchronizationContext? context = notifyWaits ? new WaitNotifyingContext() : null;
-        long bytes;
-        SynchronizationContext? afterWait;
-        using (AllocationRegion.Start("worker completion wait"))
+        SynchronizationContext? afterWait = null;
+        ExceptionDispatchInfo? failure = null;
+        long bytes = -1;
+        bool callerWaited = false;
+
+        var caller = new Thread(() =>
         {
             try
             {
                 SynchronizationContext.SetSynchronizationContext(context);
-                scheduler.For(2, job);
+                Thread current = Thread.CurrentThread;
+                Thread? worker = null;
+                bool forceWait = false, callerFinishedJob = false;
+                Action<int> job = _ =>
+                {
+                    if (Thread.CurrentThread == current)
+                    {
+                        Thread? activeWorker;
+                        while ((activeWorker = Volatile.Read(ref worker)) is null)
+                            Thread.Yield();
+                        // Warm only fan-outs whose worker has already returned to its idle wait.
+                        if (!forceWait)
+                        {
+                            while ((activeWorker.ThreadState & ThreadState.WaitSleepJoin) == 0)
+                                Thread.Yield();
+                        }
+                        Volatile.Write(ref callerFinishedJob, true);
+                    }
+                    else
+                    {
+                        Volatile.Write(ref worker, Thread.CurrentThread);
+                        if (forceWait)
+                        {
+                            // Hold the job until the caller leaves its own job and yields in the completion wait.
+                            while (!Volatile.Read(ref callerFinishedJob) || (current.ThreadState & ThreadState.WaitSleepJoin) == 0)
+                                Thread.Yield();
+                            callerWaited = true;
+                        }
+                    }
+                };
+
+                for (int warm = 0; warm < warmFanouts; warm++)
+                {
+                    worker = null;
+                    scheduler.For(2, job);
+                }
                 worker = null;
-                callerDrained = false;
+                callerFinishedJob = false;
                 forceWait = true;
                 long before = GC.GetAllocatedBytesForCurrentThread();
                 scheduler.For(2, job);
                 bytes = GC.GetAllocatedBytesForCurrentThread() - before;
                 afterWait = SynchronizationContext.Current;
             }
-            finally
+            catch (Exception error)
             {
-                SynchronizationContext.SetSynchronizationContext(original);
+                failure = ExceptionDispatchInfo.Capture(error);
             }
+        }) { IsBackground = true };
+
+        using (AllocationRegion.Start("fresh caller completion wait"))
+        {
+            caller.UnsafeStart();
+            caller.Join();
         }
+        failure?.Throw();
 
         Assert.True(callerWaited);
         Assert.Equal(0, bytes);

@@ -105,8 +105,8 @@ policy, and cancellation. A restart uses the configured day length and resets ti
   number of dedicated background threads to use in addition to the caller. It takes reusable delegates without
   allocating once warm and gives jobs and the caller the same FP scopes. New indices stop being claimed on the
   first failure, and the caller gets that exception back with its stack after the running jobs finish. Top-level
-  calls are serialized, and calls from inside a job run inline. The caller's internal completion wait
-  does not go through its synchronization context, so it avoids wait-notification allocations and callbacks.
+  calls are serialized, and calls from inside a job run inline. After finishing its jobs, the caller
+  spins and yields until the active workers finish. Idle workers block on their wake events.
   Dispose the scheduler outside its jobs.
 
 Part of the MMO netcode stack (sub-project 0B). Depends on `KhaozEngine.Determinism` and nothing else.

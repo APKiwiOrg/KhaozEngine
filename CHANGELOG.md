@@ -4,6 +4,56 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 24.11.0
+
+2026-11-25
+
+**Added.**
+
+- Swing chain contact acts on segments as well as joints and tips. A placement turns the segment on its
+  length sphere toward capsule clearance, including contacts between two otherwise clear endpoints.
+  [#1889](https://github.com/APKiwiOrg/KhaozEngine/issues/1889)
+- Layered chain contact. A wearer's chains are solved in ascending layer order, and every segment of a
+  chain in a strictly lower layer is a moving capsule, with that chain's radius, which the chains above
+  keep outside. Lower chains never feel the chains above them, and chains of one layer or of different
+  wearers still do not meet. `ChainRigChain.Layer`, init only and null for no layered contact, carries
+  a chain's layer, and `ChainRig` refuses an undefined layer and a link between chains of different
+  layers with `ArgumentException`. `BoundOutfit.CreateMotion` and `BoundAttachmentSet.CreateMotion`
+  give each chain its worn set's layer. Tuning a lower radius contributes the actual expansion or contraction
+  speed at its contact surface. No set format changes.
+  [#1894](https://github.com/APKiwiOrg/KhaozEngine/issues/1894)
+- `WorkerJobScheduler` in `KhaozEngine.Simulation` is an opt-in `IJobScheduler` over a fixed set of dedicated
+  worker threads. The caller runs jobs too, warm calls allocate nothing on any thread, every job runs in the
+  canonical FP scope, and the first job failure is rethrown after every running job finishes. A caller
+  interrupted during the join keeps the dispatch until the workers finish and sees the interrupt afterwards.
+- `WornMotionBatch` steps many wearers through an `IJobScheduler`. `Add` takes one wearer's inputs with its
+  palette as `ReadOnlyMemory<Matrix4x4>`, `Step` validates every entry before any wearer moves and then solves
+  the wearers as jobs, and `Clear` keeps the storage for the next frame. Each wearer ends bit for bit where
+  `WornMotion.Step` would leave it. A motion added twice is refused with
+  `AttachmentSubmissionRefusal.DuplicateMotion` and its entry index. A game poses every body, steps one batch,
+  then queues the draws.
+
+**Changed.**
+
+- Every swing chain moves differently. Detected crossings keep the segment's opening side, judged from
+  the unprojected prediction. The sweep finds oblique point crossings and samples intermediate features
+  for other moving shapes, where short crossings can still be missed. An interior contact raises the
+  child's speed at most to the obstacle's surface speed. If the parent is embedded, position and velocity
+  both use tip contact. Competing contacts settle on a minimum change with a bounded residual.
+  Width recovery preserves solid clearance along the turn, even when the proposed endpoint is clear.
+  Unbounded chains skip their second pass when link springs make no correction. Bounded groups always
+  run their depth solve. A chain's `radius` is also its thickness as an obstacle for higher layers.
+  [#1889](https://github.com/APKiwiOrg/KhaozEngine/issues/1889)
+- `WornMotion.Step` prepares and solves in the canonical FP environment, as batched steps do, so the caller's FP
+  controls no longer change a wearer's result. `KhaozEngine.Attachments.Render3D` references
+  `KhaozEngine.Simulation` and `KhaozEngine.Determinism`.
+- The swing solver passes its contact state by reference and reuses width clearance work within a projection.
+  Every joint frame is unchanged.
+- `SwingCostDiagnostics` gains a layered case, the nearest 16 of 32 wearers simulated with a linked bounded
+  cape over strap chains in a lower layer, and the same case stepped through `WornMotionBatch` on a
+  `WorkerJobScheduler`. It reports segment query counts, per-thread CPU time and any frame that allocates, and
+  settles each timed path before its warm frames.
+
 ## 24.10.0
 
 2026-11-25
@@ -17,33 +67,6 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Optional display colour grading with a game-supplied `ColorGradeLut`. The HDR tonemap applies the
   trilinear 32 cubed lookup and blends the result before palette effects and GUI. A null look,
   identity cube or zero strength preserves the ungraded pixels.
-- Swing chain contact acts on segments as well as joints and tips. A placement turns the segment on its
-  length sphere toward capsule clearance, including contacts between two otherwise clear endpoints.
-  [#1889](https://github.com/APKiwiOrg/KhaozEngine/issues/1889)
-- Layered chain contact. A wearer's chains are solved in ascending layer order, and every segment of a
-  chain in a strictly lower layer is a moving capsule, with that chain's radius, which the chains above
-  keep outside. Lower chains never feel the chains above them, and chains of one layer or of different
-  wearers still do not meet. `ChainRigChain.Layer`, init only and null for no layered contact, carries
-  a chain's layer, and `ChainRig` refuses an undefined layer and a link between chains of different
-  layers with `ArgumentException`. `BoundOutfit.CreateMotion` and `BoundAttachmentSet.CreateMotion`
-  give each chain its worn set's layer. Tuning a lower radius contributes the actual expansion or contraction
-  speed at its contact surface. No set format changes.
-  [#1894](https://github.com/APKiwiOrg/KhaozEngine/issues/1894)
-
-**Changed.**
-
-- Every swing chain moves differently. Detected crossings keep the segment's opening side, judged from
-  the unprojected prediction. The sweep finds oblique point crossings and samples intermediate features
-  for other moving shapes, where short crossings can still be missed. An interior contact raises the
-  child's speed at most to the obstacle's surface speed. If the parent is embedded, position and velocity
-  both use tip contact. Competing contacts settle on a minimum change with a bounded residual.
-  Width recovery preserves solid clearance along the turn, even when the proposed endpoint is clear.
-  Unbounded chains skip their second pass when link springs make no correction. Bounded groups always
-  run their depth solve. A chain's `radius` is also its thickness as an obstacle for higher layers.
-  [#1889](https://github.com/APKiwiOrg/KhaozEngine/issues/1889)
-- `SwingCostDiagnostics` gains a layered case, the nearest 16 of 32 wearers simulated with a linked
-  bounded cape over strap chains in a lower layer, and reports segment query counts per simulated
-  wearer step.
 
 ## 24.9.0
 

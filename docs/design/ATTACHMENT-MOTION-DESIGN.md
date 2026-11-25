@@ -5,8 +5,9 @@ a skinned body and its clips under [#1876](https://github.com/APKiwiOrg/KhaozEng
 corrections out of velocity ([#1882](https://github.com/APKiwiOrg/KhaozEngine/issues/1882)), steps on a fixed grid
 ([#1883](https://github.com/APKiwiOrg/KhaozEngine/issues/1883)) and adds a width bound for linked chains
 ([#1884](https://github.com/APKiwiOrg/KhaozEngine/issues/1884)). It also skips capsules outside each chain's reach.
-24.10.0 keeps chain segments clear of capsules ([#1889](https://github.com/APKiwiOrg/KhaozEngine/issues/1889)) and
-keeps chains outside the chains of lower layers ([#1894](https://github.com/APKiwiOrg/KhaozEngine/issues/1894)).
+24.11.0 keeps chain segments clear of capsules ([#1889](https://github.com/APKiwiOrg/KhaozEngine/issues/1889)),
+keeps chains outside the chains of lower layers ([#1894](https://github.com/APKiwiOrg/KhaozEngine/issues/1894)) and
+steps many wearers across cores through `WornMotionBatch`.
 The [consumer guide](../USING-KHAOZENGINE.md#hanging-parts-that-swing) covers setup and frame submission.
 
 A worn skinned part may carry joints of its own beyond the body's. They form chains, each hanging from a body joint:
@@ -344,7 +345,7 @@ obstacle. Segment position bounds the opening, unprojected prediction and curren
 rechecks use the current segment and axis. Overflow or an indeterminate float distance keeps the candidate. Narrow-phase contact
 and its order are the same with either filter. Segment lengths come from this step's rest hang, so a scaled wearer keeps its proportions.
 
-**Known limits.** In 24.10.0, capsule and layered contact follow each chain's segments and joints, through
+**Known limits.** In 24.11.0, capsule and layered contact follow each chain's segments and joints, through
 to the virtual tip. A thin obstacle can still pass through the cloth drawn between two linked chains.
 Contact for that space is deferred to a later release.
 Opening-side contact follows a straight relative path between steps. A collider can still leave a segment

@@ -82,6 +82,21 @@ internal sealed class ChainSheetWorkspace
         internal int CandidateCount;
         internal int LastNoOpRevision;
         private TightBound _firstPosition, _secondPosition, _firstVelocity, _secondVelocity;
+        private ChainSheetFace _firstFace, _secondFace;
+        private int _firstFaceRevision, _secondFaceRevision;
+
+        internal static ref readonly ChainSheetFace CurrentFace(ref Row row, bool second)
+        {
+            int revision = row.TriangleRevision(second);
+            ref var cachedRevision = ref (second ? ref row._secondFaceRevision : ref row._firstFaceRevision);
+            ref var face = ref (second ? ref row._secondFace : ref row._firstFace);
+            if (cachedRevision != revision)
+            {
+                face = new ChainSheetFace(row.Current.Points(second));
+                cachedRevision = revision;
+            }
+            return ref face;
+        }
 
         internal static ChainPlacementCull.SweptSphere TriangleReach(ref Row row, bool second, bool velocity)
         {

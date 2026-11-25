@@ -15,7 +15,9 @@ internal enum ChainContactOptimization
     PassTolerance = 1 << 7,
     WidthNearSolids = 1 << 8,
     SheetOpening = 1 << 9,
-    All = SegmentCull | OpeningStamp | AxisCull | RoundingMargin | RoundingReuse | FirstPassCandidates | BendCosine | WidthNearSolids | SheetOpening,
+    SheetSeparation = 1 << 10,
+    All = SegmentCull | OpeningStamp | AxisCull | RoundingMargin | RoundingReuse | FirstPassCandidates | BendCosine |
+        WidthNearSolids | SheetOpening | SheetSeparation,
 }
 
 internal static class ChainContactOptimizations

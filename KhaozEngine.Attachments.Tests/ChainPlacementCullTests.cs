@@ -90,6 +90,7 @@ public sealed class ChainPlacementCullTests(ITestOutputHelper output)
     [InlineData((int)ChainContactOptimization.BendCosine)]
     [InlineData((int)ChainContactOptimization.WidthNearSolids)]
     [InlineData((int)ChainContactOptimization.SheetOpening)]
+    [InlineData((int)ChainContactOptimization.SheetSeparation)]
     [InlineData((int)ChainContactOptimization.All)]
     public void Contact_reuse_preserves_every_joint_frame_bit(int disabled)
     {
@@ -106,12 +107,32 @@ public sealed class ChainPlacementCullTests(ITestOutputHelper output)
             long full = Count(disable: false, control | flags)[ChainContactQuery.WidthSafety];
             Assert.True(reduced < full, $"Expected fewer exact width queries with reuse enabled. Got {reduced} versus {full}.");
         }
-        if (flags == ChainContactOptimization.SheetOpening)
+        if (flags is ChainContactOptimization.SheetOpening or ChainContactOptimization.SheetSeparation)
         {
-            long reduced = Count(disable: false)[ChainContactQuery.SheetOpening];
-            long full = Count(disable: false, flags)[ChainContactQuery.SheetOpening];
-            Assert.True(reduced < full, $"Expected fewer exact opening queries. Got {reduced} versus {full}.");
+            var query = flags == ChainContactOptimization.SheetOpening ? ChainContactQuery.SheetOpening : ChainContactQuery.SheetCurrent;
+            long reduced = Count(disable: false)[query];
+            long full = Count(disable: false, flags)[query];
+            Assert.True(reduced < full, $"Expected fewer {query} queries. Got {reduced} versus {full}.");
         }
+    }
+
+    [Fact]
+    public void Nearly_collinear_sheet_keeps_the_reference_contact_pose()
+    {
+        // #1902: the nearly parallel edges have a cross product of unit length before scaling.
+        const float unit = 1f / (1 << 23);
+        var tip = unit * new Vector3(8_386_617, 8_386_613, 0);
+        var settings = ChainSimulationTests.Settings with { Damping = 0, Gravity = 0, Radius = 1f / (1 << 13) };
+        var left = ChainSimulationTests.Chain(tip, settings, ChainSimulationTests.Joint(Vector3.Zero));
+        var right = ChainSimulationTests.Chain(tip, settings, ChainSimulationTests.Joint(unit * new Vector3(-2_096_654, -2_096_653, 0)));
+        var rig = new ChainRig(1, [left, right], [new(0, 1) { Stretch = 1 }]);
+        var capsule = new ColliderCapsule(unit * new Vector3(8_394_809, 8_394_804, -8_353_849),
+            unit * new Vector3(8_394_809, 8_394_805, 32_768), settings.Radius);
+        var optimized = new ChainSimulation(rig, 1);
+        var reference = new ChainSimulation(rig, 1);
+        for (int frame = 0; frame <= 2; frame++)
+            Compare(optimized, reference, [Matrix4x4.Identity], [capsule], Matrix4x4.Identity,
+                frame == 0 ? 0 : StepSeconds, ChainContactOptimization.SheetSeparation, frame);
     }
 
     [Fact]

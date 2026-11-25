@@ -17,14 +17,23 @@ internal readonly struct ChainContactTriangle
 
     private ChainContactTriangle(Offset root, Offset ab, Offset ac) => (_root, _ab, _ac) = (root, ab, ac);
 
-    internal Offset Normal
+    internal Offset Normal => UnitNormal(out _);
+
+    internal double ShapeCondition(out Offset normal)
     {
-        get
-        {
-            var normal = Offset.Cross(_ab, _ac);
-            double squared = normal.LengthSquared;
-            return squared == 0 ? default : normal * (1 / Math.Sqrt(squared));
-        }
+        normal = UnitNormal(out double twiceArea);
+        if (twiceArea == 0 || !double.IsFinite(twiceArea))
+            return double.PositiveInfinity;
+
+        double longestSquared = Math.Max(_ab.LengthSquared, Math.Max(_ac.LengthSquared, (_ac - _ab).LengthSquared));
+        return longestSquared / twiceArea;
+    }
+
+    private Offset UnitNormal(out double twiceArea)
+    {
+        var normal = Offset.Cross(_ab, _ac);
+        twiceArea = Math.Sqrt(normal.LengthSquared);
+        return twiceArea == 0 ? default : normal * (1 / twiceArea);
     }
 
     internal int AxisSide(in Axis axis, Offset normal, double tolerance)

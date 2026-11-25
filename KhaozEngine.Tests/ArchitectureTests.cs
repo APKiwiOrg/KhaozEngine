@@ -572,14 +572,14 @@ public partial class ArchitectureTests
     }
 
     [Theory]
-    [InlineData("Render3D.Ecs", "Ecs")]
-    [InlineData("Attachments.Render3D", "Attachments")]
-    public void RendererArms_ReferenceOnlyTheirOwnerAndRender3D(string arm, string owner)
+    [InlineData("Render3D.Ecs", new[] { "Ecs", "Render3D" })]
+    [InlineData("Attachments.Render3D", new[] { "Attachments", "Render3D", "Simulation" })]
+    public void RendererArms_ReferenceOnlyTheirDeclaredDependencies(string arm, string[] expected)
     {
         IReadOnlyDictionary<string, Project> graph = LoadGraph();
         string[] actual = graph["KhaozEngine." + arm].ProjectRefs.Select(Short).OrderBy(a => a, StringComparer.Ordinal).ToArray();
 
-        Assert.Equal(new[] { owner, "Render3D" }, actual);
+        Assert.Equal(expected, actual);
     }
 
     [Fact]

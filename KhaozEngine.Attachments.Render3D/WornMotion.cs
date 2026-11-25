@@ -21,6 +21,7 @@ public sealed class WornMotion
     bool _rest = true;
 
     internal IReadOnlyList<ChainLink> RigLinksForTests => _simulation.Rig.Links;
+    internal ReadOnlySpan<Matrix4x4> JointsFromAnchor => _simulation.JointsFromAnchor;
 
     internal WornMotion(object bindingIdentity, Skeleton skeleton, Dictionary<uint, WornMotionPart>?[] parts,
         ChainRig rig, int[] anchorBones, WornCollider[] colliders, ChainSimulationOptions? options)
@@ -49,6 +50,14 @@ public sealed class WornMotion
     public void Step(Skeleton skeleton, ReadOnlySpan<Matrix4x4> palette, in Matrix4x4 model,
         float deltaSeconds, MotionLevel level = MotionLevel.Simulated)
     {
+        PrepareStep(skeleton, palette, model, deltaSeconds, level);
+        StepPrepared(model, deltaSeconds, level);
+    }
+
+    // Prepare only unpublished frame scratch so a batch can validate every wearer before advancing any.
+    internal void PrepareStep(Skeleton skeleton, ReadOnlySpan<Matrix4x4> palette, in Matrix4x4 model,
+        float deltaSeconds, MotionLevel level)
+    {
         AttachmentSetBinding.ValidateFrame(_skeleton, skeleton, palette);
         AttachmentSetBinding.ValidateModel(model);
         for (int anchor = 0; anchor < _anchorBones.Length; anchor++)
@@ -58,7 +67,12 @@ public sealed class WornMotion
             ref readonly WornCollider collider = ref _colliders[index];
             _colliderWorlds[index] = collider.Pose(PoseJoint(collider.Bone, palette, model));
         }
-        _simulation.Step(_anchorWorlds, _colliderWorlds, model, deltaSeconds, level);
+        _simulation.PrepareStep(_anchorWorlds, _colliderWorlds, model, deltaSeconds, level);
+    }
+
+    internal void StepPrepared(in Matrix4x4 model, float deltaSeconds, MotionLevel level)
+    {
+        _simulation.StepPrepared(_anchorWorlds, _colliderWorlds, model, deltaSeconds, level);
         _rest = false;
     }
 
@@ -92,7 +106,7 @@ public sealed class WornMotion
         {
             BoundAttachmentChain chain = chains[index];
             ReadOnlySpan<Matrix4x4> frames = _rest ? chain.RestFromAnchor :
-                _simulation.JointsFromAnchor.Slice(_simulation.Rig.FirstJoint(part.FirstChain + index), chain.PaletteBones.Length);
+                JointsFromAnchor.Slice(_simulation.Rig.FirstJoint(part.FirstChain + index), chain.PaletteBones.Length);
             chain.CopyPalette(frames, palette[chain.AnchorBone], destination);
             foreach (int bone in chain.PaletteBones)
                 if (!AttachmentSetBinding.ValidMatrix(destination[bone]))

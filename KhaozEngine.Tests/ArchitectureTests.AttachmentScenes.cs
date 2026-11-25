@@ -20,7 +20,7 @@ public partial class ArchitectureTests
         string[] actual = LoadGraph()["KhaozEngine.Attachments.Render3D"].ProjectRefs
             .Select(Short).OrderBy(name => name, StringComparer.Ordinal).ToArray();
 
-        Assert.Equal(new[] { "Attachments", "Render3D" }, actual);
+        Assert.Equal(new[] { "Attachments", "Render3D", "Simulation" }, actual);
     }
 
     [Fact]

@@ -522,6 +522,17 @@ exposes the property. `World.DefaultScheduler` itself is the per-world seam in `
 `SingleThreadedJobScheduler`, so a world stays byte-identical until a game opts in, and an explicit per-call
 scheduler still wins over it.
 
+## Wearer job-scheduler seam: Attachments.Render3D references Simulation
+
+```
+KhaozEngine.Attachments.Render3D -> KhaozEngine.Simulation   (IJobScheduler for WornMotionBatch)
+```
+
+The renderer arm owns per-wearer stepping and validates the bound inputs before scheduling independent
+solves. Using the existing scheduler seam lets games choose inline or dedicated workers without pulling a
+scheduler into the GPU-free attachment definitions or the base renderer. Game3D already carries Simulation
+through Game. The renderer arms' direct dependency test pins the edge.
+
 ## PNG I/O: shared malformed-data base
 
 `KhaozEngine.Imaging` references only `KhaozEngine.Primitives` for `MalformedDataException`, the shared
@@ -540,7 +551,8 @@ Body region maps, the outfit rule and the coverage claim check live here too. Th
 positions and indices, plus part IDs for pieces with motion and masks for the moving parts, so a tool can
 explain or check an outfit offline.
 Body collider data and the chain solver also live here. The solver takes world-space transforms
-and capsules through `System.Numerics`, so a tool can simulate a worn set from exported poses.
+and capsules through `System.Numerics`, so a tool can simulate a worn set from exported poses. The core grants
+`InternalsVisibleTo` to the renderer arm for preparing and advancing the same solver frame in separate phases.
 JSON uses `System.Text.Json` and hashing uses SHA-256 from the BCL. No renderer or particular
 skeleton type appears in its API. Publishers reference it directly. Foundation and Server do not
 gain an attachment dependency.
@@ -549,11 +561,11 @@ gain an attachment dependency.
 `ZeroDependencyLeaves_CarryNoProjectReferences` continues to pin Primitives as a leaf.
 The renderer's existing dependency allowlist and ECS-free closure remain unchanged.
 
-`KhaozEngine.Attachments.Render3D` references only Attachments and Render3D. It resolves contract
+`KhaozEngine.Attachments.Render3D` references Attachments, Render3D and Simulation. It resolves contract
 joints to skin-bone indices, composes rigid transforms and binds garment palettes against an explicit
 host mesh's inverse binds. Both kinds use the body's current joint model palette. A chained part
 also uses its own rest or simulated joint frames. The arm binds colliders and owns per wearer motion.
-Game3D carries this arm. `RendererArms_ReferenceOnlyTheirOwnerAndRender3D` pins its two edges
+Game3D carries this arm. `RendererArms_ReferenceOnlyTheirDeclaredDependencies` pins its edges
 alongside the Render3D.Ecs arm, and the umbrella membership lock includes it. Foundation and Server
 remain unchanged. Render3D's material-part memory importer reuses its existing glTF decoding.
 
@@ -593,7 +605,7 @@ from a kit manifest, and `SnapshotTool` compares rendered PNGs, and neither touc
 base namespace `KhaozEngine.Render3D`, so source compiles unchanged once the package is referenced. It uses only
 public `Render3D` surface and needs no `InternalsVisibleTo`. `Render3D_StaysSeamsOnly` no longer allows `Ecs`,
 `Render3D_ClosureStaysEcsFree` refuses `Ecs`, `Simulation` and `Serialization` anywhere in the `Render3D` closure,
-and `RendererArms_ReferenceOnlyTheirOwnerAndRender3D` pins the arm's two edges.
+and `RendererArms_ReferenceOnlyTheirDeclaredDependencies` pins the arm's two edges.
 
 ## Determinism at the scheduling boundary: Simulation references Determinism
 
@@ -601,7 +613,7 @@ The floating-origin major added one edge, acyclic, and it cost `KhaozEngine.Simu
 status:
 
 ```
-KhaozEngine.Simulation -> KhaozEngine.Determinism   (DeterministicFpScope, around each ThreadPoolJobScheduler body and fan-out)
+KhaozEngine.Simulation -> KhaozEngine.Determinism   (DeterministicFpScope around jobs and the caller fan-out)
 ```
 
 `DeterministicFp` pins the floating-point control register (rounding mode, FTZ/DAZ, trap masks) on the CALLING
@@ -614,7 +626,7 @@ fan-out, because a thread the pool creates for the call can start with its creat
 fan-out that was the process's first thread pool use, from a caller rounding toward zero, left every pool thread
 rounding toward zero. `ShardHost.Tick` installs the same scope around each cell's step, so the guarantee holds
 whichever scheduler is in use. Entering twice is harmless, since the inner scope restores exactly what the outer
-one had already made canonical.
+one had already made canonical. `WorkerJobScheduler` uses the same scopes for its dedicated workers and caller.
 
 `Determinism` references only `Diagnostics` (for one startup warning), so the transitive closure stays headless
 and GPU-free and every umbrella-purity guard is unaffected. The architecture test is narrowed rather than deleted:

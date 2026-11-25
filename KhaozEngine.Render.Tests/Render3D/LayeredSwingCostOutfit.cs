@@ -12,10 +12,10 @@ internal static class LayeredSwingCostOutfit
 
     internal static SwingCostPiece[] Load(OutfitRig rig)
     {
-        SwingCostPiece cape = SwingCostDiagnostics.LoadPiece(rig, "cape", AttachmentLayer.Outerwear, "hip",
+        SwingCostPiece cape = SwingCostFixture.LoadPiece(rig, "cape", AttachmentLayer.Outerwear, "hip",
             5, 6, new Vector3(-.24f, 0, -.23f), linkStretch: .08f);
         // The knee's pitch sweeps the tails across the cape between panels during the walk.
-        SwingCostPiece tails = SwingCostDiagnostics.LoadPiece(rig, "tails", AttachmentLayer.Armour, "knee",
+        SwingCostPiece tails = SwingCostFixture.LoadPiece(rig, "tails", AttachmentLayer.Armour, "knee",
             4, 3, new Vector3(-.18f, .28f, -.26f),
             colliders: Hardware(rig, "hip", new Vector3(-.18f, -.52f, -.20f)));
         AttachmentMeshRef mesh = rig.Source.Mesh("plates.glb", AttachmentTestSource.Glb());
@@ -28,7 +28,7 @@ internal static class LayeredSwingCostOutfit
 
     static ColliderDefinition[] Hardware(OutfitRig rig, string joint, Vector3 firstCenter)
     {
-        Vector3 center = SwingCostDiagnostics.ModelBindPosition(rig, joint) + firstCenter;
+        Vector3 center = SwingCostFixture.ModelBindPosition(rig, joint) + firstCenter;
         Vector3 halfAxis = Vector3.UnitY * .08f;
         var capsules = new ColliderDefinition[4];
         for (int index = 0; index < capsules.Length; index++)

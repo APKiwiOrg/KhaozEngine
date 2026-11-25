@@ -7863,6 +7863,28 @@ scratch, levels)` before stepping. It assigns `Simulated` to the nearest wearers
 up to the count limit. The rest receive `Held` and blend toward the rest hang. Reuse the scratch span with
 space for the smaller of the wearer count and the count limit, and one output level per wearer.
 
+Keep one `WornMotionBatch` for the frame loop. Pose all bodies into their reusable palettes before stepping
+the batch. Queue draws and outlines with the individual motions after the batch returns.
+
+```csharp
+// Create once, then dispose the scheduler when the frame loop ends.
+using var swingWorkers = new WorkerJobScheduler(Environment.ProcessorCount - 1);
+var swing = new WornMotionBatch(swingWorkers);
+
+// Each frame, after posing the wearers and assigning motion levels:
+swing.Clear();
+for (int i = 0; i < wearers.Length; i++)
+{
+    var wearer = wearers[i];
+    swing.Add(wearer.Motion, wearer.Skeleton, wearer.Palette, wearer.Model, deltaSeconds, levels[i]);
+}
+swing.Step();
+// Queue the wearers' draws and outlines on the render thread.
+```
+
+Keep each palette unchanged through `Step()`. Palette memory and entry storage can be reused each frame.
+A refused entry leaves all motion states at their previous step.
+
 The shipped Scene3D upload leases expand the source mesh and its views' culling bounds for chain reach
 around the rest anchor. Animation that translates or scales the anchor far from rest can carry the chain beyond the
 bounds. Custom `IAttachmentScene` leases use their own culling policy and must account for the swing.

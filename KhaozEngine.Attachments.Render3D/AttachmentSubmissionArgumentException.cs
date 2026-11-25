@@ -27,4 +27,7 @@ public sealed class AttachmentSubmissionArgumentException : ArgumentException
 
     /// <summary>The output capacity required by the binding or submission.</summary>
     public int RequiredCapacity { get; init; }
+
+    /// <summary>The zero-based index of the repeated motion in a batch, when applicable.</summary>
+    public int? EntryIndex { get; init; }
 }

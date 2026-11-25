@@ -71,7 +71,13 @@ public sealed class ChainSimulation
     public void Step(ReadOnlySpan<Matrix4x4> anchorWorlds, ReadOnlySpan<ColliderCapsule> colliders,
         in Matrix4x4 wearer, float deltaSeconds, MotionLevel level = MotionLevel.Simulated)
     {
-        ValidateFrame(anchorWorlds, colliders, wearer, deltaSeconds, level);
+        PrepareStep(anchorWorlds, colliders, wearer, deltaSeconds, level);
+        StepPrepared(anchorWorlds, colliders, wearer, deltaSeconds, level);
+    }
+
+    internal void StepPrepared(ReadOnlySpan<Matrix4x4> anchorWorlds, ReadOnlySpan<ColliderCapsule> colliders,
+        in Matrix4x4 wearer, float deltaSeconds, MotionLevel level)
+    {
         var frameWearer = new ChainPose(wearer);
 
         bool reset = _needsReset || deltaSeconds > Options.LongestGapSeconds ||
@@ -160,7 +166,7 @@ public sealed class ChainSimulation
         }
     }
 
-    private void ValidateFrame(ReadOnlySpan<Matrix4x4> anchorWorlds, ReadOnlySpan<ColliderCapsule> colliders,
+    internal void PrepareStep(ReadOnlySpan<Matrix4x4> anchorWorlds, ReadOnlySpan<ColliderCapsule> colliders,
         in Matrix4x4 wearer, float deltaSeconds, MotionLevel level)
     {
         ValidateAnchorCount(anchorWorlds);

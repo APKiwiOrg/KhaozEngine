@@ -90,12 +90,19 @@ object.
 Keeping the state inside `BoundOutfit` and `BoundAttachmentSet` would make a binding unshareable without saying so.
 Keeping it in `Scene3D` per motion key would hide a wearer's lifetime inside the renderer.
 
+`WornMotionBatch` lives beside `WornMotion`, where the package can validate the frame and own the per-wearer
+step contract. The caller prepares each frame in entry order before any solve starts. Preparation writes only
+unpublished per-wearer scratch. It resolves no skeleton nodes, since binding has already saved the bone
+indices, and it updates no draw scratch or simulation history. Workers run the same prepared solve as
+`WornMotion.Step` against the wearer's own state. The solver's test switches and counters remain thread-local.
+Use inline stepping for a test that sets one.
+
 ### 5. The solver is GPU free
 
 The solver, the chain data and the collider data live in `KhaozEngine.Attachments`, which keeps its one reference,
 to `KhaozEngine.Primitives`, and uses only `System.Numerics`. Binding, motion and draws live in
 `KhaozEngine.Attachments.Render3D`. A fitting tool or a pose check can run the swing over exported poses without a
-renderer, as it can run the outfit rule. No package or dependency edge is added.
+renderer, as it can run the outfit rule. Batch scheduling adds a Simulation reference to the renderer arm.
 
 ### 6. The capability is a minor, 24.5.0, and the fix is a minor, 24.8.0
 
@@ -488,6 +495,8 @@ Its canonical bytes and SHA-256 follow the region map's rules.
   Worn set capsules and lower chain segments still contribute when there are no body colliders.
 - `WornMotion.Step(skeleton, palette, model, deltaSeconds, level)`, `Reset()`, and `Tune(wornIndex, partId, chain, settings)`
   for a live tuner.
+- `WornMotionBatch(IJobScheduler)` reuses the storage for `Add(motion, skeleton, palette, model, deltaSeconds, level)`.
+  `Step()` advances the prepared frames and `Clear()` removes the entries for reuse.
 - Overloads of `BoundOutfit.WriteDraws` and `QueueOutline`, and of `BoundAttachmentSet.WriteDraws`, `Queue` and
   `QueueOutline`, that take the motion. A motion made for another outfit or set refuses with a typed reason.
 
@@ -502,7 +511,8 @@ Its canonical bytes and SHA-256 follow the region map's rules.
   binds. `CreateMotion` combines the visible chains in worn order and copies each set's layer to its chains.
   It resolves authored colliders against the host skin and allocates every buffer the wearer needs.
 - **Frame order.** Animate the body, step the motion once, then write draws and outlines through the motion as often
-  as needed. Draw calls only read the motion, so a draw and an outline always agree.
+  as needed. With a batch, pose all bodies, step the batch once, then queue the draws. Draw calls only read
+  the motion, so a draw and an outline always agree.
 - **Palettes.** A chained part's palette stays in garment skin order. Host joints come from the host palette as
   before. Chain joints come from the motion, composed on the current anchor and taken into model space. The renderer
   applies the garment's inverse binds as before.
@@ -522,7 +532,8 @@ Its canonical bytes and SHA-256 follow the region map's rules.
   lease keeps its own culling policy.
 - **Hidden parts.** A part the outfit hides entirely is not stepped.
 - **Allocation.** `CreateMotion` allocates everything. `Step`, `WriteDraws`, `Queue` and `QueueOutline` allocate
-  nothing once warm.
+  nothing once warm. A batch reuses its entry storage, uniqueness set and job delegate. A warm frame with
+  the dedicated scheduler allocates nothing.
 
 ## Coverage claims and swinging triangles
 
@@ -591,11 +602,17 @@ three-joint strap chains. It reports all 32 simulated in `measurements` and all 
 The layered outfit has five linked six-joint cape chains with an 8% width bound over four three-joint tails.
 It uses 12 body capsules and four capsules from each of two lower sets. Its first 16 wearers simulate and the
 other 16 hold, representing a nearest-16 cap. Both groups step and write draws in `layeredMeasurements`.
+`parallelLayeredMeasurements` repeats that scenario at both rates with a batch and one dedicated worker per
+logical processor besides the caller.
 
 After 120 warm frames, each simulated rate samples 600 frames at 144 Hz or 60 Hz. One JSON line reports the mean,
 p50, p95 and maximum frame milliseconds, the mean spans for `WornMotion.Step` and `BoundOutfit.WriteDraws`, total
 warm managed bytes on the preparation thread and the runner environment. Each wearer's step is followed by
-its draws. The frame span includes the call timestamps and excludes host animation and scene submission.
+its draws in the sequential case. The parallel frame span includes filling the batch, stepping it and writing
+the draws. Both frame spans include call timestamps and exclude host animation and scene submission.
+`summedWearerStepMeanMs` in the parallel sample adds the caller's validation time to the individual solve times
+across threads. `managedBytesAllocated` measures the preparation thread. The scheduler allocation test uses each
+participating worker's own allocation counter between warm calls to cover worker wake, work and completion.
 An untimed replay counts segment-axis queries per simulated wearer per fixed solver step, excluding warm frames.
 The count is null for the all-held sample or when a shortened sample takes no fixed steps. Timing is report only
 and excluded from default CI.

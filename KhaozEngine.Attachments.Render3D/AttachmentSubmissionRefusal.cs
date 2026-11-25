@@ -11,4 +11,7 @@ public enum AttachmentSubmissionRefusal
 
     /// <summary>Refuses motion created by a different bound set or outfit.</summary>
     MotionMismatch,
+
+    /// <summary>Refuses the second occurrence of a motion in a batch and identifies its entry index.</summary>
+    DuplicateMotion,
 }

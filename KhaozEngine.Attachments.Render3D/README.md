@@ -1,7 +1,7 @@
 # KhaozEngine.Attachments.Render3D
 
 Attachment definitions bound to a posed `KhaozEngine.Render3D` skeleton. This renderer arm
-references `KhaozEngine.Attachments` and `KhaozEngine.Render3D` and ships in `KhaozEngine.Game3D`.
+references `KhaozEngine.Attachments`, `KhaozEngine.Render3D` and `KhaozEngine.Simulation`. It ships in `KhaozEngine.Game3D`.
 
 `AttachmentSetCache.Get` loads rigid, skinned and mixed sets. The map-only `AttachmentSetBinding`
 constructor and `LoadedAttachmentSet.Bind(map)` refuse sets containing skinned parts with
@@ -352,6 +352,15 @@ has no tunable chains. Wearers can share a binding and have independent motions.
 belongs to its originating set or outfit and owns no disposable scene state. Passing it to another
 binding raises `MotionMismatch` before submitting any draw.
 
+For multiple wearers, reuse a `WornMotionBatch` over an `IJobScheduler`. Pose every body, clear the batch,
+add each motion with its skeleton, palette memory, model, delta and level, then step once before queueing any
+draws. Keep the borrowed palette memory unchanged through `Step()`. The batch checks all frames before advancing
+any wearer and uses the same step as the single-wearer API. Each motion can occur once. `Step()` reports a repeated
+motion with `DuplicateMotion` and the repeated entry's zero-based index. `Clear()` drops the queued entries while
+retaining storage. Reuse a `WorkerJobScheduler` for allocation-free parallel steps or a
+`SingleThreadedJobScheduler` for inline steps. The caller owns the scheduler and keeps draw submission on its
+render thread.
+
 When the cache loads a chained set through a shipped `Scene3D` upload lease, it expands the
 chained meshes' rest bounds for culling. Each chain contributes a sphere at its first joint's
 rest position. The radius covers the rest segments and tip, plus the farthest weighted vertex
@@ -478,3 +487,4 @@ eligibility uses the shared [DrawAdmission family](../KhaozEngine.Render3D/READM
 | `OutputTooSmall` | Output shorter than the attachment draw count | `ActualCapacity`, `RequiredCapacity`, `ParamName` |
 | `MixedDrawRequired` | Rigid descriptors for a set containing skinned parts | `SkinnedPartCount` |
 | `MotionMismatch` | Motion created by another bound set or outfit | `ParamName` |
+| `DuplicateMotion` | Motion already added to the same batch | `EntryIndex` |

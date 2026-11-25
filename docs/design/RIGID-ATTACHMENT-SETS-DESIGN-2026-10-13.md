@@ -193,8 +193,8 @@ order. A material group is a separate draw, so a part containing two materials n
   exception base. It owns immutable definitions, JSON, resource
   reference validation, source keys and embedded rigid GLB preflight. Headless publishers reference it
   directly. It is not added to Foundation or Server by default.
-- `KhaozEngine.Attachments.Render3D` depends on that package and Render3D. It owns rig binding, uploaded
-  resource lifetime, per-scene caching and draw submission. Add it to Game3D.
+- `KhaozEngine.Attachments.Render3D` depends on Attachments, Render3D and Simulation. It owns rig binding,
+  uploaded resource lifetime, per-scene caching, wearer batch stepping and draw submission. Game3D includes it.
 - The existing Render3D dependency allowlist and its ban on Serialization/ECS dependencies stay intact.
   A byte-memory overload for the existing material-part importer and transactional surface-map loading
   remain in Render3D, where those underlying operations already belong.

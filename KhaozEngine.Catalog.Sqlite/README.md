@@ -179,10 +179,11 @@ referencing the catalog fails the reset at its commit instead, and the whole res
 references to the catalog out of foreign keys, or declare them `NO ACTION` and clear the referencing rows
 before a reset.
 
-A metadata-shaped view and its INSTEAD OF insert trigger can also stand outside the table inventory and
-intercept the metadata seed. Recreating does not prove the epoch is a TEXT value. A missing epoch uses
-`SchemaValidationMetadataMissing`, while a nontext epoch uses `StoredScalarTypeMismatch` with expected
-CLR type `string` and the actual scalar type. A refusal rolls back that trigger's writes too.
+SQLite's `CREATE TABLE IF NOT EXISTS` leaves a view in place if its name matches the table being created.
+Before dropping any table, reset checks for host views occupying a declared table name, including names
+that differ only in case. It refuses with `SchemaObjectUnexpected` even with `force`. `ObjectName` carries
+`view:` followed by the view's stored name. Move the view to an unused name before retrying. The host's
+view, its triggers and the catalog rows all survive the refusal.
 
 Drop and recreate rather than `DELETE`, because a delete leaves the `sqlite_sequence` marks behind the
 `AUTOINCREMENT` columns on `catalog_family`, `catalog_draft_edit`, `catalog_audit`, `catalog_draft_text_edit` and

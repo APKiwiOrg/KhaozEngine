@@ -344,9 +344,9 @@ includes the migration the schema check prescribes. Ordinary store
 reads retain `SchemaMetadataMissing` with no identifiers. `ResetDraftOpen` reports draft rows rather than
 the companion import's `DraftOpen` edit counts. A non-null reset scalar of the wrong CLR type reuses
 `StoredScalarTypeMismatch` with `ExpectedScalarType` and `ActualScalarType`, for integer reads and the
-post-recreation text epoch alike. Even the latter is an input check: SQLite's table inventory leaves views
-and their INSTEAD OF triggers standing, and a metadata-shaped view can intercept the seed. A missing epoch
-uses `SchemaValidationMetadataMissing`. SQL Server database DDL triggers can likewise alter the recreated
+post-recreation text epoch alike. A missing epoch uses `SchemaValidationMetadataMissing`. SQLite refuses
+a view occupying a declared table name before recreation, even with `force`. `SchemaObjectUnexpected`
+identifies it as `view:<stored name>`. SQL Server database DDL triggers can alter the recreated
 metadata table and install a seed trigger. Its post-recreation version and epoch reads therefore remain
 input checks with the same refusal members, rather than internal invariants. The refusal rolls back trigger
 writes as well as catalog changes. SQL Server schema locking carries the integer return code from

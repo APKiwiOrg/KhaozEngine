@@ -24579,6 +24579,10 @@ commit instead. SQL Server refuses to drop a table any foreign key references, w
 every such key fails the reset with SQL error 3726. A failed reset rolls back as a whole on both providers,
 catalog and host alike. A host that resets its catalog keeps its references to it out of foreign keys.
 
+SQLite also checks whether a host view occupies a declared catalog table name. Reset refuses with
+`SchemaObjectUnexpected` and the view's `ObjectName`, even with `force`. Move the view to a free name
+before retrying.
+
 It is a separate type per provider rather than a member on `IContentAuthoringStore`, because a reset is DDL
 and the everyday authoring path is DML: a production deployment should not give its application role DDL at
 all, so the reset takes the migration credential's own connection string. An open draft is refused with reason

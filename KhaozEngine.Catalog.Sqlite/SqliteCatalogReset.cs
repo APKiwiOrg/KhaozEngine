@@ -105,7 +105,10 @@ public static class SqliteCatalogReset
     /// <returns>What stood before the reset, and the schema version and epoch the recreated schema carries.</returns>
     /// <exception cref="ArgumentNullException">A required argument is null.</exception>
     /// <exception cref="ArgumentException"><paramref name="actor"/> is empty, or an argument is longer than the audit column that holds it.</exception>
-    /// <exception cref="ContentAuthoringException">The database carries a catalog schema version newer than this build writes, or a host table's foreign key into the catalog declared <c>ON DELETE CASCADE</c>, <c>SET NULL</c> or <c>SET DEFAULT</c>, or a partial catalog or an open draft and <paramref name="force"/> is false.</exception>
+    /// <exception cref="ContentAuthoringException">A host view occupies a declared catalog table name, the
+    /// schema is newer than this build writes, a host foreign key into the catalog declares
+    /// <c>ON DELETE CASCADE</c>, <c>SET NULL</c> or <c>SET DEFAULT</c>, or a partial catalog or an open
+    /// draft needs <paramref name="force"/>.</exception>
     public static async Task<ContentCatalogResetResult> ResetAsync(
         string connectionString,
         string actor,

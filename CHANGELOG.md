@@ -17,6 +17,32 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Optional display colour grading with a game-supplied `ColorGradeLut`. The HDR tonemap applies the
   trilinear 32 cubed lookup and blends the result before palette effects and GUI. A null look,
   identity cube or zero strength preserves the ungraded pixels.
+- Swing chain contact acts on segments as well as joints and tips. Each placement keeps the segment
+  from its parent to the new particle clear of every capsule by turning it on its length sphere, so a
+  segment can no longer lie across a thin capsule and a soft chain draped over a capsule no longer
+  folds over it. [#1889](https://github.com/APKiwiOrg/KhaozEngine/issues/1889)
+- Layered chain contact. A wearer's chains are solved in ascending layer order, and every segment of a
+  chain in a strictly lower layer is a moving capsule, with that chain's radius, which the chains above
+  keep outside. Lower chains never feel the chains above them, and chains of one layer or of different
+  wearers still do not meet. `ChainRigChain.Layer`, init only and null for no layered contact, carries
+  a chain's layer, and `ChainRig` refuses an undefined layer and a link between chains of different
+  layers with `ArgumentException`. `BoundOutfit.CreateMotion` and `BoundAttachmentSet.CreateMotion`
+  give each chain its worn set's layer. No set format changes.
+  [#1894](https://github.com/APKiwiOrg/KhaozEngine/issues/1894)
+
+**Changed.**
+
+- Every swing chain moves differently. A crossing keeps the side a segment held at the step's opening,
+  judged from the unprojected prediction so the solver's own corrections never count as a crossing. An
+  interior contact raises the child's speed at most to the obstacle's surface speed, so repeated contact
+  cannot build a lever's speed. Competing contacts settle on a minimum change with a bounded residual.
+  The width bound moves a pair only toward the edge its lengths and bend limits can reach and keeps
+  solid contact, and the link second pass runs only for chains a spring moved. A chain's `radius` is
+  now also its thickness as an obstacle for higher layers, so consumers retune radii.
+  [#1889](https://github.com/APKiwiOrg/KhaozEngine/issues/1889)
+- `SwingCostDiagnostics` gains a layered case, the nearest 16 of 32 wearers simulated with a linked
+  bounded cape over strap chains in a lower layer, and reports segment query counts per simulated
+  wearer step.
 
 ## 24.9.0
 

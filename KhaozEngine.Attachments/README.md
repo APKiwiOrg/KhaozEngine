@@ -184,7 +184,9 @@ Format 6 adds optional `linkStretch` beside `links` in a skinned part's chain mo
 the spacing of corresponding movable joints and both tips can depart from rest, as a fraction of rest spacing.
 For example, `"links": [[0, 1]], "linkStretch": 0.15` sets a band from 85% to 115% of rest spacing.
 The value must be finite, greater than zero and at most one, and the part must declare at least one link.
-Omit it to use the link springs without a width bound. Formats 4 and 5 refuse the member as unknown.
+Bounded links also make a collision sheet between the chains' corresponding rows. Each band uses the
+larger guide radius, and its last row connects the two virtual tips. Omit the bound for soft links that
+retain guide-only contact. Formats 4 and 5 refuse the member as unknown.
 
 Set `ChainMotionDefinition.LinkStretch` to declare the bound in code. Set definitions take only chain
 indices in each `ChainLink`. The wearer binding copies the part's bound to `ChainLink.Stretch` on the rig
@@ -689,8 +691,9 @@ capsule surface motion and bend limit turn account for the chain's carried rigid
 parent shares the stop at a bend limit. This can leave the parent moving along a segment whose length rule
 has already run. Each finished pose keeps its segment lengths. The next step's length rule removes relative
 motion along the segment it places.
-Contact follows each chain's segments and joints. A thin obstacle can still pass through the cloth drawn
-between linked chains.
+Contact follows each chain through its virtual tip. Bounded links also test the bands between guides.
+Each row clears the triangles against its tier's obstacles before placing the next row, and removes
+approach at the sheet's contact without feeding position corrections into velocity.
 
 The first step, `Reset()`, a teleport or a long gap places the chain at rest with zero velocity
 and resets the grid. `Held` blends from the last displayed shape to rest without stepping physics.

@@ -316,8 +316,9 @@ is alive. A bound set or outfit refuses colliders loaded for another skeleton in
 Call `outfit.CreateMotion(bodyColliders, options)` or `bound.CreateMotion(bodyColliders, options)`
 once per wearer. The motion combines the visible chains in worn order, copies each set's layer to its chains
 and copies each part's [format 6 `linkStretch`](../KhaozEngine.Attachments/README.md#format-6) to its rig links.
-Within one wearer, chains clear segments of strictly lower layers. Contact follows each chain's segments and
-joints. A thin obstacle can still pass through the cloth drawn between linked chains.
+Within one wearer, chains clear segments of strictly lower layers. A bounded link also clears the
+triangle bands between its guides from the roots through the virtual tips. Lower chains keep their own
+motion when a higher sheet meets their segment capsules.
 The motion uses authored capsules from the body file and all worn sets, with a limit of 64 authored capsules per wearer. Passing null
 for body colliders still includes worn set capsules. In each frame, the host inverse bind, current
 joint matrix and model compose the rest-to-world transform. It places the endpoints and scales

@@ -10,14 +10,16 @@ namespace KhaozEngine.Tests.Attachments;
 public sealed class ChainWidthRestTests(ITestOutputHelper output)
 {
     [Theory]
-    [InlineData(5f, 9f, 1.1f, 4, false)]
-    [InlineData(5f, 9f, 1.1f, 4, true)]
-    [InlineData(7.5f, 5.5f, MathF.PI, 8, false)]
-    [InlineData(7.5f, 5.5f, MathF.PI, 8, true)]
-    [InlineData(7.5f, 3.5f, MathF.PI, 8, false)]
-    [InlineData(7.5f, 3.5f, MathF.PI, 8, true)]
+    [InlineData(5f, 9f, 1.1f, 4, false, false)]
+    [InlineData(5f, 9f, 1.1f, 4, true, false)]
+    [InlineData(7.5f, 5.5f, MathF.PI, 8, false, false)]
+    [InlineData(7.5f, 5.5f, MathF.PI, 8, true, false)]
+    [InlineData(7.5f, 3.5f, MathF.PI, 8, false, false)]
+    [InlineData(7.5f, 3.5f, MathF.PI, 8, true, false)]
+    [InlineData(5f, 9f, 1.1f, 4, false, true)]
+    [InlineData(7.5f, 3.5f, MathF.PI, 8, true, true)]
     public void Soft_bounded_cape_at_a_frozen_capsule_stops_moving(
-        float stiffness, float damping, float angleLimit, int settleSeconds, bool betweenChains)
+        float stiffness, float damping, float angleLimit, int settleSeconds, bool betweenChains, bool sheet)
     {
         // #1884: contact can keep a soft cape pressed against its width band after the pose stops.
         // #1883: the lower damping rows also require rest with the bend limit disabled.
@@ -58,7 +60,18 @@ public sealed class ChainWidthRestTests(ITestOutputHelper output)
             }
         }
 
-        if (!betweenChains)
+        if (sheet)
+        {
+            foreach (var link in rig.Links)
+            {
+                float distance = ChainSheetContactTests.MeasureSheet(simulation, chains[link.First],
+                    chains[link.Second], colliders[0], rig.FirstJoint(link.First), rig.FirstJoint(link.Second));
+                float clearance = colliders[0].Radius + chains[link.First].Settings.Radius;
+                Assert.True(distance >= clearance - 0.00002f, $"Band {link.First}-{link.Second}: clearance {distance} m.");
+                contactError = MathF.Min(contactError, MathF.Abs(distance - clearance));
+            }
+        }
+        else if (!betweenChains)
         {
             Assert.Contains(rig.Links, link =>
                 MathF.Abs(Vector3.Distance(previous[link.First], previous[link.Second]) / 0.18f - 1) >= 0.13f);
@@ -87,7 +100,20 @@ public sealed class ChainWidthRestTests(ITestOutputHelper output)
             return peak;
         }
 
-        void At(float elapsed) => simulation.Step([Matrix4x4.Identity], colliders, Matrix4x4.Identity, elapsed);
+        void At(float elapsed)
+        {
+            // Keep the segment-only rows on the width constraint they originally covered.
+            bool previous = ChainSheetContact.DisabledForTests;
+            ChainSheetContact.DisabledForTests = !sheet;
+            try
+            {
+                simulation.Step([Matrix4x4.Identity], colliders, Matrix4x4.Identity, elapsed);
+            }
+            finally
+            {
+                ChainSheetContact.DisabledForTests = previous;
+            }
+        }
 
         Vector3 Tip(int chain) =>
             Vector3.Transform(chains[chain].Tip, simulation.JointsFromAnchor[rig.FirstJoint(chain) + chains[chain].Joints.Count - 1]);

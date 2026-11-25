@@ -430,7 +430,18 @@ public sealed class ChainWidthBoundsTests(ITestOutputHelper output)
         var center = particles.Positions[1] + (stretching ? radius : -radius) * Vector3.UnitX;
         ColliderCapsule sphere = new(center, center, radius);
         particles.SetCapsuleGeometry(0, sphere, sphere);
-        FinishTipPair(particles, [sphere]);
+        // Isolate the guide-level width impulse. In the stretching case the full
+        // sheet otherwise takes the contact in its interior before the tip touches.
+        bool sheetWasDisabled = ChainSheetContact.DisabledForTests;
+        ChainSheetContact.DisabledForTests = true;
+        try
+        {
+            FinishTipPair(particles, [sphere]);
+        }
+        finally
+        {
+            ChainSheetContact.DisabledForTests = sheetWasDisabled;
+        }
 
         var tip = particles.Positions[1];
         var root = particles.Positions[0];

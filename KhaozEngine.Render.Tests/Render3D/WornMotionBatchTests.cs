@@ -23,10 +23,10 @@ public sealed class WornMotionBatchTests
         using var workers = parallel ? new WorkerJobScheduler(3) : null;
         var batch = new WornMotionBatch((IJobScheduler?)workers ?? new SingleThreadedJobScheduler());
         using var rig = new OutfitRig();
-        using WearerPair first = new(rig, 0, wearers);
-        using WearerPair second = new(rig, 1, wearers);
-        using WearerPair third = new(rig, 2, wearers);
-        using WearerPair fourth = new(rig, 3, wearers);
+        using WearerPair first = new(rig, 0, wearers, useSheetFixture: true);
+        using WearerPair second = new(rig, 1, wearers, useSheetFixture: true);
+        using WearerPair third = new(rig, 2, wearers, useSheetFixture: true);
+        using WearerPair fourth = new(rig, 3, wearers, useSheetFixture: true);
         WearerPair[] pairs = [first, second, third, fourth];
 
         for (int frame = 0; frame < frames; frame++)
@@ -131,11 +131,13 @@ public sealed class WornMotionBatchTests
         internal SwingCostWearer Inline { get; }
         internal SwingCostWearer Batched { get; }
 
-        internal WearerPair(OutfitRig rig, int index, int wearers)
+        internal WearerPair(OutfitRig rig, int index, int wearers, bool useSheetFixture = false)
         {
             var body = rig.BodyRegions(new RegionRun(0, 4));
             var colliders = SwingCostFixture.LoadColliders(rig);
-            var pieces = LayeredSwingCostOutfit.Load(rig);
+            var pieces = useSheetFixture
+                ? LayeredSwingCostOutfit.LoadSheetCase(rig, sevenGuides: false)
+                : LayeredSwingCostOutfit.Load(rig);
             var options = new ChainSimulationOptions();
             Inline = new SwingCostWearer(rig, body, pieces, colliders, options, index, wearers);
             try

@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using KhaozEngine.Attachments;
 using KhaozEngine.Simulation;
 
 namespace KhaozEngine.Tests.Render3D;
@@ -10,6 +12,7 @@ internal sealed class TimedWearerJobs : IJobScheduler
     private readonly IJobScheduler _scheduler;
     private readonly JobSample[] _samples;
     private readonly bool _measureTiming;
+    private readonly bool _disableSheet;
     private readonly Action<int> _timeJob;
     private Action<int>? _body;
     private int _callerThread;
@@ -18,10 +21,11 @@ internal sealed class TimedWearerJobs : IJobScheduler
     private long _exitBytes;
     private long _schedulerCallBytes;
 
-    internal TimedWearerJobs(IJobScheduler scheduler, int wearerCount, bool measureTiming)
+    internal TimedWearerJobs(IJobScheduler scheduler, int wearerCount, bool measureTiming, bool disableSheet = false)
     {
         _scheduler = scheduler;
         _measureTiming = measureTiming;
+        _disableSheet = disableSheet;
         _samples = new JobSample[wearerCount];
         _timeJob = TimeJob;
     }
@@ -57,13 +61,23 @@ internal sealed class TimedWearerJobs : IJobScheduler
         long startedAt = _measureTiming ? Stopwatch.GetTimestamp() : 0;
         long? cpuBefore = _measureTiming ? ThreadCpuClock.Read() : null;
         long beforeBody = GC.GetAllocatedBytesForCurrentThread();
-        _body!(index);
+        bool previous = ChainSheetContact.DisabledForTests;
+        ChainSheetContact.DisabledForTests = _disableSheet;
+        try
+        {
+            _body!(index);
+        }
+        finally
+        {
+            ChainSheetContact.DisabledForTests = previous;
+        }
         long bodyBytes = GC.GetAllocatedBytesForCurrentThread() - beforeBody;
         long? cpuNanoseconds = _measureTiming ? ThreadCpuClock.Read() - cpuBefore : null;
         long wallTicks = _measureTiming ? Stopwatch.GetTimestamp() - startedAt : 0;
-        bool onCaller = Environment.CurrentManagedThreadId == _callerThread;
+        int threadId = Environment.CurrentManagedThreadId;
+        bool onCaller = threadId == _callerThread;
         long wrapperBytes = GC.GetAllocatedBytesForCurrentThread() - beforeWrapper;
-        _samples[index] = new JobSample(wallTicks, cpuNanoseconds, onCaller, bodyBytes, wrapperBytes);
+        _samples[index] = new JobSample(wallTicks, cpuNanoseconds, onCaller, threadId, bodyBytes, wrapperBytes);
     }
 
     internal (long WallTicks, long? CpuNanoseconds) SumJobTimes()
@@ -76,6 +90,13 @@ internal sealed class TimedWearerJobs : IJobScheduler
             cpuNanoseconds += sample.CpuNanoseconds;
         }
         return (wallTicks, cpuNanoseconds);
+    }
+
+    internal void AddWorkerBytes(Dictionary<int, long> bytesByThread)
+    {
+        foreach (ref readonly var sample in _samples.AsSpan(0, _count))
+            if (!sample.OnCaller)
+                bytesByThread[sample.ThreadId] = bytesByThread.GetValueOrDefault(sample.ThreadId) + sample.BodyBytes;
     }
 
     internal CallerAllocation SplitCallerAllocation(long beforeBatch, long afterBatch)
@@ -97,7 +118,7 @@ internal sealed class TimedWearerJobs : IJobScheduler
         return new CallerAllocation(batchOutsideSchedulerBytes, schedulerBytes, callerJobBytes, probeBytes, firstAllocatingJob);
     }
 
-    private readonly record struct JobSample(long WallTicks, long? CpuNanoseconds, bool OnCaller, long BodyBytes,
+    private readonly record struct JobSample(long WallTicks, long? CpuNanoseconds, bool OnCaller, int ThreadId, long BodyBytes,
         long WrapperBytes);
 
     internal readonly record struct CallerAllocation(long BatchOutsideSchedulerBytes, long SchedulerBytes,

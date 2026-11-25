@@ -100,6 +100,18 @@ internal readonly struct ChainWidthArc
             return false;
 
         var normal = residual * (1 / Math.Sqrt(squared));
+        double projection = MinimumProjection(normal, start, end);
+        if (!tipOnly)
+            projection = Math.Min(0, projection);
+        double planeGap = Offset.Dot(normal, _root - axis.Start) - Math.Max(0, Offset.Dot(normal, axis.Direction));
+        return planeGap + projection >= required;
+    }
+
+    internal double MinimumProjection(Offset normal, Offset origin) =>
+        Offset.Dot(normal, _root - origin) + MinimumProjection(normal, new Sample(0), new Sample(Angle));
+
+    private double MinimumProjection(Offset normal, in Sample start, in Sample end)
+    {
         double a = Offset.Dot(normal, _initial);
         double b = Offset.Dot(normal, _tangent);
         var (sinStart, cosStart) = start.SinCos;
@@ -110,11 +122,7 @@ internal readonly struct ChainWidthArc
         if (b * cosStart - a * sinStart < 0 && b * cosEnd - a * sinEnd > 0)
             minimum = -Math.Sqrt(a * a + b * b);
 
-        double projection = _length * minimum;
-        if (!tipOnly)
-            projection = Math.Min(0, projection);
-        double planeGap = Offset.Dot(normal, _root - axis.Start) - Math.Max(0, Offset.Dot(normal, axis.Direction));
-        return planeGap + projection >= required;
+        return _length * minimum;
     }
 
     private Offset Displacement((double Sin, double Cos) sample) =>

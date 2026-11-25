@@ -55,11 +55,13 @@ internal sealed class ChainWidthBounds(ChainWidthBounds.Pair[] pairs)
         }
     }
 
-    private bool NeedsSweep(ChainParticles particles, float margin)
+    internal bool NeedsRecovery(ChainParticles particles) => NeedsSweep(particles, SweepTolerance, includeOutsideReach: true);
+
+    private bool NeedsSweep(ChainParticles particles, float margin, bool includeOutsideReach = false)
     {
         for (int index = 0; index < pairs.Length; index++)
         {
-            if (_outsideReach[index])
+            if (!includeOutsideReach && _outsideReach[index])
                 continue;
             var pair = pairs[index];
             float squared = Vector3.DistanceSquared(particles.Positions[pair.First.Particle], particles.Positions[pair.Second.Particle]);

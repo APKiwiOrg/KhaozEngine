@@ -13,7 +13,8 @@ internal static class SwingCostFixture
     const int BodyColliders = 12;
 
     internal static SwingCostPiece LoadPiece(OutfitRig rig, string name, AttachmentLayer layer, string anchor,
-        int chainCount, int chainLength, Vector3 firstRoot, float? linkStretch = null, ColliderDefinition[]? colliders = null)
+        int chainCount, int chainLength, Vector3 firstRoot, float? linkStretch = null, ColliderDefinition[]? colliders = null,
+        ReadOnlySpan<float> guideFractions = default, ChainSettings? tuning = null, float segmentLength = .18f)
     {
         var glb = new SkinnedAttachmentGlbFixture(HostBones + chainCount * chainLength);
         Vector3 hip = ModelBindPosition(rig, "hip");
@@ -32,15 +33,16 @@ internal static class SwingCostFixture
 
         var chains = new ChainDefinition[chainCount];
         var links = new ChainLink[linkStretch.HasValue ? chainCount - 1 : 0];
-        var settings = new ChainSettings(8f, 3f, 1f, .85f, MathF.PI * .65f, .02f);
-        var segment = new Vector3(0, -.18f, 0);
+        var settings = tuning ?? new ChainSettings(8f, 3f, 1f, .85f, MathF.PI * .65f, .02f);
+        var segment = new Vector3(0, -segmentLength, 0);
         Vector3 anchorPosition = onHip ? hip : knee;
         for (int chain = 0; chain < chains.Length; chain++)
         {
             int first = HostBones + chain * chainLength;
             anchorChildren.Add(first);
             var joints = new string[chainLength];
-            Vector3 root = firstRoot + Vector3.UnitX * (.12f * chain);
+            float offset = guideFractions.IsEmpty ? .12f * chain : .48f * guideFractions[chain];
+            Vector3 root = firstRoot + Vector3.UnitX * offset;
             for (int joint = 0; joint < joints.Length; joint++)
             {
                 int node = first + joint;

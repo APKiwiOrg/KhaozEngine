@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
@@ -86,6 +87,73 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
         output.WriteLine(json);
     }
 
+    [Fact]
+    public void Report_sheet_contact_preparation_cost()
+    {
+        const int rate = 144;
+        (int warm, int frames) = FrameCounts();
+        int workerCount = Environment.ProcessorCount - 1;
+        using var workers = new WorkerJobScheduler(workerCount);
+        SheetMeasurement[] cases =
+        [
+            MeasureSheetCase("five-guides-sheet", sevenGuides: false, disableSheet: false),
+            MeasureSheetCase("five-guides-segments", sevenGuides: false, disableSheet: true),
+            MeasureSheetCase("seven-guides-sheet", sevenGuides: true, disableSheet: false),
+            MeasureSheetCase("seven-guides-segments", sevenGuides: true, disableSheet: true),
+            MeasureSheetCase("six-joint-reference", sevenGuides: false, disableSheet: true, historical: true),
+        ];
+
+        output.WriteLine(JsonSerializer.Serialize(new
+        {
+            diagnostic = nameof(Report_sheet_contact_preparation_cost),
+            rate,
+            simulatedWearers = LayeredSwingCostOutfit.SimulatedWearers,
+            heldWearers = WearerCount - LayeredSwingCostOutfit.SimulatedWearers,
+            workerCount,
+            settleFrames = frames == MeasuredFrames ? SettleFrames : 0,
+            warmFrames = warm,
+            measuredFrames = frames,
+            runtime = RuntimeInformation.FrameworkDescription,
+            os = RuntimeInformation.OSDescription,
+            processorCount = Environment.ProcessorCount,
+            cases,
+        }, JsonSerializerOptions.Web));
+        Assert.True(cases[0].Queries.LayeredCorrections > 0, "A tail must contact the interior of the five-guide sheet.");
+
+        SheetMeasurement MeasureSheetCase(string name, bool sevenGuides, bool disableSheet, bool historical = false)
+        {
+            using var rig = new OutfitRig();
+            var body = rig.BodyRegions(new RegionRun(0, 4));
+            var colliders = SwingCostFixture.LoadColliders(rig);
+            var options = new ChainSimulationOptions();
+            var pieces = historical ? LayeredSwingCostOutfit.Load(rig) : LayeredSwingCostOutfit.LoadSheetCase(rig, sevenGuides);
+            int simulated = LayeredSwingCostOutfit.SimulatedWearers;
+            var wearers = new SwingCostWearer[WearerCount];
+            try
+            {
+                for (int i = 0; i < wearers.Length; i++)
+                    wearers[i] = new SwingCostWearer(rig, body, pieces, colliders, options, i, WearerCount);
+
+                var measurement = Measure(wearers, rate, warm, frames, simulated, workers, disableSheet);
+                bool previous = ChainSheetContact.DisabledForTests;
+                ChainSheetContact.DisabledForTests = disableSheet;
+                try
+                {
+                    var queries = ReadQueries(wearers.AsSpan(0, simulated), options, 1f / rate, warm, frames);
+                    return new SheetMeasurement(name, sevenGuides ? 7 : 5, historical ? 6 : 5, measurement, queries);
+                }
+                finally
+                {
+                    ChainSheetContact.DisabledForTests = previous;
+                }
+            }
+            finally
+            {
+                foreach (var wearer in wearers) wearer?.Dispose();
+            }
+        }
+    }
+
     static (Measurement[] Measurements, Measurement? HeldMeasurement, Measurement[]? ParallelMeasurements)
         MeasureOutfit(OutfitRig rig, LoadedBodyRegions body, LoadedBodyColliders colliders, SwingCostPiece[] pieces,
             int simulatedWearers, int warmFrames, int measuredFrames, bool includeHeldSample, IJobScheduler? scheduler = null)
@@ -156,11 +224,12 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
     }
 
     static Measurement Measure(SwingCostWearer[] wearers, int frameRate, int warmFrames, int measuredFrames,
-        int simulatedWearers, IJobScheduler? scheduler = null)
+        int simulatedWearers, IJobScheduler? scheduler = null, bool disableSheet = false)
     {
         bool measureTiming = measuredFrames == MeasuredFrames;
-        var timedJobs = scheduler is null ? null : new TimedWearerJobs(scheduler, wearers.Length, measureTiming);
+        var timedJobs = scheduler is null ? null : new TimedWearerJobs(scheduler, wearers.Length, measureTiming, disableSheet);
         var batch = timedJobs is null ? null : new WornMotionBatch(timedJobs);
+        var workerBytes = timedJobs is null ? null : new Dictionary<int, long>(Environment.ProcessorCount);
         float frameTime = 1f / frameRate;
         // A path that is new to the process, such as the parallel batch, can still be tiering up after the warm
         // frames, and its one-time compilation work then lands in the window. Settle it first, then restart from
@@ -232,6 +301,8 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
                         CallerJob = split is { FirstAllocatingJob: >= 0 } ? split.Value.FirstAllocatingJob : null,
                     };
                 }
+                if (workerBytes is not null)
+                    timedJobs!.AddWorkerBytes(workerBytes);
                 if (!measureTiming) continue;
                 ticks[frame] = end - start;
                 if (timedJobs is not null)
@@ -249,6 +320,7 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
             return new Measurement(frameRate, null, null, null, null, allocated, null, null)
             {
                 AllocationFrames = reportedFrames,
+                WorkerJobBytes = workerBytes,
             };
 
         Array.Sort(ticks);
@@ -260,6 +332,7 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
             SummedWearerStepWallMeanMs = timedJobs is null ? null : summedWearerWallTicks * msPerTick / measuredFrames,
             SummedWearerStepCpuMeanMs = timedJobs is null ? null : summedWearerCpuNanoseconds / (1_000_000d * measuredFrames),
             AllocationFrames = reportedFrames,
+            WorkerJobBytes = workerBytes,
         };
     }
 
@@ -294,6 +367,10 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
     }
 
     static double? CountQueries(ReadOnlySpan<SwingCostWearer> wearers, ChainSimulationOptions options,
+        float frameTime, int warmFrames, int measuredFrames) =>
+        ReadQueries(wearers, options, frameTime, warmFrames, measuredFrames).SegmentAxisPerWearerStep;
+
+    static ContactQueries ReadQueries(ReadOnlySpan<SwingCostWearer> wearers, ChainSimulationOptions options,
         float frameTime, int warmFrames, int measuredFrames)
     {
         // Replay only the simulated wearers. Their clocks start together and the first frame resets to rest.
@@ -326,7 +403,10 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
                 }
             }
             double samples = (double)steps * wearers.Length;
-            return samples == 0 ? null : counts.SegmentAxis / samples;
+            return new ContactQueries(samples == 0 ? null : counts.SegmentAxis / samples,
+                counts[ChainContactQuery.BandFilter], counts[ChainContactQuery.BandCandidate], counts[ChainContactQuery.SheetCurrent],
+                counts[ChainContactQuery.SheetOpening], counts[ChainContactQuery.SheetVelocity],
+                counts[ChainContactQuery.SheetCorrections], counts[ChainContactQuery.LayeredSheetCorrections]);
         }
         finally
         {
@@ -336,6 +416,12 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
 
     static long Percentile(long[] sorted, double rank) => sorted[(int)Math.Ceiling(rank * sorted.Length) - 1];
 
+    sealed record SheetMeasurement(string Name, int CapeGuides, int CapeJointsPerGuide, Measurement Timing,
+        ContactQueries Queries);
+
+    sealed record ContactQueries(double? SegmentAxisPerWearerStep, long BandFilterTests, long BandCandidates, long CurrentTriangles,
+        long OpeningTriangles, long VelocityTriangles, long Corrections, long LayeredCorrections);
+
     sealed record Measurement(int FrameRateHz, double? MeanMs, double? P50Ms, double? P95Ms, double? MaxMs,
         long ManagedBytesAllocated, double? StepMeanMs, double? WriteDrawsMeanMs)
     {
@@ -343,6 +429,7 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
         public double? SummedWearerStepWallMeanMs { get; init; }
         public double? SummedWearerStepCpuMeanMs { get; init; }
         public AllocationFrame[]? AllocationFrames { get; init; }
+        public Dictionary<int, long>? WorkerJobBytes { get; init; }
     }
 
     // BatchStepBytes is the gross batch window. Its detailed fields separate work from the probe residual.

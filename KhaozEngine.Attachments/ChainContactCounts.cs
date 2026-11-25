@@ -6,11 +6,12 @@ internal enum ChainContactQuery
 {
     SegmentPlacement, SegmentOpening, SegmentVelocity, RoundingRecheck,
     OpeningSlotsCleared, ChainReach, BendCosines, FirstPassReuses, WidthSafety, ConflictCheck,
+    BandFilter, BandCandidate, SheetCurrent, SheetOpening, SheetVelocity, FixedEdge, SheetCorrections, LayeredSheetCorrections,
 }
 
 internal sealed class ChainContactCounts
 {
-    private readonly long[] _counts = new long[(int)ChainContactQuery.ConflictCheck + 1];
+    private readonly long[] _counts = new long[(int)ChainContactQuery.LayeredSheetCorrections + 1];
 
     private readonly long[] _segmentPasses = new long[ChainSegmentContact.ContactPasses + 1];
 

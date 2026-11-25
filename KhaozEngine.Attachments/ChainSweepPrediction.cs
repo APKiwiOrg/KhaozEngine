@@ -44,6 +44,9 @@ internal sealed class ChainSweepPrediction(int particles, int chains)
         }
     }
 
+    internal Vector3 Position(int chain, int particle, Vector3 fallback) =>
+        _ready[chain] ? _positions[particle] : fallback;
+
     internal ChainSegmentContact.Segment? Read(int chain, int parent)
     {
         if (!_ready[chain])

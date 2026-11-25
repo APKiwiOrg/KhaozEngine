@@ -150,6 +150,13 @@ residual on the lower segment to preserve solid clearance.
 Mutual contact would need masses that the format does not carry and iteration between both layers during the
 root-to-tip pass. Those belong to the cloth solver ([#1870](https://github.com/APKiwiOrg/KhaozEngine/issues/1870)).
 
+### 9. Bounded links give the sheet triangle contact
+
+A bounded link covers two triangles between adjacent rows, from the anchored roots through the shared
+joints and on to the virtual tips. An unequal pair joins its last common row directly to both tips. The
+triangles use the larger guide radius as thickness. Links using the spring alone retain guide contact.
+Shared edges have a deterministic winding for side tests, even if the link endpoints are listed in reverse.
+
 ## Chains
 
 A chain is an ordered list of joints in a skinned part's own skin, from the joint nearest the body to the tip.
@@ -318,6 +325,22 @@ sees only body and worn set capsules.
    Coincident endpoints turn to opposite sides of it, so a gap can open. A bound applied after the whole pass
    has to drag the joints below a corrected particle without their speed, and the next step pushes them back out.
    Placing a depth only from final parents keeps lengths exact and drags nothing.
+6. **Sheet contact.** Within a depth, start from the guide placement and width solution. Test both triangles
+   against that tier's authored capsules and lower-layer segments. The row above is fixed. Reuse the candidate
+   set while the moving corners stay on their length spheres. Before a double precision axis-to-triangle query,
+   float bounds include opening, uncorrected prediction and the reachable band. Uncertain bounds keep the
+   candidate. A material sweep uses the same triangle weights and capsule-axis point at both ends of the
+   unprojected step. If their relative chord crosses the sheet within thickness, reuse its opening side
+   through the whole row solve. A piercing axis uses the oriented face normal. Coplanar starts choose a
+   common deterministic side.
+   Each collision moves the available corners by their triangle weights and tangent leverage on the
+   length spheres. Passes recheck shared corners and reapply each moved guide's bend and segment contact.
+   Stop after a pass that leaves the accepted row settled or after eight passes. If sheet contact moved
+   the row outside its width band, test width recovery against the sheet. A separating plane must preserve
+   the accepted clearance along both proposed corner arcs. Leave the previous pose when the plane cannot
+   certify the move. A fixed row, unreachable bend or wedge can leave residual contact or width error.
+   The sheet stop runs after the local velocity constraints. It removes approach in the moving corners'
+   tangent directions, with each corner capped at the obstacle's surface speed in its carried frame.
 
 Corrections never write velocity. A chain whose one movable joint hangs from a still anchor never gains kinetic
 energy from its limit, static contacts or length. A tip released from contact at its endpoint starts from rest. The
@@ -345,9 +368,9 @@ obstacle. Segment position bounds the opening, unprojected prediction and curren
 rechecks use the current segment and axis. Overflow or an indeterminate float distance keeps the candidate. Narrow-phase contact
 and its order are the same with either filter. Segment lengths come from this step's rest hang, so a scaled wearer keeps its proportions.
 
-**Known limits.** In 24.11.0, capsule and layered contact follow each chain's segments and joints, through
-to the virtual tip. A thin obstacle can still pass through the cloth drawn between two linked chains.
-Contact for that space is deferred to a later release.
+**Known limits.** Segment and sheet contact are fixed-step constraints on the guides and their bands.
+A skinned mesh can project outside those bands. Give the guides enough radius to cover its visible
+thickness and check the presented mesh during its animation.
 Opening-side contact follows a straight relative path between steps. A collider can still leave a segment
 behind if it moves farther than the segment can reach in one step. The shown shape is up to one step behind the latest solved shape
 relative to its anchor. A collider moving fast relative to the anchor can overlap the shown chain by up to one
@@ -632,6 +655,12 @@ The count is null for the all-held sample or when a shortened sample takes no fi
 and excluded from default CI.
 
 Run the full measurement on a GitHub-hosted runner after approval. Only that run supplies timing evidence.
+
+`Report_sheet_contact_preparation_cost` uses the same frame window to compare five and seven five-joint cape
+guides over four three-joint tails at 144 Hz. Each topology has a segment-only control with the same links,
+tuning, collider geometry and pose stream. The six-joint layered segment case remains the historical reference.
+The query replay checks that a lower tail contacts the five-guide sheet between its guides. It also reports
+candidate and triangle query counts and the worker job allocation totals alongside the caller's measurements.
 
 ```sh
 KE_GPU_TESTS=0 dotnet test KhaozEngine.Render.Tests -c Release --filter 'Category=Diagnostic&FullyQualifiedName~SwingCostDiagnostics' --logger 'console;verbosity=detailed'

@@ -66,6 +66,22 @@ internal static partial class ChainCapsuleCollision
             return fromEnd + displacement * fraction;
         }
 
+        // Match Residual's endpoint tests and operation order. A face intersection
+        // only needs the axis fraction and can skip the barrel cross products.
+        internal double Along(Offset root, Offset fromRoot)
+        {
+            if (_inverseSquared == 0)
+                return 0;
+            double tipProjection = Offset.Dot(fromRoot, _axis);
+            double axisProjection = Offset.Dot(root - _start, _axis) + tipProjection;
+            if (axisProjection <= 0)
+                return 0;
+            if (Offset.Dot(root - _end, _axis) + tipProjection >= 0)
+                return 1;
+
+            return axisProjection * _inverseSquared;
+        }
+
         internal Offset Residual(Offset root, Offset tipFromRoot, out double along)
         {
             var rootFromStart = root - _start;

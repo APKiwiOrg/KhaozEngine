@@ -7797,9 +7797,10 @@ beside `links` in the part's `motion` object:
 
 For every link in the part, the solver aims to keep corresponding movable joints and both tips between
 85% and 115% of their rest spacing, subject to bend limits and capsule clearance. Omit `linkStretch` for
-looser panels that use the link springs alone.
-In 24.11.0, contact follows each chain's segments and joints. A thin obstacle can still pass through
-the cloth drawn between linked chains. Contact for that space is deferred to a later release.
+looser panels that use the link springs alone. Bounded links also clear the triangles between their two
+guides, from the roots through the tips. The triangles use the larger guide radius as cloth thickness.
+They clear body and worn capsules and swing segments from strictly lower layers. Set the radii to cover
+the visible material's offset from the guide surface and replay the presented pose when retuning a piece.
 Move every reader to 24.8.0 or later before publishing format 6.
 
 Load the body collider file and bind when the outfit changes. The example uses the cache, loaded body

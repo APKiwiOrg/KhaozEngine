@@ -53,6 +53,40 @@ internal sealed class ChainPlacementCull(int rowCount, int colliderCount)
         return Selected(row, capsules, count);
     }
 
+    internal static SweptSphere BandReach(Vector3 firstParent, float firstLength,
+        Vector3 secondParent, float secondLength, Vector3 firstUpper, Vector3 secondUpper, float radius,
+        Vector3 openingFirstUpper, Vector3 openingSecondUpper, Vector3 openingFirstLower, Vector3 openingSecondLower,
+        (Vector3 A, Vector3 B, Vector3 C, Vector3 D) prediction)
+    {
+        // The convex hull bridges the gap between length spheres. The fixed corners of
+        // an unequal-length tip band can also be different from the actual tip parents.
+        var openingCenter = Midpoint(Midpoint(openingFirstUpper, openingSecondUpper),
+            Midpoint(openingFirstLower, openingSecondLower));
+        var center = Midpoint(Midpoint(firstParent, secondParent), openingCenter);
+        float reach = MathF.Max(Vector3.Distance(center, firstParent) + firstLength * DirectionLengthBound,
+            Vector3.Distance(center, secondParent) + secondLength * DirectionLengthBound);
+        reach = MathF.Max(reach, MathF.Max(Vector3.Distance(center, firstUpper), Vector3.Distance(center, secondUpper)));
+        reach = MathF.Max(reach, MathF.Max(Vector3.Distance(center, openingFirstUpper),
+            Vector3.Distance(center, openingSecondUpper)));
+        reach = MathF.Max(reach, MathF.Max(Vector3.Distance(center, openingFirstLower),
+            Vector3.Distance(center, openingSecondLower)));
+        reach = MathF.Max(reach, MathF.Max(Vector3.Distance(center, prediction.A), Vector3.Distance(center, prediction.B)));
+        reach = MathF.Max(reach, MathF.Max(Vector3.Distance(center, prediction.C), Vector3.Distance(center, prediction.D)));
+        reach += radius + (float)ChainCapsuleCollision.TouchTolerance;
+        return new SweptSphere(center, reach + FloatRoundingMargin * (MaxAbs(center) + reach));
+    }
+
+    internal bool ReachesBand(int index, in SweptSphere band)
+    {
+        var counts = ChainContactCounts.Active;
+        counts?.Record(ChainContactQuery.BandFilter);
+        bool reaches = DisableForTests || (_bounds[index].CanReach(band.Center, band.Radius + _radiusGrowth[index]) &&
+            (!AxisCullEnabled || ReachesAxis(index, band, swept: true)));
+        if (reaches)
+            counts?.Record(ChainContactQuery.BandCandidate);
+        return reaches;
+    }
+
     internal bool ReachesTight(int index, in SweptSphere reach) =>
         (uint)index >= (uint)_bounds.Length || _bounds[index].Radius == 0 ||
         _bounds[index].CanReach(reach.Center, reach.Radius + _radiusGrowth[index]);
@@ -64,6 +98,27 @@ internal sealed class ChainPlacementCull(int rowCount, int colliderCount)
     {
         var axes = swept ? _sweptAxes : _currentAxes;
         return (uint)index >= (uint)axes.Length || axes[index].Reaches(reach.Center, reach.Radius);
+    }
+
+    internal static SweptSphere TriangleReach((Vector3 A, Vector3 B, Vector3 C) current,
+        (Vector3 A, Vector3 B, Vector3 C) opening, (Vector3 A, Vector3 B, Vector3 C) prediction,
+        float radius, bool includeOpening)
+    {
+        var center = Centroid(current);
+        if (includeOpening)
+            center = Midpoint(center, Centroid(opening));
+
+        float reach = Farthest(current, center);
+        if (includeOpening)
+            reach = MathF.Max(reach, MathF.Max(Farthest(opening, center), Farthest(prediction, center)));
+        return Pad(center, reach + radius);
+
+        static Vector3 Centroid((Vector3 A, Vector3 B, Vector3 C) triangle) =>
+            triangle.A / 3 + triangle.B / 3 + triangle.C / 3;
+
+        static float Farthest((Vector3 A, Vector3 B, Vector3 C) triangle, Vector3 center) =>
+            MathF.Max(Vector3.Distance(triangle.A, center),
+                MathF.Max(Vector3.Distance(triangle.B, center), Vector3.Distance(triangle.C, center)));
     }
 
     internal static SweptSphere SegmentReach(in ChainSegmentContact.Segment segment,

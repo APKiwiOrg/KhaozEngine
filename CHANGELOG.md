@@ -8,6 +8,9 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 2026-11-26
 
+- Width-bounded swing guides form a collision sheet from their roots to their virtual tips. Capsules and
+  lower-layer chains can contact the cloth between guides. A detected crossing keeps its opening side
+  while the row solves guide lengths and local contact. [Attachment motion](docs/design/ATTACHMENT-MOTION-DESIGN.md)
 - `TileDocumentGroundHeight` places presented bodies on the same ground triangles used by the terrain mesh and
   colliders, including authored overlay cuts. `TileGroundHeight.TrySample` exposes that surface to headless callers.
   [#1479](https://github.com/APKiwiOrg/KhaozEngine/issues/1479)

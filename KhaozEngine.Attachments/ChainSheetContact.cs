@@ -180,9 +180,8 @@ internal sealed class ChainSheetContact
         double radiusSquared = thickness * thickness;
         double positionMargin = Math.Min(MaximumPositionMargin, 0.0001 * thickness);
         double sideTolerance = Math.Min(SideTolerance, positionMargin);
-        var opening = ReadOpening(particles, row, ref entry, obstacle, secondTriangle);
-        var openingNormal = opening.Normal;
-        double openingSide = opening.Side;
+        if (!ChainContactOptimizations.Use(ChainContactOptimization.SheetOpening))
+            _ = ReadOpening(particles, row, ref entry, obstacle, secondTriangle);
         double currentSide = sample.Side;
         double sweptSide = SweptSide(particles, row, ref entry, obstacle, secondTriangle, thickness, sideTolerance);
         bool crossed = sweptSide != 0 && sweptSide * currentSide < 0;
@@ -198,11 +197,15 @@ internal sealed class ChainSheetContact
         // share a deterministic side, including faces that meet at a junction.
         double firstChainWeight = secondTriangle ? hit.Weights.X : 1 - hit.Weights.Z;
         bool spansChains = firstChainWeight is > 0 and < 1;
-        bool coplanar = spansChains && Math.Abs(openingSide) <= sideTolerance && Math.Abs(currentSide) <= sideTolerance &&
+        bool mayBeCoplanar = spansChains && Math.Abs(currentSide) <= sideTolerance;
+        var opening = crossed || mayBeCoplanar || squared == 0
+            ? ReadOpening(particles, row, ref entry, obstacle, secondTriangle)
+            : default;
+        bool coplanar = mayBeCoplanar && Math.Abs(opening.Side) <= sideTolerance &&
             Math.Sqrt(opening.Contact.Residual.LengthSquared) < thickness - TouchTolerance;
         Offset normal;
         if (crossed || coplanar || squared == 0)
-            normal = Facing(faceNormal, openingNormal, sweptSide != 0 ? sweptSide : openingSide, sideTolerance);
+            normal = Facing(faceNormal, opening.Normal, sweptSide != 0 ? sweptSide : opening.Side, sideTolerance);
         else
             normal = hit.Residual * (1 / Math.Sqrt(squared));
         if (normal.LengthSquared == 0)
@@ -455,11 +458,15 @@ internal sealed class ChainSheetContact
         if (state.SweptSide is { } side)
             return side;
 
-        var opening = ReadOpening(particles, row, ref entry, obstacle, second);
         var sweep = new ChainSheetSweep(row.OpeningTriangle(second), row.PredictionTriangle(second),
             particles.PreviousCapsuleAxes[obstacle], particles.CapsuleAxes[obstacle]);
-        side = sweep.FindSide(opening.Contact, opening.Normal,
-            (double)row.Radius + particles.PreviousCapsuleRadii[obstacle], radius, tolerance);
+        side = 0;
+        if (sweep.CanCross(tolerance, out var openingNormal, out var lastNormal))
+        {
+            var opening = ReadOpening(particles, row, ref entry, obstacle, second);
+            side = sweep.FindSide(opening.Contact, openingNormal, lastNormal,
+                (double)row.Radius + particles.PreviousCapsuleRadii[obstacle], radius, tolerance);
+        }
         state.SweptSide = side;
         return side;
     }

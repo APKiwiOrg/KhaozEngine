@@ -10,18 +10,24 @@ internal readonly struct ChainSheetSweep(
 {
     private const int IntermediateQueries = 8;
 
-    internal double FindSide(in ChainContactTriangle.Contact firstHit, Offset openingNormal, double openingRadius,
-        double radius, double tolerance)
+    internal bool CanCross(double tolerance, out Offset openingNormal, out Offset lastNormal)
+    {
+        openingNormal = opening.Normal;
+        lastNormal = prediction.Normal;
+        if (openingNormal.LengthSquared == 0)
+            return false;
+
+        int firstSide = opening.AxisSide(previous, openingNormal, tolerance);
+        return firstSide == 0 || firstSide != prediction.AxisSide(current, lastNormal, tolerance);
+    }
+
+    internal double FindSide(in ChainContactTriangle.Contact firstHit, Offset openingNormal, Offset lastNormal,
+        double openingRadius, double radius, double tolerance)
     {
         // The position solver leaves a touch margin at rest. A shallow
         // contact still has an opening side when the obstacle moves again.
         double required = Math.Max(0, openingRadius - TouchTolerance);
-        if (openingNormal.LengthSquared == 0 || firstHit.Residual.LengthSquared < required * required)
-            return 0;
-
-        var lastNormal = prediction.Normal;
-        int firstSide = opening.AxisSide(previous, openingNormal, tolerance);
-        if (firstSide != 0 && firstSide == prediction.AxisSide(current, lastNormal, tolerance))
+        if (firstHit.Residual.LengthSquared < required * required)
             return 0;
 
         double travel = opening.RelativeTravel(prediction, previous, current);

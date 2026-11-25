@@ -89,6 +89,7 @@ public sealed class ChainPlacementCullTests(ITestOutputHelper output)
     [InlineData((int)ChainContactOptimization.FirstPassCandidates)]
     [InlineData((int)ChainContactOptimization.BendCosine)]
     [InlineData((int)ChainContactOptimization.WidthNearSolids)]
+    [InlineData((int)ChainContactOptimization.SheetOpening)]
     [InlineData((int)ChainContactOptimization.All)]
     public void Contact_reuse_preserves_every_joint_frame_bit(int disabled)
     {
@@ -104,6 +105,12 @@ public sealed class ChainPlacementCullTests(ITestOutputHelper output)
             long reduced = Count(disable: false, control)[ChainContactQuery.WidthSafety];
             long full = Count(disable: false, control | flags)[ChainContactQuery.WidthSafety];
             Assert.True(reduced < full, $"Expected fewer exact width queries with reuse enabled. Got {reduced} versus {full}.");
+        }
+        if (flags == ChainContactOptimization.SheetOpening)
+        {
+            long reduced = Count(disable: false)[ChainContactQuery.SheetOpening];
+            long full = Count(disable: false, flags)[ChainContactQuery.SheetOpening];
+            Assert.True(reduced < full, $"Expected fewer exact opening queries. Got {reduced} versus {full}.");
         }
     }
 

@@ -329,8 +329,9 @@ sees only body and worn set capsules.
    against that tier's authored capsules and lower-layer segments. The row above is fixed. Reuse the candidate
    set while the moving corners stay on their length spheres. Before a double precision axis-to-triangle query,
    float bounds include opening, uncorrected prediction and the reachable band. Uncertain bounds keep the
-   candidate. A material sweep uses the same triangle weights and capsule-axis point at both ends of the
-   unprojected step. If their relative chord crosses the sheet within thickness, reuse its opening side
+   candidate. If the opening and predicted capsule axes lie wholly on the same side of their respective
+   faces, the sweep skips the exact opening query. Piercing and coplanar responses can still use that query.
+   A material sweep uses the same triangle weights and capsule-axis point at both ends of the unprojected step. If their relative chord crosses the sheet within thickness, reuse its opening side
    through the whole row solve. Moving projection bounds narrow the search to the time when contact is
    possible. For a point capsule and a translating triangle, use the closest feature on the exact relative
    path. A piercing axis uses the oriented face normal. Coplanar starts choose a common deterministic

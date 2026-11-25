@@ -7,12 +7,14 @@ namespace KhaozEngine.TileWorld;
 public static class TileGroundHeight
 {
     /// <summary>Samples the drawn ground at a world position, in metres. Returns false with a zero height when
-    /// the tile has no drawn ground or the position cannot be addressed on the lattice.</summary>
+    /// the plane is outside the document, the position is outside the lattice, or the tile has no drawn ground.</summary>
     /// <exception cref="ArgumentNullException"><paramref name="document"/> is null.</exception>
     public static bool TrySample(TileWorldDocument document, float worldX, float worldZ, int plane, out float height)
     {
         ArgumentNullException.ThrowIfNull(document);
         height = 0f;
+        if ((uint)plane >= (uint)document.PlaneCount) return false;
+
         float tileX = TileWorldSpace.TileX(worldX, document.TileSize);
         float tileZ = TileWorldSpace.TileZ(worldZ, document.TileSize);
         if (!(tileX >= int.MinValue && tileX < (float)int.MaxValue &&

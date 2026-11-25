@@ -14,6 +14,16 @@ public sealed class TileGroundTrianglesTests
     const int Tiles = TileRegion.Size * TileRegion.Size;
 
     [Fact]
+    public void PointSampleOutsideTheDocumentPlanesReturnsNoHeight()
+    {
+        // #1479: the drawn-ground query can only return a surface on a plane the document contains.
+        TileWorldDocument doc = TileWorldTestData.FlatWorld();
+        Assert.True(TileGroundHeight.TrySample(doc, 0.5f, -0.5f, 0, out _));
+        Assert.False(TileGroundHeight.TrySample(doc, 0.5f, -0.5f, doc.PlaneCount, out float height));
+        Assert.Equal(0f, height);
+    }
+
+    [Fact]
     public void AFlatTileIsTwoTrianglesAtItsHeight()
     {
         TileWorldDocument doc = TileWorldTestData.FlatWorld();

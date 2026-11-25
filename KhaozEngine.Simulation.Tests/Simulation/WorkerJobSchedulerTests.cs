@@ -122,77 +122,74 @@ public sealed class WorkerJobSchedulerTests
     [InlineData(true)]
     public void Warm_fanout_can_wait_for_worker_completion_without_allocating(bool notifyWaits)
     {
-        const int warmFanouts = 4;
         using var scheduler = new WorkerJobScheduler(1);
+        using var workerReady = new ManualResetEventSlim();
+        using var callerJobFinishing = new ManualResetEventSlim();
+        using var releaseWorker = new ManualResetEventSlim();
         SynchronizationContext? context = notifyWaits ? new WaitNotifyingContext() : null;
         SynchronizationContext? afterWait = null;
         ExceptionDispatchInfo? failure = null;
         long bytes = -1;
-        bool callerWaited = false;
+        int workerFinished = 0;
+        int completedWhenReturned = 0;
 
+        using var measured = new ManualResetEventSlim();
         var caller = new Thread(() =>
         {
             try
             {
                 SynchronizationContext.SetSynchronizationContext(context);
-                Thread current = Thread.CurrentThread;
-                Thread? worker = null;
-                bool forceWait = false, callerFinishedJob = false;
+                int callerId = Environment.CurrentManagedThreadId;
                 Action<int> job = _ =>
                 {
-                    if (Thread.CurrentThread == current)
+                    if (Environment.CurrentManagedThreadId == callerId)
                     {
-                        Thread? activeWorker;
-                        while ((activeWorker = Volatile.Read(ref worker)) is null)
+                        while (!workerReady.IsSet)
                             Thread.Yield();
-                        // Warm only fan-outs whose worker has already returned to its idle wait.
-                        if (!forceWait)
-                        {
-                            while ((activeWorker.ThreadState & ThreadState.WaitSleepJoin) == 0)
-                                Thread.Yield();
-                        }
-                        Volatile.Write(ref callerFinishedJob, true);
+                        callerJobFinishing.Set();
                     }
                     else
                     {
-                        Volatile.Write(ref worker, Thread.CurrentThread);
-                        if (forceWait)
-                        {
-                            // Hold the job until the caller leaves its own job and yields in the completion wait.
-                            while (!Volatile.Read(ref callerFinishedJob) || (current.ThreadState & ThreadState.WaitSleepJoin) == 0)
-                                Thread.Yield();
-                            callerWaited = true;
-                        }
+                        workerReady.Set();
+                        releaseWorker.Wait();
+                        Volatile.Write(ref workerFinished, 1);
                     }
                 };
 
-                for (int warm = 0; warm < warmFanouts; warm++)
-                {
-                    worker = null;
-                    scheduler.For(2, job);
-                }
-                worker = null;
-                callerFinishedJob = false;
-                forceWait = true;
+                // Warm the same scheduler and delegate, with the worker release already open.
+                releaseWorker.Set();
+                scheduler.For(2, job);
+                releaseWorker.Reset();
+                workerReady.Reset();
+                callerJobFinishing.Reset();
+                Volatile.Write(ref workerFinished, 0);
+                measured.Set();
                 long before = GC.GetAllocatedBytesForCurrentThread();
                 scheduler.For(2, job);
                 bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+                completedWhenReturned = Volatile.Read(ref workerFinished);
                 afterWait = SynchronizationContext.Current;
             }
             catch (Exception error)
             {
                 failure = ExceptionDispatchInfo.Capture(error);
+                measured.Set();
+                callerJobFinishing.Set();
             }
         }) { IsBackground = true };
 
+        // Use a separate controller for the measured dispatch. The caller's job signals without waiting.
         using (AllocationRegion.Start("fresh caller completion wait"))
         {
             caller.UnsafeStart();
+            measured.Wait();
+            callerJobFinishing.Wait();
+            releaseWorker.Set();
             caller.Join();
         }
         failure?.Throw();
 
-        Assert.True(callerWaited);
+        Assert.Equal(1, completedWhenReturned);
         Assert.Equal(0, bytes);
         Assert.Same(context, afterWait);
     }
@@ -211,6 +208,9 @@ public sealed class WorkerJobSchedulerTests
         WaitHandle ready = all.WaitHandle;
         int[] threads = new int[participants];
         long[] samples = new long[participants];
+        int callerThread = Environment.CurrentManagedThreadId;
+        var workerContext = new WaitNotifyingContext();
+        var inheritedContexts = new SynchronizationContext?[participants];
         Action<int> body = i =>
         {
             threads[i] = Environment.CurrentManagedThreadId;
@@ -219,6 +219,11 @@ public sealed class WorkerJobSchedulerTests
             // One pending job per participant. Each is held here until every thread has sampled itself.
             all.Signal();
             ready.WaitOne();
+            if (threads[i] != callerThread)
+            {
+                inheritedContexts[i] = SynchronizationContext.Current;
+                SynchronizationContext.SetSynchronizationContext(workerContext);
+            }
         };
 
         void RunRound()
@@ -239,6 +244,7 @@ public sealed class WorkerJobSchedulerTests
 
         Assert.Equal(participants, baseline.Count);
         Assert.Equal(participants, threads.Distinct().Count());
+        Assert.All(inheritedContexts, context => Assert.Null(context));
         int caller = Environment.CurrentManagedThreadId;
         Assert.Contains(caller, threads);
         Assert.Equal(0, callerBytes);

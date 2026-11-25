@@ -106,7 +106,8 @@ policy, and cancellation. A restart uses the configured day length and resets ti
   allocating once warm and gives jobs and the caller the same FP scopes. New indices stop being claimed on the
   first failure, and the caller gets that exception back with its stack after the running jobs finish. Top-level
   calls are serialized, and calls from inside a job run inline. After finishing its jobs, the caller
-  spins and yields until the active workers finish. Idle workers block on their wake events.
-  Dispose the scheduler outside its jobs.
+  spins and yields until the active workers finish. Idle workers block on their wake events. Dedicated workers
+  restore their synchronization context after each job. An interrupt during completion or disposal remains
+  pending for the caller's next blocking operation after cleanup. Dispose the scheduler outside its jobs.
 
 Part of the MMO netcode stack (sub-project 0B). Depends on `KhaozEngine.Determinism` and nothing else.

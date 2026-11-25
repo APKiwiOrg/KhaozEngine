@@ -19,6 +19,9 @@ public sealed class WorkerJobScheduler : IJobScheduler, IDisposable
     [ThreadStatic]
     private static bool s_insideJob;
 
+    [ThreadStatic]
+    private static bool s_isDedicatedWorker;
+
     private readonly object _gate = new();
     private readonly Worker[] _workers;
     private volatile bool _disposed;
@@ -42,7 +45,9 @@ public sealed class WorkerJobScheduler : IJobScheduler, IDisposable
         }
         catch
         {
-            StopWorkers(started);
+            bool interrupted = false;
+            StopWorkers(started, ref interrupted);
+            if (interrupted) Thread.CurrentThread.Interrupt();
             throw;
         }
     }
@@ -61,36 +66,42 @@ public sealed class WorkerJobScheduler : IJobScheduler, IDisposable
             return;
         }
 
-        lock (_gate)
+        bool interrupted = false;
+        try
         {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            if (count <= 0) return;
+            lock (_gate)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                if (count <= 0) return;
 
-            s_insideJob = true;
-            try
-            {
-                if (count == 1 || _workers.Length == 0)
-                    RunInline(count, body);
-                else
-                    RunFanOut(count, body);
+                s_insideJob = true;
+                try
+                {
+                    if (count == 1 || _workers.Length == 0)
+                        RunInline(count, body);
+                    else
+                        RunFanOut(count, body, ref interrupted);
+                }
+                finally
+                {
+                    s_insideJob = false;
+                }
             }
-            finally
-            {
-                s_insideJob = false;
-            }
+        }
+        finally
+        {
+            // Re-arm only after the active dispatch and the scheduler gate have both been released.
+            if (interrupted) Thread.CurrentThread.Interrupt();
         }
     }
 
     private static void RunInline(int count, Action<int> body)
     {
         for (int index = 0; index < count; index++)
-        {
-            using var scope = DeterministicFpScope.Enter();
-            body(index);
-        }
+            InvokeJob(body, index);
     }
 
-    private void RunFanOut(int count, Action<int> body)
+    private void RunFanOut(int count, Action<int> body, ref bool interrupted)
     {
         using var scope = DeterministicFpScope.Enter();
         _body = body;
@@ -107,7 +118,16 @@ public sealed class WorkerJobScheduler : IJobScheduler, IDisposable
         // Each worker publishes its writes with an interlocked decrement. Acquire the final one before reading the result.
         SpinWait join = default;
         while (Volatile.Read(ref _pendingWorkers) != 0)
-            join.SpinOnce(sleep1Threshold: -1);
+        {
+            try
+            {
+                join.SpinOnce(sleep1Threshold: -1);
+            }
+            catch (ThreadInterruptedException)
+            {
+                interrupted = true;
+            }
+        }
 
         ExceptionDispatchInfo? failure = _failure;
         _body = null;
@@ -123,8 +143,7 @@ public sealed class WorkerJobScheduler : IJobScheduler, IDisposable
             if (index >= count) return;
             try
             {
-                using var scope = DeterministicFpScope.Enter();
-                body((int)index);
+                InvokeJob(body, (int)index);
             }
             catch (Exception error)
             {
@@ -135,23 +154,63 @@ public sealed class WorkerJobScheduler : IJobScheduler, IDisposable
         }
     }
 
+    private static void InvokeJob(Action<int> body, int index)
+    {
+        using var scope = DeterministicFpScope.Enter();
+        if (!s_isDedicatedWorker)
+        {
+            body(index);
+            return;
+        }
+
+        SynchronizationContext? context = SynchronizationContext.Current;
+        try
+        {
+            body(index);
+        }
+        finally
+        {
+            // Jobs must leave the dedicated worker's ambient context intact, including for its idle wait.
+            if (!ReferenceEquals(context, SynchronizationContext.Current))
+                SynchronizationContext.SetSynchronizationContext(context);
+        }
+    }
+
     /// <summary>Waits for an active top-level call, then stops and joins the dedicated workers.</summary>
     /// <exception cref="InvalidOperationException">Called from inside a dedicated scheduler job.</exception>
     public void Dispose()
     {
         if (s_insideJob)
             throw new InvalidOperationException("Dispose the worker scheduler outside its jobs.");
-        lock (_gate)
+        bool entered = false, interrupted = false;
+        try
         {
-            if (!_disposed) StopWorkers(_workers.Length);
+            while (!entered)
+            {
+                try
+                {
+                    Monitor.Enter(_gate, ref entered);
+                }
+                catch (ThreadInterruptedException)
+                {
+                    interrupted = true;
+                }
+            }
+
+            if (!_disposed) StopWorkers(_workers.Length, ref interrupted);
+        }
+        finally
+        {
+            if (entered) Monitor.Exit(_gate);
+            if (interrupted) Thread.CurrentThread.Interrupt();
         }
     }
 
-    private void StopWorkers(int count)
+    private void StopWorkers(int count, ref bool interrupted)
     {
         _disposed = true;
         for (int i = 0; i < count; i++) _workers[i].Wake.Set();
-        for (int i = 0; i < count; i++) _workers[i].Join();
+        for (int i = 0; i < count; i++) _workers[i].Join(ref interrupted);
     }
 
     private sealed class Worker
@@ -177,6 +236,7 @@ public sealed class WorkerJobScheduler : IJobScheduler, IDisposable
 
         private void Run()
         {
+            s_isDedicatedWorker = true;
             while (true)
             {
                 Wake.WaitOne();
@@ -189,9 +249,20 @@ public sealed class WorkerJobScheduler : IJobScheduler, IDisposable
             }
         }
 
-        internal void Join()
+        internal void Join(ref bool interrupted)
         {
-            _thread.Join();
+            while (true)
+            {
+                try
+                {
+                    _thread.Join();
+                    break;
+                }
+                catch (ThreadInterruptedException)
+                {
+                    interrupted = true;
+                }
+            }
             Wake.Dispose();
         }
     }

@@ -573,7 +573,7 @@ public partial class ArchitectureTests
 
     [Theory]
     [InlineData("Render3D.Ecs", new[] { "Ecs", "Render3D" })]
-    [InlineData("Attachments.Render3D", new[] { "Attachments", "Render3D", "Simulation" })]
+    [InlineData("Attachments.Render3D", new[] { "Attachments", "Determinism", "Render3D", "Simulation" })]
     public void RendererArms_ReferenceOnlyTheirDeclaredDependencies(string arm, string[] expected)
     {
         IReadOnlyDictionary<string, Project> graph = LoadGraph();

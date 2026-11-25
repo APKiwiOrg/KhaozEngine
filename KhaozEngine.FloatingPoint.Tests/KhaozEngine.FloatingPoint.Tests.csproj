@@ -34,6 +34,10 @@
     <ProjectReference Include="../KhaozEngine.Ecs/KhaozEngine.Ecs.csproj" />
     <ProjectReference Include="../KhaozEngine.Replication/KhaozEngine.Replication.csproj" />
     <ProjectReference Include="../KhaozEngine.Sharding/KhaozEngine.Sharding.csproj" />
+    <!-- Worn-motion entry points must agree under changed controls without booting a renderer. -->
+    <ProjectReference Include="../KhaozEngine.Attachments/KhaozEngine.Attachments.csproj" />
+    <ProjectReference Include="../KhaozEngine.Attachments.Render3D/KhaozEngine.Attachments.Render3D.csproj" />
+    <ProjectReference Include="../KhaozEngine.Render3D/KhaozEngine.Render3D.csproj" />
     <!-- Physics and Physics.Bepu: support proposal admission under changed controls. -->
     <ProjectReference Include="../KhaozEngine.Physics/KhaozEngine.Physics.csproj" />
     <ProjectReference Include="../KhaozEngine.Physics.Bepu/KhaozEngine.Physics.Bepu.csproj" />

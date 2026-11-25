@@ -7883,6 +7883,8 @@ swing.Step();
 ```
 
 Keep each palette unchanged through `Step()`. Palette memory and entry storage can be reused each frame.
+Direct and batched steps prepare and solve under canonical floating-point controls, then restore each thread's
+original controls.
 A refused entry leaves all motion states at their previous step.
 
 The shipped Scene3D upload leases expand the source mesh and its views' culling bounds for chain reach

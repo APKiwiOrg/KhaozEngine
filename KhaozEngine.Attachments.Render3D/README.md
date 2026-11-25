@@ -1,7 +1,7 @@
 # KhaozEngine.Attachments.Render3D
 
 Attachment definitions bound to a posed `KhaozEngine.Render3D` skeleton. This renderer arm
-references `KhaozEngine.Attachments`, `KhaozEngine.Render3D` and `KhaozEngine.Simulation`. It ships in `KhaozEngine.Game3D`.
+references `KhaozEngine.Attachments`, `KhaozEngine.Determinism`, `KhaozEngine.Render3D` and `KhaozEngine.Simulation`. It ships in `KhaozEngine.Game3D`.
 
 `AttachmentSetCache.Get` loads rigid, skinned and mixed sets. The map-only `AttachmentSetBinding`
 constructor and `LoadedAttachmentSet.Bind(map)` refuse sets containing skinned parts with
@@ -355,7 +355,8 @@ binding raises `MotionMismatch` before submitting any draw.
 For multiple wearers, reuse a `WornMotionBatch` over an `IJobScheduler`. Pose every body, clear the batch,
 add each motion with its skeleton, palette memory, model, delta and level, then step once before queueing any
 draws. Keep the borrowed palette memory unchanged through `Step()`. The batch checks all frames before advancing
-any wearer and uses the same step as the single-wearer API. Each motion can occur once. `Step()` reports a repeated
+any wearer and uses the same step as the single-wearer API. Both APIs prepare and solve under canonical
+floating-point controls, restoring each thread's original controls afterwards. Each motion can occur once. `Step()` reports a repeated
 motion with `DuplicateMotion` and the repeated entry's zero-based index. `Clear()` drops the queued entries while
 retaining storage. Reuse a `WorkerJobScheduler` for allocation-free parallel steps or a
 `SingleThreadedJobScheduler` for inline steps. The caller owns the scheduler and keeps draw submission on its

@@ -522,16 +522,19 @@ exposes the property. `World.DefaultScheduler` itself is the per-world seam in `
 `SingleThreadedJobScheduler`, so a world stays byte-identical until a game opts in, and an explicit per-call
 scheduler still wins over it.
 
-## Wearer job-scheduler seam: Attachments.Render3D references Simulation
+## Wearer motion seams: Attachments.Render3D references Simulation and Determinism
 
 ```
 KhaozEngine.Attachments.Render3D -> KhaozEngine.Simulation   (IJobScheduler for WornMotionBatch)
+KhaozEngine.Attachments.Render3D -> KhaozEngine.Determinism  (DeterministicFpScope for wearer motion)
 ```
 
 The renderer arm owns per-wearer stepping and validates the bound inputs before scheduling independent
 solves. Using the existing scheduler seam lets games choose inline or dedicated workers without pulling a
 scheduler into the GPU-free attachment definitions or the base renderer. Game3D already carries Simulation
-through Game. The renderer arms' direct dependency test pins the edge.
+through Game. The direct Determinism reference lets the arm apply the same floating-point controls to direct
+and batched steps, including when a consumer supplies its own scheduler. The renderer arms' direct dependency
+test pins both edges.
 
 ## PNG I/O: shared malformed-data base
 
@@ -561,7 +564,7 @@ gain an attachment dependency.
 `ZeroDependencyLeaves_CarryNoProjectReferences` continues to pin Primitives as a leaf.
 The renderer's existing dependency allowlist and ECS-free closure remain unchanged.
 
-`KhaozEngine.Attachments.Render3D` references Attachments, Render3D and Simulation. It resolves contract
+`KhaozEngine.Attachments.Render3D` references Attachments, Determinism, Render3D and Simulation. It resolves contract
 joints to skin-bone indices, composes rigid transforms and binds garment palettes against an explicit
 host mesh's inverse binds. Both kinds use the body's current joint model palette. A chained part
 also uses its own rest or simulated joint frames. The arm binds colliders and owns per wearer motion.

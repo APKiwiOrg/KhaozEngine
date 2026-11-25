@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using KhaozEngine.Determinism;
 using KhaozEngine.Render3D;
 
 namespace KhaozEngine.Attachments.Render3D;
@@ -46,10 +47,12 @@ public sealed class WornMotion
     /// <summary>Advance the chains from the host's exact skeleton and current model-space joint palette.</summary>
     /// <remarks>Call once after posing the host. Anchors and capsules are posed into world space, where gravity
     /// acts. Step validates the model and the palette matrices read for anchors and colliders. Each draw validates
-    /// the matrices it reads and refuses invalid ones. Valid steps allocate no managed memory once warm.</remarks>
+    /// the matrices it reads and refuses invalid ones. Step uses canonical floating-point controls and restores
+    /// the caller's controls on return. Valid steps allocate no managed memory once warm.</remarks>
     public void Step(Skeleton skeleton, ReadOnlySpan<Matrix4x4> palette, in Matrix4x4 model,
         float deltaSeconds, MotionLevel level = MotionLevel.Simulated)
     {
+        using var scope = DeterministicFpScope.Enter();
         PrepareStep(skeleton, palette, model, deltaSeconds, level);
         StepPrepared(model, deltaSeconds, level);
     }

@@ -7,11 +7,13 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Attachments/KhaozEngine.Attachments.csproj" />
+    <ProjectReference Include="../KhaozEngine.Determinism/KhaozEngine.Determinism.csproj" />
     <ProjectReference Include="../KhaozEngine.Render3D/KhaozEngine.Render3D.csproj" />
     <ProjectReference Include="../KhaozEngine.Simulation/KhaozEngine.Simulation.csproj" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.FloatingPoint.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
   </ItemGroup>
 </Project>

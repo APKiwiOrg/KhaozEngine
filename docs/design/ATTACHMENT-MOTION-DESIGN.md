@@ -94,7 +94,9 @@ Keeping it in `Scene3D` per motion key would hide a wearer's lifetime inside the
 step contract. The caller prepares each frame in entry order before any solve starts. Preparation writes only
 unpublished per-wearer scratch. It resolves no skeleton nodes, since binding has already saved the bone
 indices, and it updates no draw scratch or simulation history. Workers run the same prepared solve as
-`WornMotion.Step` against the wearer's own state. The solver's test switches and counters remain thread-local.
+`WornMotion.Step` against the wearer's own state. The two entry points prepare and solve with canonical
+floating-point controls. The batched solve also scopes each job, since its scheduler may use a thread with
+different controls. The solver's test switches and counters remain thread-local.
 Use inline stepping for a test that sets one.
 
 ### 5. The solver is GPU free
@@ -102,7 +104,7 @@ Use inline stepping for a test that sets one.
 The solver, the chain data and the collider data live in `KhaozEngine.Attachments`, which keeps its one reference,
 to `KhaozEngine.Primitives`, and uses only `System.Numerics`. Binding, motion and draws live in
 `KhaozEngine.Attachments.Render3D`. A fitting tool or a pose check can run the swing over exported poses without a
-renderer, as it can run the outfit rule. Batch scheduling adds a Simulation reference to the renderer arm.
+renderer, as it can run the outfit rule. The renderer arm uses Simulation for batch scheduling and Determinism for its floating-point scopes.
 
 ### 6. The capability is a minor, 24.5.0, and the fix is a minor, 24.8.0
 

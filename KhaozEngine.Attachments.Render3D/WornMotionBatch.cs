@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using KhaozEngine.Determinism;
 using KhaozEngine.Render3D;
 using KhaozEngine.Simulation;
 
@@ -43,6 +44,7 @@ public sealed class WornMotionBatch
     {
         if (_entries.Count == 0) return;
 
+        using var scope = DeterministicFpScope.Enter();
         try
         {
             for (int index = 0; index < _entries.Count; index++)
@@ -64,6 +66,8 @@ public sealed class WornMotionBatch
 
     private void StepEntry(int index)
     {
+        // The scheduler can hand this job to a thread with different floating-point controls.
+        using var scope = DeterministicFpScope.Enter();
         Entry entry = _entries[index];
         entry.Motion.StepPrepared(entry.Model, entry.DeltaSeconds, entry.Level);
     }

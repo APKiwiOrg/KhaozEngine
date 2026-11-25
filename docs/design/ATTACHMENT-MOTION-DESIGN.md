@@ -607,14 +607,25 @@ other 16 hold, representing a nearest-16 cap. Both groups step and write draws i
 `parallelLayeredMeasurements` repeats that scenario at both rates with a batch and one dedicated worker per
 logical processor besides the caller.
 
-After 120 warm frames, each simulated rate samples 600 frames at 144 Hz or 60 Hz. One JSON line reports the mean,
-p50, p95 and maximum frame milliseconds, the mean spans for `WornMotion.Step` and `BoundOutfit.WriteDraws`, total
-warm managed bytes on the preparation thread and the runner environment. Each wearer's step is followed by
-its draws in the sequential case. The parallel frame span includes filling the batch, stepping it and writing
-the draws. Both frame spans include call timestamps and exclude host animation and scene submission.
-`summedWearerStepMeanMs` in the parallel sample adds the caller's validation time to the individual solve times
-across threads. `managedBytesAllocated` measures the preparation thread. The scheduler allocation test uses each
-participating worker's own allocation counter between warm calls to cover worker wake, work and completion.
+Each timed case first runs 1,200 discarded settle frames so the JIT and instrumentation can initialize.
+It resets to rest, runs 120 warm frames and samples 600 frames at the case's frame rate. The JSON records
+these counts in `settleFrames`, `warmFrames` and `measuredFrames`. Wall metrics include frame mean, p50, p95
+and maximum, plus mean step and draw-write wall times. The frame window includes batch filling when used
+and excludes host animation and scene submission.
+
+For the parallel cases, `summedWearerStepWallMeanMs` adds batch preparation wall time on the caller to each
+wearer's solve wall time, including preemption. `summedWearerStepCpuMeanMs` sums thread CPU deltas for those
+same intervals and excludes the scheduler's wake and join. Linux and macOS use `clock_gettime` with
+`CLOCK_THREAD_CPUTIME_ID`. Windows uses `GetThreadTimes` to sum kernel and user time. Missing clocks return
+null. The CPU field is an average per frame, measured in milliseconds across the participating threads.
+
+`managedBytesAllocated` is the gross caller counter in the frame window. The first eight allocating frames
+include separate fill, gross batch and wearer loop windows. The wearer loop window includes its wall probes.
+Within a batch, `batchOutsideSchedulerBytes` covers preparation and scope cleanup, `schedulerBytes` excludes
+job wrappers, and `callerJobBytes` counts only solve bodies on the measuring thread. `probeOverheadBytes`
+includes the batch and job wrappers' probe bytes and the residual outside the three top-level windows.
+The scheduler allocation test uses each worker's own allocation counter between warm calls.
+
 An untimed replay counts segment-axis queries per simulated wearer per fixed solver step, excluding warm frames.
 The count is null for the all-held sample or when a shortened sample takes no fixed steps. Timing is report only
 and excluded from default CI.
@@ -626,7 +637,7 @@ KE_GPU_TESTS=0 dotnet test KhaozEngine.Render.Tests -c Release --filter 'Categor
 ```
 
 `KE_SWING_COST_SMOKE_FRAMES` sets both frame counts to a value from 1 through 119 for a shortened harness
-check. It checks draw and allocation paths and leaves the timing fields null. A separate replay records
+check without settle frames. It checks draw and allocation paths and leaves the timing fields null. A separate replay records
 segment-axis queries per simulated wearer step for both cases.
 A smoke warm-up too short to reach a fixed step primes the solver before resetting for the sample.
 

@@ -4,80 +4,102 @@ using KhaozEngine.Simulation;
 
 namespace KhaozEngine.Tests.Render3D;
 
-/// <summary>Times the batch's per-wearer jobs when the cost diagnostic runs a full measurement.</summary>
-/// <remarks>It also splits the measuring thread's allocation inside the scheduler call between the jobs that ran
-/// on that thread and the scheduler around them, so an allocating frame names its source.</remarks>
+/// <summary>Samples wall time, thread CPU time and caller allocations around the individual wearer jobs.</summary>
 internal sealed class TimedWearerJobs : IJobScheduler
 {
     private readonly IJobScheduler _scheduler;
-    private readonly long[] _ticks;
-    private readonly long[] _jobBytes;
-    private readonly bool[] _ranOnCaller;
+    private readonly JobSample[] _samples;
+    private readonly bool _measureTiming;
     private readonly Action<int> _timeJob;
     private Action<int>? _body;
     private int _callerThread;
+    private int _count;
+    private long _entryBytes;
+    private long _exitBytes;
+    private long _schedulerCallBytes;
 
-    internal TimedWearerJobs(IJobScheduler scheduler, int wearerCount)
+    internal TimedWearerJobs(IJobScheduler scheduler, int wearerCount, bool measureTiming)
     {
         _scheduler = scheduler;
-        _ticks = new long[wearerCount];
-        _jobBytes = new long[wearerCount];
-        _ranOnCaller = new bool[wearerCount];
+        _measureTiming = measureTiming;
+        _samples = new JobSample[wearerCount];
         _timeJob = TimeJob;
     }
 
     internal long StartedAt { get; private set; }
-
-    /// <summary>Measuring-thread bytes allocated inside the last scheduler call, jobs on that thread included.</summary>
-    internal long SchedulerCallBytes { get; private set; }
+    internal long? StartedCpu { get; private set; }
 
     public void For(int count, Action<int> body)
     {
-        StartedAt = Stopwatch.GetTimestamp();
+        _entryBytes = GC.GetAllocatedBytesForCurrentThread();
+        StartedAt = _measureTiming ? Stopwatch.GetTimestamp() : 0;
+        StartedCpu = _measureTiming ? ThreadCpuClock.Read() : null;
         _body = body;
         _callerThread = Environment.CurrentManagedThreadId;
-        Array.Clear(_jobBytes);
-        Array.Clear(_ranOnCaller);
-        long before = GC.GetAllocatedBytesForCurrentThread();
+        _count = count;
+
+        long beforeScheduler = GC.GetAllocatedBytesForCurrentThread();
         try
         {
             _scheduler.For(count, _timeJob);
         }
         finally
         {
-            SchedulerCallBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+            _schedulerCallBytes = GC.GetAllocatedBytesForCurrentThread() - beforeScheduler;
             _body = null;
+            _exitBytes = GC.GetAllocatedBytesForCurrentThread();
         }
     }
 
     private void TimeJob(int index)
     {
-        long start = Stopwatch.GetTimestamp();
-        long before = GC.GetAllocatedBytesForCurrentThread();
+        long beforeWrapper = GC.GetAllocatedBytesForCurrentThread();
+        long startedAt = _measureTiming ? Stopwatch.GetTimestamp() : 0;
+        long? cpuBefore = _measureTiming ? ThreadCpuClock.Read() : null;
+        long beforeBody = GC.GetAllocatedBytesForCurrentThread();
         _body!(index);
-        _jobBytes[index] = GC.GetAllocatedBytesForCurrentThread() - before;
-        _ranOnCaller[index] = Environment.CurrentManagedThreadId == _callerThread;
-        _ticks[index] = Stopwatch.GetTimestamp() - start;
+        long bodyBytes = GC.GetAllocatedBytesForCurrentThread() - beforeBody;
+        long? cpuNanoseconds = _measureTiming ? ThreadCpuClock.Read() - cpuBefore : null;
+        long wallTicks = _measureTiming ? Stopwatch.GetTimestamp() - startedAt : 0;
+        bool onCaller = Environment.CurrentManagedThreadId == _callerThread;
+        long wrapperBytes = GC.GetAllocatedBytesForCurrentThread() - beforeWrapper;
+        _samples[index] = new JobSample(wallTicks, cpuNanoseconds, onCaller, bodyBytes, wrapperBytes);
     }
 
-    internal long SumJobTicks()
+    internal (long WallTicks, long? CpuNanoseconds) SumJobTimes()
     {
-        long total = 0;
-        foreach (long ticks in _ticks) total += ticks;
-        return total;
-    }
-
-    /// <summary>Bytes the last call's jobs allocated on the measuring thread, and the first such job's index.</summary>
-    internal (long Bytes, int FirstJob) CallerJobAllocation()
-    {
-        long total = 0;
-        int first = -1;
-        for (int index = 0; index < _jobBytes.Length; index++)
+        long wallTicks = 0;
+        long? cpuNanoseconds = 0;
+        foreach (ref readonly JobSample sample in _samples.AsSpan(0, _count))
         {
-            if (!_ranOnCaller[index] || _jobBytes[index] == 0) continue;
-            total += _jobBytes[index];
-            if (first < 0) first = index;
+            wallTicks += sample.WallTicks;
+            cpuNanoseconds += sample.CpuNanoseconds;
         }
-        return (total, first);
+        return (wallTicks, cpuNanoseconds);
     }
+
+    internal CallerAllocation SplitCallerAllocation(long beforeBatch, long afterBatch)
+    {
+        long callerJobBytes = 0, callerJobWrapperBytes = 0;
+        int firstAllocatingJob = -1;
+        for (int index = 0; index < _count; index++)
+        {
+            ref readonly JobSample sample = ref _samples[index];
+            if (!sample.OnCaller) continue;
+            callerJobBytes += sample.BodyBytes;
+            callerJobWrapperBytes += sample.WrapperBytes;
+            if (firstAllocatingJob < 0 && sample.BodyBytes != 0) firstAllocatingJob = index;
+        }
+
+        long batchOutsideSchedulerBytes = (_entryBytes - beforeBatch) + (afterBatch - _exitBytes);
+        long schedulerBytes = _schedulerCallBytes - callerJobWrapperBytes;
+        long probeBytes = (_exitBytes - _entryBytes - _schedulerCallBytes) + (callerJobWrapperBytes - callerJobBytes);
+        return new CallerAllocation(batchOutsideSchedulerBytes, schedulerBytes, callerJobBytes, probeBytes, firstAllocatingJob);
+    }
+
+    private readonly record struct JobSample(long WallTicks, long? CpuNanoseconds, bool OnCaller, long BodyBytes,
+        long WrapperBytes);
+
+    internal readonly record struct CallerAllocation(long BatchOutsideSchedulerBytes, long SchedulerBytes,
+        long CallerJobBytes, long ProbeBytes, int FirstAllocatingJob);
 }

@@ -51,8 +51,23 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
         {
             diagnostic = nameof(SwingCostDiagnostics),
             wearerCount = WearerCount,
+            settleFrames = measuredFrames == MeasuredFrames ? SettleFrames : 0,
             warmFrames,
             measuredFrames,
+            metricDefinitions = new
+            {
+                frameMs = "Wall time for preparation and draw writing, excluding host posing and scene submission.",
+                stepMeanMs = "Wall time in Step, including scheduling and the join in parallel cases.",
+                writeDrawsMeanMs = "Wall time spent writing prepared draws on the caller.",
+                summedWearerStepWallMeanMs = "Parallel only. Sum of caller batch preparation and wearer solve wall times, including preemption.",
+                summedWearerStepCpuMeanMs = "Parallel only. Sum of caller batch preparation and wearer solve thread CPU times. Null if unavailable.",
+                managedBytesAllocated = "All measuring-thread bytes in the frame window, including probes.",
+                allocationBreakdown = "BatchStepBytes is the gross batch window. Fill and batch boundaries exclude surrounding timing probes. The wearer loop includes its timing probes.",
+                probeOverheadBytes = "Residual outside the fill, batch and wearer loop windows, plus the batch and job wrapper probes.",
+                schedulerBytes = "Bytes in the scheduler call on the measuring thread, excluding the caller job wrappers.",
+                callerJobBytes = "Bytes inside wearer solve bodies that ran on the measuring thread.",
+                batchOutsideSchedulerBytes = "Bytes in Step outside the scheduler wrapper, including preparation and scope cleanup.",
+            },
             environment = new
             {
                 processorCount = Environment.ProcessorCount,
@@ -144,8 +159,8 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
         int simulatedWearers, IJobScheduler? scheduler = null)
     {
         bool measureTiming = measuredFrames == MeasuredFrames;
-        var timedJobs = scheduler is not null && measureTiming ? new TimedWearerJobs(scheduler, wearers.Length) : null;
-        var batch = scheduler is null ? null : new WornMotionBatch(timedJobs ?? scheduler);
+        var timedJobs = scheduler is null ? null : new TimedWearerJobs(scheduler, wearers.Length, measureTiming);
+        var batch = timedJobs is null ? null : new WornMotionBatch(timedJobs);
         float frameTime = 1f / frameRate;
         // A path that is new to the process, such as the parallel batch, can still be tiering up after the warm
         // frames, and its one-time compilation work then lands in the window. Settle it first, then restart from
@@ -163,7 +178,8 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
         // A frame that allocates is reported with the stage that allocated, so a nonzero total names its source.
         var allocationFrames = new AllocationFrame[MaxReportedAllocationFrames];
         int allocationFrameCount = 0;
-        long allocated = 0, stepTicks = 0, drawTicks = 0, summedWearerTicks = 0;
+        long allocated = 0, stepTicks = 0, drawTicks = 0, summedWearerWallTicks = 0;
+        long? summedWearerCpuNanoseconds = 0;
         using (AllocationRegion.Start("swing preparation frames"))
         {
             for (int frame = 0; frame < measuredFrames; frame++)
@@ -172,18 +188,22 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
 
                 long bytesBefore = GC.GetAllocatedBytesForCurrentThread();
                 long start = measureTiming ? Stopwatch.GetTimestamp() : 0;
-                long beforeBatch = 0;
-                long afterFill = bytesBefore, afterBatch = bytesBefore;
+                long beforeBatch = 0, fillBytes = 0, batchStartBytes = 0, batchEndBytes = 0;
+                long? beforeBatchCpu = null;
                 if (batch is not null)
                 {
+                    long beforeFill = GC.GetAllocatedBytesForCurrentThread();
                     FillBatch(batch, wearers, frameTime);
-                    afterFill = GC.GetAllocatedBytesForCurrentThread();
+                    fillBytes = GC.GetAllocatedBytesForCurrentThread() - beforeFill;
                     beforeBatch = measureTiming ? Stopwatch.GetTimestamp() : 0;
+                    beforeBatchCpu = measureTiming ? ThreadCpuClock.Read() : null;
+                    batchStartBytes = GC.GetAllocatedBytesForCurrentThread();
                     batch.Step();
+                    batchEndBytes = GC.GetAllocatedBytesForCurrentThread();
                     if (measureTiming) stepTicks += Stopwatch.GetTimestamp() - beforeBatch;
-                    afterBatch = GC.GetAllocatedBytesForCurrentThread();
                 }
 
+                long beforeWearers = GC.GetAllocatedBytesForCurrentThread();
                 foreach (SwingCostWearer wearer in wearers)
                 {
                     long beforeStep = measureTiming ? Stopwatch.GetTimestamp() : 0;
@@ -194,24 +214,32 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
                     stepTicks += afterStep - beforeStep;
                     drawTicks += afterDraws - afterStep;
                 }
+                long wearerLoopBytes = GC.GetAllocatedBytesForCurrentThread() - beforeWearers;
                 long end = measureTiming ? Stopwatch.GetTimestamp() : 0;
-                long afterWearers = GC.GetAllocatedBytesForCurrentThread();
-                allocated += afterWearers - bytesBefore;
-                if (afterWearers != bytesBefore && allocationFrameCount < allocationFrames.Length)
+                long frameBytes = GC.GetAllocatedBytesForCurrentThread() - bytesBefore;
+                allocated += frameBytes;
+                if (frameBytes != 0 && allocationFrameCount < allocationFrames.Length)
                 {
-                    var (callerJobBytes, callerJob) = timedJobs?.CallerJobAllocation() ?? (0, -1);
-                    allocationFrames[allocationFrameCount++] = new AllocationFrame(frame, afterFill - bytesBefore,
-                        afterBatch - afterFill, afterWearers - afterBatch)
+                    long batchStepBytes = batchEndBytes - batchStartBytes;
+                    long probeBytes = frameBytes - fillBytes - batchStepBytes - wearerLoopBytes;
+                    var split = timedJobs?.SplitCallerAllocation(batchStartBytes, batchEndBytes);
+                    allocationFrames[allocationFrameCount++] = new AllocationFrame(frame, fillBytes,
+                        batchStepBytes, wearerLoopBytes, probeBytes + (split?.ProbeBytes ?? 0))
                     {
-                        SchedulerCallBytes = timedJobs?.SchedulerCallBytes,
-                        CallerJobBytes = timedJobs is null ? null : callerJobBytes,
-                        CallerJob = timedJobs is null ? null : callerJob,
+                        BatchOutsideSchedulerBytes = split?.BatchOutsideSchedulerBytes,
+                        SchedulerBytes = split?.SchedulerBytes,
+                        CallerJobBytes = split?.CallerJobBytes,
+                        CallerJob = split is { FirstAllocatingJob: >= 0 } ? split.Value.FirstAllocatingJob : null,
                     };
                 }
-                if (measureTiming)
-                    ticks[frame] = end - start;
+                if (!measureTiming) continue;
+                ticks[frame] = end - start;
                 if (timedJobs is not null)
-                    summedWearerTicks += timedJobs.StartedAt - beforeBatch + timedJobs.SumJobTicks();
+                {
+                    var (wallTicks, cpuNanoseconds) = timedJobs.SumJobTimes();
+                    summedWearerWallTicks += timedJobs.StartedAt - beforeBatch + wallTicks;
+                    summedWearerCpuNanoseconds += timedJobs.StartedCpu - beforeBatchCpu + cpuNanoseconds;
+                }
             }
         }
         foreach (SwingCostWearer wearer in wearers) wearer.ValidateDraws();
@@ -229,7 +257,8 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
             Percentile(ticks, .95) * msPerTick, ticks[^1] * msPerTick, allocated,
             stepTicks * msPerTick / measuredFrames, drawTicks * msPerTick / measuredFrames)
         {
-            SummedWearerStepMeanMs = timedJobs is null ? null : summedWearerTicks * msPerTick / measuredFrames,
+            SummedWearerStepWallMeanMs = timedJobs is null ? null : summedWearerWallTicks * msPerTick / measuredFrames,
+            SummedWearerStepCpuMeanMs = timedJobs is null ? null : summedWearerCpuNanoseconds / (1_000_000d * measuredFrames),
             AllocationFrames = reportedFrames,
         };
     }
@@ -311,16 +340,16 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
         long ManagedBytesAllocated, double? StepMeanMs, double? WriteDrawsMeanMs)
     {
         public double? SegmentAxisQueriesPerSimulatedWearerStep { get; init; }
-        public double? SummedWearerStepMeanMs { get; init; }
+        public double? SummedWearerStepWallMeanMs { get; init; }
+        public double? SummedWearerStepCpuMeanMs { get; init; }
         public AllocationFrame[]? AllocationFrames { get; init; }
     }
 
-    // Measuring-thread bytes in one frame: batch fill, batch step, then the per-wearer step and draw loop.
-    // In a timed parallel case the batch step splits further: the scheduler call holds the jobs that ran on the
-    // measuring thread, and whatever lies outside that call is the batch's own validation and preparation.
-    sealed record AllocationFrame(int Frame, long FillBytes, long BatchStepBytes, long WearerLoopBytes)
+    // BatchStepBytes is the gross batch window. Its detailed fields separate work from the probe residual.
+    sealed record AllocationFrame(int Frame, long FillBytes, long BatchStepBytes, long WearerLoopBytes, long ProbeOverheadBytes)
     {
-        public long? SchedulerCallBytes { get; init; }
+        public long? BatchOutsideSchedulerBytes { get; init; }
+        public long? SchedulerBytes { get; init; }
         public long? CallerJobBytes { get; init; }
         public int? CallerJob { get; init; }
     }

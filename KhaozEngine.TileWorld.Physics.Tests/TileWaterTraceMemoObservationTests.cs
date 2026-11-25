@@ -87,10 +87,10 @@ public class TileWaterTraceMemoObservationTests
     static string Copy(string value) => new(value.ToCharArray());
 
     [Fact]
-    public void AnExposedJoinedTriangleBoundaryReplaysItsStringValue()
+    public void AnExposedJoinedTriangleBoundaryReplaysWithoutAllocatingDuringRecomputation()
     {
         // #1755. One triangle is wet, while its neighbour is entirely at or above the surface.
-        // Their shared diagonal is a zero-height water boundary and has a freshly allocated id.
+        // #1824. Their shared diagonal is a zero-height water boundary with a joined-triangle id.
         var document = TileWorldPhysicsTestData.FlatWorld();
         document.SetUnderlay(0, 0, 0, TileWorldPhysicsTestData.Water);
         document.SetCornerHeightCm(0, 0, 0, -100);
@@ -98,21 +98,33 @@ public class TileWaterTraceMemoObservationTests
         document.SetCornerHeightCm(0, 1, 0, 0);
         document.SetCornerHeightCm(1, 1, 0, 2);
         var field = MovementWaterFieldTests.Field(document);
-        Assert.Single(field.CaptureTraceForTests().Prisms);
+        var geometry = field.CaptureTraceForTests();
+        var prism = Assert.Single(geometry.Prisms);
         var query = new MovementMediumSweepQuery(new(new(.5f, -.5f, -.5f), .125f, .75f,
             MovementWaterFieldTests.Space, null), Vector3.Zero);
-        var expected = WaterTraceMemoComparison.Read(field, query, bypass: true);
+        var expected = WaterTraceMemoComparison.Read(field, query, reference: new FrozenWaterReference(geometry));
         var cold = WaterTraceMemoComparison.Read(field, query);
         Assert.Equal(MovementAvailability.Known, cold.Result.Availability);
-        var boundaries = cold.Contacts.Take(cold.Result.ContactsWritten)
-            .Where(c => c.BoundaryId.EndsWith("/joined-triangle", StringComparison.Ordinal)).ToArray();
-        Assert.NotEmpty(boundaries);
+        string diagonalId = prism.Column.BedBoundaryId + "/joined-triangle";
+        Assert.Contains(cold.Contacts.Take(cold.Result.ContactsWritten), c => c.BoundaryId == diagonalId);
         var warm = WaterTraceMemoComparison.Read(field, query);
         WaterTraceMemoComparison.Memo(warm, hit: true);
         WaterCoverageComparison.Equal(expected.Result, warm.Result, expected.Spans, warm.Spans,
             expected.Contacts, warm.Contacts);
-        Assert.Equal(boundaries.Select(c => c.BoundaryId), warm.Contacts.Take(warm.Result.ContactsWritten)
-            .Where(c => c.BoundaryId.EndsWith("/joined-triangle", StringComparison.Ordinal)).Select(c => c.BoundaryId));
+
+        MovementCoverageResult recomputed = default;
+        Action trace = () => recomputed = field.TraceWater(query, Vector3.Zero, MovementWaterFieldTests.Identity,
+            cold.Spans.AsSpan(0, 64), cold.Contacts.AsSpan(0, 256));
+        bool bypass = TileMediumSampler.BypassTraceMemoForTests;
+        TileMediumSampler.BypassTraceMemoForTests = true;
+        try
+        {
+            trace();
+            AllocationMeasurement.NoPerCallAllocation("a warm uncached joined-triangle trace", trace);
+        }
+        finally { TileMediumSampler.BypassTraceMemoForTests = bypass; }
+        WaterCoverageComparison.Equal(expected.Result, recomputed, expected.Spans, cold.Spans,
+            expected.Contacts, cold.Contacts);
     }
 
     [Theory]

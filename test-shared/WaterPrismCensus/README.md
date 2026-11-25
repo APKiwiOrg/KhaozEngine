@@ -160,9 +160,10 @@ copy returns the BCL's bits for every input, so moving to it changed no frozen r
 
 `WaterCoverageComparison` compares every result field and refusal capacity/identity, every span byte and every
 contact field, including float sign and NaN payload bits in caller storage. Caller-owned identity and space strings
-retain reference identity. The existing exception for freshly allocated joined-triangle boundary IDs remains
-value-only. Both written prefixes and the complete sentinel-filled suffixes are compared. Comparator mutations
-cover result identifiers, contact identifiers/classifications, span classifications, signed zeros and NaN payloads.
+retain reference identity. The frozen evaluator constructs joined-triangle boundary IDs per trace, so differential
+comparison checks those IDs by value. Both written prefixes and the complete sentinel-filled suffixes are compared.
+Comparator mutations cover result identifiers, contact identifiers/classifications, span classifications, signed
+zeros and NaN payloads.
 
 `Category=WaterKernelContract` selects the differential corpus and shape/trace matrix, including Diagnostic
 storage boundaries, the 252-sample patch sweeps and all 510 existing bank-lift inputs. These include every trace

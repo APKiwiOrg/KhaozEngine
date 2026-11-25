@@ -11383,7 +11383,7 @@ Internal opt-in water counters separate small-tier hits/misses from added-tier h
 PrismTraces remains logical requests and MemoMisses includes a large-tier replay after a small-tier miss.
 Intersection/preparation/coefficient counters measure executed work, so hits do not fabricate skipped work.
 Admission diagnostics separately report Boolean hits/misses/bypasses. No public diagnostic API is added.
-Numeric equality excludes sticky FP status and reference identity for freshly allocated joined-boundary strings.
+Numeric equality excludes sticky FP status. Joined-triangle boundary ids replay by string value.
 Controls remain exact inputs, and no lookup installs a canonical FP environment. Complete movement-state bits,
 selection, commitment, refusal and publication contracts remain unchanged. These caches establish no timing ratio.
 See [TileWorld water reuse](../KhaozEngine.TileWorld.Physics/README.md#exact-water-query-reuse),

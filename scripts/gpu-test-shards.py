@@ -5,15 +5,17 @@ Every leg's full suite runs across several hosted jobs on the schedule and workf
 neither bakes nor sets renderTestFilter. Those are the only triggers on which direct3d11-native and
 vulkan-native (`fullSuite: scheduled`) run their full suites at all. metal-native (`fullSuite: always`) also
 runs its full suite on push and pull_request, but as one job there (#1460): the org runs at most 5 macOS jobs
-at once, and three shards on every trigger let a push run starve the gate dispatch of macOS slots. One job
-on push and three on the gate keep two overlapping runs at 4. This file is the single source of the split,
+at once. One job on push and four on the gate can run together. This file is the single source of the split,
 and .github/workflows/cross-platform-gpu.yml reads it through the subcommands below.
 
 THE SPLIT. Shard `rest` runs every test project in KhaozEngine.slnx except KhaozEngine.Render.Tests and
 the named projects in PROJECT_SLICES, through a solution derived from the current one at run time, so a new
-test project lands in it with no edit. Vulkan's `projects-1` takes MapEditor.Tests, Game.Tests and
-Movement.Tests. Windows' `projects-1` takes Catalog.Tests and its `projects-2` takes MapEditor.Tests and
-Server.Tests (#1458, #1471). Only `rest` is primary and runs the once-per-leg steps. The unsharded Windows isolation pass still takes every non-Render project. Every `render-N` shard runs one slice of
+test project lands in it with no edit. Metal's `projects-1` isolates MapEditor.Tests from other test hosts
+(#1897). Vulkan's `projects-1` takes MapEditor.Tests, Game.Tests and Movement.Tests. Windows'
+`projects-1` takes Catalog.Tests and its `projects-2` takes MapEditor.Tests and Server.Tests (#1458, #1471).
+Only `rest` is primary and runs the once-per-leg steps. The unsharded Windows isolation pass still takes
+every non-Render project. Single-job Metal runs `projects-1` first, then `rest` with Render.Tests included.
+Every `render-N` shard runs one slice of
 KhaozEngine.Render.Tests. Each backend has its own slice table,
 because the three rasterizers disagree about what is expensive (below). Within a table the slices are an
 ORDERED FIRST-MATCH partition: a test belongs to the first slice whose rules match it, and the last slice has
@@ -152,6 +154,9 @@ REST = "rest"
 RENDER_PROJECT = f"{RENDER_ASSEMBLY}/{RENDER_ASSEMBLY}.csproj"
 # Only these named projects leave rest. Future test projects default to rest on every backend.
 PROJECT_SLICES = {
+    "metal-native": [
+        ("projects-1", ("KhaozEngine.MapEditor.Tests/KhaozEngine.MapEditor.Tests.csproj",)),
+    ],
     "direct3d11-native": [
         ("projects-1", ("KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj",)),
         ("projects-2", tuple(f"{name}/{name}.csproj" for name in (
@@ -186,7 +191,10 @@ def project_shard(backend, path):
 
 def cmd_solution(args):
     """Derive a project shard's solution. An empty shard keeps every non-Render project for isolation."""
-    backend, shard, source, destination = args
+    backend, shard, source, destination, *options = args
+    include_render = options == ["--include-render"] and shard == REST
+    if options and not include_render:
+        fail("solution accepts --include-render only for the rest shard")
     if shard not in [""] + [name for name in shards(backend) if not name.startswith("render-")]:
         fail(f"'{shard}' is not a {backend} project shard")
     solution = ET.parse(source)
@@ -203,7 +211,8 @@ def cmd_solution(args):
             if project.tag != "Project":
                 continue
             path = project.attrib["Path"]
-            if path == RENDER_PROJECT or (shard and project_shard(backend, path) != shard):
+            keep = include_render if path == RENDER_PROJECT else not shard or project_shard(backend, path) == shard
+            if not keep:
                 parent.remove(project)
             else:
                 project.set("Path", os.path.relpath(source_dir / path, destination_dir).replace(os.sep, "/"))

@@ -41,9 +41,8 @@
 # too. A leg is sharded when it runs its full suite on the schedule or a workflow_dispatch and the run neither
 # bakes nor sets renderTestFilter. metal-native also runs its full suite on push and pull_request, as one job
 # there (#1460, CONCURRENCY below). Each sharded leg runs as `rest` plus `render-1` to `render-N`
-# (Render.Tests in slices). The software legs also move named non-Render projects to `projects-N` shards
-# (#1458, #1471):
-#   metal-native        rest + 2 render slices = 3 jobs
+# (Render.Tests in slices). Named non-Render projects use `projects-N` shards (#1458, #1471, #1897):
+#   metal-native        rest + MapEditor.Tests + 2 render slices = 4 jobs
 #   direct3d11-native   rest + projects-1 + projects-2 + 3 render slices = 6 jobs
 #   vulkan-native       rest + projects-1 + 11 render slices = 13 jobs
 # Each backend has its own slice table, balanced from that backend's measured per-test times. The split lives
@@ -60,17 +59,17 @@
 # and reject Debug output. The build selection does not change test selection or coverage guards.
 #
 # CONCURRENCY. The org is on the Team plan: 60 concurrent GitHub-hosted standard jobs and 5 concurrent macOS
-# jobs (https://docs.github.com/en/actions/reference/limits). A default-input dispatch starts 22 backend jobs
-# (3 Metal, 6 Windows, 13 Linux) plus sync. Three backend summaries follow their shards.
-# Metal takes no more than 3 because its slowest shard is already well under the Vulkan floor, so a fourth
-# macOS job would only spend the shared macOS allowance. That allowance is the one that binds in practice:
+# jobs (https://docs.github.com/en/actions/reference/limits). A default-input dispatch starts 23 backend jobs
+# (4 Metal, 6 Windows, 13 Linux) plus sync. Three backend summaries follow their shards.
+# Metal isolates MapEditor.Tests so cold shader compilation cannot compete with other test assemblies (#1897).
+# The macOS allowance is the one that binds in practice:
 # every selected push and pull_request runs Metal's full suite too, so overlapping runs share 5 macOS slots. While
 # Metal was sharded on every trigger, two overlapping runs needed 6. A push run on main that started 18 s
 # before the gate dispatch (run 39041774821) held 3 slots, and the dispatch's render-1 shard queued 13 minutes
 # (run 39041795759 took 27.3 minutes against 21.3 uncontended at the same commit). So push and pull_request
 # run Metal's full suite as one job, about half an hour that nothing waits on, and a push run beside the gate
-# needs 4 macOS slots (#1460). Main pushes keep distinct groups. Three overlapping automatic Metal jobs
-# plus the three-shard dispatch need six slots, so one job or more queues.
+# needs 5 macOS slots (#1460). Main pushes keep distinct groups. Multiple overlapping automatic Metal jobs
+# queue when a four-shard dispatch holds the other slots.
 #
 # What this does (suite split by leg + trigger, decided from measured cost + lavapipe stability):
 #   * The Metal NATIVE leg runs the engine's own KhaozEngine.Gpu.Metal backend
@@ -543,10 +542,8 @@ jobs:
     needs: legs
     if: needs.legs.outputs.selected == 'true'
     # An unsharded leg keeps its historical name, so every push-path check reads as it did before #1438, Metal's
-    # `macos-26 / metal-native` included (#1460). A shard appends its own name, for example
-    # `ubuntu-latest / vulkan-native / render-3`. On the schedule and a dispatch Metal's checks are
-    # `macos-26 / metal-native / rest`, `/ render-1`, `/ render-2` and the `macos-26 / metal-native / full suite`
-    # job that answers for them.
+    # `macos-26 / metal-native` included (#1460). A shard appends its own name. The
+    # `macos-26 / metal-native / full suite` job combines the shard results.
     name: ${{ matrix.os }} / ${{ matrix.backend }}${{ matrix.shard != '' && format(' / {0}', matrix.shard) || '' }}
     runs-on: ${{ matrix.runner }}
     # Twice the slowest completed job in the newest 100 runs, read 2026-11-19 (163 minutes, an unsharded Vulkan dispatch).
@@ -1349,14 +1346,16 @@ jobs:
           run_suite() {
             dotnet test "$@" -c Release --no-build "${build_args[@]}" --filter "$suite_filter" --blame --results-directory "$PWD/TestResults" "${logger_args[@]}" "${extra_args[@]}" 2>&1 | tee -a TestResults/suite-output.log
           }
-          write_non_render_solution() {
+          write_project_solution() {
             # The root keeps exactly one solution. Rebase project paths into the generated solution's directory.
-            python3 scripts/gpu-test-shards.py solution "$KE_GRAPHICS_BACKEND" "$KE_TEST_SHARD" \
-              KhaozEngine.slnx TestResults/KhaozEngine.NonRender.slnx
+            local shard=$1 destination=$2
+            shift 2
+            python3 scripts/gpu-test-shards.py solution "$KE_GRAPHICS_BACKEND" "$shard" \
+              KhaozEngine.slnx "$destination" "$@"
           }
           status=0
           if [ "$KE_TEST_SHARD" = "rest" ] || [ "${KE_TEST_SHARD#projects-}" != "$KE_TEST_SHARD" ]; then
-            write_non_render_solution
+            write_project_solution "$KE_TEST_SHARD" TestResults/KhaozEngine.NonRender.slnx
             run_suite TestResults/KhaozEngine.NonRender.slnx "${non_render_args[@]}" || status=$?
             rm TestResults/KhaozEngine.NonRender.slnx
           elif [ -n "$KE_TEST_SHARD" ]; then
@@ -1369,11 +1368,18 @@ jobs:
             echo "shard $KE_TEST_SHARD filter: $suite_filter"
             run_suite "$render" || status=$?
           elif [ "$KE_TEST_ISOLATE_RENDER" = "1" ]; then
-            write_non_render_solution
+            write_project_solution "" TestResults/KhaozEngine.NonRender.slnx
             # Run both passes even after a test failure, and retain either failure as the step's exit status.
             run_suite TestResults/KhaozEngine.NonRender.slnx "${non_render_args[@]}" || status=$?
             run_suite KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj || status=$?
             rm TestResults/KhaozEngine.NonRender.slnx
+          elif [ "$KE_GRAPHICS_BACKEND" = "metal-native" ] && [ -z "$KE_RENDER_TEST_FILTER" ]; then
+            # Keep the cold native MCP capture clear of the other assemblies in single-job runs too (#1897).
+            write_project_solution projects-1 TestResults/KhaozEngine.MapEditor.slnx
+            write_project_solution rest TestResults/KhaozEngine.Remaining.slnx --include-render
+            run_suite TestResults/KhaozEngine.MapEditor.slnx || status=$?
+            run_suite TestResults/KhaozEngine.Remaining.slnx || status=$?
+            rm TestResults/KhaozEngine.MapEditor.slnx TestResults/KhaozEngine.Remaining.slnx
           else
             test_target=()
             if [ -n "$KE_RENDER_TEST_FILTER" ]; then

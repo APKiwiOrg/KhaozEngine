@@ -571,6 +571,11 @@ below). Each sharded leg runs as jobs named `<os> / <backend> / <shard>`:
   The seven-request log disclosure test took 114.42 seconds and timed out on the final malformed request,
   against 0.055 and 0.107 seconds in runs `39081283982` and `39082956923`, where Exchange finished before
   those assemblies started ([#1471](https://github.com/APKiwiOrg/KhaozEngine/issues/1471)).
+- `projects-1` on Metal runs `KhaozEngine.MapEditor.Tests` alone. Compiling scene shaders and pipelines for
+  the first native map capture can overrun the MCP test deadline when other test assemblies share the
+  runner ([#1897](https://github.com/APKiwiOrg/KhaozEngine/issues/1897)). In a single-job Metal full suite,
+  the same project runs first, followed by all remaining projects including `KhaozEngine.Render.Tests`.
+  Both passes use the same build and test filter, and either failure fails the job.
 - `projects-1` on Vulkan runs exactly `KhaozEngine.MapEditor.Tests`, `KhaozEngine.Game.Tests` and
   `KhaozEngine.Movement.Tests`. Their assemblies took 8.55 and 8.03 of the serial non-Render suite's 15.25 and
   14.99 minutes in runs `39039926687` and `39072468288`, whose `rest` jobs reached 20m03s and 20m00s.
@@ -613,21 +618,18 @@ The Windows-only NuGet cache still excludes every KhaozEngine extraction. The
 [measurement record](verification/2026-10-18-gpu-shard-build-cost-1472.md) compares scoped builds with per-OS
 output sharing.
 
-So a default-input dispatch expands to 3 Metal, 6 Windows and 13 Linux jobs plus the `sync` job.
-The source table therefore expands to 22 matrix jobs rather than 24. This is a job-count change,
-not a measured runtime saving. The org's Team plan
+So a default-input dispatch expands to 4 Metal, 6 Windows and 13 Linux jobs plus the `sync` job.
+The org's Team plan
 allows 60 concurrent hosted jobs and 5 concurrent macOS jobs
-([GitHub Actions limits](https://docs.github.com/en/actions/reference/limits)), so the 23 jobs of the dispatch
+([GitHub Actions limits](https://docs.github.com/en/actions/reference/limits)), so the 24 jobs of the dispatch
 and the 4 of the `ci` dispatch the pre-tag gate runs beside it all start at once. The macOS cap is the one that
 binds: every selected `push` and `pull_request` runs the Metal full suite too, so overlapping runs share 5 macOS slots.
-Metal stops at 3 jobs because its slowest shard is already well under the Vulkan floor, and a fourth would only
-spend that shared allowance. While Metal was sharded on every trigger, a push run on `main` that started 18
+While Metal was sharded on every trigger, a push run on `main` that started 18
 seconds before the gate dispatch held 3 slots, and the dispatch's `render-1` shard queued for 13 minutes (run
-`39041795759` took 27.3 minutes against 21.3 uncontended at the same commit). So `push` and `pull_request` run
-Metal's full suite as one job, about half an hour that nothing waits on, and a push run beside the gate needs 4
-macOS slots ([#1460](https://github.com/APKiwiOrg/KhaozEngine/issues/1460)).
-Main pushes keep distinct groups. Three overlapping automatic GPU runs and a three-shard dispatch
-need six macOS slots, so at least one job queues.
+`39041795759` took 27.3 minutes against 21.3 uncontended at the same commit). The `push` and `pull_request`
+triggers run Metal's full suite as one job ([#1460](https://github.com/APKiwiOrg/KhaozEngine/issues/1460)).
+A four-shard gate and one push use all five slots. Additional automatic Metal jobs queue because main
+pushes keep distinct groups.
 
 Every shard keeps its leg's instruments: `strict` validation and full serialisation on Vulkan, the pool watch on
 Windows, the debug layer and the device-evidence detector on Metal. **Coverage is guarded twice.** Before it runs

@@ -267,7 +267,7 @@ on:
         description: 'Temporary hosted Metal capture timing comparison'
         type: choice
         default: normal
-        options: [normal, layer-off]
+        options: [normal, layer-off, cold-wire]
       bake:
         description: 'Re-bake the per-backend goldens (KE_UPDATE_GOLDENS=1) and upload them as artifacts'
         type: boolean
@@ -834,9 +834,12 @@ jobs:
         env:
           LEG: ${{ matrix.backend }}
           SHARD: ${{ matrix.shard }}
+          METAL_WIRE_DIAGNOSTICS: ${{ inputs.metalWireDiagnostics }}
         run: |
           target=KhaozEngine.slnx
-          if [ -n "$SHARD" ]; then
+          if [ "$METAL_WIRE_DIAGNOSTICS" = "cold-wire" ]; then
+            target=KhaozEngine.MapEditor.Tests/KhaozEngine.MapEditor.Tests.csproj
+          elif [ -n "$SHARD" ]; then
             mkdir -p TestResults
             target=TestResults/gpu-build.slnx
             python3 scripts/gpu-test-shards.py build-solution "$LEG" "$SHARD" KhaozEngine.slnx "$target"
@@ -1299,6 +1302,7 @@ jobs:
           # itself checked against, which is what owning a family means. The refusal itself is unchanged and
           # still guards the rule for the next backend that shares rather than owns.
           KE_UPDATE_GOLDENS: ${{ (github.event_name == 'workflow_dispatch' && inputs.bake) && '1' || '' }}
+          KE_METAL_WIRE_DIAGNOSTICS: ${{ inputs.metalWireDiagnostics }}
           KE_RENDER_TEST_FILTER: ${{ github.event_name == 'workflow_dispatch' && inputs.renderTestFilter || '' }}
           KE_TEST_FILTER: ${{ (github.event_name == 'workflow_dispatch' && inputs.renderTestFilter) || ((matrix.fullSuite == 'always' || (matrix.fullSuite == 'scheduled' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'))) && 'Category!=LiveSocket&Category!=Diagnostic' || '(FullyQualifiedName~Golden|FullyQualifiedName~FoliageGpuTests)&Category!=Diagnostic') }}
           # WARP saturates the Windows runner's CPUs. Keep Render.Tests out of the other hosts' pass while
@@ -1381,7 +1385,10 @@ jobs:
             rm TestResults/KhaozEngine.NonRender.slnx
           else
             test_target=()
-            if [ -n "$KE_RENDER_TEST_FILTER" ]; then
+            if [ "$KE_METAL_WIRE_DIAGNOSTICS" = "cold-wire" ]; then
+              test_target=(KhaozEngine.MapEditor.Tests/KhaozEngine.MapEditor.Tests.csproj)
+              extra_args=(-- RunConfiguration.TreatNoTestsAsError=true)
+            elif [ -n "$KE_RENDER_TEST_FILTER" ]; then
               test_target=(KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj)
             fi
             run_suite "${test_target[@]}" || status=$?

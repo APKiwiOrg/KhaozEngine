@@ -101,14 +101,7 @@ internal static class ChainWidthReach
             var target = ChainConstraints.ClampBend(axis, _rest, _bendCosine);
             target = ChainConstraints.ClampBend(target, _direction, MaximumTurnCosine);
             target = ChainConstraints.ClampBend(target, _rest, _bendCosine);
-            for (int attempt = 0; attempt < 3; attempt++)
-            {
-                var proposed = Parent + Length * target;
-                if (ChainWidthClearance.DoesNotWorsen(particles, obstacles, Parent, Point, proposed, _radius))
-                    return proposed;
-                target = ChainMath.Direction(_direction + target, _direction);
-            }
-            return Point;
+            return ChainWidthClearance.Clip(particles, obstacles, Parent, Point, Parent + Length * target, Length, _radius);
         }
     }
 }

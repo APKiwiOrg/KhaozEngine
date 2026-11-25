@@ -36,9 +36,9 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   for other moving shapes, where short crossings can still be missed. An interior contact raises the
   child's speed at most to the obstacle's surface speed. If the parent is embedded, position and velocity
   both use tip contact. Competing contacts settle on a minimum change with a bounded residual.
-  The width bound moves a pair only toward the edge its lengths and bend limits can reach and keeps
-  solid contact, and the link second pass runs only for chains a spring moved. A chain's `radius` is
-  now also its thickness as an obstacle for higher layers, so consumers retune radii.
+  Width recovery preserves solid clearance along the turn, even when the proposed endpoint is clear.
+  Unbounded chains skip their second pass when link springs make no correction. Bounded groups always
+  run their depth solve. A chain's `radius` is also its thickness as an obstacle for higher layers.
   [#1889](https://github.com/APKiwiOrg/KhaozEngine/issues/1889)
 - `SwingCostDiagnostics` gains a layered case, the nearest 16 of 32 wearers simulated with a linked
   bounded cape over strap chains in a lower layer, and reports segment query counts per simulated

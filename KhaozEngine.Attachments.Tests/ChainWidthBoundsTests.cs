@@ -346,6 +346,43 @@ public sealed class ChainWidthBoundsTests(ITestOutputHelper output)
     }
 
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void A_width_sweep_stops_at_an_obstacle_between_clear_directions(bool unreachable, bool barrel)
+    {
+        var (particles, bounds) = CreateTipPair(1, colliderCount: 1);
+        PredictPair(particles, Vector3.Zero, Quaternion.Identity);
+        particles.Positions[2] = (unreachable ? 3 : 1) * Vector3.UnitX;
+        var opening = -Vector3.UnitY;
+        var opposite = particles.Positions[2] + opening;
+        particles.Positions[1] = opening;
+        particles.Positions[3] = opposite;
+
+        var center = new Vector3(0.06f, -0.5f, 0);
+        const float radius = 0.02f;
+        bounds.ProjectPositions(particles);
+        var clearProposal = particles.Positions[1];
+        Assert.True(ChainSegmentContactTests.DistanceToSegment(center, Vector3.Zero, opening) > radius);
+        Assert.True(ChainSegmentContactTests.DistanceToSegment(center, Vector3.Zero, clearProposal) > radius);
+        Assert.True(clearProposal.X / -clearProposal.Y > center.X / -center.Y);
+
+        var halfAxis = barrel ? 0.1f * Vector3.UnitZ : Vector3.Zero;
+        ColliderCapsule obstacle = new(center - halfAxis, center + halfAxis, radius);
+        particles.SetCapsuleGeometry(0, obstacle, obstacle);
+        particles.Positions[1] = opening;
+        particles.Positions[3] = opposite;
+        bounds.ProjectPositions(particles, obstacles: [obstacle]);
+
+        var tip = particles.Positions[1];
+        Assert.True(tip.X > 0);
+        Assert.True(tip.X / -tip.Y < center.X / -center.Y);
+        Assert.InRange(ChainSegmentContactTests.DistanceToSegment(center, Vector3.Zero, tip),
+            radius - 0.000001f, radius + 0.00001f);
+        Assert.True(particles.Positions[3].X < opposite.X);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void A_bounded_tip_does_not_approach_a_capsule_holding_it(bool stretching)

@@ -91,12 +91,30 @@ internal static class RendererPerfRecipeSettings
                 return;
             }
             if (info.Type != typeof(PixelPostProcessSettings)) return;
-            foreach (var property in info.Properties)
-                if (property.Name is nameof(PixelPostProcessSettings.IndirectDiffuse)
+            info.OnSerializing += RequireFrozenPostEffects;
+            for (int i = info.Properties.Count - 1; i >= 0; i--)
+            {
+                var property = info.Properties[i];
+                // Omit both contracts before JSON resolves nested types. A value predicate alone still
+                // discovers the colour cube's span constructor, even when the recipe has no look.
+                if (property.Name is nameof(PixelPostProcessSettings.ColorGrade)
+                    or nameof(PixelPostProcessSettings.AmbientOcclusion))
+                    info.Properties.RemoveAt(i);
+                else if (property.Name is nameof(PixelPostProcessSettings.IndirectDiffuse)
                     or nameof(PixelPostProcessSettings.AmbientIrradiance))
                     property.ShouldSerialize = LegacyIndirect;
+            }
         });
         return resolver;
+    }
+
+    static void RequireFrozenPostEffects(object value)
+    {
+        var settings = (PixelPostProcessSettings)value;
+        if (settings.AmbientOcclusion is { Enabled: true, Strength: > 0f })
+            throw new InvalidOperationException("The frozen renderer profile requires ambient occlusion to be bypassed.");
+        if (settings.ColorGrade is { Look.IsIdentity: false, Strength: > 0f })
+            throw new InvalidOperationException("The frozen renderer profile requires colour grading to be bypassed.");
     }
 
     static bool BoundOptics(object value, object? field) => field is WaterOpticsBinding { IsBound: true };

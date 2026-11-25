@@ -7,6 +7,11 @@ absolute block times, clipmap states, prop positions and yaw angles, tube constr
 parameters and the expected schedules. Changes to these inputs
 fail on every platform.
 
+Frozen recipes predate contact ambient occlusion and display colour grading. A disabled AO pass,
+a missing or identity look, and zero-strength effects keep the historical settings bytes. Freezing a
+recipe that requests either effect at positive strength refuses the extra work. Each block clears
+both effects on its scene before warm-up.
+
 `DerivedByPlatform` freezes the actual CPU renderer outputs for each runtime OS and
 process architecture, such as `osx-arm64`, `linux-x64` and `win-x64`. Camera outputs,
 frame matrix and pose digests, rest and inverse-bind matrices and their digests, seeded

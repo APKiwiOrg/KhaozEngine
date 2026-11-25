@@ -6,10 +6,10 @@ namespace KhaozEngine.Attachments;
 
 internal static class ChainWidthClearance
 {
-    private const float PositionTolerance = 0.000001f;
+    internal const float PositionTolerance = 0.000001f;
 
     internal static Vector3 Clip(ChainParticles particles, ReadOnlySpan<ColliderCapsule> obstacles,
-        Vector3 parent, Vector3 before, Vector3 after, float length, float radius)
+        Vector3 parent, Vector3 before, Vector3 after, float length, float radius, ChainWidthNearSolids? nearSolids, int chain)
     {
         int solids = Math.Min(obstacles.Length, particles.SolidCapsuleCount);
         if (solids == 0 || before == after)
@@ -23,8 +23,15 @@ internal static class ChainWidthClearance
             return before;
 
         var root = new Offset(parent);
-        var initial = new ChainSegmentContact.Segment(root, new Offset(before) - root);
         var proposed = new ChainSegmentContact.Segment(root, new Offset(after) - root);
+        var solidObstacles = obstacles[..solids];
+        var candidates = nearSolids is null ? new ChainWidthNearSolids.Candidates(solids) :
+            nearSolids.Select(particles, solidObstacles, chain, parent, length, radius);
+        int count = candidates.Count;
+        if (count == 0 && candidates.ForStored(proposed.Displacement).Count == 0)
+            return after;
+
+        var initial = new ChainSegmentContact.Segment(root, new Offset(before) - root);
         // Enclose the whole swept sector by padding its chord hull with the
         // maximum arc bulge and the stored endpoints' length rounding.
         double sag = Math.Sin(arc.Angle / 4);
@@ -36,9 +43,10 @@ internal static class ChainWidthClearance
         bool axisCull = ChainPlacementCull.AxisCullEnabled;
         var counts = ChainContactCounts.Active;
         double accepted = arc.Angle;
-        for (int index = 0; index < solids; index++)
+        for (int row = 0; row < count; row++)
         {
-            ref readonly var obstacle = ref obstacles[index];
+            int index = candidates.Index(row);
+            ref readonly var obstacle = ref solidObstacles[index];
             ref readonly var axis = ref particles.CapsuleAxes[index];
             var reach = axis.IsPoint ? pointReach : sweptReach;
             if (axisCull && !particles.PlacementCull.ReachesAxis(index, reach, swept: false))
@@ -50,7 +58,7 @@ internal static class ChainWidthClearance
                 continue;
 
             double inflated = (double)radius + obstacle.Radius;
-            double parentDistance = axis.Residual(root, default, out _).LengthSquared;
+            double parentDistance = candidates.ParentDistanceSquared(row, axis, root);
             double ballReach = length + inflated + PositionTolerance;
             if (parentDistance > ballReach * ballReach)
                 continue;
@@ -64,7 +72,7 @@ internal static class ChainWidthClearance
                 return before;
         }
         var candidate = accepted == arc.Angle ? after : arc.Endpoint(accepted);
-        if (StoredClearanceHolds(particles, obstacles[..solids], initial, candidate, radius, rounding, axisCull, counts))
+        if (StoredClearanceHolds(particles, solidObstacles, candidates, initial, candidate, radius, rounding, axisCull, counts))
             return accepted == arc.Angle || Moved(before, candidate) ? candidate : before;
 
         // Float storage can put the endpoint just past the certified limit.
@@ -76,7 +84,7 @@ internal static class ChainWidthClearance
         {
             double middle = (low + high) * 0.5;
             candidate = arc.Endpoint(middle);
-            if (StoredClearanceHolds(particles, obstacles[..solids], initial, candidate, radius, rounding, axisCull, counts))
+            if (StoredClearanceHolds(particles, solidObstacles, candidates, initial, candidate, radius, rounding, axisCull, counts))
             {
                 best = candidate;
                 low = middle;
@@ -93,20 +101,26 @@ internal static class ChainWidthClearance
         Vector3.DistanceSquared(before, after) > PositionTolerance * PositionTolerance;
 
     private static bool StoredClearanceHolds(ChainParticles particles, ReadOnlySpan<ColliderCapsule> solids,
-        in ChainSegmentContact.Segment initial, Vector3 candidate,
+        in ChainWidthNearSolids.Candidates candidates, in ChainSegmentContact.Segment initial, Vector3 candidate,
         float radius, double rounding, bool axisCull, ChainContactCounts? counts)
     {
         var root = initial.Root;
         var stored = new ChainSegmentContact.Segment(root, new Offset(candidate) - root);
+        // A rounded or authored endpoint can fall beyond the nominal length sphere.
+        var eligible = candidates.ForStored(stored.Displacement);
+        int count = eligible.Count;
+        if (count == 0)
+            return true;
         var reach = ChainPlacementCull.SegmentReach(stored, default, radius, includeOpening: false);
-        for (int index = 0; index < solids.Length; index++)
+        for (int row = 0; row < count; row++)
         {
+            int index = eligible.Index(row);
             if (axisCull && !particles.PlacementCull.ReachesAxis(index, reach, swept: false))
                 continue;
 
             double inflated = (double)radius + solids[index].Radius;
             ref readonly var axis = ref particles.CapsuleAxes[index];
-            bool tipOnly = axis.Residual(root, default, out _).LengthSquared < inflated * inflated;
+            bool tipOnly = eligible.ParentDistanceSquared(row, axis, root) < inflated * inflated;
             double distance = Distance(axis, stored, tipOnly, counts);
             if (distance < inflated && distance + rounding < Distance(axis, initial, tipOnly, counts))
                 return false;

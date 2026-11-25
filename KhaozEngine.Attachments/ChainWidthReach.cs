@@ -14,7 +14,7 @@ internal static class ChainWidthReach
 
     internal static bool ProjectIfOutsideReach(ChainParticles particles, in ChainWidthBounds.Pair pair,
         (float Minimum, float Maximum) band, ReadOnlySpan<ChainConstraints.JointStep> placed,
-        ReadOnlySpan<ColliderCapsule> obstacles, ReadOnlySpan<ChainSettings> settings)
+        ReadOnlySpan<ColliderCapsule> obstacles, ReadOnlySpan<ChainSettings> settings, ChainWidthNearSolids? nearSolids)
     {
         var first = new Corner(particles, pair.First, placed, settings);
         var second = new Corner(particles, pair.Second, placed, settings);
@@ -37,8 +37,8 @@ internal static class ChainWidthReach
         if (!tooWide)
             axis = -axis;
 
-        var left = first.Offer(particles, obstacles, axis);
-        var right = second.Offer(particles, obstacles, -axis);
+        var left = first.Offer(particles, obstacles, axis, nearSolids, pair.First.Chain);
+        var right = second.Offer(particles, obstacles, -axis, nearSolids, pair.Second.Chain);
         float initial = separation.LengthSquared();
         float candidate = Vector3.DistanceSquared(left, right);
         if (tooWide ? candidate < initial : candidate > initial)
@@ -93,7 +93,8 @@ internal static class ChainWidthReach
         internal Vector3 Support(Vector3 direction) => _held ? Point :
             Parent + Length * ChainConstraints.ClampBend(direction, _rest, _bendCosine);
 
-        internal Vector3 Offer(ChainParticles particles, ReadOnlySpan<ColliderCapsule> obstacles, Vector3 axis)
+        internal Vector3 Offer(ChainParticles particles, ReadOnlySpan<ColliderCapsule> obstacles, Vector3 axis,
+            ChainWidthNearSolids? nearSolids, int chain)
         {
             if (_held)
                 return Point;
@@ -101,7 +102,8 @@ internal static class ChainWidthReach
             var target = ChainConstraints.ClampBend(axis, _rest, _bendCosine);
             target = ChainConstraints.ClampBend(target, _direction, MaximumTurnCosine);
             target = ChainConstraints.ClampBend(target, _rest, _bendCosine);
-            return ChainWidthClearance.Clip(particles, obstacles, Parent, Point, Parent + Length * target, Length, _radius);
+            return ChainWidthClearance.Clip(particles, obstacles, Parent, Point, Parent + Length * target, Length, _radius,
+                nearSolids, chain);
         }
     }
 }

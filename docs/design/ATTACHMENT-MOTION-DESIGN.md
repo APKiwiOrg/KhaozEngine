@@ -289,8 +289,12 @@ sees only body and worn set capsules.
    gives a forbidden interval of angles. For other capsules, the solver certifies intervals in order with
    separating planes and stops before the first blocked or unresolved interval. The corner keeps the part
    of the turn that preserves its accepted solid clearance, even if both ends of the proposed turn clear.
+   The interval search carries the sine and cosine of each endpoint into its child intervals.
    The finite-axis reach bound encloses the two segments and pads their chord by the arc bulge and endpoint
    rounding. The proposed corner stays in its bend when the accepted pose is within it.
+   Each projection reuses an ordered list of nearby solid axes and their parent distances while that member's
+   parent position, length and radius stay the same. Stored endpoints beyond the padded length sphere recheck
+   the full solid list, since float rounding can make a farther axis relevant.
    A clipped turn below the width solve's 1 micrometre precision keeps the original endpoint. The free
    neighbour can still improve the gap. This prevents repeated width pushes through a capsule from making
    the neighbouring panels move at rest when segment contact undoes those pushes.

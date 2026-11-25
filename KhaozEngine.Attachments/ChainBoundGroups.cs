@@ -18,8 +18,9 @@ internal sealed class ChainBoundGroups
     private readonly int[] _capsuleCounts;
     private readonly ChainCapsuleCull[] _activeCulls;
     private readonly float[] _bendCosines;
+    private readonly ChainWidthNearSolids? _widthNearSolids;
 
-    internal ChainBoundGroups(ChainRig rig, IReadOnlyList<ChainWidthBounds.Pair> pairs, int colliderCount)
+    internal ChainBoundGroups(ChainRig rig, IReadOnlyList<ChainWidthBounds.Pair> pairs, int colliderCount, int solidColliderCount)
     {
         int count = rig.Chains.Count;
         _bounded = pairs.Count == 0 ? [] : new bool[count];
@@ -64,6 +65,11 @@ internal sealed class ChainBoundGroups
         _bendCosines = new float[PlacementRows];
         for (int row = 0; row < PlacementRows; row++)
             _capsuleCulls[row] = new ChainCapsuleCull(colliderCount);
+        _widthNearSolids = ChainWidthNearSolids.TryCreate(count, PlacementRows, solidColliderCount);
+        if (_widthNearSolids is not null)
+            foreach (var group in _groups)
+                for (int row = 0; row < group.Chains.Length; row++)
+                    _widthNearSolids.SetRow(group.Chains[row], row);
 
         bool IsTip(ChainWidthBounds.Member member) =>
             member.Particle - member.Root == rig.Chains[member.Chain].Joints.Count;
@@ -90,6 +96,7 @@ internal sealed class ChainBoundGroups
         var disabled = ChainContactOptimizations.DisabledForTests;
         bool reuseCandidates = ChainContactOptimizations.Use(disabled, ChainContactOptimization.FirstPassCandidates);
         bool reuseBend = ChainContactOptimizations.Use(disabled, ChainContactOptimization.BendCosine);
+        var nearSolids = ChainContactOptimizations.Use(disabled, ChainContactOptimization.WidthNearSolids) ? _widthNearSolids : null;
         var counts = ChainContactCounts.Active;
         foreach (var group in _groups)
         {
@@ -117,22 +124,23 @@ internal sealed class ChainBoundGroups
 
             for (int depth = 1; depth < group.BoundsByDepth.Length; depth++)
                 SolveDepth(particles, group.Chains, anchors, colliders, previousColliders, settings, seconds,
-                    depth, group.BoundsByDepth[depth], reuseBend);
+                    depth, group.BoundsByDepth[depth], reuseBend, nearSolids);
 
             // All tip pairs share one solve after every possible parent has finished.
             SolveDepth(particles, group.Chains, anchors, colliders, previousColliders, settings, seconds,
-                TipDepth, group.Tips, reuseBend);
+                TipDepth, group.Tips, reuseBend, nearSolids);
         }
     }
 
     private void SolveDepth(ChainParticles particles, int[] chains, ReadOnlySpan<Matrix4x4> anchors,
         ReadOnlySpan<ColliderCapsule> colliders, ReadOnlySpan<ColliderCapsule> previousColliders,
-        ReadOnlySpan<ChainSettings> settings, float seconds, int depth, ChainWidthBounds? width, bool reuseBend)
+        ReadOnlySpan<ChainSettings> settings, float seconds, int depth, ChainWidthBounds? width, bool reuseBend,
+        ChainWidthNearSolids? nearSolids)
     {
         PlaceDepth(particles, chains, anchors, colliders, settings, seconds, depth, reuseBend);
         if (width is not null)
         {
-            width.ProjectPositions(particles, _placed, colliders, settings);
+            width.ProjectPositions(particles, _placed, colliders, settings, nearSolids);
             ReapplyLimits(particles, chains, colliders, settings, depth, reuseBend);
         }
 

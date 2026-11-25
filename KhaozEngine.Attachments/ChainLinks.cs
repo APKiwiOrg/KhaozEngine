@@ -15,7 +15,7 @@ internal sealed class ChainLinks
     private readonly ChainFirstPassContacts[] _firstPass;
     private readonly ChainBoundGroups _boundGroups;
 
-    internal ChainLinks(ChainRig rig, IReadOnlyList<ChainLink> links, int colliderCount)
+    internal ChainLinks(ChainRig rig, IReadOnlyList<ChainLink> links, int colliderCount, int? solidColliderCount = null)
     {
         int capacity = links.Count == 0 ? 0 : checked(rig.JointCount + rig.Chains.Count);
         _corrections = new Vector3[capacity];
@@ -50,7 +50,7 @@ internal sealed class ChainLinks
         _linkedChains = [.. linkedChains];
         _moved = new bool[_linkedChains.Length];
         _firstPass = AllocateFirstPass(_linkedChains.Length, colliderCount);
-        _boundGroups = new ChainBoundGroups(rig, widthPairs, colliderCount);
+        _boundGroups = new ChainBoundGroups(rig, widthPairs, colliderCount, solidColliderCount ?? colliderCount);
     }
 
     internal int PlacementRows => _boundGroups.PlacementRows;

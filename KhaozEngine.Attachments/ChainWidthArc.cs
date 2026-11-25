@@ -30,7 +30,7 @@ internal readonly struct ChainWidthArc
 
     internal double Angle { get; }
 
-    internal Vector3 Endpoint(double angle) => (_root + Displacement(angle)).ToVector3();
+    internal Vector3 Endpoint(double angle) => (_root + Displacement(Math.SinCos(angle))).ToVector3();
 
     internal double ClearPrefix(in Axis axis, Offset initialResidual, bool tipOnly, double required, double end,
         ChainContactCounts? counts)
@@ -38,11 +38,13 @@ internal readonly struct ChainWidthArc
         if (axis.IsPoint)
             return PointPrefix(axis.Start - _root, tipOnly, required, end);
 
-        if (Separates(axis, initialResidual, tipOnly, required, 0, end))
+        var opening = new Sample(0);
+        var closing = new Sample(end);
+        if (Separates(axis, initialResidual, tipOnly, required, opening, closing))
             return end;
 
         int budget = QueryBudget;
-        return Visit(axis, tipOnly, required, 0, end, ref budget, counts);
+        return Visit(axis, tipOnly, required, opening, closing, ref budget, counts);
     }
 
     private double PointPrefix(Offset point, bool tipOnly, double required, double end)
@@ -68,30 +70,30 @@ internal readonly struct ChainWidthArc
         return Math.Clamp(entry, 0, end);
     }
 
-    private double Visit(in Axis axis, bool tipOnly, double required, double start, double end, ref int budget,
+    private double Visit(in Axis axis, bool tipOnly, double required, in Sample start, in Sample end, ref int budget,
         ChainContactCounts? counts)
     {
         if (budget == 0)
-            return start;
+            return start.Angle;
 
         budget--;
-        double middle = (start + end) * 0.5;
-        var segment = new Segment(_root, Displacement(middle));
+        var middle = new Sample((start.Angle + end.Angle) * 0.5);
+        var segment = new Segment(_root, Displacement(middle.SinCos));
         counts?.Record(ChainContactQuery.WidthSafety);
         var residual = tipOnly ? axis.Residual(segment.Root, segment.Displacement, out _) :
             axis.ClosestResidual(segment, out _, out _);
 
         if (Separates(axis, residual, tipOnly, required, start, end))
-            return end;
+            return end.Angle;
 
-        if ((end - start) * _length <= Resolution)
-            return start;
+        if ((end.Angle - start.Angle) * _length <= Resolution)
+            return start.Angle;
 
         double left = Visit(axis, tipOnly, required, start, middle, ref budget, counts);
-        return left < middle ? left : Visit(axis, tipOnly, required, middle, end, ref budget, counts);
+        return left < middle.Angle ? left : Visit(axis, tipOnly, required, middle, end, ref budget, counts);
     }
 
-    private bool Separates(in Axis axis, Offset residual, bool tipOnly, double required, double start, double end)
+    private bool Separates(in Axis axis, Offset residual, bool tipOnly, double required, in Sample start, in Sample end)
     {
         double squared = residual.LengthSquared;
         if (squared < required * required)
@@ -100,8 +102,8 @@ internal readonly struct ChainWidthArc
         var normal = residual * (1 / Math.Sqrt(squared));
         double a = Offset.Dot(normal, _initial);
         double b = Offset.Dot(normal, _tangent);
-        var (sinStart, cosStart) = Math.SinCos(start);
-        var (sinEnd, cosEnd) = Math.SinCos(end);
+        var (sinStart, cosStart) = start.SinCos;
+        var (sinEnd, cosEnd) = end.SinCos;
         double minimum = Math.Min(a * cosStart + b * sinStart, a * cosEnd + b * sinEnd);
         // For an interval no longer than pi there is at most one interior
         // extremum. A derivative changing from negative to positive is a minimum.
@@ -115,10 +117,13 @@ internal readonly struct ChainWidthArc
         return planeGap + projection >= required;
     }
 
-    private Offset Displacement(double angle)
+    private Offset Displacement((double Sin, double Cos) sample) =>
+        (_initial * sample.Cos + _tangent * sample.Sin) * _length;
+
+    private readonly struct Sample(double angle)
     {
-        var (sin, cos) = Math.SinCos(angle);
-        return (_initial * cos + _tangent * sin) * _length;
+        internal double Angle { get; } = angle;
+        internal (double Sin, double Cos) SinCos { get; } = Math.SinCos(angle);
     }
 
     private static Offset Unit(Offset vector) => vector * (1 / Math.Sqrt(vector.LengthSquared));

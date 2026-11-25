@@ -10,11 +10,15 @@ internal static partial class ChainCapsuleCollision
     internal static bool BeyondReach(Vector3 root, double contactReach, in ColliderCapsule capsule, in Axis axis)
     {
         var residual = axis.Residual(new Offset(root), default, out _);
+        double limit = contactReach + capsule.Radius + ReachRoundingMargin(root, capsule);
+        return residual.LengthSquared > limit * limit;
+    }
+
+    internal static double ReachRoundingMargin(Vector3 root, in ColliderCapsule capsule)
+    {
         var coordinates = Vector3.Max(Vector3.Abs(root), Vector3.Max(Vector3.Abs(capsule.Start), Vector3.Abs(capsule.End)));
         // Keep axes within reach plus both radii, contact tolerance and 1e-9 of coordinate scale for ~1e-16 double roundoff.
-        double projectionMargin = 1e-9 * Math.Max(coordinates.X, Math.Max(coordinates.Y, coordinates.Z));
-        double limit = contactReach + capsule.Radius + projectionMargin;
-        return residual.LengthSquared > limit * limit;
+        return 1e-9 * Math.Max(coordinates.X, Math.Max(coordinates.Y, coordinates.Z));
     }
 
     internal static Vector3 SurfaceVelocity(in ColliderCapsule capsule, in ColliderCapsule previous,

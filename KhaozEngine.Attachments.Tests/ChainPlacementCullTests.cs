@@ -88,6 +88,7 @@ public sealed class ChainPlacementCullTests(ITestOutputHelper output)
     [InlineData((int)ChainContactOptimization.RoundingReuse)]
     [InlineData((int)ChainContactOptimization.FirstPassCandidates)]
     [InlineData((int)ChainContactOptimization.BendCosine)]
+    [InlineData((int)ChainContactOptimization.WidthNearSolids)]
     [InlineData((int)ChainContactOptimization.All)]
     public void Contact_reuse_preserves_every_joint_frame_bit(int disabled)
     {
@@ -96,6 +97,14 @@ public sealed class ChainPlacementCullTests(ITestOutputHelper output)
         CompareLayeredSweep(flags);
         if (flags is ChainContactOptimization.FirstPassCandidates or ChainContactOptimization.BendCosine or ChainContactOptimization.All)
             CompareProbe(flags, bounded: false);
+        if (flags == ChainContactOptimization.WidthNearSolids)
+        {
+            // Keep the independent float cull off so the count exposes the near-solid cut.
+            const ChainContactOptimization control = ChainContactOptimization.AxisCull;
+            long reduced = Count(disable: false, control)[ChainContactQuery.WidthSafety];
+            long full = Count(disable: false, control | flags)[ChainContactQuery.WidthSafety];
+            Assert.True(reduced < full, $"Expected fewer exact width queries with reuse enabled. Got {reduced} versus {full}.");
+        }
     }
 
     [Fact]

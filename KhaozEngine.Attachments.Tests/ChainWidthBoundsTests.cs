@@ -346,6 +346,36 @@ public sealed class ChainWidthBoundsTests(ITestOutputHelper output)
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Width_clearance_matches_the_full_solid_scan_when_reach_changes(bool roundedEndpoint)
+    {
+        var (particles, _) = CreateTipPair(1, colliderCount: 1);
+        var parent = roundedEndpoint ? new Vector3(1024, 0, 0) : Vector3.Zero;
+        float ulp = MathF.BitIncrement(parent.X) - parent.X;
+        float length = roundedEndpoint ? 1.75f * ulp : 1;
+        var before = parent + length * Vector3.UnitY;
+        // At large coordinates the endpoint can round past the nominal radius.
+        var after = parent + length * Vector3.UnitX;
+        float radius = roundedEndpoint ? ulp / 16 : 0.125f;
+        ColliderCapsule sphere = new(after, after, radius);
+        particles.SetCapsuleGeometry(0, sphere, sphere);
+        var nearSolids = Assert.IsType<ChainWidthNearSolids>(ChainWidthNearSolids.TryCreate(1, 1, 1));
+
+        if (!roundedEndpoint)
+        {
+            var distantParent = new Vector3(100, 0, 0);
+            var distantTarget = distantParent + Vector3.UnitX;
+            Assert.Equal(distantTarget, ChainWidthClearance.Clip(particles, [sphere], distantParent,
+                distantParent + Vector3.UnitY, distantTarget, length, 0, nearSolids, 0));
+        }
+
+        var reference = ChainWidthClearance.Clip(particles, [sphere], parent, before, after, length, 0, null, 0);
+        Assert.NotEqual(after, reference);
+        Assert.Equal(reference, ChainWidthClearance.Clip(particles, [sphere], parent, before, after, length, 0, nearSolids, 0));
+    }
+
+    [Theory]
     [InlineData(false, false)]
     [InlineData(true, false)]
     [InlineData(false, true)]

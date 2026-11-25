@@ -12,8 +12,9 @@ internal enum ChainContactOptimization
     RoundingReuse = 1 << 4,
     FirstPassCandidates = 1 << 5,
     BendCosine = 1 << 6,
-    All = (1 << 7) - 1,
     PassTolerance = 1 << 7,
+    WidthNearSolids = 1 << 8,
+    All = SegmentCull | OpeningStamp | AxisCull | RoundingMargin | RoundingReuse | FirstPassCandidates | BendCosine | WidthNearSolids,
 }
 
 internal static class ChainContactOptimizations

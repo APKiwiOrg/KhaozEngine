@@ -23,8 +23,10 @@ internal sealed class ChainWidthBounds(ChainWidthBounds.Pair[] pairs)
     }
 
     internal void ProjectPositions(ChainParticles particles, ReadOnlySpan<ChainConstraints.JointStep> placed = default,
-        ReadOnlySpan<ColliderCapsule> obstacles = default, ReadOnlySpan<ChainSettings> settings = default)
+        ReadOnlySpan<ColliderCapsule> obstacles = default, ReadOnlySpan<ChainSettings> settings = default,
+        ChainWidthNearSolids? nearSolids = null)
     {
+        nearSolids?.BeginProjection();
         for (int index = 0; index < pairs.Length; index++)
         {
             var pair = pairs[index];
@@ -33,7 +35,7 @@ internal sealed class ChainWidthBounds(ChainWidthBounds.Pair[] pairs)
             var spacing = Vector3.Distance(particles.Positions[pair.First.Particle], particles.Positions[pair.Second.Particle]);
             var band = _bands[index];
             _outsideReach[index] = (spacing < band.Minimum - PositionTolerance || spacing > band.Maximum + PositionTolerance) &&
-                ChainWidthReach.ProjectIfOutsideReach(particles, pair, band, placed, obstacles, settings);
+                ChainWidthReach.ProjectIfOutsideReach(particles, pair, band, placed, obstacles, settings, nearSolids);
         }
 
         for (int sweeps = 0; sweeps < MaximumSweeps; sweeps++)
@@ -49,7 +51,7 @@ internal sealed class ChainWidthBounds(ChainWidthBounds.Pair[] pairs)
             int stop = forward ? pairs.Length : -1;
             for (int index = forward ? 0 : pairs.Length - 1; index != stop; index += direction)
                 if (!_outsideReach[index])
-                    Constrain(particles, pairs[index], _bands[index], margin, placed, obstacles, settings);
+                    Constrain(particles, pairs[index], _bands[index], margin, placed, obstacles, settings, nearSolids);
         }
     }
 
@@ -71,7 +73,8 @@ internal sealed class ChainWidthBounds(ChainWidthBounds.Pair[] pairs)
     }
 
     private static void Constrain(ChainParticles particles, in Pair pair, (float Minimum, float Maximum) band, float margin,
-        ReadOnlySpan<ChainConstraints.JointStep> placed, ReadOnlySpan<ColliderCapsule> obstacles, ReadOnlySpan<ChainSettings> settings)
+        ReadOnlySpan<ChainConstraints.JointStep> placed, ReadOnlySpan<ColliderCapsule> obstacles, ReadOnlySpan<ChainSettings> settings,
+        ChainWidthNearSolids? nearSolids)
     {
         int first = pair.First.Particle;
         int second = pair.Second.Particle;
@@ -131,8 +134,8 @@ internal sealed class ChainWidthBounds(ChainWidthBounds.Pair[] pairs)
             travel = next;
         }
 
-        var clearLeft = KeepClear(particles, pair.First, bestLeft, placed, obstacles, settings);
-        var clearRight = KeepClear(particles, pair.Second, bestRight, placed, obstacles, settings);
+        var clearLeft = KeepClear(particles, pair.First, bestLeft, placed, obstacles, settings, nearSolids);
+        var clearRight = KeepClear(particles, pair.Second, bestRight, placed, obstacles, settings, nearSolids);
         if (MathF.Abs(Vector3.Distance(clearLeft, clearRight) - bound) < MathF.Abs(spacing - bound))
         {
             particles.Positions[first] = clearLeft;
@@ -141,7 +144,8 @@ internal sealed class ChainWidthBounds(ChainWidthBounds.Pair[] pairs)
     }
 
     private static Vector3 KeepClear(ChainParticles particles, in Member member, Vector3 candidate,
-        ReadOnlySpan<ChainConstraints.JointStep> placed, ReadOnlySpan<ColliderCapsule> obstacles, ReadOnlySpan<ChainSettings> settings)
+        ReadOnlySpan<ChainConstraints.JointStep> placed, ReadOnlySpan<ColliderCapsule> obstacles, ReadOnlySpan<ChainSettings> settings,
+        ChainWidthNearSolids? nearSolids)
     {
         var before = particles.Positions[member.Particle];
         if (obstacles.IsEmpty || particles.SolidCapsuleCount == 0 || member.Anchored)
@@ -166,7 +170,7 @@ internal sealed class ChainWidthBounds(ChainWidthBounds.Pair[] pairs)
                 candidate = parent + length * limited;
         }
 
-        return ChainWidthClearance.Clip(particles, obstacles, parent, before, candidate, length, config.Radius);
+        return ChainWidthClearance.Clip(particles, obstacles, parent, before, candidate, length, config.Radius, nearSolids, member.Chain);
     }
 
     private readonly struct SphereMove

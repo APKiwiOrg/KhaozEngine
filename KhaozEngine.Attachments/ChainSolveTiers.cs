@@ -25,7 +25,7 @@ internal sealed class ChainSolveTiers
         {
             var group = groups[index];
             var chains = group.ToArray();
-            var tierLinks = new ChainLinks(rig, links[group.Key].ToArray(), obstacleCount);
+            var tierLinks = new ChainLinks(rig, links[group.Key].ToArray(), obstacleCount, colliderCount);
             bool exposesSegments = group.Key is not null && index + 1 < groups.Length;
             _tiers[index] = new Tier(chains, tierLinks, obstacleCount, exposesSegments);
             placementRows = Math.Max(placementRows, tierLinks.PlacementRows);

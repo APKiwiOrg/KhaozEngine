@@ -101,5 +101,10 @@ policy, and cancellation. A restart uses the configured day length and resets ti
   a fan-out that was the process's first thread pool use, from a caller rounding toward zero, left every pool
   thread rounding toward zero. Both scopes are allocation-free (each saves the register, writes the canonical
   state and restores the saved one, once per job and once more per multi-job call) and nest harmlessly.
+  **`WorkerJobScheduler`** is the opt-in alternative for allocation-sensitive frames. Construct it once with the
+  number of dedicated background threads to use in addition to the caller. It takes reusable delegates without
+  allocating once warm and gives jobs and the caller the same FP scopes. New indices stop being claimed on the
+  first failure, and the caller gets that exception back with its stack after the running jobs finish. Top-level
+  calls are serialized, and calls from inside a job run inline. Dispose the scheduler outside its jobs.
 
 Part of the MMO netcode stack (sub-project 0B). Depends on `KhaozEngine.Determinism` and nothing else.

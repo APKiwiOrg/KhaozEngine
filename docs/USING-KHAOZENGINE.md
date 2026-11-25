@@ -28648,10 +28648,12 @@ protocol's 1015-byte width, with the same wire bytes they always had.
 ### Worker-pool seam (`IJobScheduler`) + parallel cell ticks
 
 **`IJobScheduler`** (in `KhaozEngine.Simulation`) is the engine's one worker-pool abstraction: `For(int count,
-Action<int> body)` runs `count` independent jobs and blocks until all finish. Two implementations ship:
-`SingleThreadedJobScheduler` (the default everywhere - runs jobs inline in index order, deterministic and
-allocation-free) and `ThreadPoolJobScheduler` (fans them across the BCL thread pool via `Parallel.For`, optional
-`maxDegreeOfParallelism`).
+Action<int> body)` runs `count` independent jobs and blocks until all finish. `SingleThreadedJobScheduler`
+is the default and runs jobs inline in index order without allocations. `ThreadPoolJobScheduler` uses the BCL
+thread pool via `Parallel.For` and takes an optional `maxDegreeOfParallelism`. `WorkerJobScheduler` reuses a fixed
+number of dedicated background threads, with the caller participating, and allocates nothing once warm.
+Calls to it from inside its jobs run inline. Concurrent top-level calls on the same instance serialize.
+Own and dispose a dedicated scheduler for the lifetime of the workload, and reuse the job delegate across calls.
 
 A `ShardHost`'s cells are disjoint `World`s, so its `Tick` is embarrassingly parallel. Opt in by assigning a
 scheduler; everything else is unchanged, and the parallel result is identical to the single-threaded one:

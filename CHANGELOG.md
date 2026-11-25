@@ -4,6 +4,21 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 24.12.0
+
+2026-11-26
+
+- `TileDocumentGroundHeight` places presented bodies on the same ground triangles used by the terrain mesh and
+  colliders, including authored overlay cuts. `TileGroundHeight.TrySample` exposes that surface to headless callers.
+  [#1479](https://github.com/APKiwiOrg/KhaozEngine/issues/1479)
+- Legacy ground navigation can bake and follow uphill and sideways routes on smooth physics slopes. A grounded
+  capsule takes clearance vertically on a verified inclined plane, so it can reach the waypoint. Stair edges
+  retain their horizontal clearance. Rebake saved profiles to pick up the corrected edges.
+  [#1265](https://github.com/APKiwiOrg/KhaozEngine/issues/1265)
+- The SQLite account store reports `AccountDataRefusal.UpdateReturnedNoRow` when an adopted table discards a
+  whitelist change, ban or unban for an existing account. It rolls back trigger writes and returns `null` for a
+  missing account. [#1718](https://github.com/APKiwiOrg/KhaozEngine/issues/1718)
+
 ## 24.11.0
 
 2026-11-25

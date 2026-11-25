@@ -1,8 +1,9 @@
 # NPC movement fixes: swimming routes, route pace and low lips
 
 Status: implemented and verified. The current movement contracts and M rulings are recorded below. Swimming routes (#1256),
-route carry (#1257) and low prop support (#1253) are staged for 20.20.0. Smooth-slope bake edges (#1265) are deferred
-by ruling M20. No release or tag is claimed.
+route carry (#1257) and low prop support (#1253) shipped in 20.20.0. Ruling M20 deferred the smooth-slope bake fix
+from the original round. The [Legacy slope proof](../../KhaozEngine.Movement/README.md#capsule-checked-ground-profiles)
+now owns that behavior.
 
 Consumer: Grimhollow P5 creature host on engine 20.18.0, branch `feature/p5-lane-n`.
 Engine issues: [#1256](https://github.com/APKiwiOrg/KhaozEngine/issues/1256) (swimming body cannot be steered),
@@ -312,8 +313,7 @@ approach. The swim term needs `SwimSpeed x zone scale` above zero, and a zero sw
 the default 64 steps of 1/30 s and a zone scale of 1 that covers banks between 0.25 m cells. Larger cells or slow
 zones must raise `MaxEdgeProbeSteps`, or the float layer is cut off from the land. The budget applies to each directed
 edge, so in a slow zone a shoreward swim can fit while the wade out does not, which leaves a one-way exit from the
-water rather than a route into it. Dry bank edges on a smooth sloped physics shoreline are also subject to
-https://github.com/APKiwiOrg/KhaozEngine/issues/1265, deferred by ruling M20, so the facts use 2 cm terraces.
+water rather than a route into it. The bank fixtures use 2 cm terraces to retain discrete step coverage.
 
 Deepest-contact limit (ruling M5). The query reports the deepest contact only, so a shallow side contact under a
 deeper bed contact can pass a slice. Deep water has no bed contact, so the limit applies only within about one step
@@ -613,7 +613,7 @@ Recorded on 2026-10-03 by the orchestrator. They replace the first draft's open 
   emitted at `f >= W`.
 - M18: a vertical slope-rest allowance in the ground arrival rule for #1265. Tried and reverted.
 - M19: a core change resolving walkable contacts vertically while moving. Tried, it broke stair tests, not committed.
-- M20: #1265 is deferred out of this round, with its repro committed skipped.
+- M20: #1265 was deferred from this round. The committed bake reproduction is active under the Legacy slope proof.
 - M21: a runtime fact proves a duck wades out to deep water and back along a baked aquatic route.
 
 The plan's Outcome records each ruling's reason and cost.

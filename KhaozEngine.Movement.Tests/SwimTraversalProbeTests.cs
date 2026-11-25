@@ -171,8 +171,6 @@ public class SwimTraversalProbeTests
 
     /// <summary>A terraced bank: land at 0 below x 0, then 0.25 m terraces each 0.02 m lower, down to -0.6 from x 7.5.
     /// Cell centres of a 0.25 m grid from x 0 sit mid-terrace.</summary>
-    /// <remarks>Terraces rather than a smooth physics slope: dry ground proofs on a smooth physics slope of this
-    /// grade refuse uphill and lateral edges, which predates aquatic profiles.</remarks>
     internal static float RampBed(float x) => x < 0f ? 0f : x >= 7.5f ? -0.6f : -0.02f * (MathF.Floor(x / 0.25f) + 1f);
 
     /// <summary>The analytic ground matches <see cref="RampWorld"/>, with water at 0 over the whole world.</summary>

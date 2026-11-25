@@ -443,7 +443,15 @@ that scope, and each proof constructor refuses a source without it, so no bake p
 Bakes keep their links, refusals and exceptions bit for bit, while runtime movement and runtime Drop following may
 continue past a proof the bake refused.
 The initial hold is slice one of the bounded probe. The default is `1 / 30` seconds and at most 64 core calls.
-Arrival uses a 1 mm proof tolerance. This is a bounded proof tolerance, not a gameplay reach epsilon.
+Arrival uses a 1 mm proof tolerance.
+
+On a smooth physics slope, a Legacy capsule's bottom sphere touches the surface away from the column's down ray.
+The feet rest above that ray's height by `r (1 / cos slope - 1)`. A dry Legacy proof can use this resting height when
+the endpoint ray and the actual capsule support identify the same walkable static surface and plane. Arrival still
+requires horizontal position within 1 mm of the endpoint, grounded state and an eligible footprint. The shared
+Legacy movement core clears verified planes vertically so both bake steps and runtime `MoveToRange` can approach
+their endpoints without a downhill shove cancelling short commands. Rebake saved Legacy profiles to pick up the
+corrected edges. [#1265](https://github.com/APKiwiOrg/KhaozEngine/issues/1265)
 
 Contact profiles keep raw axis surfaces as layer, area and candidate-link identity. Each surface gets a certified
 resting anchor within its own band, from raw feet minus `GroundedEpsilon` through raw feet plus `StepHeight`,
@@ -487,16 +495,7 @@ its step and slide capsules per thread. Engine tests in the allocation-sensitive
 | `BuildProfile`, 16 m by 16 m flat world at 0.25 m, 4,096 columns | 58,774 B per column | 80 B per column | at most 1 KiB per column |
 
 The remaining profile bytes are the result grids. A 48 m by 48 m flat world at 0.25 m (36,864 columns) allocated
-98.6 B per column in one dev Mac observation. Elapsed time is not gated, because the physics query count is
-unchanged.
-
-Legacy profile proofs on smooth sloped physics ground are limited, and so is route following there. Two causes were
-measured. A grounded capsule on a physics slope rests above the captured centre height, by `r (1 / cos slope - 1)`.
-A body under command also creeps down the slope by 1.25 to 3.77 mm, because the core's push-out shoves it downhill
-each tick, and allowing for the height alone did not cure the miss. So uphill and sideways edges can fail the 1 mm
-arrival tolerance and drop out of the graph, and at runtime `MoveToRange` can stall short of a waypoint on a smooth
-slope. This is open as [#1265](https://github.com/APKiwiOrg/KhaozEngine/issues/1265)
-and is not fixed in this release. Check routes over sloped physics ground in the game's own world.
+98.6 B per column in one dev Mac observation. These are allocation measurements.
 
 ### Unpowered Contact Drop routes
 
@@ -832,8 +831,7 @@ swims. It needs about `wading length / (EdgeProbeSeconds x 1 m/s x WadeMinSpeedS
 wades, plus `swimming length / min(CapsuleRadius, EdgeProbeSeconds x SwimSpeed x zone scale)` steps once it swims,
 plus a few steps of final approach. The default 64 steps of 1/30 s cover banks between 0.25 m cells at a zone scale
 of 1. Larger cells or slow zones must raise `MaxEdgeProbeSteps`, or the float layer is cut off from the land. The
-budget applies to each directed edge, so in a slow zone a shoreward swim can fit while the wade out does not. Dry
-bank edges on a smooth sloped physics shoreline are subject to #1265 like any slope.
+budget applies to each directed edge, so in a slow zone a shoreward swim can fit while the wade out does not.
 
 ## Baked profile sets
 

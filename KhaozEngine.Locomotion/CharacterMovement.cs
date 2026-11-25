@@ -608,7 +608,7 @@ public static partial class CharacterMovement
     // ground proof reuses one step capsule instead of building one per step.
     [ThreadStatic] private static CapsuleShape? lastStepCapsule;
 
-    private static CapsuleShape CachedCapsuleFor(in MoveTuning tuning)
+    internal static CapsuleShape CachedCapsuleFor(in MoveTuning tuning)
     {
         float radius = tuning.CapsuleRadius, length = CapsuleLength(tuning);
         CapsuleShape? last = lastStepCapsule;

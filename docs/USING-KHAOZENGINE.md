@@ -10078,7 +10078,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="24.11.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="24.12.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -10348,16 +10348,14 @@ startup or wall-clock guarantee. Issue [#1233](https://github.com/APKiwiOrg/Khao
 open adoption prerequisite for steep meshes and filtered ground. Issue [#1238](https://github.com/APKiwiOrg/KhaozEngine/issues/1238)
 is resolved by the reconciled `PhysicsColumnProbe` representable-progress fix. Small local physics coordinates or
 rebasing are required for large absolute requests. There is no ground-sampler fallback and no full Hollowmere or
-steep-bank guarantee. On smooth sloped physics ground, uphill and sideways edges can drop out of the graph and the
-follower can stall short of waypoints at runtime
-([#1265](https://github.com/APKiwiOrg/KhaozEngine/issues/1265), open). Two causes were measured: a grounded capsule
-rests above the captured centre height, and a body under command creeps 1.25 to 3.77 mm down the slope because the
-core's push-out shoves it downhill. Allowing for the height alone did not cure it. The NPC and player driver APIs are
-documented below.
+steep-bank guarantee. Legacy dry proofs can bake directed edges on smooth physics slopes by matching the resting
+capsule to the captured surface. The shared Legacy step clears confirmed slopes vertically so runtime movement
+can follow those edges. Rebake saved Legacy profiles to pick up the corrected edges.
+[Legacy slope proof and arrival rules](../KhaozEngine.Movement/README.md#capsule-checked-ground-profiles)
 
 Legacy profile building allocates no garbage per proof. A warmed penetration query and a warmed edge proof allocate
 zero bytes, and a 4,096-column flat `BuildProfile` allocates 80 bytes per column, down from 58,774. Engine tests
-gate at most 1 KiB per column. Elapsed time is not gated, because the physics query count is unchanged.
+gate at most 1 KiB per column.
 
 ### Opt into Contact Drop routes
 
@@ -10689,7 +10687,7 @@ See the [Movement arrival contract](../KhaozEngine.Movement/README.md#range-stee
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="24.11.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="24.12.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -11700,7 +11698,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="24.11.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="24.12.0" />
 ```
 
 ```csharp
@@ -21727,7 +21725,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="24.11.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="24.12.0" />
 ```
 
 ```csharp
@@ -21763,7 +21761,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="24.11.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="24.12.0" />
 ```
 
 ```csharp
@@ -22014,7 +22012,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="24.11.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="24.12.0" />
 ```
 
 ```csharp
@@ -26960,7 +26958,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="24.11.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="24.12.0" />
 </ItemGroup>
 ```
 

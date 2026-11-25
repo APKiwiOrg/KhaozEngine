@@ -36,8 +36,10 @@ internal static class GroundTraversalProbe
 
         body = dry.Step(body, Vector2.Zero, false, stepSeconds, probe);
         Vector3 feet = Feet(body, probe);
-        if (!body.Grounded || !Finite(feet) || !Near(feet, fromFeet) || !acceptsFootprint(feet)) return false;
-        if (GroundArrived(body, feet, toFeet, probe)) return true;
+        var start = new LegacySlopeEndpoint(fromFeet);
+        if (!body.Grounded || !Finite(feet) || !start.Arrived(dry, probe, feet) || !acceptsFootprint(feet)) return false;
+        var target = new LegacySlopeEndpoint(toFeet);
+        if (fromFeet == toFeet || target.Arrived(dry, probe, feet)) return true;
 
         // The hold is the first slice of the budget. All further positions come from the core.
         for (int step = 1; step < maxSteps; step++)
@@ -51,13 +53,13 @@ internal static class GroundTraversalProbe
             body = dry.Step(body, direction, false, stepSeconds, probe);
             feet = Feet(body, probe);
             if (!body.Grounded || !Finite(feet) || !acceptsFootprint(feet)) return false;
-            if (GroundArrived(body, feet, toFeet, probe)) return true;
+            if (target.Arrived(dry, probe, feet)) return true;
         }
         return false;
     }
 
-    /// <summary>The one rule for whether a slice of a ground proof has arrived: the body is grounded and its feet lie
-    /// within <see cref="ArrivalTolerance"/> of the target in a straight line. The tuning is the proof's tuning.</summary>
+    /// <summary>Explicit and mixed-medium ground arrival requires grounding and feet within
+    /// <see cref="ArrivalTolerance"/> of the target in a straight line.</summary>
     internal static bool GroundArrived(in MoveState body, Vector3 feet, Vector3 target, in MoveTuning tuning)
         => body.Grounded && Near(feet, target);
 

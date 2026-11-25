@@ -385,6 +385,12 @@ movement core, and the old default remains unchanged.
   via `ComputePenetration` is retained as a residual settle pass. Pass `world: null` for terrain-only
   (byte-identical to pre-8.4.0).
 
+  **Smooth physics slopes.** A grounded Legacy capsule clears a confirmed inclined plane vertically while moving.
+  Downward rays at the capsule axis and its implied point of tangency must agree with the clearance contact's plane
+  and the same walkable static. The vertical lift preserves the clearance along that plane's normal, so the slope's
+  clearance push no longer cancels short horizontal commands. Stair and ledge contacts keep their normal clearance
+  handling when the plane evidence fails. [#1265](https://github.com/APKiwiOrg/KhaozEngine/issues/1265)
+
   **Low prop support (20.20.0, players and NPCs, no opt-in).** A grounded body at terrain height now stands on a
   low prop top that the ground height callback does not report, such as a 2.5 cm deck edge, a curb or a doorstep,
   instead of sinking into it and seating at the terrain inside the prop. A surface counts only when its normal is at

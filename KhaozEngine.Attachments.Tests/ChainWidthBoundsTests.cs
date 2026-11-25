@@ -319,6 +319,32 @@ public sealed class ChainWidthBoundsTests(ITestOutputHelper output)
         Assert.InRange(Vector3.Distance(right, particles.Positions[3]), 0, rounding);
     }
 
+    [Fact]
+    public void A_width_sweep_keeps_a_supported_segment_clear_while_its_neighbour_moves()
+    {
+        var (particles, bounds) = CreateTipPair(1, colliderCount: 1);
+        PredictPair(particles, Vector3.Zero, Quaternion.Identity);
+        const float outward = 0.06f;
+        float y = -MathF.Sqrt(1 - outward * outward);
+        var left = new Vector3(-outward, y, 0);
+        var right = particles.Positions[2] + new Vector3(outward, y, 0);
+        particles.Positions[1] = left;
+        particles.Positions[3] = right;
+        const float radius = 0.15f;
+        var center = left + radius * new Vector3(-y, -outward, 0);
+        ColliderCapsule sphere = new(center, center, radius);
+        particles.SetCapsuleGeometry(0, sphere, sphere);
+        const float rounding = 0.000001f;
+        Assert.InRange(ChainSegmentContactTests.DistanceToSegment(center, Vector3.Zero, left),
+            radius - rounding, radius + rounding);
+
+        bounds.ProjectPositions(particles, obstacles: [sphere]);
+
+        Assert.True(ChainSegmentContactTests.DistanceToSegment(center, Vector3.Zero, particles.Positions[1])
+            >= radius - rounding);
+        Assert.True(Vector3.Distance(particles.Positions[1], particles.Positions[3]) < Vector3.Distance(left, right));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

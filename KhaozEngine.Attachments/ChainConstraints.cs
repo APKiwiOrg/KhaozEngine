@@ -6,7 +6,7 @@ namespace KhaozEngine.Attachments;
 internal static class ChainConstraints
 {
     internal readonly record struct JointStep(int Joint, int Particle, Vector3 Start, float Length,
-        Matrix4x4 Unswung, Vector3 Rest, Vector3 Direction, bool Clamped, Vector3 End, bool ReplayedAll, int PlacementCount);
+        Matrix4x4 Unswung, Vector3 Rest, float BendCosine, Vector3 Direction, bool Clamped, Vector3 End, bool ReplayedAll, int PlacementCount);
 
     internal static void FollowChain(ChainParticles particles, int chain, in Matrix4x4 anchor,
         ReadOnlySpan<ColliderCapsule> colliders, ReadOnlySpan<ColliderCapsule> previousColliders,
@@ -93,7 +93,7 @@ internal static class ChainConstraints
             predicted += correction;
         }
 
-        var step = new JointStep(joint, particle, start, length, world, rest, default, false, default, false, capsules.Count);
+        var step = new JointStep(joint, particle, start, length, world, rest, cosine, default, false, default, false, capsules.Count);
         return PlaceOnSphere(particles, placementRow, step, predicted, cosine, radius, capsules);
     }
 
@@ -123,7 +123,7 @@ internal static class ChainConstraints
         particles.Positions[step.Particle + 1] = end;
         return step with
         {
-            Direction = direction, Clamped = clamped, End = end, ReplayedAll = replayedAll, PlacementCount = placementCount
+            BendCosine = cosine, Direction = direction, Clamped = clamped, End = end, ReplayedAll = replayedAll, PlacementCount = placementCount
         };
     }
 

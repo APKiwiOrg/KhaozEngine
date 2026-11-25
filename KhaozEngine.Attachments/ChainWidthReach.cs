@@ -1,6 +1,5 @@
 using System;
 using System.Numerics;
-using static KhaozEngine.Attachments.ChainCapsuleCollision;
 
 namespace KhaozEngine.Attachments;
 
@@ -75,7 +74,8 @@ internal static class ChainWidthReach
             int joint = member.Particle - member.Chain - 1;
             var config = settings.IsEmpty ? particles.Rig.Chains[member.Chain].Settings : settings[member.Chain];
             _radius = config.Radius;
-            _bendCosine = config.AngleLimit == MathF.PI ? -1 : MathF.Cos(config.AngleLimit);
+            _bendCosine = placed.IsEmpty ? (config.AngleLimit == MathF.PI ? -1 : MathF.Cos(config.AngleLimit)) :
+                placed[member.Chain].BendCosine;
             Length = particles.Lengths[joint];
             Parent = particles.Positions[member.Particle - 1];
             _rest = placed.IsEmpty
@@ -104,40 +104,11 @@ internal static class ChainWidthReach
             for (int attempt = 0; attempt < 3; attempt++)
             {
                 var proposed = Parent + Length * target;
-                if (ClearanceDoesNotWorsen(particles, obstacles, proposed))
+                if (ChainWidthClearance.DoesNotWorsen(particles, obstacles, Parent, Point, proposed, _radius))
                     return proposed;
                 target = ChainMath.Direction(_direction + target, _direction);
             }
             return Point;
-        }
-
-        private bool ClearanceDoesNotWorsen(ChainParticles particles, ReadOnlySpan<ColliderCapsule> obstacles, Vector3 proposed)
-        {
-            var root = new Offset(Parent);
-            var initial = new ChainSegmentContact.Segment(root, new Offset(Point) - root);
-            var candidate = new ChainSegmentContact.Segment(root, new Offset(proposed) - root);
-            var reach = ChainPlacementCull.SegmentReach(candidate, default, _radius, includeOpening: false);
-            for (int index = 0; index < Math.Min(obstacles.Length, particles.SolidCapsuleCount); index++)
-            {
-                double radius = (double)_radius + obstacles[index].Radius;
-                ref readonly var axis = ref particles.CapsuleAxes[index];
-                if (ChainPlacementCull.AxisCullEnabled && !particles.PlacementCull.ReachesAxis(index, reach, swept: false))
-                    continue;
-
-                bool parentInside = axis.Residual(root, default, out _).LengthSquared < radius * radius;
-                double corrected = Distance(axis, candidate, parentInside);
-                if (corrected < radius && corrected + PositionTolerance < Distance(axis, initial, parentInside))
-                    return false;
-            }
-            return true;
-        }
-
-        private static double Distance(in Axis axis, in ChainSegmentContact.Segment segment, bool parentInside)
-        {
-            ChainContactCounts.Record(ChainContactQuery.WidthSafety);
-            var residual = parentInside ? axis.Residual(segment.Root, segment.Displacement, out _) :
-                axis.ClosestResidual(segment, out _, out _);
-            return Math.Sqrt(residual.LengthSquared);
         }
     }
 }

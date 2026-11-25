@@ -49,7 +49,7 @@ internal sealed class ChainWidthBounds(ChainWidthBounds.Pair[] pairs)
             int stop = forward ? pairs.Length : -1;
             for (int index = forward ? 0 : pairs.Length - 1; index != stop; index += direction)
                 if (!_outsideReach[index])
-                    Constrain(particles, pairs[index], _bands[index], margin);
+                    Constrain(particles, pairs[index], _bands[index], margin, placed, obstacles, settings);
         }
     }
 
@@ -70,7 +70,8 @@ internal sealed class ChainWidthBounds(ChainWidthBounds.Pair[] pairs)
         return false;
     }
 
-    private static void Constrain(ChainParticles particles, in Pair pair, (float Minimum, float Maximum) band, float margin)
+    private static void Constrain(ChainParticles particles, in Pair pair, (float Minimum, float Maximum) band, float margin,
+        ReadOnlySpan<ChainConstraints.JointStep> placed, ReadOnlySpan<ColliderCapsule> obstacles, ReadOnlySpan<ChainSettings> settings)
     {
         int first = pair.First.Particle;
         int second = pair.Second.Particle;
@@ -130,8 +131,42 @@ internal sealed class ChainWidthBounds(ChainWidthBounds.Pair[] pairs)
             travel = next;
         }
 
-        particles.Positions[first] = bestLeft;
-        particles.Positions[second] = bestRight;
+        var clearLeft = KeepClear(particles, pair.First, bestLeft, placed, obstacles, settings);
+        var clearRight = KeepClear(particles, pair.Second, bestRight, placed, obstacles, settings);
+        if (MathF.Abs(Vector3.Distance(clearLeft, clearRight) - bound) < MathF.Abs(spacing - bound))
+        {
+            particles.Positions[first] = clearLeft;
+            particles.Positions[second] = clearRight;
+        }
+    }
+
+    private static Vector3 KeepClear(ChainParticles particles, in Member member, Vector3 candidate,
+        ReadOnlySpan<ChainConstraints.JointStep> placed, ReadOnlySpan<ColliderCapsule> obstacles, ReadOnlySpan<ChainSettings> settings)
+    {
+        var before = particles.Positions[member.Particle];
+        if (obstacles.IsEmpty || particles.SolidCapsuleCount == 0 || member.Anchored)
+            return candidate;
+
+        var config = settings.IsEmpty ? particles.Rig.Chains[member.Chain].Settings : settings[member.Chain];
+        int joint = member.Particle - member.Chain - 1;
+        var parent = particles.Positions[member.Particle - 1];
+        float length = particles.Lengths[joint];
+        if (!placed.IsEmpty && config.AngleLimit != MathF.PI && candidate != before)
+        {
+            var rest = placed[member.Chain].Rest;
+            float cosine = placed[member.Chain].BendCosine;
+            // Contact may have left the accepted endpoint outside the bend.
+            // In that case keep the already supported endpoint in this sweep.
+            var initial = ChainMath.Direction(before - parent, rest);
+            if (Vector3.Dot(initial, rest) < cosine - PositionTolerance)
+                return before;
+            var direction = ChainMath.Direction(candidate - parent, initial);
+            var limited = ChainConstraints.ClampBend(direction, rest, cosine);
+            if (limited != direction)
+                candidate = parent + length * limited;
+        }
+
+        return ChainWidthClearance.Clip(particles, obstacles, parent, before, candidate, length, config.Radius);
     }
 
     private readonly struct SphereMove

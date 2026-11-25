@@ -286,6 +286,11 @@ sees only body and worn set capsules.
    error. Each turn is at most a quarter radian and stays in its bend cone. A corner already held beyond its bend
    by solid contact keeps its placed position. A proposal that increases solid penetration may take a smaller turn
    or keep its prior position. This avoids using the full width lever on a gap that the local recheck cannot keep.
+   Regular width sweeps also respect solid contact. The proposed corner stays in its bend when the accepted
+   pose is within it, and a solid can clip the turn to the part that preserves its accepted clearance.
+   A clipped turn below the width solve's 1 micrometre precision keeps the original endpoint. The free
+   neighbour can still improve the gap. This prevents repeated width pushes through a capsule from making
+   the neighbouring panels move at rest when segment contact undoes those pushes.
    Then test each band ending at the current row, with the row above fixed. For an uneven pair, the last band
    joins the last common row directly to the two tips. The float band bound encloses both opening triangles,
    the fixed corners and both moving corners' current length spheres. The obstacle's swept bound covers

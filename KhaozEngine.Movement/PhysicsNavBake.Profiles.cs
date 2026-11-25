@@ -31,8 +31,7 @@ public sealed partial class PhysicsNavBake
     /// plus a few steps of final approach. The swim term needs <c>SwimSpeed x zone scale</c> above zero. A zero swim
     /// pace refuses every float edge. At the default 64 steps of 1/30 s and a zone scale of 1 that covers banks
     /// between 0.25 m cells. Larger cells or slower zones must raise
-    /// <see cref="PhysicsNavBakeOptions.MaxEdgeProbeSteps"/>, or the float layer is cut off from the land. Dry bank
-    /// edges on a smooth sloped physics shoreline are also subject to KhaozEngine #1265.</para></summary>
+    /// <see cref="PhysicsNavBakeOptions.MaxEdgeProbeSteps"/>, or the float layer is cut off from the land.</para></summary>
     /// <exception cref="ArgumentException">An aquatic profile's capture did not sample water, or its swim fractions
     /// are not ordered <c>Exit &lt;= Submersion &lt;= Enter</c>.</exception>
     public GroundNavigation BuildProfile(in MoveTuning tuning, NavAreaFilter areas, GroundProfileOptions options)

@@ -50,6 +50,7 @@ public sealed class SqliteAccountStore : IAccountStore, IDisposable
     private readonly bool displayNameRequired;
     private readonly string findOrCreateSql;
     private readonly string findSql;
+    private readonly string subjectExistsSql;
     private readonly string firstPageSql;
     private readonly string nextPageSql;
     private readonly string bannedSql;
@@ -99,23 +100,25 @@ public sealed class SqliteAccountStore : IAccountStore, IDisposable
             "ON CONFLICT(subject) DO UPDATE SET display_name = COALESCE($name, display_name), " +
             $"updated_at_utc = {Stamp("$name IS NOT NULL AND display_name IS NOT $name COLLATE BINARY")} " +
             $"RETURNING {columns};";
-        findSql = $"SELECT {columns} FROM {quoted} WHERE subject = $subject COLLATE BINARY;";
+        const string bySubject = "WHERE subject = $subject COLLATE BINARY";
+        findSql = $"SELECT {columns} FROM {quoted} {bySubject};";
+        subjectExistsSql = $"SELECT 1 FROM {quoted} {bySubject};";
         firstPageSql = $"SELECT {columns} FROM {quoted} ORDER BY subject COLLATE BINARY LIMIT $limit;";
         nextPageSql =
             $"SELECT {columns} FROM {quoted} WHERE subject > $after COLLATE BINARY ORDER BY subject COLLATE BINARY LIMIT $limit;";
         bannedSql = $"SELECT {columns} FROM {quoted} WHERE banned <> 0 ORDER BY subject COLLATE BINARY;";
         whitelistSql =
             $"UPDATE {quoted} SET whitelisted = $whitelisted, updated_at_utc = {Stamp("whitelisted IS NOT $whitelisted")} " +
-            $"WHERE subject = $subject COLLATE BINARY RETURNING {columns};";
+            $"{bySubject} RETURNING {columns};";
         banSql =
             $"UPDATE {quoted} SET banned = 1, ban_reason = $reason, ban_until = $until, updated_at_utc = " +
             Stamp("banned IS NOT 1 OR ban_reason IS NOT $reason COLLATE BINARY OR ban_until IS NOT $until COLLATE BINARY") +
-            $" WHERE subject = $subject COLLATE BINARY RETURNING {columns};";
+            $" {bySubject} RETURNING {columns};";
         // The reason and the expiry go with the flag, so a lifted ban leaves nothing that reads as one in force.
         unbanSql =
             $"UPDATE {quoted} SET banned = 0, ban_reason = NULL, ban_until = NULL, updated_at_utc = " +
             Stamp("banned IS NOT 0 OR ban_reason IS NOT NULL OR ban_until IS NOT NULL") +
-            $" WHERE subject = $subject COLLATE BINARY RETURNING {columns};";
+            $" {bySubject} RETURNING {columns};";
     }
 
     // The update time a write sets: the clock when it changes a stored value, and what it was otherwise.
@@ -225,17 +228,26 @@ public sealed class SqliteAccountStore : IAccountStore, IDisposable
     /// other connection on the file is touched.</summary>
     public void Dispose() => db.Dispose();
 
-    // Every write names an existing account and none creates one: no row updated is an unknown subject, null.
     private async Task<AccountRecord?> UpdateAsync(string sql, string subject, Action<SqliteCommand> bind,
         CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         if (subject.Length > AccountStoreRules.MaxSubjectChars) return null;
         using SqliteStoreLease _ = await db.EnterAsync(ct).ConfigureAwait(false);
-        using SqliteCommand cmd = Command(sql, subject);
+        // Check before the update, under the same write transaction. An adopted table's trigger can change
+        // the row itself and then discard the update. Its side effects must roll back with the refusal.
+        using SqliteTransaction tx = db.BeginTransaction();
+        using SqliteCommand cmd = Command(subjectExistsSql, subject);
+        cmd.Transaction = tx;
+        if (await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false) is null) return null;
+
+        cmd.CommandText = sql;
         cmd.Parameters.Add("$now", SqliteType.Text).Value = FormatUtc(clock.GetUtcNow());
         bind(cmd);
-        return await ReadOneAsync(cmd, ct).ConfigureAwait(false);
+        AccountRecord account = await ReadOneAsync(cmd, ct).ConfigureAwait(false)
+            ?? throw new AccountDataException(AccountDataRefusal.UpdateReturnedNoRow, "The account update returned no row.");
+        tx.Commit();
+        return account;
     }
 
     private SqliteCommand Command(string sql, string subject)

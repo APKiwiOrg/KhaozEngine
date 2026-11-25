@@ -95,7 +95,7 @@ public sealed class TileGroundSampler
         int x = (int)MathF.Floor(tileX), z = (int)MathF.Floor(tileZ);
         Span<DrawnGroundTriangle> scratch = stackalloc DrawnGroundTriangle[TileTriangulation.MaxTriangles];
         ReadOnlySpan<DrawnGroundTriangle> triangles = _captured is { } captured ? captured.Triangles(x, z)
-            : scratch[..DrawnGroundTriangle.Describe(_document, x, z, scratch)];
+            : scratch[..DrawnGroundTriangle.Describe(_document, x, z, Plane, scratch)];
         int selected = DrawnGroundTriangle.Select(triangles, new(tileX - x, tileZ - z), out weights);
         triangle = selected >= 0 ? triangles[selected] : default;
         return selected >= 0;

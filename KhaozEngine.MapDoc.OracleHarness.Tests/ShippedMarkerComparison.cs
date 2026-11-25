@@ -84,8 +84,7 @@ internal static partial class ShippedMarkerComparison
     sealed record ExpectedPoint(MarkerSourcePoint Source, MarkerRoleRule Role, Vector3 Position);
 
     // Terrain is the server's ground triangle under the point. Standing is the higher of that and the walk surfaces on
-    // the marker's plane. The bilinear TileDocumentGroundHeight is the client presenter's drawing rule and differs
-    // from the drawn triangles on a twisted tile.
+    // the marker's plane. A bilinear lattice sample can differ from that triangle height on a twisted tile.
     static ExpectedPoint Expected(ShippedMarkerInputs inputs, MarkerSourcePoint marker, TileGroundSampler ground)
     {
         var role = inputs.Roles[marker.Name];

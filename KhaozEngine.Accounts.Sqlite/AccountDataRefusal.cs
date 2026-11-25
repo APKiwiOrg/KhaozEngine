@@ -21,4 +21,8 @@ public enum AccountDataRefusal
     /// <summary>Refuses a find-or-create that returned a row whose subject is not ordinally the minted one, which
     /// only a table changed after the store opened can produce. The write is rolled back.</summary>
     UpsertReturnedDifferentAccount,
+
+    /// <summary>The account existed when the write began, but the table discarded its update. The write is rolled
+    /// back.</summary>
+    UpdateReturnedNoRow,
 }

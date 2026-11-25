@@ -555,9 +555,8 @@ archetypes, bindings or height rules.
 `heightRule` is exactly `terrain` or `standing` and names the authoritative server rule. `terrain` is the
 `Ground` sampler of the released `TileWorldColliders`, built from the source terrain alone. It reads the
 drawn tile triangles. `standing` is the higher of that ground and the released `TileWalkSurfaces.TryHeightAt`
-on the marker's plane. The server stands bodies on the collider ground plus walk surfaces. The bilinear
-`TileDocumentGroundHeight` is the client presenter's drawing rule. It differs from the drawn triangles on a
-twisted tile, so it is not the comparison rule.
+on the marker's plane. The server stands bodies on the collider ground plus walk surfaces. A bilinear lattice
+sample can differ from the collider ground on a twisted tile, which the marker comparison detects.
 
 `heightMode` is `Support` for every actual private import. The shipped entry calls `RequireBoundImports`
 before comparison and refuses any other mode. `Explicit` exists only to exercise comparator diagnostics

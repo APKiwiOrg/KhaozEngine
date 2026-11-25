@@ -1,7 +1,7 @@
 using System;
 using System.Numerics;
 
-namespace KhaozEngine.TileWorld.Physics;
+namespace KhaozEngine.TileWorld;
 
 /// <summary>The drawn lattice triangle and its one selection and height evaluation rule.</summary>
 internal readonly record struct DrawnGroundTriangle(TileLatticePoint PlanA, TileLatticePoint PlanB,
@@ -26,17 +26,17 @@ internal readonly record struct DrawnGroundTriangle(TileLatticePoint PlanA, Tile
         }
     }
 
-    internal static int Describe(TileWorldDocument document, int x, int z, Span<DrawnGroundTriangle> output)
+    internal static int Describe(TileWorldDocument document, int x, int z, int plane, Span<DrawnGroundTriangle> output)
     {
         Span<TileLatticeTriangle> layout = stackalloc TileLatticeTriangle[TileTriangulation.MaxTriangles];
-        if (!TileGroundTriangles.TryDescribe(document, x, z, 0, out var cell, layout)) return 0;
+        if (!TileGroundTriangles.TryDescribe(document, x, z, plane, out var cell, layout)) return 0;
         for (int i = 0; i < cell.TriangleCount; i++)
         {
             TileLatticeTriangle t = layout[i];
             output[i] = new(t.A, t.B, t.C,
-                TileGroundTriangles.LatticePosition(document, x, z, 0, t.A, x, z),
-                TileGroundTriangles.LatticePosition(document, x, z, 0, t.B, x, z),
-                TileGroundTriangles.LatticePosition(document, x, z, 0, t.C, x, z));
+                TileGroundTriangles.LatticePosition(document, x, z, plane, t.A, x, z),
+                TileGroundTriangles.LatticePosition(document, x, z, plane, t.B, x, z),
+                TileGroundTriangles.LatticePosition(document, x, z, plane, t.C, x, z));
         }
         return cell.TriangleCount;
     }

@@ -10079,7 +10079,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="24.11.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="24.12.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -10349,16 +10349,14 @@ startup or wall-clock guarantee. Issue [#1233](https://github.com/APKiwiOrg/Khao
 open adoption prerequisite for steep meshes and filtered ground. Issue [#1238](https://github.com/APKiwiOrg/KhaozEngine/issues/1238)
 is resolved by the reconciled `PhysicsColumnProbe` representable-progress fix. Small local physics coordinates or
 rebasing are required for large absolute requests. There is no ground-sampler fallback and no full Hollowmere or
-steep-bank guarantee. On smooth sloped physics ground, uphill and sideways edges can drop out of the graph and the
-follower can stall short of waypoints at runtime
-([#1265](https://github.com/APKiwiOrg/KhaozEngine/issues/1265), open). Two causes were measured: a grounded capsule
-rests above the captured centre height, and a body under command creeps 1.25 to 3.77 mm down the slope because the
-core's push-out shoves it downhill. Allowing for the height alone did not cure it. The NPC and player driver APIs are
-documented below.
+steep-bank guarantee. Legacy dry proofs can bake directed edges on smooth physics slopes by matching the resting
+capsule to the captured surface. The shared Legacy step clears confirmed slopes vertically so runtime movement
+can follow those edges. Rebake saved Legacy profiles to pick up the corrected edges.
+[Legacy slope proof and arrival rules](../KhaozEngine.Movement/README.md#capsule-checked-ground-profiles)
 
 Legacy profile building allocates no garbage per proof. A warmed penetration query and a warmed edge proof allocate
 zero bytes, and a 4,096-column flat `BuildProfile` allocates 80 bytes per column, down from 58,774. Engine tests
-gate at most 1 KiB per column. Elapsed time is not gated, because the physics query count is unchanged.
+gate at most 1 KiB per column.
 
 ### Opt into Contact Drop routes
 
@@ -10690,7 +10688,7 @@ See the [Movement arrival contract](../KhaozEngine.Movement/README.md#range-stee
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="24.11.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="24.12.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -11701,7 +11699,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="24.11.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="24.12.0" />
 ```
 
 ```csharp
@@ -14991,6 +14989,8 @@ no `TileSettings.NoDraw`). Public `TryDescribe` keeps that exclusion, hands back
 `LatticePosition` places one lattice point, and `Build(doc, region, plane)` returns a `TileGroundMesh` of every
 full-detail triangle in a region-plane, three region-local positions per triangle with indices 0, 1, 2 and on.
 None of them takes catalogs: an overlay id that is not 0 cuts its tile whether or not the catalogs define it.
+`TileGroundHeight.TrySample(doc, worldX, worldZ, plane, out height)` samples the full-detail triangles in world
+metres and returns false where the tile draws no ground.
 `TileWaterBodies.Collect(doc, catalogs, region, plane)` returns each water body as a `TileWaterBody(Rects,
 SurfaceY)`, with world tile rects and the still surface `SurfaceDropMetres` under the body's rim, and `IsWater`
 answers for one tile. The mesher's full-detail positions and the water planes are built from these rules, so the
@@ -19259,8 +19259,9 @@ exactly `PoseAt(tile)`.
 at that same centred point, so a body on an authored slope has its feet on the ground quad it is standing on, and
 so does a marker or a dropped item laid down through `presenter.PoseAt(tile)`. A gliding body resamples every
 frame at its interpolated planar position, which is what makes it FOLLOW a slope between two tile centres instead
-of stepping at the tile edge. Nothing to wire: `new TilePresenter(document)` reads the document's own bilinear
-height lattice, the same one the terrain mesh, the props and the lights are placed with.
+of stepping at the tile edge. `new TilePresenter(document)` samples the full-detail ground triangles shared by
+the terrain mesh and colliders. Where the document draws no triangle, it uses `TileWorldDocument.HeightAt` for
+the bilinear lattice height. Props and walk surfaces use the bilinear lattice for their placement anchors.
 
 ```csharp
 client.Presenter = new TilePresenter(document);   // terrain under every pose, no further call
@@ -19286,9 +19287,8 @@ TilePose me = client.LocalPose;                   // Position.Y is the ground un
   answering world METRES. That is the hook for a streamed or generated terrain, and it is what a test with a
   synthetic slope hands in. `TileDocumentGroundHeight` is the engine's document-backed one, and it is the single
   place tile units become world metres for a height read.
-- **A plane with no authored heights keeps its derived lift**, one `PlaneHeight` per plane over the lattice
-  below it, because that is what `TileWorldDocument.HeightAt` already answers. A fractional plane index, which is
-  what a body easing between planes carries, reads between the two planes' own samples rather than popping.
+- **A plane with no authored heights keeps its derived lift**, one `PlaneHeight` per plane over the base lattice.
+  A body easing between planes samples both at its drawn position and interpolates their heights.
 - **`Yaw` is untouched**, and the aimed pose below draws at the same height as the plain one for the same state.
 
 **A body holding a lock is drawn AIMING at it.** `TileMoveState.Facing` is the cardinal side the two footprints
@@ -21726,7 +21726,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="24.11.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="24.12.0" />
 ```
 
 ```csharp
@@ -21762,7 +21762,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="24.11.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="24.12.0" />
 ```
 
 ```csharp
@@ -22013,7 +22013,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="24.11.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="24.12.0" />
 ```
 
 ```csharp
@@ -26959,7 +26959,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="24.11.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="24.12.0" />
 </ItemGroup>
 ```
 

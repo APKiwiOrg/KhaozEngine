@@ -160,18 +160,19 @@ public static partial class CharacterMovement
             for (int d = 0; d < DepenIterations; d++)
             {
                 if (!world.ComputePenetration(probe, Pose.At(pos), out Vector3 push) || push.LengthSquared() <= 1e-12f) break;
-                // WALKABLE-CONTACT REST DEPENETRATION IS VERTICAL (mirrors the settle pass in StepCore): a grounded
-                // capsule with NO horizontal command, pushed off a tilted WALKABLE surface, takes only the vertical
-                // component, so a resting capsule cannot creep down-slope; a steep (wall/riser) normal keeps the full
-                // MTV so walking into a wall still pushes out horizontally. Gated on no command (not just grounded)
-                // because a fast run-climb IS grounded yet embeds in the risers, and its horizontal depenetration is
-                // load-bearing for extracting the swept climb - suppressing it there re-embeds the capsule and
-                // collapses support (the StairRunTangentPacing regression). cosMaxSlope is the slope gate at the top
-                // of this method. NaN-safe: push.LengthSquared() > 1e-12 guards the length divide above.
-                if (restHold)
+                // A verified slope seats the capsule vertically while moving, as a rest hold does. Clearance
+                // push-out otherwise carries an independent downhill component that can cancel a short command.
+                // Stair edges can also give walkable normals. Check the live plane before removing the horizontal
+                // component, which a moving capsule needs for clearance at a tread or riser.
+                if (grounded)
                 {
                     float pl = push.Length();
-                    if (push.Y >= cosMaxSlope * pl) push = new Vector3(0f, push.Y, 0f);
+                    if (push.Y >= cosMaxSlope * pl)
+                    {
+                        if (restHold) push = new Vector3(0f, push.Y, 0f);
+                        else if (LegacySlopePlane.ConfirmsPush(world, probe, pos, push, pl, cosMaxSlope))
+                            push = new Vector3(0f, pl / (push.Y / pl), 0f); // preserve the MTV's normal clearance
+                    }
                 }
                 pos += push;
                 applied += push;   // MTV is direction*depth; the inflated overlap depth lands the real capsule ~SkinWidth clear

@@ -7,9 +7,8 @@ using Xunit;
 namespace KhaozEngine.Tests.TileNetcode;
 
 /// <summary>
-/// The GROUND under a drawn pose. Every assertion here is against <see cref="TileWorldDocument.HeightAt"/> read at
-/// the pose's own drawn position rather than against a hand-computed lerp, because the defect this file pins is
-/// exactly a sample taken somewhere other than where the body is drawn.
+/// The ground under a drawn pose. On planar slopes, <see cref="TileWorldDocument.HeightAt"/> at the drawn
+/// position gives the same height as the triangles. The noncoplanar cases exercise the actual triangle cuts.
 /// </summary>
 public class TilePresenterHeightTests
 {
@@ -37,6 +36,53 @@ public class TilePresenterHeightTests
         // 4.5 metres of the east ramp plus 0.75 of the north one. Neither the plane floor, nor the corner's own
         // height, nor the two axes swapped.
         Assert.Equal(5.25f, pose.Position.Y, 5);
+    }
+
+    [Theory]
+    [InlineData(TileOverlayShape.Full, 0.5f, 0.5f, 0f)]
+    [InlineData(TileOverlayShape.Full, 0.25f, 0.25f, 0.5f)]
+    [InlineData(TileOverlayShape.DiagonalHalf, 0.5f, 0.5f, 0.5f)]
+    [InlineData(TileOverlayShape.CornerQuarter, 0.25f, 0.75f, 0.125f)]
+    [InlineData(TileOverlayShape.CornerQuarter, 0f, 0.75f, 0.25f)]
+    public void Pose_matches_the_drawn_triangle_on_noncoplanar_ground_1479(
+        TileOverlayShape shape, float offsetX, float offsetZ, float expectedHeight)
+    {
+        const int x = -7, z = 72;
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld(regions: new[] { RegionCoord.Of(x, z) });
+        doc.TileSize = 2.5f;
+        doc.SetCornerHeightCm(x, z, 0, 100);
+        doc.SetOverlay(x, z, 0, 1);
+        doc.SetOverlayShape(x, z, 0, shape);
+        var presenter = new TilePresenter(doc);
+
+        // The only raised corner is SW. The ordinary diagonal is level, the diagonal half forces a split
+        // through SW, and the corner cut fans from the south midpoint at half a metre.
+        var planar = new Vector2(x + offsetX - 0.5f, z + offsetZ - 0.5f);
+        TilePose pose = presenter.PoseAt(planar, 0, TileDirection.S);
+
+        Assert.Equal(expectedHeight, pose.Position.Y, 5);
+    }
+
+    [Theory]
+    [InlineData(5, 0, TileSettings.None)]
+    [InlineData(5, 1, TileSettings.NoDraw)]
+    [InlineData(64, 0, TileSettings.None)]
+    public void A_pose_without_a_drawn_triangle_keeps_the_bilinear_height(int x, ushort underlay, TileSettings settings)
+    {
+        const int z = 5;
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        // Outside the loaded region, x=64 reads its first corner from the region to the west.
+        doc.SetCornerHeightCm(x == 64 ? 63 : x, z, 0, 100);
+        if (x < 64)
+        {
+            doc.SetUnderlay(x, z, 0, underlay);
+            doc.SetSettings(x, z, 0, settings);
+        }
+        var presenter = new TilePresenter(doc);
+
+        TilePose pose = presenter.PoseAt(new Vector2(x - 0.25f, z - 0.25f), 0, TileDirection.S);
+
+        Assert.Equal(0.5625f, pose.Position.Y, 5);
     }
 
     [Fact]

@@ -27,6 +27,9 @@
          (TileObjectPlacement.PlanarBasis and AnchorPlanar), so a box can never drift from its drawn model, and builds
          authored collision boxes through the one placement rule ke-tileedit draws them with (TileCollisionBoxes). -->
     <InternalsVisibleTo Include="KhaozEngine.TileWorld.Physics" />
+    <!-- The physics tests read the same triangle and arithmetic as the sampler for contact and water checks. -->
+    <InternalsVisibleTo Include="KhaozEngine.TileWorld.Physics.Tests" />
+    <InternalsVisibleTo Include="KhaozEngine.TileWorld.Physics.FloatingPoint.Tests" />
     <!-- ke-tileedit writes catalog files through the same tmp-and-rename primitive the world save uses
          (TileWorldFile.WriteAtomic), so a catalog is always one complete file, and reports and draws collision boxes
          through the placement physics builds them with (TileCollisionBoxes), so the two never disagree. -->

@@ -69,14 +69,17 @@ public sealed class ShippedMarkerInputGuardTests
     }
 
     [Fact]
-    public void TwistedTile_ServerGroundDiffersFromPresenterBilinear()
+    public void TwistedTile_PresenterMatchesServerGround_1479()
     {
         using var fixture = ShippedMarkerGuardFixtures.Create("valid");
         var inputs = ShippedMarkerInputs.Read(PrivateOracleInputs.Require(fixture.Environment));
         float tileX = ShippedMarkerGuardFixtures.TwistedTileX, tileZ = ShippedMarkerGuardFixtures.TwistedTileZ;
-        float server = TileWorldColliders.Build(inputs.World, inputs.Catalogs).Ground
-            .HeightAt(TileWorldSpace.WorldX(tileX, inputs.World.TileSize), TileWorldSpace.WorldZ(tileZ, inputs.World.TileSize));
-        float bilinear = new TileDocumentGroundHeight(inputs.World).HeightAt(tileX, tileZ, 0);
+        float worldX = TileWorldSpace.WorldX(tileX, inputs.World.TileSize);
+        float worldZ = TileWorldSpace.WorldZ(tileZ, inputs.World.TileSize);
+        float server = TileWorldColliders.Build(inputs.World, inputs.Catalogs).Ground.HeightAt(worldX, worldZ);
+        float presenter = new TileDocumentGroundHeight(inputs.World).HeightAt(tileX, tileZ, 0);
+        float bilinear = inputs.World.HeightAt(worldX, worldZ, 0);
+        Assert.Equal(server, presenter, 5);
         Assert.True(Math.Abs(server - bilinear) > 0.1, server.ToString("R", CultureInfo.InvariantCulture) + " " + bilinear.ToString("R", CultureInfo.InvariantCulture));
     }
 

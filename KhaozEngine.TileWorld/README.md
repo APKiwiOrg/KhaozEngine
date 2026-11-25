@@ -811,6 +811,9 @@ None of its members takes catalogs.
 - `LatticePosition(doc, worldX, worldZ, plane, point, originX, originZ)` places one `TileLatticePoint` relative to a
   tile corner. A corner is taken as it stands and a mid-edge point is the midpoint of its two corners, so every copy
   of a shared corner is bit-identical across tiles and regions.
+- `TileGroundHeight.TrySample(doc, worldX, worldZ, plane, out height)` samples those triangles at a world position
+  in metres and returns false where the tile draws no ground. `TileWorldDocument.HeightAt` supplies bilinear
+  lattice heights for callers such as prop placement and presentation over undrawn tiles.
 - `Build(doc, region, plane)` returns a `TileGroundMesh` of one region-plane: `Region`, `Plane`, region-local
   `Positions` with three fresh points per triangle, and `Indices` running 0, 1, 2 and on. A region-plane with no
   drawable tile has both arrays empty. Tiles marked `FeatherOverlay` draw smaller triangles in the mesher, on this

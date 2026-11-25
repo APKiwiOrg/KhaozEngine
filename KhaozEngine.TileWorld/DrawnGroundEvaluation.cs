@@ -1,7 +1,7 @@
 using System;
 using System.Numerics;
 
-namespace KhaozEngine.TileWorld.Physics;
+namespace KhaozEngine.TileWorld;
 
 internal interface IDrawnGroundNumber<T> where T : struct, IDrawnGroundNumber<T>
 {

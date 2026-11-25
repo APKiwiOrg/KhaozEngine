@@ -20,20 +20,9 @@ internal sealed class ChainWidthNearSolids
         _capacity = capacity;
     }
 
-    internal static ChainWidthNearSolids? TryCreate(int chains, int rows, int capacity)
-    {
-        if (capacity == 0 || (long)rows * capacity > Array.MaxLength)
-            return null;
-
-        try
-        {
-            return new ChainWidthNearSolids(chains, rows, capacity);
-        }
-        catch (OutOfMemoryException)
-        {
-            return null;
-        }
-    }
+    // A tier without solid obstacles has nothing to cache.
+    internal static ChainWidthNearSolids? TryCreate(int chains, int rows, int capacity) =>
+        capacity == 0 ? null : new ChainWidthNearSolids(chains, rows, capacity);
 
     internal void SetRow(int chain, int row) => _rowByChain[chain] = row;
 

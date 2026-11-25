@@ -288,6 +288,37 @@ public sealed class ChainWidthBoundsTests(ITestOutputHelper output)
             particles.Positions[3] - particles.Positions[2]) > 0);
     }
 
+    [Fact]
+    public void An_impossible_width_pair_moves_to_its_reachable_edge_and_stays_there()
+    {
+        const float radius = 0.2f;
+        const float bend = 0.16f;
+        const float separated = 0.96f;
+        var settings = new ChainSettings(0, 0, 0, 1, bend, 0);
+        var joint = new ChainJointRest(Vector3.Zero, Quaternion.Identity, Vector3.One);
+        var chain = new ChainRigChain(0, [joint], -radius * Vector3.UnitY, settings);
+        const float stretch = 0.08f;
+        var rig = new ChainRig(2, [chain, chain with { Anchor = 1 }], [new(0, 1) { Stretch = stretch }]);
+        var particles = new ChainParticles(rig);
+        particles.SetRest([Matrix4x4.Identity, Matrix4x4.CreateTranslation(0.18f, 0, 0)], reset: true);
+        particles.Positions[2] = separated * Vector3.UnitX;
+        particles.Positions[3] = particles.Positions[2] + chain.Tip;
+        var bounds = new ChainWidthBounds([new(new(0, 1, 0), new(1, 3, 2), stretch)]);
+        const float rounding = 0.000002f;
+
+        bounds.ProjectPositions(particles);
+        float nearest = separated - 2 * radius * MathF.Sin(bend);
+        Assert.InRange(Vector3.Distance(particles.Positions[1], particles.Positions[3]), nearest - rounding, nearest + rounding);
+        Assert.InRange(Vector3.Distance(particles.Positions[0], particles.Positions[1]), radius - rounding, radius + rounding);
+        Assert.InRange(Vector3.Distance(particles.Positions[2], particles.Positions[3]), radius - rounding, radius + rounding);
+        var left = particles.Positions[1];
+        var right = particles.Positions[3];
+
+        bounds.ProjectPositions(particles);
+        Assert.InRange(Vector3.Distance(left, particles.Positions[1]), 0, rounding);
+        Assert.InRange(Vector3.Distance(right, particles.Positions[3]), 0, rounding);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

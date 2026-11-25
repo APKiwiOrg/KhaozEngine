@@ -6,7 +6,7 @@ internal enum ChainContactQuery
 {
     SegmentPlacement, SegmentOpening, SegmentVelocity, RoundingRecheck, FixedEdge,
     SheetCurrent, SheetOpening, SheetVelocity, SheetDiagonal, FaceBarrelResidual,
-    BandFilter, BandVisit, OpeningSlotsCleared, ChainReach, BendCosines, FirstPassReuses, ThickBandSkips, ThickEdgeQueries, ConflictCheck,
+    BandFilter, BandVisit, OpeningSlotsCleared, ChainReach, BendCosines, FirstPassReuses, ThickBandSkips, ThickEdgeQueries, WidthSafety, ConflictCheck,
 }
 
 internal sealed class ChainContactCounts
@@ -29,7 +29,7 @@ internal sealed class ChainContactCounts
 
     internal long SegmentAxis => this[ChainContactQuery.SegmentPlacement] + this[ChainContactQuery.SegmentOpening] +
         this[ChainContactQuery.SegmentVelocity] + this[ChainContactQuery.RoundingRecheck] +
-        this[ChainContactQuery.FixedEdge] + this[ChainContactQuery.ThickEdgeQueries] + this[ChainContactQuery.ConflictCheck];
+        this[ChainContactQuery.FixedEdge] + this[ChainContactQuery.ThickEdgeQueries] + this[ChainContactQuery.WidthSafety] + this[ChainContactQuery.ConflictCheck];
 
     internal long TriangleAxis => this[ChainContactQuery.SheetCurrent] + this[ChainContactQuery.SheetOpening] +
         this[ChainContactQuery.SheetVelocity];

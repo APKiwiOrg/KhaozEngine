@@ -10,6 +10,7 @@ internal sealed class ChainWidthBounds(ChainWidthBounds.Pair[] pairs)
     private const float SweepTolerance = 0.0005f;
     private const float VelocityTolerance = 0.0005f;
     private readonly (float Minimum, float Maximum)[] _bands = new (float, float)[pairs.Length];
+    private readonly bool[] _outsideReach = new bool[pairs.Length];
 
     internal readonly record struct Member(int Chain, int Particle, int Root)
     {
@@ -21,13 +22,18 @@ internal sealed class ChainWidthBounds(ChainWidthBounds.Pair[] pairs)
         internal int Depth => Math.Max(First.Particle - First.Root, Second.Particle - Second.Root);
     }
 
-    internal void ProjectPositions(ChainParticles particles)
+    internal void ProjectPositions(ChainParticles particles, ReadOnlySpan<ChainConstraints.JointStep> placed = default,
+        ReadOnlySpan<ColliderCapsule> obstacles = default, ReadOnlySpan<ChainSettings> settings = default)
     {
         for (int index = 0; index < pairs.Length; index++)
         {
             var pair = pairs[index];
             float rest = Vector3.Distance(particles.RestPositions[pair.First.Particle], particles.RestPositions[pair.Second.Particle]);
             _bands[index] = (rest * (1 - pair.Stretch), rest * (1 + pair.Stretch));
+            var spacing = Vector3.Distance(particles.Positions[pair.First.Particle], particles.Positions[pair.Second.Particle]);
+            var band = _bands[index];
+            _outsideReach[index] = (spacing < band.Minimum - PositionTolerance || spacing > band.Maximum + PositionTolerance) &&
+                ChainWidthReach.ProjectIfOutsideReach(particles, pair, band, placed, obstacles, settings);
         }
 
         for (int sweeps = 0; sweeps < MaximumSweeps; sweeps++)
@@ -42,7 +48,8 @@ internal sealed class ChainWidthBounds(ChainWidthBounds.Pair[] pairs)
             int direction = forward ? 1 : -1;
             int stop = forward ? pairs.Length : -1;
             for (int index = forward ? 0 : pairs.Length - 1; index != stop; index += direction)
-                Constrain(particles, pairs[index], _bands[index], margin);
+                if (!_outsideReach[index])
+                    Constrain(particles, pairs[index], _bands[index], margin);
         }
     }
 
@@ -50,6 +57,8 @@ internal sealed class ChainWidthBounds(ChainWidthBounds.Pair[] pairs)
     {
         for (int index = 0; index < pairs.Length; index++)
         {
+            if (_outsideReach[index])
+                continue;
             var pair = pairs[index];
             float squared = Vector3.DistanceSquared(particles.Positions[pair.First.Particle], particles.Positions[pair.Second.Particle]);
             var (minimum, maximum) = _bands[index];

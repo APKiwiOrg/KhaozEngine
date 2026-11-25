@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using System.Linq;
 using System.Runtime.InteropServices;
 using KhaozEngine.Attachments;
 using Xunit;
@@ -12,6 +13,7 @@ public sealed class ChainPlacementCullTests(ITestOutputHelper output)
     private const int StepsPerSecond = 120;
     private const int Steps = 3 * StepsPerSecond;
     private const float StepSeconds = 1f / StepsPerSecond;
+    private const float MotionStepScale = 0.5f;
 
     private static readonly ColliderCapsule[] RestCapsules =
     [
@@ -190,6 +192,58 @@ public sealed class ChainPlacementCullTests(ITestOutputHelper output)
         first.Step([endAnchor], capsules, endWearer, StepSeconds / 2);
         exact.Step([endAnchor], capsules, endWearer, StepSeconds / 2);
         AssertSettledPose(first, exact, target);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void The_shown_sheet_moves_with_its_drivers_from_a_clear_reachable_rest(bool layeredSweep)
+    {
+        var rig = layeredSweep ? ChainSheetContactTests.CreateSheet(bounded: true, out _, out _, layered: true) :
+            CreateMotionRig();
+        var capsules = new ColliderCapsule[layeredSweep ? 1 : RestCapsules.Length];
+        var simulation = new ChainSimulation(rig, capsules.Length);
+        var motion = new ChainShownMotionCheck(simulation);
+        int samples = layeredSweep ? 114 : (int)(Steps / MotionStepScale);
+        Assert.Equal(layeredSweep ? 6 : 42, rig.JointCount);
+        var anchors = new Matrix4x4[rig.AnchorCount];
+
+        for (int frame = 0; frame <= samples; frame++)
+        {
+            Matrix4x4 wearer;
+            if (layeredSweep)
+            {
+                float z = float.Lerp(-0.16f, 0.12f, Math.Min(frame, 112) / 112f);
+                wearer = anchors[0] = Matrix4x4.Identity;
+                anchors[1] = Matrix4x4.CreateTranslation(0, -0.82f, z);
+                capsules[0] = new(new(-0.03f, -0.32f, z), new(0.03f, -0.32f, z), 0.03f);
+            }
+            else
+            {
+                (anchors[0], wearer) = Pose(frame * MotionStepScale, capsules);
+            }
+
+            simulation.Step(anchors, capsules, wearer, frame == 0 ? 0 : StepSeconds);
+            if (frame == 0)
+                ChainShownMotionCheck.AssertInitialClearance(simulation, anchors, capsules);
+            motion.Check(frame, anchors, capsules);
+        }
+    }
+
+    private static ChainRig CreateMotionRig()
+    {
+        var original = CreateRig(layered: true);
+        var chains = original.Chains.Select((chain, index) =>
+        {
+            if (index >= ChainSwingFixture.CapeChains)
+                return chain;
+
+            var joints = chain.Joints.ToArray();
+            // Leave a full driven step of clearance behind the torso at the authored hang.
+            joints[0] = joints[0] with { Translation = joints[0].Translation - 0.14f * Vector3.UnitZ };
+            return chain with { Joints = joints };
+        }).ToArray();
+        return new ChainRig(original.AnchorCount, chains, original.Links);
     }
 
     private static void CompareProbe(ChainContactOptimization disabled, bool bounded = true)
@@ -398,7 +452,7 @@ public sealed class ChainPlacementCullTests(ITestOutputHelper output)
     private static ChainRig CreateRig(bool layered = false) =>
         ChainSwingFixture.CreateRig(stretch: 0.08f, capeJoints: 6, layered: layered);
 
-    private static (Matrix4x4 Anchor, Matrix4x4 Wearer) Pose(int step, Span<ColliderCapsule> capsules)
+    private static (Matrix4x4 Anchor, Matrix4x4 Wearer) Pose(float step, Span<ColliderCapsule> capsules)
     {
         float seconds = step * StepSeconds;
         var (anchor, wearer) = ChainSwingFixture.Pose(seconds);

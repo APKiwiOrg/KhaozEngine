@@ -134,7 +134,7 @@ internal sealed class ChainBoundGroups
         PlaceDepth(particles, chains, anchors, colliders, settings, seconds, depth);
         if (width is not null)
         {
-            width.ProjectPositions(particles);
+            width.ProjectPositions(particles, _placed, colliders, settings);
             ReapplyLimits(particles, chains, colliders, settings, depth);
         }
 

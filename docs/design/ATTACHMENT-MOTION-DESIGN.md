@@ -281,6 +281,11 @@ sees only body and worn set capsules.
    targets inside the margin to avoid chasing roundoff at its edge. Alternating sweeps stop when every pair fits
    within the current margin or after eight sweeps. The bend limit and capsules are applied again to each moved
    particle because they outrank the bound.
+   The fixed parents, lengths and bend cones bound the reachable gap. When those bounds exclude the authored
+   interval, width takes one turn toward a support point on each reachable length sphere and leaves the remaining
+   error. Each turn is at most a quarter radian and stays in its bend cone. A corner already held beyond its bend
+   by solid contact keeps its placed position. A proposal that increases solid penetration may take a smaller turn
+   or keep its prior position. This avoids using the full width lever on a gap that the local recheck cannot keep.
    Then test each band ending at the current row, with the row above fixed. For an uneven pair, the last band
    joins the last common row directly to the two tips. The float band bound encloses both opening triangles,
    the fixed corners and both moving corners' current length spheres. The obstacle's swept bound covers
@@ -361,8 +366,8 @@ behind if it moves farther than the segment can reach in one step. The shown sha
 relative to its anchor. A collider moving fast relative to the anchor can overlap the shown chain by up to one
 step of that motion while the stepped chain clears it. While a held chain blends back to the live one, the shown
 chain can overlap a capsule for at most the blend time, while the live chain already clears it. When linked panels
-sit on opposing sides of a capsule, contact can prevent them from reaching their width band. The conflicting
-constraints can leave small movements even when the pose is fixed.
+sit on opposing sides of a capsule, contact can prevent them from reaching their width band. The width solve
+accepts that residual when length and bend reach rule out the band or solid clearance stops further travel.
 
 Each chain joint's result is kept relative to its anchor, and drawing composes it on the anchor's current world
 transform. The shown result interpolates the last two steps' anchor relative frames at the frame time's place between
@@ -709,12 +714,15 @@ All headless, on synthetic skeletons built in code.
 - **Width bound.** Linked chains with `linkStretch` keep their spacing inside the bound under a driven anchor, and the
   same chains without it leave it. The second pass keeps them clear of capsules and within their limits. A soft
   bounded cape at rest against a frozen capsule stops moving at fixed and uneven frame pacing, including at low
-  damping with the bend limit disabled. Coincident tips separate into their band.
+  damping with the bend limit disabled. Coincident tips separate into their band. An impossible gap with held
+  parents reaches the available bend edge and keeps its residual on the next width pass.
 - **Sheet contact.** A capsule swept between linked chains clears their bands, including when it crosses the
   cloth in a single step. An unbounded link lets it pass. A lower layer segment clears the band that ends at
   the tips of unequal upper chains. The frozen capsule between chains settles at both frame cadences.
   A capsule that strikes the middle of a band and stops never throws the corners faster than it moved.
   Warm steps allocate nothing. The counting probe records triangle-axis and segment-axis evaluations.
+  A separate driven rig starts with clear bands and reachable width. Its shown motion and the controlled layered
+  sweep compare adjacent shown travel against anchor carry, obstacle motion in the carried frame and free motion.
 - **Formats.** Formats 4 and 6 and the body collider file round trip. Each refusal sits beside a passing control that
   differs only in the broken rule. Format 1 to 5 bytes and hashes are unchanged.
 - **Binding and draws.** A chained garment binds and draws. Each binding refusal is reached. Without a motion, chain

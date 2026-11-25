@@ -32,7 +32,8 @@ internal readonly struct ChainWidthArc
 
     internal Vector3 Endpoint(double angle) => (_root + Displacement(angle)).ToVector3();
 
-    internal double ClearPrefix(in Axis axis, Offset initialResidual, bool tipOnly, double required, double end)
+    internal double ClearPrefix(in Axis axis, Offset initialResidual, bool tipOnly, double required, double end,
+        ChainContactCounts? counts)
     {
         if (axis.IsPoint)
             return PointPrefix(axis.Start - _root, tipOnly, required, end);
@@ -41,7 +42,7 @@ internal readonly struct ChainWidthArc
             return end;
 
         int budget = QueryBudget;
-        return Visit(axis, tipOnly, required, 0, end, ref budget);
+        return Visit(axis, tipOnly, required, 0, end, ref budget, counts);
     }
 
     private double PointPrefix(Offset point, bool tipOnly, double required, double end)
@@ -67,7 +68,8 @@ internal readonly struct ChainWidthArc
         return Math.Clamp(entry, 0, end);
     }
 
-    private double Visit(in Axis axis, bool tipOnly, double required, double start, double end, ref int budget)
+    private double Visit(in Axis axis, bool tipOnly, double required, double start, double end, ref int budget,
+        ChainContactCounts? counts)
     {
         if (budget == 0)
             return start;
@@ -75,7 +77,7 @@ internal readonly struct ChainWidthArc
         budget--;
         double middle = (start + end) * 0.5;
         var segment = new Segment(_root, Displacement(middle));
-        ChainContactCounts.Record(ChainContactQuery.WidthSafety);
+        counts?.Record(ChainContactQuery.WidthSafety);
         var residual = tipOnly ? axis.Residual(segment.Root, segment.Displacement, out _) :
             axis.ClosestResidual(segment, out _, out _);
 
@@ -85,8 +87,8 @@ internal readonly struct ChainWidthArc
         if ((end - start) * _length <= Resolution)
             return start;
 
-        double left = Visit(axis, tipOnly, required, start, middle, ref budget);
-        return left < middle ? left : Visit(axis, tipOnly, required, middle, end, ref budget);
+        double left = Visit(axis, tipOnly, required, start, middle, ref budget, counts);
+        return left < middle ? left : Visit(axis, tipOnly, required, middle, end, ref budget, counts);
     }
 
     private bool Separates(in Axis axis, Offset residual, bool tipOnly, double required, double start, double end)

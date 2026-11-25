@@ -48,7 +48,7 @@ internal ref struct ChainVelocityConstraints
         }
     }
 
-    internal void Apply(int parent, float length, Vector3 direction, Vector3 rest, bool clamped, ChainCapsuleCandidates capsules)
+    internal void Apply(int parent, float length, Vector3 direction, Vector3 rest, bool clamped, in ChainCapsuleCandidates capsules)
     {
         if (_seconds == 0)
             return;
@@ -57,7 +57,8 @@ internal ref struct ChainVelocityConstraints
         _frameTurn = NextTurn(_particles, parent, length, direction, _frameTurn);
     }
 
-    internal void ApplyLocal(int parent, float length, Vector3 direction, Vector3 rest, bool clamped, ChainCapsuleCandidates capsules)
+    internal void ApplyLocal(int parent, float length, Vector3 direction, Vector3 rest, bool clamped,
+        in ChainCapsuleCandidates capsules)
     {
         var velocities = _particles.Velocities;
         int child = parent + 1;
@@ -105,7 +106,7 @@ internal ref struct ChainVelocityConstraints
         velocities[child] -= stop;
     }
 
-    private void StopAtCapsules(int parent, float length, Vector3 direction, ChainCapsuleCandidates capsules)
+    private void StopAtCapsules(int parent, float length, Vector3 direction, in ChainCapsuleCandidates capsules)
     {
         if (capsules.Count == 0)
             return;
@@ -114,11 +115,14 @@ internal ref struct ChainVelocityConstraints
         var segment = new ChainSegmentContact.Segment(_particles.Positions[parent], length, direction);
         ref var velocity = ref _particles.Velocities[parent + 1];
         var parentVelocity = _particles.Velocities[parent];
-        bool tightCull = ChainContactOptimizations.Use(ChainContactOptimization.SegmentCull) && !ChainPlacementCull.DisableForTests;
-        bool axisCull = ChainPlacementCull.AxisCullEnabled;
+        bool enableCull = !ChainPlacementCull.DisableForTests;
+        var disabled = ChainContactOptimizations.DisabledForTests;
+        bool tightCull = enableCull && ChainContactOptimizations.Use(disabled, ChainContactOptimization.SegmentCull);
+        bool axisCull = enableCull && ChainContactOptimizations.Use(disabled, ChainContactOptimization.AxisCull);
         var bound = tightCull || axisCull
             ? ChainPlacementCull.SegmentReach(segment, default, _radius + (float)ChainCapsuleCollision.TouchTolerance, includeOpening: false)
             : default;
+        var counts = ChainContactCounts.Active;
         ChainCapsuleCollision.Axis scratch = default;
         for (int index = 0; index < capsules.Count; index++)
         {
@@ -129,7 +133,7 @@ internal ref struct ChainVelocityConstraints
 
             ref readonly var capsule = ref capsules[index];
             ref readonly var axis = ref capsules.ReadAxis(index, ref scratch);
-            if (!ChainSegmentContact.TryContact(segment, _radius, capsule, axis, out var normal,
+            if (!ChainSegmentContact.TryContact(segment, _radius, capsule, axis, counts, out var normal,
                 out double fraction, out double along) || fraction <= minimumFraction)
                 continue;
 

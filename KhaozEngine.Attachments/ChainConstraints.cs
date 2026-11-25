@@ -50,7 +50,7 @@ internal static class ChainConstraints
                 return firstPass.Select(particles, chain, radius, colliders);
             if (firstPass.TryReuse(particles, chain, radius, colliders.Length, out int count))
             {
-                ChainContactCounts.Record(ChainContactQuery.FirstPassReuses);
+                ChainContactCounts.Active?.Record(ChainContactQuery.FirstPassReuses);
                 return firstPass.Cull.Selected(colliders, count);
             }
         }
@@ -68,12 +68,12 @@ internal static class ChainConstraints
 
     internal static float BendCosine(in ChainSettings settings)
     {
-        ChainContactCounts.Record(ChainContactQuery.BendCosines);
+        ChainContactCounts.Active?.Record(ChainContactQuery.BendCosines);
         return settings.AngleLimit == MathF.PI ? -1 : MathF.Cos(settings.AngleLimit);
     }
 
     internal static JointStep PlaceJoint(ChainParticles particles, int chain, int joint, in Matrix4x4 parent,
-        float springWeight, float cosine, float radius, float seconds, ChainCapsuleCandidates capsules, int placementRow = 0)
+        float springWeight, float cosine, float radius, float seconds, in ChainCapsuleCandidates capsules, int placementRow = 0)
     {
         var rig = particles.Rig;
         int particle = joint + chain;
@@ -101,11 +101,11 @@ internal static class ChainConstraints
         weight * (length * rest - 0.5f * (started + predicted));
 
     internal static JointStep ReapplyLimits(ChainParticles particles, int placementRow, in JointStep step,
-        float cosine, float radius, ChainCapsuleCandidates capsules) =>
+        float cosine, float radius, in ChainCapsuleCandidates capsules) =>
         PlaceOnSphere(particles, placementRow, step, particles.Positions[step.Particle + 1] - step.Start, cosine, radius, capsules);
 
     private static JointStep PlaceOnSphere(ChainParticles particles, int placementRow, in JointStep step, Vector3 predicted,
-        float cosine, float radius, ChainCapsuleCandidates capsules)
+        float cosine, float radius, in ChainCapsuleCandidates capsules)
     {
         var direction = ChainMath.Direction(predicted, step.Rest);
         bool clamped = false, replayedAll = false;
@@ -121,10 +121,8 @@ internal static class ChainConstraints
 
         var end = step.Start + step.Length * direction;
         particles.Positions[step.Particle + 1] = end;
-        return step with
-        {
-            BendCosine = cosine, Direction = direction, Clamped = clamped, End = end, ReplayedAll = replayedAll, PlacementCount = placementCount
-        };
+        return new JointStep(step.Joint, step.Particle, step.Start, step.Length, step.Unswung, step.Rest,
+            cosine, direction, clamped, end, replayedAll, placementCount);
     }
 
     internal static Matrix4x4 WriteSwing(ChainParticles particles, in JointStep step)

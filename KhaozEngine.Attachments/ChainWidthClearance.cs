@@ -33,13 +33,15 @@ internal static class ChainWidthClearance
         float padding = (float)(2 * length * sag * sag + lengthError) + PositionTolerance;
         var sweptReach = ChainPlacementCull.SegmentReach(proposed, initial, radius + padding, includeOpening: true);
         var pointReach = new ChainPlacementCull.SweptSphere(parent, length + radius + PositionTolerance);
+        bool axisCull = ChainPlacementCull.AxisCullEnabled;
+        var counts = ChainContactCounts.Active;
         double accepted = arc.Angle;
         for (int index = 0; index < solids; index++)
         {
             ref readonly var obstacle = ref obstacles[index];
             ref readonly var axis = ref particles.CapsuleAxes[index];
             var reach = axis.IsPoint ? pointReach : sweptReach;
-            if (ChainPlacementCull.AxisCullEnabled && !particles.PlacementCull.ReachesAxis(index, reach, swept: false))
+            if (axisCull && !particles.PlacementCull.ReachesAxis(index, reach, swept: false))
                 continue;
 
             // An irrelevant finite axis must not consume an interval search budget.
@@ -54,15 +56,15 @@ internal static class ChainWidthClearance
                 continue;
 
             bool tipOnly = parentDistance < inflated * inflated;
-            var residual = Residual(axis, initial, tipOnly);
+            var residual = Residual(axis, initial, tipOnly, counts);
             double required = Math.Min(inflated, Math.Sqrt(residual.LengthSquared)) - 0.5 * rounding;
             if (required > 0)
-                accepted = arc.ClearPrefix(axis, residual, tipOnly, required, accepted);
+                accepted = arc.ClearPrefix(axis, residual, tipOnly, required, accepted, counts);
             if (accepted * length <= rounding)
                 return before;
         }
         var candidate = accepted == arc.Angle ? after : arc.Endpoint(accepted);
-        if (StoredClearanceHolds(particles, obstacles[..solids], initial, candidate, radius, rounding))
+        if (StoredClearanceHolds(particles, obstacles[..solids], initial, candidate, radius, rounding, axisCull, counts))
             return accepted == arc.Angle || Moved(before, candidate) ? candidate : before;
 
         // Float storage can put the endpoint just past the certified limit.
@@ -74,7 +76,7 @@ internal static class ChainWidthClearance
         {
             double middle = (low + high) * 0.5;
             candidate = arc.Endpoint(middle);
-            if (StoredClearanceHolds(particles, obstacles[..solids], initial, candidate, radius, rounding))
+            if (StoredClearanceHolds(particles, obstacles[..solids], initial, candidate, radius, rounding, axisCull, counts))
             {
                 best = candidate;
                 low = middle;
@@ -92,32 +94,34 @@ internal static class ChainWidthClearance
 
     private static bool StoredClearanceHolds(ChainParticles particles, ReadOnlySpan<ColliderCapsule> solids,
         in ChainSegmentContact.Segment initial, Vector3 candidate,
-        float radius, double rounding)
+        float radius, double rounding, bool axisCull, ChainContactCounts? counts)
     {
         var root = initial.Root;
         var stored = new ChainSegmentContact.Segment(root, new Offset(candidate) - root);
         var reach = ChainPlacementCull.SegmentReach(stored, default, radius, includeOpening: false);
         for (int index = 0; index < solids.Length; index++)
         {
-            if (ChainPlacementCull.AxisCullEnabled && !particles.PlacementCull.ReachesAxis(index, reach, swept: false))
+            if (axisCull && !particles.PlacementCull.ReachesAxis(index, reach, swept: false))
                 continue;
 
             double inflated = (double)radius + solids[index].Radius;
             ref readonly var axis = ref particles.CapsuleAxes[index];
             bool tipOnly = axis.Residual(root, default, out _).LengthSquared < inflated * inflated;
-            double distance = Distance(axis, stored, tipOnly);
-            if (distance < inflated && distance + rounding < Distance(axis, initial, tipOnly))
+            double distance = Distance(axis, stored, tipOnly, counts);
+            if (distance < inflated && distance + rounding < Distance(axis, initial, tipOnly, counts))
                 return false;
         }
         return true;
     }
 
-    private static double Distance(in Axis axis, in ChainSegmentContact.Segment segment, bool parentInside) =>
-        Math.Sqrt(Residual(axis, segment, parentInside).LengthSquared);
+    private static double Distance(in Axis axis, in ChainSegmentContact.Segment segment, bool parentInside,
+        ChainContactCounts? counts) =>
+        Math.Sqrt(Residual(axis, segment, parentInside, counts).LengthSquared);
 
-    private static Offset Residual(in Axis axis, in ChainSegmentContact.Segment segment, bool parentInside)
+    private static Offset Residual(in Axis axis, in ChainSegmentContact.Segment segment, bool parentInside,
+        ChainContactCounts? counts)
     {
-        ChainContactCounts.Record(ChainContactQuery.WidthSafety);
+        counts?.Record(ChainContactQuery.WidthSafety);
         return parentInside ? axis.Residual(segment.Root, segment.Displacement, out _) :
             axis.ClosestResidual(segment, out _, out _);
     }

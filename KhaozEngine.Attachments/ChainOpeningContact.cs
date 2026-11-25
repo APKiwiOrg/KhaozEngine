@@ -18,8 +18,10 @@ internal readonly ref struct ChainOpeningContact
 
     internal ChainSegmentContact.Segment Segment => _segment;
     internal ChainSegmentContact.Segment Prediction => _prediction ?? _segment;
+    internal ChainContactCounts? Counts { get; }
 
-    internal ChainOpeningContact(ChainParticles particles, int chain, int parent, int obstacleCount)
+    internal ChainOpeningContact(ChainParticles particles, int chain, int parent, int obstacleCount,
+        ChainContactOptimization disabled, ChainContactCounts? counts)
     {
         var root = new Offset(particles.OpeningPositions[parent]);
         var tip = new Offset(particles.OpeningPositions[parent + 1]);
@@ -35,13 +37,14 @@ internal readonly ref struct ChainOpeningContact
         _radii = particles.PreviousCapsuleRadii;
         _sides = particles.OpeningSides.AsSpan(0, obstacleCount);
         _stamps = particles.OpeningStamps.AsSpan(0, obstacleCount);
-        if (ChainContactOptimizations.Use(ChainContactOptimization.OpeningStamp))
+        Counts = counts;
+        if (ChainContactOptimizations.Use(disabled, ChainContactOptimization.OpeningStamp))
             _stamp = particles.NextOpeningStamp();
         else
         {
             _stamp = 0;
             _sides.Clear();
-            ChainContactCounts.Record(ChainContactQuery.OpeningSlotsCleared, obstacleCount);
+            counts?.Record(ChainContactQuery.OpeningSlotsCleared, obstacleCount);
         }
     }
 
@@ -72,18 +75,18 @@ internal readonly ref struct ChainOpeningContact
         if (axisTravel + _predictionTravel <= openingRadius)
             return Vector3.Zero;
 
-        ChainContactCounts.Record(ChainContactQuery.SegmentOpening);
+        Counts?.Record(ChainContactQuery.SegmentOpening);
         var opening = previous.ClosestResidual(_segment, out double fraction, out double along);
         if (opening.LengthSquared < openingRadius * openingRadius)
             return Vector3.Zero;
 
-        var sweep = new ChainSweepWitness(_segment, prediction, previous, current);
+        ChainSweepWitness.Create(_segment, prediction, previous, current, out var sweep);
         var side = sweep.AtFeature(fraction, along, radius);
         if (side != Vector3.Zero)
             return side;
 
-        ChainContactCounts.Record(ChainContactQuery.SegmentOpening);
+        Counts?.Record(ChainContactQuery.SegmentOpening);
         current.ClosestResidual(prediction, out fraction, out along);
-        return sweep.Find(radius, fraction, along);
+        return sweep.Find(radius, fraction, along, Counts);
     }
 }

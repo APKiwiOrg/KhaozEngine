@@ -27,22 +27,23 @@ internal static class ChainSegmentAlternatives
     }
 
     internal static Vector3 Choose(Vector3 start, float length, float chainRadius, Vector3 initial,
-        Vector3 sequential, int solids, ChainCapsuleCandidates capsules, ChainOpeningContact opening, ReadOnlySpan<Support> supports)
+        Vector3 sequential, int solids, in ChainCapsuleCandidates capsules, in ChainOpeningContact opening,
+        ReadOnlySpan<Support> supports)
     {
         if (supports.Length < 2)
             return sequential;
 
         var selected = initial;
-        var best = Measure(initial, start, length, chainRadius, solids, capsules, opening);
-        Offer(sequential, start, length, chainRadius, initial, solids, capsules, opening, ref selected, ref best);
+        var best = Measure(initial, start, length, chainRadius, solids, capsules, in opening);
+        Offer(sequential, start, length, chainRadius, initial, solids, capsules, in opening, ref selected, ref best);
         for (int i = 0; i < supports.Length; i++)
         {
             for (int j = 0; j < i; j++)
             {
                 if (!Intersect(supports[j], supports[i], out var a, out var b))
                     continue;
-                Offer(a, start, length, chainRadius, initial, solids, capsules, opening, ref selected, ref best);
-                Offer(b, start, length, chainRadius, initial, solids, capsules, opening, ref selected, ref best);
+                Offer(a, start, length, chainRadius, initial, solids, capsules, in opening, ref selected, ref best);
+                Offer(b, start, length, chainRadius, initial, solids, capsules, in opening, ref selected, ref best);
             }
         }
         return selected;
@@ -70,15 +71,15 @@ internal static class ChainSegmentAlternatives
     }
 
     private static void Offer(Vector3 proposal, Vector3 start, float length, float radius, Vector3 initial, int solids,
-        ChainCapsuleCandidates capsules, ChainOpeningContact opening, ref Vector3 selected, ref Residual best)
+        in ChainCapsuleCandidates capsules, in ChainOpeningContact opening, ref Vector3 selected, ref Residual best)
     {
-        var score = Measure(proposal, start, length, radius, solids, capsules, opening);
+        var score = Measure(proposal, start, length, radius, solids, capsules, in opening);
         if (score.Solid > Settlement && Vector3.Dot(proposal, initial) < ResidualTurnCosine)
         {
             // With no clear orientation among the proposals, keep progress
             // local instead of selecting a distant but still embedded turn.
             proposal = ChainConstraints.ClampBend(proposal, initial, ResidualTurnCosine);
-            score = Measure(proposal, start, length, radius, solids, capsules, opening);
+            score = Measure(proposal, start, length, radius, solids, capsules, in opening);
         }
 
         if (!score.IsBetterThan(best, proposal, selected, initial))
@@ -89,7 +90,7 @@ internal static class ChainSegmentAlternatives
     }
 
     internal static bool PreservesSolids(Vector3 start, float length, float chainRadius, Vector3 current,
-        Vector3 next, int solids, ChainCapsuleCandidates capsules, ChainOpeningContact opening)
+        Vector3 next, int solids, in ChainCapsuleCandidates capsules, in ChainOpeningContact opening)
     {
         var before = Segment.FromStoredEndpoint(start, length, current);
         var after = Segment.FromStoredEndpoint(start, length, next);
@@ -102,14 +103,14 @@ internal static class ChainSegmentAlternatives
             ref readonly var axis = ref capsules.ReadAxis(index, ref scratch);
             double radius = (double)capsules[index].Radius + chainRadius;
             var side = opening.Side(obstacle, axis, radius, chainRadius);
-            if (Depth(after, axis, radius, side) > Depth(before, axis, radius, side) + Settlement)
+            if (Depth(after, axis, radius, side, opening.Counts) > Depth(before, axis, radius, side, opening.Counts) + Settlement)
                 return false;
         }
         return true;
     }
 
     private static Residual Measure(Vector3 direction, Vector3 start, float length, float chainRadius,
-        int solids, ChainCapsuleCandidates capsules, ChainOpeningContact opening)
+        int solids, in ChainCapsuleCandidates capsules, in ChainOpeningContact opening)
     {
         var segment = Segment.FromStoredEndpoint(start, length, direction);
         Axis scratch = default;
@@ -120,7 +121,7 @@ internal static class ChainSegmentAlternatives
             ref readonly var axis = ref capsules.ReadAxis(index, ref scratch);
             double radius = (double)capsules[index].Radius + chainRadius;
             var side = opening.Side(obstacle, axis, radius, chainRadius);
-            double depth = Depth(segment, axis, radius, side);
+            double depth = Depth(segment, axis, radius, side, opening.Counts);
             if (obstacle < solids)
                 result.Solid = Math.Max(result.Solid, depth);
             else
@@ -129,9 +130,9 @@ internal static class ChainSegmentAlternatives
         return result;
     }
 
-    private static double Depth(in Segment segment, in Axis axis, double radius, Vector3 side)
+    private static double Depth(in Segment segment, in Axis axis, double radius, Vector3 side, ChainContactCounts? counts)
     {
-        ChainContactCounts.Record(ChainContactQuery.ConflictCheck);
+        counts?.Record(ChainContactQuery.ConflictCheck);
         if (axis.Residual(segment.Root, default, out _).LengthSquared < radius * radius)
             return Math.Max(0, radius - Math.Sqrt(axis.Residual(segment.Root, segment.Displacement, out _).LengthSquared));
 

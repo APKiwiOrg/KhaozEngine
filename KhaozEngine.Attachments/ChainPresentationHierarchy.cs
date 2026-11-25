@@ -37,8 +37,8 @@ internal sealed class ChainPresentationHierarchy(ChainRig rig)
             int end = first + definition.Joints.Count;
             var anchor = anchors[definition.Anchor].Matrix;
             var inverse = frame[definition.Anchor].Inverse;
-            var (anchorCondition, fromTransport, toTransport) = _transports[definition.Anchor];
-            double condition = anchorCondition * rig.RestSquaredBasisCondition(chain);
+            ref readonly var transport = ref _transports[definition.Anchor];
+            double condition = transport.SquaredBasisCondition * rig.RestSquaredBasisCondition(chain);
             bool cached = condition <= MaximumSquaredBasisCondition;
             float arcTieTolerance = (float)condition * ArcTieTolerance;
             var blendedParent = anchor;
@@ -51,8 +51,8 @@ internal sealed class ChainPresentationHierarchy(ChainRig rig)
                 Quaternion fromSwing, toSwing;
                 if (cached)
                 {
-                    fromSwing = fromTransport.Apply(from.Swings[joint]);
-                    toSwing = to is null ? Quaternion.Identity : toTransport.Apply(to.Swings[joint]);
+                    fromSwing = transport.From.Apply(from.Swings[joint]);
+                    toSwing = to is null ? Quaternion.Identity : transport.To.Apply(to.Swings[joint]);
                     // At a half-turn, endpoint rounding can choose the opposite shortest arc.
                     if (MathF.Abs(Quaternion.Dot(fromSwing, toSwing)) <= arcTieTolerance)
                     {

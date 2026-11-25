@@ -29,7 +29,7 @@ internal static class ChainSegmentContact
     }
 
     internal static Vector3 Clear(ChainParticles particles, int placementRow, int parent, Vector3 direction, float length,
-        float chainRadius, ChainCapsuleCandidates capsules, out bool replayedAll, out int placementCount,
+        float chainRadius, in ChainCapsuleCandidates capsules, out bool replayedAll, out int placementCount,
         int chain, Vector3 rest, float bendCosine)
     {
         var start = particles.Positions[parent];
@@ -40,35 +40,38 @@ internal static class ChainSegmentContact
         if (placementCount == 0)
             return direction;
 
-        var opening = new ChainOpeningContact(particles, chain, parent, capsules.ObstacleCount);
+        var disabled = ChainContactOptimizations.DisabledForTests;
+        var opening = new ChainOpeningContact(particles, chain, parent, capsules.ObstacleCount,
+            disabled, ChainContactCounts.Active);
         var initial = direction;
-        direction = ClearPasses(start, direction, length, chainRadius, placement, opening, particles.PlacementCull,
-            particles.SolidCapsuleCount, rest, bendCosine, out bool outsideReach);
+        direction = ClearPasses(start, direction, length, chainRadius, placement, in opening, particles.PlacementCull,
+            particles.SolidCapsuleCount, rest, bendCosine, disabled, out bool outsideReach);
         if (!outsideReach)
             return direction;
 
         replayedAll = true;
         var all = capsules.All;
         placementCount = all.Count;
-        return ClearPasses(start, initial, length, chainRadius, all, opening, particles.PlacementCull,
-            particles.SolidCapsuleCount, rest, bendCosine, out _);
+        return ClearPasses(start, initial, length, chainRadius, all, in opening, particles.PlacementCull,
+            particles.SolidCapsuleCount, rest, bendCosine, disabled, out _);
     }
 
     private static Vector3 ClearPasses(Vector3 start, Vector3 direction, float length, float chainRadius,
-        ChainCapsuleCandidates capsules, ChainOpeningContact opening, ChainPlacementCull cull,
-        int solidCapsules, Vector3 rest, float bendCosine, out bool outsideReach)
+        in ChainCapsuleCandidates capsules, in ChainOpeningContact opening, ChainPlacementCull cull,
+        int solidCapsules, Vector3 rest, float bendCosine, ChainContactOptimization disabled, out bool outsideReach)
     {
         var segment = Segment.FromStoredEndpoint(start, length, direction);
         var firstCorrectionForTests = _firstCorrectionDirectionForTests;
         Axis scratch = default;
         outsideReach = false;
-        bool tightCull = ChainContactOptimizations.Use(ChainContactOptimization.SegmentCull) && !ChainPlacementCull.DisableForTests;
-        bool axisCull = ChainPlacementCull.AxisCullEnabled;
-        bool useTolerance = ChainContactOptimizations.Use(ChainContactOptimization.PassTolerance);
+        bool enableCull = !ChainPlacementCull.DisableForTests;
+        bool tightCull = enableCull && ChainContactOptimizations.Use(disabled, ChainContactOptimization.SegmentCull);
+        bool axisCull = enableCull && ChainContactOptimizations.Use(disabled, ChainContactOptimization.AxisCull);
+        bool useTolerance = ChainContactOptimizations.Use(disabled, ChainContactOptimization.PassTolerance);
         float contactReach = chainRadius + (float)TouchTolerance;
         var parentBound = new ChainPlacementCull.SweptSphere(start, contactReach);
         var tightBound = default(ChainPlacementCull.SweptSphere);
-        var counts = ChainContactCounts.Active;
+        var counts = opening.Counts;
         var initial = direction;
         Span<ChainSegmentAlternatives.Support> supports = stackalloc ChainSegmentAlternatives.Support[4];
         int supportCount = 0;
@@ -91,7 +94,7 @@ internal static class ChainSegmentContact
 
                 ref readonly var axis = ref capsules.ReadAxis(index, ref scratch);
                 double radius = (double)capsules[index].Radius + chainRadius;
-                ChainContactCounts.Record(ChainContactQuery.SegmentPlacement);
+                counts?.Record(ChainContactQuery.SegmentPlacement);
                 var residual = axis.ClosestResidual(segment, out double fraction, out double along);
                 double squared = residual.LengthSquared;
                 double radiusSquared = radius * radius;
@@ -127,7 +130,7 @@ internal static class ChainSegmentContact
                 var corrected = firstCorrectionForTests ??
                     ChainContactProjection.Clear(start, length, direction, center, radius,
                         crossed ? side : direction, parentInside, axis, along, cull, obstacle, chainRadius,
-                        new ChainContactProjection.AxisSample(segment.Displacement, residual, fraction));
+                        new ChainContactProjection.AxisSample(segment.Displacement, residual, fraction), disabled, axisCull, counts);
                 firstCorrectionForTests = null;
                 if (obstacle >= solidCapsules && fraction <= NearParentFraction)
                 {
@@ -137,11 +140,11 @@ internal static class ChainSegmentContact
                         continue;
                     corrected = ChainConstraints.ClampBend(corrected, rest, bendCosine);
                     if (solidContact || !ChainSegmentAlternatives.PreservesSolids(start, length, chainRadius,
-                        direction, corrected, solidCapsules, capsules, opening))
+                        direction, corrected, solidCapsules, capsules, in opening))
                     {
                         corrected = ChainConstraints.ClampBend(corrected, initial, NearParentTurnCosine);
                         if (!ChainSegmentAlternatives.PreservesSolids(start, length, chainRadius, direction, corrected,
-                            solidCapsules, capsules, opening))
+                            solidCapsules, capsules, in opening))
                             continue;
                     }
                 }
@@ -185,15 +188,15 @@ internal static class ChainSegmentContact
 
         counts?.RecordSegmentPasses(passes);
         return competing ? ChainSegmentAlternatives.Choose(start, length, chainRadius, initial, direction,
-            solidCapsules, capsules, opening, supports[..supportCount]) : direction;
+            solidCapsules, capsules, in opening, supports[..supportCount]) : direction;
     }
 
     private static double Square(double value) => value * value;
 
     internal static bool TryContact(in Segment segment, float chainRadius, in ColliderCapsule capsule, in Axis axis,
-        out Vector3 normal, out double fraction, out double along)
+        ChainContactCounts? counts, out Vector3 normal, out double fraction, out double along)
     {
-        ChainContactCounts.Record(ChainContactQuery.SegmentVelocity);
+        counts?.Record(ChainContactQuery.SegmentVelocity);
         double radius = capsule.Radius + (double)chainRadius;
         Offset residual;
         if (axis.Residual(segment.Root, default, out _).LengthSquared < radius * radius)

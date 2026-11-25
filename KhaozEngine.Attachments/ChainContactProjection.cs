@@ -12,7 +12,8 @@ internal static class ChainContactProjection
 
     internal static Vector3 Clear(Vector3 start, float length, Vector3 direction, Offset center, double radius,
         Vector3 side, bool parentInside, in Axis capsule, double along,
-        ChainPlacementCull cull, int obstacle, float chainRadius, AxisSample last)
+        ChainPlacementCull cull, int obstacle, float chainRadius, AxisSample last,
+        ChainContactOptimization disabled, bool axisCull, ChainContactCounts? counts)
     {
         double distance = Math.Sqrt(center.LengthSquared);
         if (distance == 0)
@@ -28,9 +29,8 @@ internal static class ChainContactProjection
 
         double projectedRadius = radius;
         double slack = 1e-15 * (radius + distance);
-        bool checkMargin = ChainContactOptimizations.Use(ChainContactOptimization.RoundingMargin);
-        bool axisCull = ChainPlacementCull.AxisCullEnabled;
-        bool reuse = ChainContactOptimizations.Use(ChainContactOptimization.RoundingReuse);
+        bool checkMargin = ChainContactOptimizations.Use(disabled, ChainContactOptimization.RoundingMargin);
+        bool reuse = ChainContactOptimizations.Use(disabled, ChainContactOptimization.RoundingReuse);
         for (int refinement = 0; ; refinement++)
         {
             var projected = Boundary(length, distance, projectedRadius, axis, tangent, useCone: !parentInside);
@@ -61,7 +61,7 @@ internal static class ChainContactProjection
 
                 fraction = 1;
                 if (!parentInside)
-                    ChainContactCounts.Record(ChainContactQuery.RoundingRecheck);
+                    counts?.Record(ChainContactQuery.RoundingRecheck);
                 residual = parentInside ? capsule.Residual(stored.Root, stored.Displacement, out _) :
                     capsule.ClosestResidual(stored, out fraction, out _);
                 if (reuse)

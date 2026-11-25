@@ -21,5 +21,8 @@ internal static class ChainContactOptimizations
     [ThreadStatic]
     internal static ChainContactOptimization DisabledForTests;
 
-    internal static bool Use(ChainContactOptimization optimization) => (DisabledForTests & optimization) == 0;
+    internal static bool Use(ChainContactOptimization optimization) => Use(DisabledForTests, optimization);
+
+    internal static bool Use(ChainContactOptimization disabled, ChainContactOptimization optimization) =>
+        (disabled & optimization) == 0;
 }

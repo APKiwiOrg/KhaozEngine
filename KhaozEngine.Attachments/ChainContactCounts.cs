@@ -27,9 +27,5 @@ internal sealed class ChainContactCounts
         this[ChainContactQuery.SegmentVelocity] + this[ChainContactQuery.RoundingRecheck] +
         this[ChainContactQuery.WidthSafety] + this[ChainContactQuery.ConflictCheck];
 
-    internal static void Record(ChainContactQuery kind, int count = 1)
-    {
-        if (Active is { } active)
-            active._counts[(int)kind] += count;
-    }
+    internal void Record(ChainContactQuery kind, int count = 1) => _counts[(int)kind] += count;
 }

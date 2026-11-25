@@ -33,7 +33,7 @@ internal sealed class ChainPlacementCull(int rowCount, int colliderCount)
     }
 
     internal ChainCapsuleCandidates Select(int row, Vector3 parent, float length, float chainRadius,
-        ChainCapsuleCandidates capsules)
+        scoped in ChainCapsuleCandidates capsules)
     {
         if (capsules.Count == 0 || _indices.Length == 0 || row >= rowCount || DisableForTests)
             return capsules;
@@ -54,7 +54,7 @@ internal sealed class ChainPlacementCull(int rowCount, int colliderCount)
     }
 
     internal bool ReachesTight(int index, in SweptSphere reach) =>
-        DisableForTests || (uint)index >= (uint)_bounds.Length || _bounds[index].Radius == 0 ||
+        (uint)index >= (uint)_bounds.Length || _bounds[index].Radius == 0 ||
         _bounds[index].CanReach(reach.Center, reach.Radius + _radiusGrowth[index]);
 
     internal static bool AxisCullEnabled =>
@@ -92,7 +92,7 @@ internal sealed class ChainPlacementCull(int rowCount, int colliderCount)
     private static SweptSphere Pad(Vector3 center, float radius) =>
         new(center, radius + FloatRoundingMargin * (MaxAbs(center) + radius));
 
-    internal ChainCapsuleCandidates Selected(int row, ChainCapsuleCandidates capsules, int count) =>
+    internal ChainCapsuleCandidates Selected(int row, scoped in ChainCapsuleCandidates capsules, int count) =>
         count == capsules.Count ? capsules : capsules.WithIndices(Indices(row)[..count]);
 
     private Span<int> Indices(int row) => _indices.AsSpan(row * colliderCount, colliderCount);

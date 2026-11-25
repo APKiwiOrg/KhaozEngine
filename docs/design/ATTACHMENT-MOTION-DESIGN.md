@@ -108,14 +108,18 @@ every chain moves, so it is a minor too.
 A segment can cross a thin capsule between its joints. Even if the tip touches, the tip's contact circle can lie
 past the segment's tangent point, folding the segment through the capsule. Use the tangent cone when the segment
 reaches that point and the tip's contact circle for shorter segments. Both keep the authored segment length.
-An anchored parent inside a capsule can clear only its endpoint.
+An anchored parent inside a capsule can clear only its endpoint. Its velocity stop uses that same tip and
+subtracts surface velocity before projecting onto the tangent to retain small approach speeds.
 
 A segment compares its accepted opening positions before wearer carry with its unconstrained prediction. The
 prediction includes the midpoint spring in the predicted parent frames, before length, bend, width or contact
 corrections move any parent. The sweep compares the same fractions of the segment and capsule axis across the two
-poses. Opposing residuals whose chord enters the capsule latch an opening side for the placement. If the opening
-segment is already embedded, the solver depenetrates from the current side. A latched side can push the segment
-ahead of a capsule even when their closing poses are separated, within the segment's current reach.
+poses. Opposing residuals whose chord enters the capsule latch an opening side for the placement. For a point
+sweeping past a segment that keeps its direction and length, the solver finds the closest pair along the sweep
+directly. For other moving shapes a bounded search samples intermediate closest features. Short crossings may
+fall between those samples even when the closing capsule is in reach. An embedded opening depenetrates from
+the current side. A latched side can push the segment ahead of a capsule even when their closing poses are
+separated, within the segment's current reach.
 
 When solid corrections oppose each other, the solver tests the initial direction, the sequential result and the
 intersections of their supporting planes on the unit direction sphere. It checks those directions against the

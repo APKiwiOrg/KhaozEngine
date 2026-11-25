@@ -95,18 +95,22 @@ public sealed class ChainVelocityTests(ITestOutputHelper output)
             (particles.Velocities[1] - anchorSpeed).LengthSquared() + (particles.Velocities[2] - anchorSpeed).LengthSquared();
     }
 
-    [Fact]
-    public void Endpoint_contact_retains_a_small_approach_beside_large_shared_speed()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Endpoint_contact_retains_a_small_approach_beside_large_shared_speed(bool embeddedParent)
     {
         const float step = 1f / 64;
         var definition = Chain(Vector3.UnitX, Settings, Joint(Vector3.Zero));
         var particles = new ChainParticles(new ChainRig(1, [definition], []), colliderCount: 1);
         particles.SetRest([Matrix4x4.Identity], reset: true);
         particles.Velocities[1] = new Vector3(0, 1, 1024);
-        var center = new Vector3(1.125f, -0.25f, -0.25f);
+        var center = new Vector3(embeddedParent ? 0 : 1.125f, -0.25f, -0.25f);
+        float radius = Vector3.Distance(Vector3.UnitX, center);
+        Assert.Equal(embeddedParent, center.Length() < radius);
         var surface = new Vector3(0, 1 + 1f / (1 << 18), 1024);
         var previousCenter = center - step * surface;
-        ColliderCapsule sphere = new(center, center, 0.375f);
+        ColliderCapsule sphere = new(center, center, radius);
         ColliderCapsule previous = new(previousCenter, previousCenter, sphere.Radius);
         particles.SetCapsuleGeometry(0, sphere, previous);
 

@@ -13,10 +13,12 @@ internal static partial class ChainCapsuleCollision
         private readonly Offset _crossedEnds;
         private readonly double _inverseSquared;
 
-        internal Axis(in ColliderCapsule capsule)
+        internal Axis(in ColliderCapsule capsule) : this(new Offset(capsule.Start), new Offset(capsule.End)) { }
+
+        internal Axis(Offset start, Offset end)
         {
-            _start = new Offset(capsule.Start);
-            _end = new Offset(capsule.End);
+            _start = start;
+            _end = end;
             _axis = _end - _start;
             double squared = _axis.LengthSquared;
             _inverseSquared = squared == 0 ? 0 : 1 / squared;

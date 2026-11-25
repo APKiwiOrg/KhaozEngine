@@ -77,32 +77,13 @@ internal readonly ref struct ChainOpeningContact
         if (opening.LengthSquared < openingRadius * openingRadius)
             return Vector3.Zero;
 
-        double radiusSquared = radius * radius;
-        var matchingPrediction = MaterialResidual(prediction, current, fraction, along);
-        if (Crossed(opening, matchingPrediction, radiusSquared))
-            return Unit(opening);
+        var sweep = new ChainSweepWitness(_segment, prediction, previous, current);
+        var side = sweep.AtFeature(fraction, along, radius);
+        if (side != Vector3.Zero)
+            return side;
 
-        // A different feature can be closest at the other end of the motion.
-        // Test that feature against its own opening material point as well.
         ChainContactCounts.Record(ChainContactQuery.SegmentOpening);
-        var predicted = current.ClosestResidual(prediction, out fraction, out along);
-        var matchingOpening = MaterialResidual(_segment, previous, fraction, along);
-        return Crossed(matchingOpening, predicted, radiusSquared) ? Unit(matchingOpening) : Vector3.Zero;
-    }
-
-    private static Offset MaterialResidual(in ChainSegmentContact.Segment segment, in Axis axis, double fraction, double along) =>
-        segment.Root - axis.Start + segment.Displacement * fraction - axis.Direction * along;
-
-    private static Vector3 Unit(Offset direction) => (direction * (1 / Math.Sqrt(direction.LengthSquared))).ToVector3();
-
-    private static bool Crossed(Offset opening, Offset current, double radiusSquared)
-    {
-        if (Offset.Dot(opening, current) >= 0)
-            return false;
-
-        // Opposite residuals put the chord's nearest point strictly between its ends.
-        var chord = current - opening;
-        var closest = opening - chord * (Offset.Dot(opening, chord) / chord.LengthSquared);
-        return closest.LengthSquared < radiusSquared;
+        current.ClosestResidual(prediction, out fraction, out along);
+        return sweep.Find(radius, fraction, along);
     }
 }

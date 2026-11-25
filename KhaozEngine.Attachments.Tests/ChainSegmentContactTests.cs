@@ -86,18 +86,27 @@ public sealed class ChainSegmentContactTests
         Assert.InRange(settledTravel, 0, 0.001f);
     }
 
-    [Fact]
-    public void A_capsule_crossing_the_whole_segment_in_one_step_pushes_it_ahead()
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    [InlineData(true, false)]
+    public void A_capsule_crossing_the_whole_segment_in_one_step_pushes_it_ahead(bool oblique, bool point)
     {
         var chain = Chain(-Vector3.UnitY, Settings with { Gravity = 0 }, Joint(Vector3.Zero));
         var simulation = Create(chain, colliderCount: 1);
-        const float radius = 0.08f;
-        var before = new Vector3(-0.3f, -0.5f, 0);
-        var after = new Vector3(0.3f, -0.5f, 0);
+        float radius = oblique ? 0.1f : 0.08f;
+        var before = new Vector3(-0.3f, oblique ? -0.2f : -0.5f, 0);
+        var after = new Vector3(0.3f, oblique ? -0.8f : -0.5f, 0);
+        var opening = point ? new ColliderCapsule(before, before, radius) : TransverseCapsule(before, radius);
+        var closing = point ? new ColliderCapsule(after, after, radius) : TransverseCapsule(after, radius);
         var anchor = Matrix4x4.Identity;
-        simulation.Step([anchor], [TransverseCapsule(before, radius)], anchor, 0);
-        simulation.Step([anchor], [TransverseCapsule(after, radius)], anchor, StepSeconds);
-        simulation.Step([anchor], [TransverseCapsule(after, radius)], anchor, StepSeconds);
+        Assert.True(DistanceToSegment(before, Vector3.Zero, chain.Tip) > radius);
+        Assert.True(DistanceToSegment(after, Vector3.Zero, chain.Tip) > radius);
+        Assert.Equal(0, DistanceToSegment((before + after) / 2, Vector3.Zero, chain.Tip));
+
+        simulation.Step([anchor], [opening], anchor, 0);
+        simulation.Step([anchor], [closing], anchor, StepSeconds);
+        simulation.Step([anchor], [closing], anchor, StepSeconds);
 
         var tip = Vector3.Transform(chain.Tip, simulation.JointsFromAnchor[0]);
         Assert.True(tip.X > after.X, $"The tip stayed behind the capsule at {tip}.");

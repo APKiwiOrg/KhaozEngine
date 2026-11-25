@@ -194,9 +194,20 @@ internal static class ChainSegmentContact
         out Vector3 normal, out double fraction, out double along)
     {
         ChainContactCounts.Record(ChainContactQuery.SegmentVelocity);
-        var residual = axis.ClosestResidual(segment, out fraction, out along);
+        double radius = capsule.Radius + (double)chainRadius;
+        Offset residual;
+        if (axis.Residual(segment.Root, default, out _).LengthSquared < radius * radius)
+        {
+            // Only the endpoint can clear when its parent is already embedded.
+            fraction = 1;
+            residual = axis.Residual(segment.Root, segment.Displacement, out along);
+        }
+        else
+        {
+            residual = axis.ClosestResidual(segment, out fraction, out along);
+        }
         double squared = residual.LengthSquared;
-        double radius = capsule.Radius + (double)chainRadius + TouchTolerance;
+        radius += TouchTolerance;
         if (squared == 0 || squared > radius * radius)
         {
             normal = Vector3.Zero;

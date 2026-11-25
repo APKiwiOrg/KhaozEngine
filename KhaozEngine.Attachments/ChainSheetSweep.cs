@@ -40,34 +40,92 @@ internal readonly struct ChainSheetSweep(
         if (side != 0)
             return side;
 
-        int budget = IntermediateQueries;
-        return Search(0, 1, travel, openingNormal, lastNormal, radius, tolerance, ref budget);
+        if (previous.IsPoint && current.IsPoint && opening.TryTranslationTo(prediction, out var translation))
+        {
+            // In the triangle frame this is a point moving on a straight axis.
+            // Its nearest triangle feature is an exact witness for that path.
+            var path = new Axis(previous.Start, current.Start - translation);
+            ChainContactCounts.Active?.Record(ChainContactQuery.SheetOpening);
+            var hit = opening.Closest(path, false, ref diagonal, out _);
+            return AtFeature(hit with { Along = 0 }, openingNormal, lastNormal, radius, tolerance);
+        }
+
+        double start = 0, end = 1;
+        if (!ClipTime(new Offset(1, 0, 0), radius, ref start, ref end) ||
+            !ClipTime(new Offset(0, 1, 0), radius, ref start, ref end) ||
+            !ClipTime(new Offset(0, 0, 1), radius, ref start, ref end) ||
+            !ClipTime(openingNormal, radius, ref start, ref end) ||
+            !ClipTime(lastNormal, radius, ref start, ref end))
+            return 0;
+
+        return Search(start, end, travel, openingNormal, lastNormal, radius, tolerance);
+    }
+
+    private bool ClipTime(Offset direction, double radius, ref double start, ref double end)
+    {
+        var first = opening.Projection(direction, previous.Start);
+        var last = prediction.Projection(direction, current.Start);
+        double firstAxis = Offset.Dot(direction, previous.Direction);
+        double lastAxis = Offset.Dot(direction, current.Direction);
+        // Minima are concave and maxima convex in time. Their endpoint
+        // chords enclose the moving triangle and capsule along this axis.
+        return ClipGap(first.Min - Math.Max(0, firstAxis), last.Min - Math.Max(0, lastAxis), radius, ref start, ref end) &&
+            ClipGap(Math.Min(0, firstAxis) - first.Max, Math.Min(0, lastAxis) - last.Max, radius, ref start, ref end);
+    }
+
+    private static bool ClipGap(double first, double last, double radius, ref double start, ref double end)
+    {
+        // Pad the contact radius before clipping so rounding at an endpoint
+        // or division near the window boundary cannot discard a witness.
+        double padded = radius + 1e-12 * (1 + Math.Max(Math.Abs(first), Math.Abs(last)));
+        first -= padded;
+        last -= padded;
+        if (first > 0)
+        {
+            if (last > 0)
+                return false;
+            start = Math.Max(start, first / (first - last));
+        }
+        else if (last > 0)
+        {
+            end = Math.Min(end, first / (first - last));
+        }
+
+        return start <= end;
     }
 
     private double Search(double start, double end, double travel, Offset firstNormal, Offset lastNormal,
-        double radius, double tolerance, ref int budget)
+        double radius, double tolerance)
     {
-        if (budget == 0)
-            return 0;
+        Span<(double Start, double End)> pending = stackalloc (double, double)[1 + 2 * IntermediateQueries];
+        pending[0] = (start, end);
+        int pendingCount = 1;
+        // Narrow contact can be near either end of the window. Refine both
+        // halves before spending further queries on an earlier half.
+        for (int read = 0; read < pendingCount && read < IntermediateQueries; read++)
+        {
+            (start, end) = pending[read];
+            double middle = 0.5 * (start + end);
+            var axis = new Axis(previous.Start + (current.Start - previous.Start) * middle,
+                previous.End + (current.End - previous.End) * middle);
+            var triangle = opening.Interpolate(prediction, middle);
+            var diagonal = default(ChainContactTriangle.Diagonal);
+            ChainContactCounts.Active?.Record(ChainContactQuery.SheetOpening);
+            var hit = triangle.Closest(axis, false, ref diagonal, out _);
+            double reach = radius + (end - middle) * travel;
+            if (hit.Residual.LengthSquared > reach * reach)
+                continue;
 
-        budget--;
-        double middle = 0.5 * (start + end);
-        var axis = new Axis(previous.Start + (current.Start - previous.Start) * middle,
-            previous.End + (current.End - previous.End) * middle);
-        var triangle = opening.Interpolate(prediction, middle);
-        var diagonal = default(ChainContactTriangle.Diagonal);
-        ChainContactCounts.Active?.Record(ChainContactQuery.SheetOpening);
-        var hit = triangle.Closest(axis, false, ref diagonal, out _);
-        double reach = radius + (end - middle) * travel;
-        if (hit.Residual.LengthSquared > reach * reach)
-            return 0;
+            double side = AtFeature(hit, firstNormal, lastNormal, radius, tolerance);
+            if (side != 0)
+                return side;
+            if (middle == start || middle == end)
+                continue;
 
-        double side = AtFeature(hit, firstNormal, lastNormal, radius, tolerance);
-        if (side != 0)
-            return side;
-
-        side = Search(start, middle, travel, firstNormal, lastNormal, radius, tolerance, ref budget);
-        return side != 0 ? side : Search(middle, end, travel, firstNormal, lastNormal, radius, tolerance, ref budget);
+            pending[pendingCount++] = (start, middle);
+            pending[pendingCount++] = (middle, end);
+        }
+        return 0;
     }
 
     private double AtFeature(in ChainContactTriangle.Contact hit, Offset firstNormal, Offset lastNormal,

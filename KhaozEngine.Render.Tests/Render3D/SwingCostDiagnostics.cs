@@ -118,7 +118,7 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
             processorCount = Environment.ProcessorCount,
             cases,
         }, JsonSerializerOptions.Web));
-        Assert.True(cases[0].Queries.LayeredCorrections > 0, "A tail must contact the interior of the five-guide sheet.");
+        Assert.True(cases[0].Queries.InteriorTailCorrections > 0, "A tail must reach a five-guide triangle interior while clearing both guide tubes.");
 
         SheetMeasurement MeasureSheetCase(string name, bool sevenGuides, bool disableSheet, bool historical = false)
         {
@@ -406,7 +406,7 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
             return new ContactQueries(samples == 0 ? null : counts.SegmentAxis / samples,
                 counts[ChainContactQuery.BandFilter], counts[ChainContactQuery.BandCandidate], counts[ChainContactQuery.SheetCurrent],
                 counts[ChainContactQuery.SheetOpening], counts[ChainContactQuery.SheetVelocity],
-                counts[ChainContactQuery.SheetCorrections], counts[ChainContactQuery.LayeredSheetCorrections]);
+                counts[ChainContactQuery.SheetCorrections], counts[ChainContactQuery.InteriorTailCorrections]);
         }
         finally
         {
@@ -420,7 +420,7 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
         ContactQueries Queries);
 
     sealed record ContactQueries(double? SegmentAxisPerWearerStep, long BandFilterTests, long BandCandidates, long CurrentTriangles,
-        long OpeningTriangles, long VelocityTriangles, long Corrections, long LayeredCorrections);
+        long OpeningTriangles, long VelocityTriangles, long Corrections, long InteriorTailCorrections);
 
     sealed record Measurement(int FrameRateHz, double? MeanMs, double? P50Ms, double? P95Ms, double? MaxMs,
         long ManagedBytesAllocated, double? StepMeanMs, double? WriteDrawsMeanMs)

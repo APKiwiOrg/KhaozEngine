@@ -63,9 +63,7 @@ internal sealed class ChainPlacementCull(int rowCount, int colliderCount)
         var openingCenter = Midpoint(Midpoint(openingFirstUpper, openingSecondUpper),
             Midpoint(openingFirstLower, openingSecondLower));
         var center = Midpoint(Midpoint(firstParent, secondParent), openingCenter);
-        float reach = MathF.Max(Vector3.Distance(center, firstParent) + firstLength * DirectionLengthBound,
-            Vector3.Distance(center, secondParent) + secondLength * DirectionLengthBound);
-        reach = MathF.Max(reach, MathF.Max(Vector3.Distance(center, firstUpper), Vector3.Distance(center, secondUpper)));
+        float reach = PlacedBandRadius(center, firstParent, firstLength, secondParent, secondLength, firstUpper, secondUpper);
         reach = MathF.Max(reach, MathF.Max(Vector3.Distance(center, openingFirstUpper),
             Vector3.Distance(center, openingSecondUpper)));
         reach = MathF.Max(reach, MathF.Max(Vector3.Distance(center, openingFirstLower),
@@ -74,6 +72,21 @@ internal sealed class ChainPlacementCull(int rowCount, int colliderCount)
         reach = MathF.Max(reach, MathF.Max(Vector3.Distance(center, prediction.C), Vector3.Distance(center, prediction.D)));
         reach += radius + (float)ChainCapsuleCollision.TouchTolerance;
         return new SweptSphere(center, reach + FloatRoundingMargin * (MaxAbs(center) + reach));
+    }
+
+    internal static SweptSphere ClosingBandReach(Vector3 firstParent, float firstLength, Vector3 secondParent,
+        float secondLength, Vector3 firstUpper, Vector3 secondUpper)
+    {
+        var center = Midpoint(firstParent, secondParent);
+        return Pad(center, PlacedBandRadius(center, firstParent, firstLength, secondParent, secondLength, firstUpper, secondUpper));
+    }
+
+    private static float PlacedBandRadius(Vector3 center, Vector3 firstParent, float firstLength, Vector3 secondParent,
+        float secondLength, Vector3 firstUpper, Vector3 secondUpper)
+    {
+        float moving = MathF.Max(Vector3.Distance(center, firstParent) + firstLength * DirectionLengthBound,
+            Vector3.Distance(center, secondParent) + secondLength * DirectionLengthBound);
+        return MathF.Max(moving, MathF.Max(Vector3.Distance(center, firstUpper), Vector3.Distance(center, secondUpper)));
     }
 
     internal bool ReachesBand(int index, in SweptSphere band)

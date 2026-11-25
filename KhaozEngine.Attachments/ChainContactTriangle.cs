@@ -36,6 +36,20 @@ internal readonly struct ChainContactTriangle
         return a < -tolerance && b < -tolerance ? -1 : 0;
     }
 
+    internal bool TryTranslationTo(in ChainContactTriangle next, out Offset translation)
+    {
+        translation = next._root - _root;
+        return _ab == next._ab && _ac == next._ac;
+    }
+
+    internal (double Min, double Max) Projection(Offset direction, Offset origin)
+    {
+        double a = Offset.Dot(direction, _root - origin);
+        double b = a + Offset.Dot(direction, _ab);
+        double c = a + Offset.Dot(direction, _ac);
+        return (Math.Min(a, Math.Min(b, c)), Math.Max(a, Math.Max(b, c)));
+    }
+
     internal Offset MaterialResidual(in Axis axis, Offset weights, double along) =>
         (_root - axis.Start) + _ab * weights.Y + _ac * weights.Z - axis.Direction * along;
 

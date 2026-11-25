@@ -129,21 +129,43 @@ public sealed class ChainSheetContactTests
         simulation.Step([Identity], [across], Identity, StepSeconds);
         simulation.Step([Identity], [across], Identity, StepSeconds);
 
-        float clearance = MeasureSheet(simulation, left, right, across);
-        Assert.True(clearance >= Clearance - Tolerance, $"Clearance after the crossing: {clearance} m.");
-        var joints = simulation.JointsFromAnchor;
-        var upperLeft = joints[1].Translation;
-        var upperRight = joints[left.Joints.Count + 1].Translation;
-        var lowerLeft = Tip(simulation, left, 0);
-        var lowerRight = Tip(simulation, right, left.Joints.Count);
-        float first = AxisDistance(across, upperLeft, lowerLeft, lowerRight);
-        float second = AxisDistance(across, upperLeft, lowerRight, upperRight);
-        var normal = first <= second
-            ? Vector3.Cross(lowerLeft - upperLeft, lowerRight - upperLeft)
-            : Vector3.Cross(lowerRight - upperLeft, upperRight - upperLeft);
-        var center = (across.Start + across.End) / 2;
-        float side = Vector3.Dot(center - upperLeft, normal);
-        Assert.True(side < 0, $"Opening-side witness {side}, triangle clearances {first} and {second}.");
+        AssertHemOpeningSide(simulation, left, right, across);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(0.03f)]
+    public void A_capsule_crossing_late_in_an_oblique_sweep_keeps_the_opening_side(float halfAxis)
+    {
+        var rig = CreateSheet(bounded: true, out var left, out var right);
+        var simulation = new ChainSimulation(rig, 1);
+        var before = DiagonalCapsule(-5.88f);
+        var after = DiagonalCapsule(0.12f);
+        simulation.Step([Identity], [before], Identity, 0);
+        simulation.Step([Identity], [after], Identity, StepSeconds);
+        simulation.Step([Identity], [after], Identity, StepSeconds);
+
+        AssertHemOpeningSide(simulation, left, right, after);
+
+        ColliderCapsule DiagonalCapsule(float coordinate) =>
+            new(new(coordinate - halfAxis, -0.9f, coordinate), new(coordinate + halfAxis, -0.9f, coordinate), ObstacleRadius);
+    }
+
+    [Fact]
+    public void A_capsule_that_leaves_the_sheet_reach_does_not_drag_the_hem_after_it()
+    {
+        var rig = CreateSheet(bounded: true, out var left, out var right);
+        var simulation = new ChainSimulation(rig, 1);
+        var before = Capsule(SweepStart);
+        var after = Capsule(5 * left.Tip.Length());
+        simulation.Step([Identity], [before], Identity, 0);
+        var initial = simulation.JointsFromAnchor.ToArray();
+        simulation.Step([Identity], [after], Identity, StepSeconds);
+        simulation.Step([Identity], [after], Identity, StepSeconds);
+
+        Assert.True(MeasureSheet(simulation, left, right, after) > Clearance);
+        Assert.True(MemoryMarshal.AsBytes(initial.AsSpan())
+            .SequenceEqual(MemoryMarshal.AsBytes(simulation.JointsFromAnchor)));
     }
 
     [Fact]
@@ -352,6 +374,26 @@ public sealed class ChainSheetContactTests
 
     private static Vector3 Tip(ChainSimulation simulation, ChainRigChain chain, int first) =>
         Vector3.Transform(chain.Tip, simulation.JointsFromAnchor[first + chain.Joints.Count - 1]);
+
+    private static void AssertHemOpeningSide(ChainSimulation simulation, ChainRigChain left, ChainRigChain right,
+        ColliderCapsule across)
+    {
+        float clearance = MeasureSheet(simulation, left, right, across);
+        Assert.True(clearance >= Clearance - Tolerance, $"Clearance after the crossing: {clearance} m.");
+        var joints = simulation.JointsFromAnchor;
+        var upperLeft = joints[1].Translation;
+        var upperRight = joints[left.Joints.Count + 1].Translation;
+        var lowerLeft = Tip(simulation, left, 0);
+        var lowerRight = Tip(simulation, right, left.Joints.Count);
+        float first = AxisDistance(across, upperLeft, lowerLeft, lowerRight);
+        float second = AxisDistance(across, upperLeft, lowerRight, upperRight);
+        var normal = first <= second
+            ? Vector3.Cross(lowerLeft - upperLeft, lowerRight - upperLeft)
+            : Vector3.Cross(lowerRight - upperLeft, upperRight - upperLeft);
+        var center = (across.Start + across.End) / 2;
+        float side = Vector3.Dot(center - upperLeft, normal);
+        Assert.True(side < 0, $"Opening-side witness {side}, triangle clearances {first} and {second}.");
+    }
 
     internal static float MeasureSheet(ChainSimulation simulation, ChainRigChain left, ChainRigChain right,
         ColliderCapsule capsule, int first = 0, int? rightStart = null)

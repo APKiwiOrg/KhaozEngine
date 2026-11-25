@@ -186,7 +186,10 @@ internal sealed class ChainSheetContact
         double currentSide = sample.Side;
         double sweptSide = SweptSide(particles, row, ref entry, obstacle, secondTriangle, thickness, sideTolerance);
         bool crossed = sweptSide != 0 && sweptSide * currentSide < 0;
-        if (squared >= radiusSquared && !crossed)
+        ref readonly var first = ref placed[band.FirstChain];
+        ref readonly var second = ref placed[band.SecondChain];
+        ref readonly var axis = ref particles.CapsuleAxes[obstacle];
+        if (squared >= radiusSquared && (!crossed || ClosingIsBeyondReach(row.Current, first, second, axis, thickness)))
             return false;
 
         // A reset may seed a sphere inside the sheet's plane. Coplanar faces
@@ -205,8 +208,6 @@ internal sealed class ChainSheetContact
 
         double firstWeight = secondTriangle ? 0 : hit.Weights.Y;
         double secondWeight = secondTriangle ? hit.Weights.Y : hit.Weights.Z;
-        var first = placed[band.FirstChain];
-        var second = placed[band.SecondChain];
         double movableSquared = (first.Length > 0 ? firstWeight * firstWeight : 0) +
             (second.Length > 0 ? secondWeight * secondWeight : 0);
         if (movableSquared <= MinimumWeight)
@@ -233,16 +234,46 @@ internal sealed class ChainSheetContact
         double leverage = NormalLeverage(particles.Positions, first, normal, firstWeight) +
             NormalLeverage(particles.Positions, second, normal, secondWeight);
         double correction = (separation - positionMargin) / Math.Max(leverage, 0.05 * movableSquared);
+        var counts = ChainContactCounts.Active;
+        bool interiorTail = counts is not null && obstacle >= particles.SolidCapsuleCount &&
+            hit.Weights is { X: > 0, Y: > 0, Z: > 0 } &&
+            GuideClears(particles, band.FirstChain, axis, radiusSquared) &&
+            GuideClears(particles, band.SecondChain, axis, radiusSquared);
         bool moved = Move(particles.Positions, first, normal, correction * firstWeight) |
             Move(particles.Positions, second, normal, correction * secondWeight);
         if (moved)
         {
-            var counts = ChainContactCounts.Active;
             counts?.Record(ChainContactQuery.SheetCorrections);
-            if (spansChains && obstacle >= particles.SolidCapsuleCount)
-                counts?.Record(ChainContactQuery.LayeredSheetCorrections);
+            if (interiorTail)
+                counts!.Record(ChainContactQuery.InteriorTailCorrections);
         }
         return moved;
+    }
+
+    private static bool ClosingIsBeyondReach(in Corners corners, in ChainConstraints.JointStep first,
+        in ChainConstraints.JointStep second, in Axis axis, double thickness)
+    {
+        var reach = ChainPlacementCull.ClosingBandReach(first.Start, first.Length, second.Start, second.Length,
+            corners.FirstUpper, corners.SecondUpper);
+        double limit = reach.Radius + thickness;
+        return axis.Residual(new Offset(reach.Center), default, out _).LengthSquared > limit * limit;
+    }
+
+    private static bool GuideClears(ChainParticles particles, int chain, in Axis axis, double radiusSquared)
+    {
+        int root = particles.Rig.FirstJoint(chain) + chain;
+        int tip = root + particles.Rig.Chains[chain].Joints.Count;
+        var start = new Offset(particles.Positions[root]);
+        for (int index = root + 1; index <= tip; index++)
+        {
+            var end = new Offset(particles.Positions[index]);
+            var segment = new ChainSegmentContact.Segment(start, end - start);
+            if (axis.ClosestResidual(segment, out _, out _).LengthSquared <= radiusSquared)
+                return false;
+            start = end;
+        }
+
+        return true;
     }
 
     private static Offset Facing(Offset normal, Offset openingNormal, double openingSide, double tolerance)

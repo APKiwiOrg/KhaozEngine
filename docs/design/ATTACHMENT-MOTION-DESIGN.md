@@ -331,8 +331,10 @@ sees only body and worn set capsules.
    float bounds include opening, uncorrected prediction and the reachable band. Uncertain bounds keep the
    candidate. A material sweep uses the same triangle weights and capsule-axis point at both ends of the
    unprojected step. If their relative chord crosses the sheet within thickness, reuse its opening side
-   through the whole row solve. A piercing axis uses the oriented face normal. Coplanar starts choose a
-   common deterministic side.
+   through the whole row solve. Moving projection bounds narrow the search to the time when contact is
+   possible. For a point capsule and a translating triangle, use the closest feature on the exact relative
+   path. A piercing axis uses the oriented face normal. Coplanar starts choose a common deterministic
+   side. A clear obstacle that has already left the whole row's reach does not draw the guides after it.
    Each collision moves the available corners by their triangle weights and tangent leverage on the
    length spheres. Passes recheck shared corners and reapply each moved guide's bend and segment contact.
    Stop after a pass that leaves the accepted row settled or after eight passes. If sheet contact moved
@@ -659,7 +661,7 @@ Run the full measurement on a GitHub-hosted runner after approval. Only that run
 `Report_sheet_contact_preparation_cost` uses the same frame window to compare five and seven five-joint cape
 guides over four three-joint tails at 144 Hz. Each topology has a segment-only control with the same links,
 tuning, collider geometry and pose stream. The six-joint layered segment case remains the historical reference.
-The query replay checks that a lower tail contacts the five-guide sheet between its guides. It also reports
+The query replay checks that a lower tail contacts a five-guide triangle interior while both guide tubes clear. It also reports
 candidate and triangle query counts and the worker job allocation totals alongside the caller's measurements.
 
 ```sh

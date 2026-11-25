@@ -142,7 +142,7 @@ namespace KhaozEngine.Render3D.Rendering
         }
 
         readonly IGpuDevice _gd;
-        readonly ModelVisibilityShaders _visibilityShaders = new();
+        readonly ModelVisibilityShaders _visibilityShaders = new(releaseOnFallback: false);
         readonly AtmosphereBindings _atmosphere;
         readonly bool _ownsAtmosphere;
         readonly IGpuBuffer _ubo;
@@ -359,20 +359,22 @@ namespace KhaozEngine.Render3D.Rendering
         /// materials survive the rebuild.</summary>
         public void SetOutputs(GpuOutputDescription modelOutputs)
         {
-            if (!ShadowVisibilityTargets.HasVisibility(modelOutputs)) _visibilityShaders.Release(_retired);
+            if (AmbientOutputActive) ReleaseAmbientShaders();
+            if (!ShadowVisibilityTargets.HasVisibility(modelOutputs)) ReleaseOutputShaders();
             _retired.Retire(_pipeline); _retired.Retire(_splatPipeline); _retired.Retire(_dissolvePipeline); RetireTileGroundPipelines();
             _retired.Retire(_skinnedPipeline); _retired.Retire(_skinnedDissolvePipeline);
             _retired.Retire(_cpuSkinnedMotionPipeline); _cpuSkinnedMotionPipeline = null;
             BuildPipelines(_gd.Factory, modelOutputs);
+            AmbientOutputActive = AmbientDiffuseTarget.IsAttached(modelOutputs);
         }
 
-        void BuildPipelines(IGpuResourceFactory factory, GpuOutputDescription modelOutputs)
+        void BuildPipelines(IGpuResourceFactory factory, GpuOutputDescription modelOutputs, bool failOnCoverageRefusal = false)
         {
             // First: the foliage rebuild just below builds its temporal variant against these resources.
             bool temporal = MotionMath.IsTemporal(modelOutputs);
             EnsureMotionResources(temporal);
             SetFoliageOutputs(modelOutputs);
-            BuildCoveragePipelines(factory, modelOutputs);
+            BuildCoveragePipelines(factory, modelOutputs, failOnCoverageRefusal);
             // Slot 0: per-vertex geometry (locations 0..4).
             var vertexLayout = new GpuVertexLayoutDescription(
                 new GpuVertexElement("Position", GpuVertexElementFormat.Float3),

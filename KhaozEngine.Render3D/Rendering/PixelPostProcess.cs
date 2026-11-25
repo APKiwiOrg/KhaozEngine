@@ -206,7 +206,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// <paramref name="runFxaa"/> is the caps-resolved FXAA decision from the scene (so an MSAA request the device
         /// can't honour can fall back to FXAA); it must match the value passed to <see cref="Run"/> so the flip parity
         /// lines up.</summary>
-        public void PrepareUniforms(IGpuCommandList cl, IPostChainTargets res, PixelPostProcessSettings s, in CameraDepth cam, bool runFxaa, bool distortionActive)
+        public void PrepareUniforms(IGpuCommandList cl, IPostChainTargets res, PixelPostProcessSettings s, in CameraDepth cam, bool runFxaa, bool distortionActive, GpuRetireQueue? retired = null)
         {
             using var profile = Profiling?.Pass(cl, "post.uniforms") ?? default;
             var pal = _palScratch;
@@ -304,10 +304,11 @@ namespace KhaozEngine.Render3D.Rendering
                 cl.UpdateBuffer(_compositeBuf, 0, in composite);
             }
 
+            float gradeStrength = PrepareColorGrade(s, res, retired);
             if (s.Hdr.Enabled)
             {
                 // .x = exposure (>= 0), .y = operator index (0 aces, 1 reinhard, 2 clamp), .z = chroma preservation [0,1].
-                var tone = new ToneUbo { Params = new Vector4(MathF.Max(s.Hdr.Exposure, 0f), (float)(int)s.Hdr.Operator, Math.Clamp(s.Hdr.ChromaPreservation, 0f, 1f), 0f) };
+                var tone = new ToneUbo { Params = new Vector4(MathF.Max(s.Hdr.Exposure, 0f), (float)(int)s.Hdr.Operator, Math.Clamp(s.Hdr.ChromaPreservation, 0f, 1f), gradeStrength) };
                 cl.UpdateBuffer(_toneBuf, 0, in tone);
             }
 
@@ -388,7 +389,18 @@ namespace KhaozEngine.Render3D.Rendering
 
             void RunQuantize() => Simple("post.quantize", _palPipe, fromSource.Palette, _paletteFromPingA, _paletteFromPingB);
             void RunOutline() => Simple("post.edge", _edgePipe, fromSource.Edge, _edgeFromPingA, _edgeFromPingB);
-            void RunTonemap() => Simple("post.tonemap", _tonePipe, fromSource.Tone, _toneFromPingA, _toneFromPingB);
+            void RunTonemap()
+            {
+                if (_grade is null)
+                {
+                    Simple("post.tonemap", _tonePipe, fromSource.Tone, _toneFromPingA, _toneFromPingB);
+                    return;
+                }
+                using var profile = Profiling?.Pass(cl, "post.tonemap-grade") ?? default;
+                bool fromA = ReferenceEquals(src, res.PingA);
+                _grade.Draw(cl, src, fromA ? res.PingBFB : res.PingAFB);
+                src = fromA ? res.PingB : res.PingA;
+            }
             void RunFxaa() => Simple("post.fxaa", _fxaaPipe, fromSource.Fxaa, _fxaaFromPingA, _fxaaFromPingB);
 
             // The temporal sharpen picks its target as Simple does. Its input is the chain source (a history colour,
@@ -539,6 +551,7 @@ namespace KhaozEngine.Render3D.Rendering
         {
             DisposeSets();
             _sharpen?.Dispose();
+            ReleaseColorGrade(null);
             DisposeTemporalOutline();
             _palPipe.Dispose(); _edgePipe.Dispose(); _blitPipe.Dispose(); _fxaaPipe.Dispose(); _tonePipe.Dispose();
             _brightPipe.Dispose(); _blurPipe.Dispose(); _compositePipe.Dispose(); _applyPipe.Dispose();

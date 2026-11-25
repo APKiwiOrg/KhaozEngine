@@ -165,6 +165,39 @@ fragments (rigid, dissolve, GPU-skinned, skinned dissolve and the coverage and f
 shadows never scale it, so it reaches the HDR target and bloom. A material without a glow binds the shared zero
 block, so the term adds exactly zero.
 
+## Opaque ambient occlusion
+
+An optional final opaque MRT stores the same fragment's indirect diffuse RGB multiplied by its
+fog transmission. Alpha marks coverage, including opaque surfaces with zero indirect light.
+Rigid and skinned meshes, terrain, tile ground and foliage share the export. Early blob shadows
+attenuate the stored term by their blend coverage. Direct lights, emissive and fog in-scatter
+stay in the main colour attachment.
+
+After all opaque draws, the horizon pass reconstructs positions from the R32F zero-to-one device
+depth and the current jittered projection. The depth colour clear equals the background red
+channel. The extra attachment's coverage disambiguates geometry at that same value. The pass
+integrates four horizon slices at half internal resolution using geometric normals and a world
+radius. Joint filtering and upsampling reject unrelated depths and normals. Composition subtracts
+only the occluded fraction of stored indirect RGB through the HDR framebuffer blend and preserves
+alpha. It completes before the opaque temporal copy, later effects, water and the TAA resolve.
+Bloom and the HDR operator receive the resulting scene. AO has no independent history. The
+temporal resolve uses its existing motion, disocclusion and camera-cut handling on the composed
+frame. A change in the active AO settings invalidates previously shaded history.
+
+The AO path uses eight bytes per internal pixel plus one byte per half-resolution texel, with
+each half dimension rounded up. At 1920 by 1080 this is 17,107,200 bytes of texture payload.
+Driver alignment, framebuffer and pipeline overhead are separate. Off and zero strength use the
+base pipeline and allocate no AO targets. The feature bypasses MSAA, the legacy UNorm chain,
+and devices with no spare colour attachment. The UNorm chain can clip direct and ambient light
+together before composition, so it cannot recover a reliable indirect-only reduction. The MSAA
+path does not expose per-sample opaque guides for the same subtraction.
+
+The optional display colour grade uses two bilinear reads into a 256 by 128 RGBA16F atlas plus
+interpolation between blue slices. This is a trilinear lookup in the 32 cubed RGB lattice.
+It uses 262,144 bytes of texels per active post chain and adds no framebuffer or fullscreen pass.
+The tonemap selects the grading shader before the sharpener, palette and GUI. No atlas is built
+by the identity and zero-strength paths. Replaced resources retire behind the scene's GPU work.
+
 ## Physical atmosphere fog
 
 Lit models (rigid, dissolved and skinned), terrain, tile ground and foliage call
@@ -321,7 +354,7 @@ with `preserveSource: true`. Every multisample survives for water to load and co
 Metal uses `StoreAndMultisampleResolve` for this early snapshot. The existing final colour resolve still runs
 after water and particles with its original store action.
 Single-sample frames copy only `ColorTex` mip zero into a separate, same-format, single-mip, single-sample
-texture. The earlier temporal opaque-only copy keeps its existing position and contents.
+texture. The earlier temporal opaque-only copy includes ambient occlusion when it is enabled.
 
 Frames without effective opt-ins perform neither transfer and allocate no full-size column target. They expose
 a stable initialized 1x1 placeholder. Source identity, target generation, dimensions, format and sample count
@@ -622,8 +655,10 @@ shimmer from frame to frame. The bands a river shows sit short of focus, where t
 - A refused request stays latched until the request changes, so a steady frame never retries it.
 - The consumer can read the refusal, and the scene logs it once.
 
-The cascade shadow layout, point shadow atlas, material anisotropy sampler and fine temporal history
-follow this rule. Each defines which request changes allow a retry.
+The cascade shadow layout, point shadow atlas, material anisotropy sampler, fine temporal history,
+opaque AO and display colour grading follow this rule. AO validates its extended graphics pipelines
+before publication. If a covered mesh's first-use AO variant fails, its ordinary coverage path retries
+before the scene classifies the device. Each quality feature defines which request changes allow a retry.
 
 ## Where to look in the code
 

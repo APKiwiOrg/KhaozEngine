@@ -1094,6 +1094,10 @@ Native shaders are created on the consuming caller before pipeline state enters 
 still rejects null sources immediately. Compiler failures rethrow their original type and message at the
 first-use join, without an `AggregateException` wrapper.
 
+Use `IGpuPipeline.EnsureDeviceReady()` to realize a candidate's native shaders, blend, depth,
+rasterizer and input layout objects on the prepare thread when a feature needs to handle
+driver refusal before recording. Ordinary binding continues to realize deferred pipelines on demand.
+
 Optional features can call `EnsureCompilationReady` on each shader owner after queueing their complete
 batch. This explicit CPU-only join reads the prepared compiler result and its diagnostics, without running
 native shader or pipeline creation. Coverage uses it before committing cold readiness or publishing a host

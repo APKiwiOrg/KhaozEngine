@@ -171,6 +171,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             => _diagnostics.Join().Read(IsDisposed || _liveness.IsDead
                 || _shaderSet is D3D11ShaderSet s && (s.IsDisposed || s.DeviceIsDead));
 
+        public void EnsureDeviceReady() => _ = _resource.Value;
+
         public void Dispose() => _resource.Dispose();
 
         [SupportedOSPlatform("windows")]

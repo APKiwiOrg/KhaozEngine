@@ -29,7 +29,8 @@ internal sealed partial class TemporalHistory
     /// or not a defined reason.</exception>
     public void Invalidate(TemporalResetReason reason)
     {
-        if (reason <= TemporalResetReason.None || reason > TemporalResetReason.HistoryDetail)
+        // Temporal-off frames also invalidate history. Keep the contiguous reset-reason check allocation-free.
+        if (reason <= TemporalResetReason.None || reason > TemporalResetReason.AmbientOcclusion)
             throw new ArgumentOutOfRangeException(nameof(reason), reason, "A reset needs a defined reason other than None.");
         IsValid = false;
         LastReset = reason;

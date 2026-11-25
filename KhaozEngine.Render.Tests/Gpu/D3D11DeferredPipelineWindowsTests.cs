@@ -97,17 +97,19 @@ public sealed class D3D11DeferredPipelineWindowsTests
     }
 
     [GpuTheory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void WindowsPipeline_DisposeOrDeviceLossDuringJoin_DoesNotRealizeShaderHandles(bool deviceDeath)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public void WindowsPipeline_DisposeOrDeviceLossDuringJoin_DoesNotRealizeShaderHandles(bool deviceDeath, bool preflight)
     {
         if (!KhaozEngineD3D11.IsPlatformSupported) return;
-        PendingWindows(deviceDeath);
+        PendingWindows(deviceDeath, preflight);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     [SupportedOSPlatform("windows")]
-    static void PendingWindows(bool deviceDeath)
+    static void PendingWindows(bool deviceDeath, bool preflight)
     {
         Vortice.Direct3D11.D3D11.D3D11CreateDevice(IntPtr.Zero, DriverType.Warp,
             (DeviceCreationFlags)0, [FeatureLevel.Level_11_0], out ID3D11Device? created,
@@ -132,7 +134,12 @@ public sealed class D3D11DeferredPipelineWindowsTests
         });
         var bind = Task.Run(() =>
         {
-            try { return Record.Exception(() => { _ = pipeline.VertexShader; }); }
+            try
+            {
+                return preflight
+                    ? Record.Exception(((IGpuPipeline)pipeline).EnsureDeviceReady)
+                    : Record.Exception(() => { _ = pipeline.VertexShader; });
+            }
             finally { entered.Set(); }
         });
         try

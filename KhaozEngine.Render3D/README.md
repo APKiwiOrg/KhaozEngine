@@ -1022,6 +1022,21 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   Either way it is a convincing glow on beams/emissive materials/bright billboards. The pure math (`BloomMath`: the
   knee curve, gaussian weight generation, half-res sizing) is headless-tested and mirrors the GLSL bright-pass/blur
   shaders exactly.
+- **Contact ambient occlusion.** Set `scene.Post.AmbientOcclusion.Enabled = true`. The starting
+  radius is `RadiusMeters = 1.05f` and `Strength = 0.5f` caps the local loss at half of the
+  opaque indirect diffuse light. It uses device depth and geometric normals at internal resolution,
+  so an occluder must be visible in the frame. Direct and emissive lighting and fog in-scatter keep
+  their contribution. Native TAA resolves the shaded opaque scene with the rest of the frame.
+  AO requires HDR, a single-sample scene target and a spare MRT attachment. Read
+  `scene.EffectiveAmbientOcclusion`, `AmbientOcclusionFailure` and `AmbientOcclusionTextureBytes`
+  for the effective path, resource failure and texture payload. Off by default.
+- **Display colour grade.** Set `scene.Post.ColorGrade.Look = new ColorGradeLut(samples)` and
+  optionally set `Strength` from 0 to 1. Supply 32 cubed normalized display RGB samples
+  (`Vector3`), with red changing fastest, then green, then blue. The renderer trilinearly samples
+  the cube after the HDR operator and blends in display RGB before palette quantization. It preserves
+  alpha and passes the same output to everything after the blit, including GUI. A null or identity
+  look, zero strength or disabled HDR bypasses the lookup. `scene.ColorGradeFailure` reports a
+  failed GPU resource request. See [the consumer example](../docs/USING-KHAOZENGINE.md#ambient-occlusion-and-colour-grading).
 - HDR + filmic tonemap: `PixelPostProcessSettings.Hdr` (an `HdrSettings`, **on by default**) renders the internal
   colour chain at float16 (`R16G16B16A16Float`) so shading carries values above 1.0, blooms the over-range
   highlights BEFORE tonemapping, then maps the float scene back to LDR with a filmic `TonemapOperator` (`AcesFilmic`

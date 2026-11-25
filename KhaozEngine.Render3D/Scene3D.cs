@@ -1113,7 +1113,7 @@ namespace KhaozEngine.Render3D
             postChain.BindTargets(postTargets, _retired);
             // The edge pass's depth convention (perspective or ortho, near and far), from the unjittered projection.
             var camDepth = Internal.OutlineMath.ExtractCameraDepth(_currentFrameView.Projection);
-            postChain.PrepareUniforms(cl, postTargets, Post, camDepth, runFxaa, distortionActive);
+            postChain.PrepareUniforms(cl, postTargets, Post, camDepth, runFxaa, distortionActive, _retired);
 
             // Frozen-frame capture for a screen crossfade must read the PREVIOUS frame (the origin view, before the
             // teleport cut). Snapshot ColorTex here, at the top of the frame, before the model pass overwrites it. No-op
@@ -1220,7 +1220,7 @@ namespace KhaozEngine.Render3D
                     using (ProfilePass(cl, "effects.blob-decals", 0))
                     {
                         _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, vp, EffectTimeSeconds, DecalQuality, Post.Hdr.Enabled, Rendering.GroundDecalRenderer.FramePass.BlobShadow, _frameOrigin, RelativeDecals(_shadowDecals));
-                        cl.SetFramebuffer(_res.ModelFB);
+                        cl.SetFramebuffer(_res.OpaqueModelFB);
                         _model.BindPass(cl);
                     }
                 }

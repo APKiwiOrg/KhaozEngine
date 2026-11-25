@@ -34,6 +34,7 @@ public sealed class TemporalHistoryTests
     [InlineData(TemporalResetReason.CameraCutDetected)]
     [InlineData(TemporalResetReason.DeviceReset)]
     [InlineData(TemporalResetReason.HistoryDetail)]
+    [InlineData(TemporalResetReason.AmbientOcclusion)]
     public void AResetRecordsItsReasonAndTheReasonOutlivesTheRecovery(TemporalResetReason reason)
     {
         var history = new TemporalHistory();

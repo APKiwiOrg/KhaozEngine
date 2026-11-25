@@ -174,11 +174,12 @@ namespace KhaozEngine.Render3D.Rendering
             _voidAdditivePipe = Pipe(f, colorOutput, GpuBlendAttachment.Additive, GpuComparison.Equal);
         }
 
-        IGpuPipeline Pipe(IGpuResourceFactory f, GpuOutputDescription outputs, GpuBlendAttachment blend, GpuComparison depth) =>
+        IGpuPipeline Pipe(IGpuResourceFactory f, GpuOutputDescription outputs, GpuBlendAttachment blend, GpuComparison depth,
+            IGpuShaderSet? shaders = null, GpuBlendAttachment? auxiliaryBlend = null) =>
             f.CreateGraphicsPipeline(new GpuPipelineDescription
             {
                 BlendFactor = Vector4.Zero,
-                BlendAttachments = new[] { blend },
+                BlendAttachments = auxiliaryBlend is { } aux ? [blend, aux] : [blend],
                 // Read-only depth test on the far-plane quad (DecalVert emits z=1), one of an exact complementary pair:
                 //   Greater - stored depth is NEARER than the far plane, i.e. scene GEOMETRY only (background rejected).
                 //   Equal   - stored depth still EQUALS the cleared far plane, i.e. BACKGROUND only (geometry rejected),
@@ -191,7 +192,7 @@ namespace KhaozEngine.Render3D.Rendering
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: false, scissorTestEnabled: false),
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _layout },
-                ShaderSet = _shaders,
+                ShaderSet = shaders ?? _shaders,
                 // One instance-rate vertex stream carrying the twelve per-decal vec4 attributes (locations 0..11, no holes).
                 VertexLayouts = new List<GpuVertexLayoutDescription>
                 {
@@ -474,11 +475,12 @@ namespace KhaozEngine.Render3D.Rendering
 
             CoalesceDecalRuns(decals, _runs);
             CoalesceVoidRuns(decals, decals.Length, _voidRuns);
-            cl.SetFramebuffer(res.ColorDepthFB);
+            var ao = pass == FramePass.BlobShadow ? res.AmbientOcclusion : null;
+            cl.SetFramebuffer(ao?.BlobFramebuffer ?? res.ColorDepthFB);
             cl.SetVertexBuffer(0, _instances!);
             foreach (var run in _runs)
             {
-                cl.SetPipeline(run.Blend == DecalBlend.Additive ? _additivePipe : _alphaPipe);
+                cl.SetPipeline(run.Blend == DecalBlend.Additive ? _additivePipe : ao is null ? _alphaPipe : _ambientBlobPipeline!);
                 cl.SetGraphicsResourceSet(0, _set!, frameSlot);
                 // 6 vertices (two-triangle quad) x run.Count instances. Base instance = run.Start selects this run's
                 // slice of the shared instance buffer (the same base-instance path the model/shadow instanced draws use).
@@ -499,6 +501,8 @@ namespace KhaozEngine.Render3D.Rendering
         public void Dispose()
         {
             _set?.Dispose();
+            _ambientBlobPipeline?.Dispose();
+            _ambientBlobShaders?.Dispose();
             _alphaPipe.Dispose(); _additivePipe.Dispose();
             _voidAlphaPipe.Dispose(); _voidAdditivePipe.Dispose();
             _layout.Dispose(); _shaders.Dispose();

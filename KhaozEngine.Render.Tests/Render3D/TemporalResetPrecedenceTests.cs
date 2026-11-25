@@ -20,7 +20,7 @@ public sealed class TemporalResetPrecedenceTests
     [
         TemporalResetReason.FirstFrame, TemporalResetReason.DeviceReset, TemporalResetReason.AntiAliasing,
         TemporalResetReason.RenderScale, TemporalResetReason.Resize, TemporalResetReason.HistoryDetail,
-        TemporalResetReason.CameraCutRequested,
+        TemporalResetReason.AmbientOcclusion, TemporalResetReason.CameraCutRequested,
         TemporalResetReason.CameraCutDetected,
     ];
 

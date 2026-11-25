@@ -17,7 +17,7 @@ internal static class ShadowVisibilityTargets
     internal static bool HasVisibility(in GpuOutputDescription outputs)
     {
         int slot = Attachment(MotionMath.IsTemporal(outputs));
-        return outputs.Colour.Length == slot + 1 && outputs.Colour[slot] == Format;
+        return outputs.Colour.Length > slot && outputs.Colour[slot] == Format;
     }
 
     /// <summary>Choose the approved degraded layout before creating any target or pipeline.</summary>

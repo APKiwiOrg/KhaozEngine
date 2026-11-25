@@ -7,7 +7,7 @@ namespace KhaozEngine.Render3D.Rendering;
 internal sealed partial class ModelRenderer
 {
     CoveragePulledResources _coveragePull = null!;
-    readonly ModelVisibilityShaders _coverageVisibility = new();
+    readonly ModelVisibilityShaders _coverageVisibility = new(releaseOnFallback: false);
     bool _coverageReady, _coverageRefused, _coverageRebuildPending;
     internal bool CoverageRefused => _coverageRefused;
     IGpuShaderSet _coverageShaders = null!, _coverageDissolveShaders = null!;
@@ -38,9 +38,26 @@ internal sealed partial class ModelRenderer
                     ShaderSources.SkinnedModelFrag, new(PreciseMath: true));
                 _coverageDissolveShaders = _gd.Factory.CreateShadersFromSpirv(ShaderSources.CoverageModelVert,
                     ShaderSources.SkinnedModelDissolveFrag, new(PreciseMath: true));
-                CreateCoveragePipelines(_gd.Factory, _coverageOutputs);
+                if (AmbientOutputActive)
+                {
+                    try
+                    {
+                        CreateCoveragePipelines(_gd.Factory, _coverageOutputs);
+                        EnsureCoverageDeviceReady();
+                    }
+                    catch (Exception error)
+                    {
+                        throw new AmbientCoverageOutputException(error);
+                    }
+                }
+                else CreateCoveragePipelines(_gd.Factory, _coverageOutputs);
                 _coveragePull.Reserve(count);
                 ReserveCoverageShadows(count);
+            }
+            catch (AmbientCoverageOutputException)
+            {
+                DisposeCoveragePulling();
+                throw;
             }
             catch
             {
@@ -99,7 +116,7 @@ internal sealed partial class ModelRenderer
         CoveragePullObserverForTests?.Invoke("main", new(draw));
     }
 
-    void BuildCoveragePipelines(IGpuResourceFactory factory, GpuOutputDescription outputs)
+    void BuildCoveragePipelines(IGpuResourceFactory factory, GpuOutputDescription outputs, bool failOnRefusal)
     {
         _coverageOutputs = outputs;
         // Ordinary output rebuilds must never resurrect a refused or incomplete coverage owner.
@@ -108,7 +125,7 @@ internal sealed partial class ModelRenderer
         _coverageRebuildPending = true;
         // Compilation joins after the scene finishes this batch, so these variants cannot delay later renderers.
         try { CreateCoveragePipelines(factory, outputs); }
-        catch (Exception error) when (error is NotSupportedException or ShaderValidationException)
+        catch (Exception error) when (!failOnRefusal && error is (NotSupportedException or ShaderValidationException))
         {
             // Earlier frames may still reference shared coverage owners. Retire the whole refused family
             // behind completion rather than destroying an in-flight program or retaining a failed variant.

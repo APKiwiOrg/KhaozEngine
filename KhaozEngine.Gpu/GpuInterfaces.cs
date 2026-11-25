@@ -92,7 +92,13 @@ namespace KhaozEngine.Gpu
     }
 
     /// <summary>A graphics pipeline handle.</summary>
-    public interface IGpuPipeline : IDisposable { }
+    public interface IGpuPipeline : IDisposable
+    {
+        /// <summary>Finish native graphics-pipeline creation on the calling thread without recording commands.
+        /// Optional render paths can validate a candidate before making it part of the frame. For backends that
+        /// create pipelines synchronously, the factory already completed this operation.</summary>
+        void EnsureDeviceReady() { }
+    }
 
     /// <summary>A compute pipeline handle, and a distinct type from <see cref="IGpuPipeline"/> on purpose. The
     /// API this seam was drawn from had one pipeline type and one set-pipeline call for both kinds, so binding a

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using KhaozEngine.Gpu;
+using KhaozEngine.Render3D.Rendering;
 
 namespace KhaozEngine.Render3D.Internal;
 
@@ -19,11 +20,21 @@ internal sealed partial class RenderResources
             MsLitVisibilityTex = Tex(w, h, ShadowVisibilityTargets.Format, GpuTextureUsage.RenderTarget, 1, samples);
     }
 
-    IGpuFramebuffer CreateModelFramebuffer(IGpuTexture color, IGpuTexture normal, IGpuTexture depth)
+    internal OpaqueAmbientOcclusion? AmbientOcclusion { get; set; }
+    internal IGpuFramebuffer OpaqueModelFB => AmbientOcclusion?.ModelFramebuffer ?? ModelFB;
+
+    internal void ReleaseAmbientOcclusion(GpuRetireQueue? retired)
+    {
+        ResourceRetirement.Free(AmbientOcclusion, retired);
+        AmbientOcclusion = null;
+    }
+
+    internal IGpuFramebuffer CreateModelFramebuffer(IGpuTexture color, IGpuTexture normal, IGpuTexture depth, IGpuTexture? ambient = null)
     {
         var attachments = new List<IGpuTexture> { color, normal, depth };
         if (MotionTex is not null) attachments.Add(MotionTex);
         if (LitVisibilityTex is not null) attachments.Add(MsLitVisibilityTex ?? LitVisibilityTex);
+        if (ambient is not null) attachments.Add(ambient);
         return _gd.Factory.CreateFramebuffer(DepthStencil, attachments.ToArray());
     }
 

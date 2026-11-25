@@ -48,8 +48,8 @@ PY
 echo "expand: which triggers shard which legs"
 check "push keeps Metal's full suite on one job" "3 none"    "$(expand push false '')"
 check "pull_request matches push"           "3 none"          "$(expand pull_request false '')"
-check "dispatch shards all three"           "22 metal-native,direct3d11-native,vulkan-native" "$(expand workflow_dispatch false '')"
-check "schedule matches dispatch"           "22 metal-native,direct3d11-native,vulkan-native" "$(expand schedule false '')"
+check "dispatch shards all three"           "23 metal-native,direct3d11-native,vulkan-native" "$(expand workflow_dispatch false '')"
+check "schedule matches dispatch"           "23 metal-native,direct3d11-native,vulkan-native" "$(expand schedule false '')"
 check "a bake shards nothing"               "3 none"          "$(expand workflow_dispatch true '')"
 check "a render filter shards nothing"      "3 none"          "$(expand workflow_dispatch false 'FullyQualifiedName~Golden')"
 
@@ -171,24 +171,27 @@ check "an unreadable TRX fails the shard's outcome" "unreadable TRX (success)" \
 
 echo "summarize: the per-backend full suite check"
 S=$TMPROOT/sln
-mkdir -p "$S/A.Tests" "$S/KhaozEngine.Render.Tests" "$S/Lib"
+mkdir -p "$S/A.Tests" "$S/KhaozEngine.Render.Tests" "$S/KhaozEngine.MapEditor.Tests" "$S/Lib"
 printf '<Project><ItemGroup><PackageReference Include="Microsoft.NET.Test.Sdk" /></ItemGroup></Project>\n' > "$S/A.Tests/A.Tests.csproj"
 printf '<Project><PropertyGroup><AssemblyName>KhaozEngine.Render.Tests</AssemblyName></PropertyGroup><ItemGroup><PackageReference Include="Microsoft.NET.Test.Sdk" /></ItemGroup></Project>\n' > "$S/KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj"
+printf '<Project><PropertyGroup><AssemblyName>Fixture.Editor.Tests</AssemblyName></PropertyGroup><ItemGroup><PackageReference Include="Microsoft.NET.Test.Sdk" /></ItemGroup></Project>\n' > "$S/KhaozEngine.MapEditor.Tests/KhaozEngine.MapEditor.Tests.csproj"
 printf '<Project />\n' > "$S/Lib/Lib.csproj"
-printf '<Solution><Project Path="A.Tests/A.Tests.csproj" /><Folder Name="/x/"><Project Path="KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj" /></Folder><Project Path="Lib/Lib.csproj" /></Solution>\n' > "$S/Fixture.slnx"
+printf '<Solution><Project Path="A.Tests/A.Tests.csproj" /><Folder Name="/x/"><Project Path="KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj" /><Project Path="KhaozEngine.MapEditor.Tests/KhaozEngine.MapEditor.Tests.csproj" /></Folder><Project Path="Lib/Lib.csproj" /></Solution>\n' > "$S/Fixture.slnx"
 reports() { # outcome of render-2, where a.tests ran (comma list)
   rm -rf "$TMPROOT/reports"; mkdir -p "$TMPROOT/reports"
   python3 - "$TMPROOT/reports" "$1" "$2" <<'PY'
 import json, sys
 out, render2, a_on = sys.argv[1], sys.argv[2], sys.argv[3].split(",")
 one = {"total": 2, "passed": 2, "failed": 0, "skipped": 0, "runs": 1}
-for shard in ["rest", "render-1", "render-2"]:
+for shard in ["rest", "projects-1", "render-1", "render-2"]:
     if shard == "render-2" and render2 == "missing":
         continue
     assemblies = {}
     if shard in a_on:
         assemblies["a.tests"] = dict(one)
-    if shard != "rest":
+    if shard == "projects-1":
+        assemblies["Fixture.Editor.Tests"] = dict(one)
+    if shard.startswith("render-"):
         assemblies["KhaozEngine.Render.Tests"] = dict(one)
     outcome = render2 if shard == "render-2" else "success"
     json.dump({"backend": "metal-native", "shard": shard, "outcome": outcome, "assemblies": assemblies},
@@ -212,13 +215,11 @@ python3 - "$S" <<'PY'
 import pathlib, sys, xml.etree.ElementTree as ET
 base = pathlib.Path(sys.argv[1])
 solution = ET.parse(base / "Fixture.slnx")
-for name in ("KhaozEngine.MapEditor.Tests", "KhaozEngine.Game.Tests", "KhaozEngine.Movement.Tests", "KhaozEngine.Catalog.Tests",
+for name in ("KhaozEngine.Game.Tests", "KhaozEngine.Movement.Tests", "KhaozEngine.Catalog.Tests",
              "KhaozEngine.Server.Tests"):
     path = base / name / (name + ".csproj")
     path.parent.mkdir()
-    override = "<AssemblyName>Fixture.Editor.Tests</AssemblyName>" if "MapEditor" in name else ""
-    path.write_text('<Project><PropertyGroup>' + override + '</PropertyGroup><ItemGroup>'
-                    '<PackageReference Include="Microsoft.NET.Test.Sdk" /></ItemGroup></Project>')
+    path.write_text('<Project><ItemGroup><PackageReference Include="Microsoft.NET.Test.Sdk" /></ItemGroup></Project>')
     ET.SubElement(solution.getroot(), "Project", Path=f"{name}/{name}.csproj")
 solution.write(base / "Fixture.slnx")
 (base / "output").mkdir()
@@ -229,6 +230,13 @@ check "the named project solution is generated" 0 \
   "$(run solution vulkan-native projects-1 "$S/Fixture.slnx" "$S/output/projects.slnx")"
 check "unsharded isolation keeps all non-render projects" 0 \
   "$(run solution vulkan-native '' "$S/Fixture.slnx" "$S/output/all.slnx")"
+# #1897: The wire suite must not compete with another assembly on the hosted Metal runner.
+check "the Metal MapEditor solution is generated" 0 \
+  "$(run solution metal-native projects-1 "$S/Fixture.slnx" "$S/output/metal-editor.slnx")"
+check "Metal rest excludes MapEditor and Render.Tests" 0 \
+  "$(run solution metal-native rest "$S/Fixture.slnx" "$S/output/metal-rest.slnx")"
+check "single-job Metal keeps Render.Tests in the remaining solution" 0 \
+  "$(run solution metal-native rest "$S/Fixture.slnx" "$S/output/metal-single-job-rest.slnx" --include-render)"
 check "Windows rest excludes the named projects" 0 \
   "$(run solution direct3d11-native rest "$S/Fixture.slnx" "$S/output/windows.slnx")"
 check "the Windows named project solution is generated" 0 \
@@ -247,6 +255,7 @@ rest = {"../A.Tests/A.Tests.csproj", "../Lib/Lib.csproj"}
 catalog = {"../KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj"}
 server = {"../KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj"}
 editor = {"../KhaozEngine.MapEditor.Tests/KhaozEngine.MapEditor.Tests.csproj"}
+render = {"../KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj"}
 named = {f"../{name}/{name}.csproj" for name in
          ("KhaozEngine.MapEditor.Tests", "KhaozEngine.Game.Tests", "KhaozEngine.Movement.Tests")}
 assert paths("rest") == rest | catalog | server, paths("rest")
@@ -255,6 +264,9 @@ assert paths("all") == rest | named | catalog | server, paths("all")
 assert paths("windows") == rest | (named - editor), paths("windows")
 assert paths("windows-projects") == catalog, paths("windows-projects")
 assert paths("windows-projects-2") == editor | server, paths("windows-projects-2")
+assert paths("metal-editor") == editor, paths("metal-editor")
+assert paths("metal-rest") == rest | (named - editor) | catalog | server, paths("metal-rest")
+assert paths("metal-single-job-rest") == paths("metal-rest") | render, paths("metal-single-job-rest")
 assert not paths("rest") & paths("projects"), "project shards overlap"
 for a, b in (("windows", "windows-projects"), ("windows", "windows-projects-2"), ("windows-projects", "windows-projects-2")):
     assert not paths(a) & paths(b), f"Windows shards {a} and {b} overlap"
@@ -271,7 +283,7 @@ for backend in metal-native direct3d11-native vulkan-native; do
       "$(run build-solution "$backend" "$shard" "$S/Fixture.slnx" "$S/output/build-$backend-$shard.slnx")"
   done
 done
-for backend in direct3d11-native vulkan-native; do
+for backend in metal-native direct3d11-native vulkan-native; do
   check "$backend projects-1 build solution" 0 \
     "$(run build-solution "$backend" projects-1 "$S/Fixture.slnx" "$S/output/build-$backend-projects-1.slnx")"
 done
@@ -296,7 +308,8 @@ for backend in ("metal-native", "direct3d11-native", "vulkan-native"):
     assert "../Lib/Lib.csproj" not in rest, "standalone library roots are unnecessary"
     assert "../A.Tests/A.Tests.csproj" in rest, "new test projects must default to rest"
     assert (render <= rest) == (backend != "metal-native"), "once-per-leg checks need Render.Tests"
-assert paths("metal-native", "rest") == {"../A.Tests/A.Tests.csproj"} | named | catalog | server
+assert paths("metal-native", "rest") == {"../A.Tests/A.Tests.csproj"} | (named - editor) | catalog | server
+assert paths("metal-native", "projects-1") == editor
 assert paths("direct3d11-native", "rest") == {"../A.Tests/A.Tests.csproj"} | (named - editor) | render
 assert paths("vulkan-native", "rest") == {"../A.Tests/A.Tests.csproj"} | catalog | server | render
 assert paths("direct3d11-native", "projects-1") == catalog
@@ -315,7 +328,9 @@ plan = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(plan)
 out, mutation, backend = sys.argv[2:]
 one = {"total": 2, "passed": 2, "failed": 0, "skipped": 0, "runs": 1}
-if backend == "vulkan-native":
+if backend == "metal-native":
+    editor, world, server, catalog = ["projects-1"], ["rest"], ["rest"], ["rest"]
+elif backend == "vulkan-native":
     editor, world, server, catalog = ["projects-1"], ["projects-1"], ["rest"], ["rest"]
 else:
     editor, world, server, catalog = ["projects-2"], ["rest"], ["projects-2"], ["projects-1"]
@@ -323,7 +338,7 @@ where = {"a.tests": ["rest"], "Fixture.Editor.Tests": editor,
          "KhaozEngine.Game.Tests": world.copy(), "KhaozEngine.Movement.Tests": world.copy(),
          "KhaozEngine.Server.Tests": server, "KhaozEngine.Catalog.Tests": catalog,
          "KhaozEngine.Render.Tests": [name for name, _ in plan.render_slices(backend)]}
-moved = "Fixture.Editor.Tests" if backend == "vulkan-native" else "KhaozEngine.Catalog.Tests"
+moved = "KhaozEngine.Catalog.Tests" if backend == "direct3d11-native" else "Fixture.Editor.Tests"
 if mutation == "duplicate":
     where[moved].append("rest")
 elif mutation == "missing":
@@ -342,7 +357,7 @@ for shard in [name for name in plan.shards(backend) if not name.startswith("rend
               open(f"{out}/{backend}-{shard}.json", "w"))
 PY
 }
-for backend in direct3d11-native vulkan-native; do
+for backend in metal-native direct3d11-native vulkan-native; do
   project_reports none "$backend"
   check "$backend named assemblies once and new assemblies on rest pass" 0 \
     "$(run summarize "$backend" "$TMPROOT/reports" "$S/Fixture.slnx")"

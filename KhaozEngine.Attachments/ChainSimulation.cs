@@ -80,6 +80,7 @@ public sealed class ChainSimulation
         if (reset)
         {
             _particles.SetRest(anchorWorlds, reset: true);
+            _tiers.SeedOpeningRadii(Rig, _previousStepColliders, _settings);
             _clock.Reset();
             _shown.SetRest(_framePresentationAnchors);
             _stepPresentation.Reset(_shown);
@@ -98,6 +99,7 @@ public sealed class ChainSimulation
             if (_held)
             {
                 _particles.SeedFromShown(_previousAnchors, _shown.Frames);
+                _tiers.SeedOpeningRadii(Rig, _previousStepColliders, _settings);
                 _clock.Reset();
                 _stepPresentation.Reset(_shown);
                 _blend.Begin();

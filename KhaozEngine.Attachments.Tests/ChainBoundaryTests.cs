@@ -53,6 +53,43 @@ public sealed class ChainBoundaryTests
         Assert.InRange(speed, 0.98f, 1.02f);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_tuned_lower_radius_passes_its_expansion_speed_to_the_upper_tip(bool reset)
+    {
+        // #1894: the opening and closing lower capsules keep their own radii.
+        const float radius = 0.25f;
+        float grown = radius + StepSeconds;
+        var center = new Vector3(1.03f, -radius, 0);
+        var upper = Chain(Vector3.UnitX, Unforced, Joint(Vector3.Zero)) with { Layer = AttachmentLayer.Outerwear };
+        var lower = Chain(Vector3.UnitZ, Unforced with { Radius = radius }, Joint(-0.5f * Vector3.UnitZ))
+            with { Anchor = 1, Layer = AttachmentLayer.Armour };
+        var rig = new ChainRig(2, [upper, lower], []);
+        var simulation = new ChainSimulation(rig, 0, new() { MaxStepSeconds = StepSeconds });
+        Matrix4x4[] anchors = [Matrix4x4.Identity, Matrix4x4.CreateTranslation(center)];
+        simulation.Step(anchors, [], Matrix4x4.Identity, 0);
+        simulation.Step(anchors, [], Matrix4x4.Identity, StepSeconds);
+        simulation.Tune(1, lower.Settings with { Radius = grown });
+        if (reset)
+        {
+            simulation.Reset();
+            simulation.Step(anchors, [], Matrix4x4.Identity, 0);
+        }
+
+        simulation.Step(anchors, [], Matrix4x4.Identity, StepSeconds);
+        simulation.Step(anchors, [], Matrix4x4.Identity, StepSeconds);
+        var before = Vector3.Transform(upper.Tip, simulation.JointsFromAnchor[0]);
+        Assert.InRange(Vector3.Distance(before, center), grown - 0.00001f, grown + 0.00001f);
+        simulation.Step(anchors, [], Matrix4x4.Identity, StepSeconds);
+        var after = Vector3.Transform(upper.Tip, simulation.JointsFromAnchor[0]);
+        float speed = Vector3.Distance(before, after) / StepSeconds;
+        if (reset)
+            Assert.InRange(speed, 0, 0.00001f);
+        else
+            Assert.InRange(speed, 0.98f, 1.02f);
+    }
+
     private static float ReleasedTipSpeed(ColliderCapsule previous, ColliderCapsule current, float elapsed)
     {
         var chain = Chain(Vector3.UnitX, Unforced, Joint(Vector3.Zero));

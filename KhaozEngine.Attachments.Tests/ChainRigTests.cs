@@ -73,7 +73,7 @@ public class ChainRigTests
                 "self link" => [new(0, 1), new(1, 1)],
                 "duplicate link" => [new(0, 1), new(0, 1)],
                 "reversed link" => [new(0, 1), new(1, 0)],
-                _ => [firstLink, new(1, 2)],
+                _ => invalid == "undefined layer" ? [new(1, 2)] : [firstLink, new(1, 2)],
             };
             return invalid == "anchor count"
                 ? new(chosen == "anchor count" ? -1 : 0, [], [])

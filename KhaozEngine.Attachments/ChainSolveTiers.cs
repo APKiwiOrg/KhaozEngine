@@ -40,6 +40,24 @@ internal sealed class ChainSolveTiers
     internal int ObstacleCount { get; }
     internal int PlacementRows { get; }
 
+    internal void SeedOpeningRadii(ChainRig rig, Span<ColliderCapsule> opening, ReadOnlySpan<ChainSettings> settings)
+    {
+        foreach (var tier in _tiers)
+        {
+            if (!tier.ExposesSegments)
+                continue;
+
+            int obstacle = tier.ObstacleCount;
+            foreach (int chain in tier.Chains)
+            {
+                float radius = settings[chain].Radius;
+                int count = rig.Chains[chain].Joints.Count;
+                for (int segment = 0; segment < count; segment++, obstacle++)
+                    opening[obstacle] = opening[obstacle] with { Radius = radius };
+            }
+        }
+    }
+
     internal void Solve(ChainParticles particles, ReadOnlySpan<Matrix4x4> anchors, Span<ColliderCapsule> current,
         Span<ColliderCapsule> previous, ReadOnlySpan<ChainSettings> settings, Vector3 gravity, float seconds,
         Vector3 oldWearer, Vector3 newWearer, Quaternion wearerTurn)
@@ -76,7 +94,9 @@ internal sealed class ChainSolveTiers
             for (int start = root; start < tip; start++, obstacle++)
             {
                 current[obstacle] = new ColliderCapsule(particles.Positions[start], particles.Positions[start + 1], radius);
-                previous[obstacle] = new ColliderCapsule(particles.OpeningPositions[start], particles.OpeningPositions[start + 1], radius);
+                // The exchanged buffers retain this segment's last solved radius.
+                previous[obstacle] = new ColliderCapsule(particles.OpeningPositions[start],
+                    particles.OpeningPositions[start + 1], previous[obstacle].Radius);
                 particles.SetCapsuleGeometry(obstacle, current[obstacle], previous[obstacle]);
             }
         }

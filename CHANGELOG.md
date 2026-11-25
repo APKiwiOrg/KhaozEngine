@@ -26,7 +26,8 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   wearers still do not meet. `ChainRigChain.Layer`, init only and null for no layered contact, carries
   a chain's layer, and `ChainRig` refuses an undefined layer and a link between chains of different
   layers with `ArgumentException`. `BoundOutfit.CreateMotion` and `BoundAttachmentSet.CreateMotion`
-  give each chain its worn set's layer. No set format changes.
+  give each chain its worn set's layer. Tuning a lower radius contributes the actual expansion or contraction
+  speed at its contact surface. No set format changes.
   [#1894](https://github.com/APKiwiOrg/KhaozEngine/issues/1894)
 
 **Changed.**

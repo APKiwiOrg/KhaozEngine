@@ -131,6 +131,9 @@ in a wedge while a feasible turn can clear opposing contacts without picking a d
 
 Solve a wearer's chains from the innermost layer outward. A lower layer's solved segments act as moving capsules
 for upper layers. This lets a swinging strap push the next garment away without changing the strap's motion.
+The opening capsule uses the opening segment positions and the radius from its last solved substep, so tuning
+the radius contributes expansion or contraction speed to the contact. Reset and resume seed the opening radius
+from the current settings.
 In the first eighth of an upper segment, a lower contact respects the upper segment's bend wall. When a solid also
 constrains that turn, the response takes at most 0.16 radian from the placement's initial direction and may leave a
 residual on the lower segment to preserve solid clearance.

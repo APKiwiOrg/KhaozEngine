@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
@@ -177,7 +176,7 @@ public sealed partial class SwingCostDiagnostics(ITestOutputHelper output)
 
     static Measurement Measure(SwingCostWearer[] wearers, int frameRate, int warmFrames, int measuredFrames,
         int simulatedWearers, IJobScheduler? scheduler = null,
-        Dictionary<int, TimedWearerJobs.WorkerAllocation>? workerAllocations = null)
+        SwingCostWorkerAllocationWindow? workerAllocations = null)
     {
         bool measureTiming = measuredFrames == MeasuredFrames;
         var timedJobs = scheduler is null ? null : new TimedWearerJobs(scheduler, wearers.Length, measureTiming);
@@ -201,6 +200,7 @@ public sealed partial class SwingCostDiagnostics(ITestOutputHelper output)
         int allocationFrameCount = 0;
         long allocated = 0, stepTicks = 0, drawTicks = 0, summedWearerWallTicks = 0;
         long? summedWearerCpuNanoseconds = 0;
+        workerAllocations?.Begin();
         using (AllocationRegion.Start("swing preparation frames"))
         {
             for (int frame = 0; frame < measuredFrames; frame++)
@@ -253,7 +253,6 @@ public sealed partial class SwingCostDiagnostics(ITestOutputHelper output)
                         CallerJob = split is { FirstAllocatingJob: >= 0 } ? split.Value.FirstAllocatingJob : null,
                     };
                 }
-                if (workerAllocations is not null) timedJobs!.AccumulateWorkerAllocations(workerAllocations);
                 if (!measureTiming) continue;
                 ticks[frame] = end - start;
                 if (timedJobs is not null)
@@ -264,6 +263,7 @@ public sealed partial class SwingCostDiagnostics(ITestOutputHelper output)
                 }
             }
         }
+        workerAllocations?.End();
         foreach (SwingCostWearer wearer in wearers) wearer.ValidateDraws();
 
         AllocationFrame[]? reportedFrames = allocationFrameCount == 0 ? null : allocationFrames[..allocationFrameCount];

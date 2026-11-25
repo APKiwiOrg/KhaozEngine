@@ -631,8 +631,8 @@ Within a batch, `batchOutsideSchedulerBytes` covers preparation and scope cleanu
 job wrappers, and `callerJobBytes` counts only solve bodies on the measuring thread. `probeOverheadBytes`
 includes the batch and job wrappers' probe bytes and the residual outside the three top-level windows.
 The scheduler allocation test uses each worker's own allocation counter between warm calls.
-The seven-guide report also records each worker's counter delta from its first measured job entry to its last
-measured job exit. This includes allocations between that worker's measured jobs. Absent workers have no sample.
+The seven-guide report samples each dedicated worker before and after the measured frame window. Those
+snapshots bracket all wearer jobs and the scheduler work around them. The snapshot jobs run outside frame timing.
 
 An untimed replay counts segment-axis queries per simulated wearer per fixed solver step, excluding warm frames.
 The count is null for the all-held sample or when a shortened sample takes no fixed steps. Timing is report only

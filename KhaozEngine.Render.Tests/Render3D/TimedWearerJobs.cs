@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using KhaozEngine.Simulation;
 
@@ -62,9 +61,9 @@ internal sealed class TimedWearerJobs : IJobScheduler
         long bodyBytes = GC.GetAllocatedBytesForCurrentThread() - beforeBody;
         long? cpuNanoseconds = _measureTiming ? ThreadCpuClock.Read() - cpuBefore : null;
         long wallTicks = _measureTiming ? Stopwatch.GetTimestamp() - startedAt : 0;
-        int threadId = Environment.CurrentManagedThreadId;
-        long afterWrapper = GC.GetAllocatedBytesForCurrentThread();
-        _samples[index] = new JobSample(wallTicks, cpuNanoseconds, threadId, bodyBytes, beforeWrapper, afterWrapper);
+        bool onCaller = Environment.CurrentManagedThreadId == _callerThread;
+        long wrapperBytes = GC.GetAllocatedBytesForCurrentThread() - beforeWrapper;
+        _samples[index] = new JobSample(wallTicks, cpuNanoseconds, onCaller, bodyBytes, wrapperBytes);
     }
 
     internal (long WallTicks, long? CpuNanoseconds) SumJobTimes()
@@ -79,22 +78,6 @@ internal sealed class TimedWearerJobs : IJobScheduler
         return (wallTicks, cpuNanoseconds);
     }
 
-    internal void AccumulateWorkerAllocations(Dictionary<int, WorkerAllocation> allocations)
-    {
-        foreach (ref readonly JobSample sample in _samples.AsSpan(0, _count))
-        {
-            if (sample.ThreadId == _callerThread) continue;
-            long first = sample.BeforeWrapper;
-            long last = sample.AfterWrapper;
-            if (allocations.TryGetValue(sample.ThreadId, out WorkerAllocation previous))
-            {
-                first = Math.Min(first, previous.FirstCounter);
-                last = Math.Max(last, previous.LastCounter);
-            }
-            allocations[sample.ThreadId] = new WorkerAllocation(first, last);
-        }
-    }
-
     internal CallerAllocation SplitCallerAllocation(long beforeBatch, long afterBatch)
     {
         long callerJobBytes = 0, callerJobWrapperBytes = 0;
@@ -102,9 +85,9 @@ internal sealed class TimedWearerJobs : IJobScheduler
         for (int index = 0; index < _count; index++)
         {
             ref readonly JobSample sample = ref _samples[index];
-            if (sample.ThreadId != _callerThread) continue;
+            if (!sample.OnCaller) continue;
             callerJobBytes += sample.BodyBytes;
-            callerJobWrapperBytes += sample.AfterWrapper - sample.BeforeWrapper;
+            callerJobWrapperBytes += sample.WrapperBytes;
             if (firstAllocatingJob < 0 && sample.BodyBytes != 0) firstAllocatingJob = index;
         }
 
@@ -114,13 +97,8 @@ internal sealed class TimedWearerJobs : IJobScheduler
         return new CallerAllocation(batchOutsideSchedulerBytes, schedulerBytes, callerJobBytes, probeBytes, firstAllocatingJob);
     }
 
-    private readonly record struct JobSample(long WallTicks, long? CpuNanoseconds, int ThreadId, long BodyBytes,
-        long BeforeWrapper, long AfterWrapper);
-
-    internal readonly record struct WorkerAllocation(long FirstCounter, long LastCounter)
-    {
-        internal long BytesAllocated => LastCounter - FirstCounter;
-    }
+    private readonly record struct JobSample(long WallTicks, long? CpuNanoseconds, bool OnCaller, long BodyBytes,
+        long WrapperBytes);
 
     internal readonly record struct CallerAllocation(long BatchOutsideSchedulerBytes, long SchedulerBytes,
         long CallerJobBytes, long ProbeBytes, int FirstAllocatingJob);

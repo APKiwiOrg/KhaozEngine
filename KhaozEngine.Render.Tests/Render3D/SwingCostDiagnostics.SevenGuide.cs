@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using KhaozEngine.Attachments;
@@ -20,6 +19,7 @@ public sealed partial class SwingCostDiagnostics
         (int warmFrames, int measuredFrames) = FrameCounts();
         using var rig = new OutfitRig();
         using var workers = new WorkerJobScheduler(workerCount);
+        using var allocations = new SwingCostWorkerAllocationWindow(workers, workerCount);
         var options = new ChainSimulationOptions();
         SwingCostWearer[] wearers = CreateWearers(rig, rig.BodyRegions(new RegionRun(0, 4)),
             SwingCostFixture.LoadColliders(rig), LayeredSwingCostOutfit.Load(rig, sevenGuideCape: true), options);
@@ -32,11 +32,8 @@ public sealed partial class SwingCostDiagnostics
             {
                 foreach (int rate in rates)
                 {
-                    var allocations = new Dictionary<int, TimedWearerJobs.WorkerAllocation>(workerCount);
                     Measurement cost = Measure(wearers, rate, warmFrames, measuredFrames, cap, workers, allocations);
-                    WorkerBytes[] workerBytes = allocations.OrderBy(entry => entry.Key)
-                        .Select(entry => new WorkerBytes(entry.Key, entry.Value.BytesAllocated)).ToArray();
-                    measurements.Add(new SevenGuideMeasurement(cap, WearerCount - cap, cost, workerBytes));
+                    measurements.Add(new SevenGuideMeasurement(cap, WearerCount - cap, cost, allocations.Workers));
                 }
             }
         }
@@ -50,6 +47,7 @@ public sealed partial class SwingCostDiagnostics
             diagnostic = nameof(Report_seven_guide_swing_preparation_cost),
             wearerCount = WearerCount,
             parallelWorkerCount = workerCount,
+            workerAllocationWindow = "wholeMeasuredWindow",
             settleFrames = measuredFrames == MeasuredFrames ? SettleFrames : 0,
             warmFrames,
             measuredFrames,
@@ -64,7 +62,5 @@ public sealed partial class SwingCostDiagnostics
     }
 
     sealed record SevenGuideMeasurement(int SimulatedWearerCount, int HeldWearerCount, Measurement Cost,
-        WorkerBytes[] Workers);
-
-    sealed record WorkerBytes(int ThreadId, long ManagedBytesAllocated);
+        SwingCostWorkerAllocationWindow.WorkerBytes[] Workers);
 }

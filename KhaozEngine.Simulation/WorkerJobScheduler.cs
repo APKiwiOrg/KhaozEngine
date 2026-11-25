@@ -106,12 +106,34 @@ public sealed class WorkerJobScheduler : IJobScheduler, IDisposable
         for (int i = 0; i < workers; i++) _workers[i].Wake.Set();
 
         Drain(body, count);
-        _workersDone.WaitOne();
+        WaitForWorkers();
 
         ExceptionDispatchInfo? failure = _failure;
         _body = null;
         _failure = null;
         failure?.Throw();
+    }
+
+    private void WaitForWorkers()
+    {
+        SynchronizationContext? context = SynchronizationContext.Current;
+        if (context is null || !context.IsWaitNotificationRequired())
+        {
+            _workersDone.WaitOne();
+            return;
+        }
+
+        // WaitHandle allocates a handle array when it routes the wait through the caller's context.
+        // The internal join only needs the event, without pumping application callbacks.
+        SynchronizationContext.SetSynchronizationContext(null);
+        try
+        {
+            _workersDone.WaitOne();
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(context);
+        }
     }
 
     private void Drain(Action<int> body, int count)

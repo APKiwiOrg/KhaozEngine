@@ -116,6 +116,79 @@ public sealed class WorkerJobSchedulerTests
         Assert.Throws<ObjectDisposedException>(() => scheduler.For(1, static _ => { }));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Warm_fanout_can_wait_for_worker_completion_without_allocating(bool notifyWaits)
+    {
+        using var scheduler = new WorkerJobScheduler(1);
+        Thread caller = Thread.CurrentThread;
+        Thread? worker = null;
+        bool callerDrained = false, forceWait = false, callerWaited = false;
+        Action<int> job = _ =>
+        {
+            if (Thread.CurrentThread == caller)
+            {
+                var spin = new SpinWait();
+                Thread? activeWorker;
+                while ((activeWorker = Volatile.Read(ref worker)) is null)
+                    spin.SpinOnce();
+                if (!forceWait)
+                {
+                    // Warm the already-completed path by letting the worker return to its idle wait.
+                    while ((activeWorker.ThreadState & ThreadState.WaitSleepJoin) == 0)
+                        spin.SpinOnce();
+                }
+                Volatile.Write(ref callerDrained, true);
+            }
+            else
+            {
+                Volatile.Write(ref worker, Thread.CurrentThread);
+                if (forceWait)
+                {
+                    // Release the worker only after the caller has left its last job and actually parked.
+                    var spin = new SpinWait();
+                    while (!Volatile.Read(ref callerDrained) || (caller.ThreadState & ThreadState.WaitSleepJoin) == 0)
+                        spin.SpinOnce();
+                    callerWaited = true;
+                }
+            }
+        };
+
+        SynchronizationContext? original = SynchronizationContext.Current;
+        SynchronizationContext? context = notifyWaits ? new WaitNotifyingContext() : null;
+        long bytes;
+        SynchronizationContext? afterWait;
+        using (AllocationRegion.Start("worker completion wait"))
+        {
+            try
+            {
+                SynchronizationContext.SetSynchronizationContext(context);
+                scheduler.For(2, job);
+                worker = null;
+                callerDrained = false;
+                forceWait = true;
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                scheduler.For(2, job);
+                bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+                afterWait = SynchronizationContext.Current;
+            }
+            finally
+            {
+                SynchronizationContext.SetSynchronizationContext(original);
+            }
+        }
+
+        Assert.True(callerWaited);
+        Assert.Equal(0, bytes);
+        Assert.Same(context, afterWait);
+    }
+
+    sealed class WaitNotifyingContext : SynchronizationContext
+    {
+        internal WaitNotifyingContext() => SetWaitNotificationRequired();
+    }
+
     [Fact]
     public void Warm_fanout_allocates_zero_bytes_on_the_caller_and_every_worker()
     {

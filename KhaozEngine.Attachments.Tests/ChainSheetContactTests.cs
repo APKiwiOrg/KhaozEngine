@@ -152,12 +152,40 @@ public sealed class ChainSheetContactTests
     }
 
     [Fact]
-    public void A_capsule_that_leaves_the_sheet_reach_does_not_drag_the_hem_after_it()
+    public void A_point_capsule_grazing_the_anchored_edge_keeps_the_opening_side()
+    {
+        var settings = Settings with { Gravity = 0, Damping = 0, Radius = SheetRadius };
+        var tip = -0.5f * Vector3.UnitY;
+        var left = Chain(tip, settings, Joint(-0.65f * Vector3.UnitX));
+        var right = Chain(tip, settings, Joint(0.65f * Vector3.UnitX));
+        var rig = new ChainRig(1, [left, right], [new(0, 1) { Stretch = 0.14f }]);
+        var simulation = new ChainSimulation(rig, 1);
+        var before = GrazingCapsule(SweepStart);
+        var after = GrazingCapsule(SweepEnd);
+        simulation.Step([Identity], [before], Identity, 0);
+        simulation.Step([Identity], [after], Identity, StepSeconds);
+        simulation.Step([Identity], [after], Identity, StepSeconds);
+
+        AssertHemOpeningSide(simulation, left, right, after);
+
+        static ColliderCapsule GrazingCapsule(float z)
+        {
+            // The point crosses the face plane just outside the fixed edge.
+            // Its swept sphere still hits the middle of that edge.
+            var center = new Vector3(3 * z, 0.02f - 2 * z, z);
+            return new ColliderCapsule(center, center, ObstacleRadius);
+        }
+    }
+
+    [Theory]
+    [InlineData(2)]
+    [InlineData(5)]
+    public void A_capsule_that_leaves_the_sheet_reach_does_not_drag_the_hem_after_it(float lengthsAway)
     {
         var rig = CreateSheet(bounded: true, out var left, out var right);
         var simulation = new ChainSimulation(rig, 1);
         var before = Capsule(SweepStart);
-        var after = Capsule(5 * left.Tip.Length());
+        var after = Capsule(lengthsAway * left.Tip.Length());
         simulation.Step([Identity], [before], Identity, 0);
         var initial = simulation.JointsFromAnchor.ToArray();
         simulation.Step([Identity], [after], Identity, StepSeconds);
@@ -381,8 +409,9 @@ public sealed class ChainSheetContactTests
         float clearance = MeasureSheet(simulation, left, right, across);
         Assert.True(clearance >= Clearance - Tolerance, $"Clearance after the crossing: {clearance} m.");
         var joints = simulation.JointsFromAnchor;
-        var upperLeft = joints[1].Translation;
-        var upperRight = joints[left.Joints.Count + 1].Translation;
+        int upper = Math.Min(left.Joints.Count, right.Joints.Count) - 1;
+        var upperLeft = joints[upper].Translation;
+        var upperRight = joints[left.Joints.Count + upper].Translation;
         var lowerLeft = Tip(simulation, left, 0);
         var lowerRight = Tip(simulation, right, left.Joints.Count);
         float first = AxisDistance(across, upperLeft, lowerLeft, lowerRight);

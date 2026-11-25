@@ -189,7 +189,9 @@ internal sealed class ChainSheetContact
         ref readonly var first = ref placed[band.FirstChain];
         ref readonly var second = ref placed[band.SecondChain];
         ref readonly var axis = ref particles.CapsuleAxes[obstacle];
-        if (squared >= radiusSquared && (!crossed || ClosingIsBeyondReach(row.Current, first, second, axis, thickness)))
+        if (squared >= radiusSquared && (!crossed ||
+            ChainPlacementCull.ClosingBandCannotReach(axis, thickness, first.Start, first.Length, second.Start, second.Length,
+                row.Current.FirstUpper, row.Current.SecondUpper)))
             return false;
 
         // A reset may seed a sphere inside the sheet's plane. Coplanar faces
@@ -235,7 +237,7 @@ internal sealed class ChainSheetContact
             NormalLeverage(particles.Positions, second, normal, secondWeight);
         double correction = (separation - positionMargin) / Math.Max(leverage, 0.05 * movableSquared);
         var counts = ChainContactCounts.Active;
-        bool interiorTail = counts is not null && obstacle >= particles.SolidCapsuleCount &&
+        bool interiorTail = counts is not null && obstacle >= particles.SolidCapsuleCount && squared < radiusSquared &&
             hit.Weights is { X: > 0, Y: > 0, Z: > 0 } &&
             GuideClears(particles, band.FirstChain, axis, radiusSquared) &&
             GuideClears(particles, band.SecondChain, axis, radiusSquared);
@@ -248,15 +250,6 @@ internal sealed class ChainSheetContact
                 counts!.Record(ChainContactQuery.InteriorTailCorrections);
         }
         return moved;
-    }
-
-    private static bool ClosingIsBeyondReach(in Corners corners, in ChainConstraints.JointStep first,
-        in ChainConstraints.JointStep second, in Axis axis, double thickness)
-    {
-        var reach = ChainPlacementCull.ClosingBandReach(first.Start, first.Length, second.Start, second.Length,
-            corners.FirstUpper, corners.SecondUpper);
-        double limit = reach.Radius + thickness;
-        return axis.Residual(new Offset(reach.Center), default, out _).LengthSquared > limit * limit;
     }
 
     private static bool GuideClears(ChainParticles particles, int chain, in Axis axis, double radiusSquared)

@@ -33,9 +33,8 @@ internal readonly struct ChainSheetSweep(
         if (side != 0)
             return side;
 
-        var diagonal = default(ChainContactTriangle.Diagonal);
         ChainContactCounts.Active?.Record(ChainContactQuery.SheetOpening);
-        var lastHit = prediction.Closest(current, false, ref diagonal, out _);
+        var lastHit = prediction.Closest(current, out _);
         side = AtFeature(lastHit, openingNormal, lastNormal, radius, tolerance);
         if (side != 0)
             return side;
@@ -46,7 +45,7 @@ internal readonly struct ChainSheetSweep(
             // Its nearest triangle feature is an exact witness for that path.
             var path = new Axis(previous.Start, current.Start - translation);
             ChainContactCounts.Active?.Record(ChainContactQuery.SheetOpening);
-            var hit = opening.Closest(path, false, ref diagonal, out _);
+            var hit = opening.Closest(path, out _);
             return AtFeature(hit with { Along = 0 }, openingNormal, lastNormal, radius, tolerance);
         }
 
@@ -109,9 +108,8 @@ internal readonly struct ChainSheetSweep(
             var axis = new Axis(previous.Start + (current.Start - previous.Start) * middle,
                 previous.End + (current.End - previous.End) * middle);
             var triangle = opening.Interpolate(prediction, middle);
-            var diagonal = default(ChainContactTriangle.Diagonal);
             ChainContactCounts.Active?.Record(ChainContactQuery.SheetOpening);
-            var hit = triangle.Closest(axis, false, ref diagonal, out _);
+            var hit = triangle.Closest(axis, out _);
             double reach = radius + (end - middle) * travel;
             if (hit.Residual.LengthSquared > reach * reach)
                 continue;

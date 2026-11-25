@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using static KhaozEngine.Attachments.ChainCapsuleCollision;
 
 namespace KhaozEngine.Attachments;
 
@@ -74,11 +75,31 @@ internal sealed class ChainPlacementCull(int rowCount, int colliderCount)
         return new SweptSphere(center, reach + FloatRoundingMargin * (MaxAbs(center) + reach));
     }
 
-    internal static SweptSphere ClosingBandReach(Vector3 firstParent, float firstLength, Vector3 secondParent,
-        float secondLength, Vector3 firstUpper, Vector3 secondUpper)
+    internal static bool ClosingBandCannotReach(in Axis axis, double thickness, Vector3 firstParent, float firstLength,
+        Vector3 secondParent, float secondLength, Vector3 firstUpper, Vector3 secondUpper)
     {
         var center = Midpoint(firstParent, secondParent);
-        return Pad(center, PlacedBandRadius(center, firstParent, firstLength, secondParent, secondLength, firstUpper, secondUpper));
+        float radius = PlacedBandRadius(center, firstParent, firstLength, secondParent, secondLength, firstUpper, secondUpper);
+        double rounding = (double)FloatRoundingMargin * (MaxAbs(center) + radius);
+        var origin = new Offset(center);
+        var residual = axis.Residual(origin, default, out _);
+        double squared = residual.LengthSquared;
+        double reach = radius + rounding + thickness;
+        if (squared > reach * reach)
+            return true;
+        if (squared == 0)
+            return false;
+
+        // The enclosing sphere spans the whole width. Use its nearest axis
+        // direction to also test support of the corners' actual length spheres.
+        var direction = residual * (-1 / Math.Sqrt(squared));
+        double fixedSupport = Math.Max(Projection(firstUpper), Projection(secondUpper));
+        double movingSupport = Math.Max(Projection(firstParent) + (double)firstLength * DirectionLengthBound,
+            Projection(secondParent) + (double)secondLength * DirectionLengthBound);
+        double axisMinimum = Math.Min(Offset.Dot(direction, axis.Start - origin), Offset.Dot(direction, axis.End - origin));
+        return axisMinimum > Math.Max(fixedSupport, movingSupport) + thickness + rounding;
+
+        double Projection(Vector3 point) => Offset.Dot(direction, new Offset(point) - origin);
     }
 
     private static float PlacedBandRadius(Vector3 center, Vector3 firstParent, float firstLength, Vector3 secondParent,

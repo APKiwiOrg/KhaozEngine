@@ -69,6 +69,12 @@ internal readonly struct ChainContactTriangle
 
     internal readonly record struct Contact(Offset Residual, Offset Weights, double Along);
 
+    internal Contact Closest(in Axis axis, out Offset normal)
+    {
+        var diagonal = default(Diagonal);
+        return Closest(axis, false, ref diagonal, out normal);
+    }
+
     internal Contact Closest(in Axis axis, bool second, ref Diagonal diagonal, out Offset normal)
     {
         var areaNormal = Offset.Cross(_ab, _ac);

@@ -201,8 +201,16 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
                 long afterWearers = GC.GetAllocatedBytesForCurrentThread();
                 allocated += afterWearers - bytesBefore;
                 if (afterWearers != bytesBefore && allocationFrameCount < allocationFrames.Length)
+                {
+                    var (callerJobBytes, callerJob) = timedJobs?.CallerJobAllocation() ?? (0, -1);
                     allocationFrames[allocationFrameCount++] = new AllocationFrame(frame, afterFill - bytesBefore,
-                        afterBatch - afterFill, afterWearers - afterBatch);
+                        afterBatch - afterFill, afterWearers - afterBatch)
+                    {
+                        SchedulerCallBytes = timedJobs?.SchedulerCallBytes,
+                        CallerJobBytes = timedJobs is null ? null : callerJobBytes,
+                        CallerJob = timedJobs is null ? null : callerJob,
+                    };
+                }
                 if (measureTiming)
                     ticks[frame] = end - start;
                 if (timedJobs is not null)
@@ -287,5 +295,12 @@ public sealed class SwingCostDiagnostics(ITestOutputHelper output)
     }
 
     // Measuring-thread bytes in one frame: batch fill, batch step, then the per-wearer step and draw loop.
-    sealed record AllocationFrame(int Frame, long FillBytes, long BatchStepBytes, long WearerLoopBytes);
+    // In a timed parallel case the batch step splits further: the scheduler call holds the jobs that ran on the
+    // measuring thread, and whatever lies outside that call is the batch's own validation and preparation.
+    sealed record AllocationFrame(int Frame, long FillBytes, long BatchStepBytes, long WearerLoopBytes)
+    {
+        public long? SchedulerCallBytes { get; init; }
+        public long? CallerJobBytes { get; init; }
+        public int? CallerJob { get; init; }
+    }
 }

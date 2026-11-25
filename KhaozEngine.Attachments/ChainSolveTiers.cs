@@ -48,12 +48,13 @@ internal sealed class ChainSolveTiers
         {
             var obstacles = current[..tier.ObstacleCount];
             var opening = previous[..tier.ObstacleCount];
+            tier.Links.BeginTier();
             foreach (int chain in tier.Chains)
             {
                 int anchor = particles.Rig.Chains[chain].Anchor;
                 particles.Predict(chain, settings[chain], gravity, seconds, oldWearer, newWearer, wearerTurn);
                 ChainConstraints.FollowChain(particles, chain, anchors[anchor],
-                    obstacles, opening, settings[chain], seconds, pullTowardRest: true);
+                    obstacles, opening, settings[chain], seconds, pullTowardRest: true, tier.Links.FirstPass(chain));
             }
 
             tier.Links.FinishStep(particles, anchors, obstacles, opening, settings, seconds);

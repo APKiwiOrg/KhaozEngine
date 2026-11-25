@@ -187,6 +187,54 @@ public sealed class ChainSheetContactTests
     }
 
     [Fact]
+    public void A_thick_capsule_keeps_half_the_band_thickness_clear_through_a_sweep()
+    {
+        const float bandRadius = 0.03f;
+        const float obstacleRadius = 0.16f;
+        var settings = Settings with { Gravity = 0, Radius = bandRadius };
+        var tip = -0.5f * Vector3.UnitY;
+        var left = Chain(tip, settings, Joint(-0.04f * Vector3.UnitX));
+        var right = Chain(tip, settings, Joint(0.04f * Vector3.UnitX));
+        var rig = new ChainRig(1, [left, right], [new(0, 1) { Stretch = 0.14f }]);
+        var simulation = new ChainSimulation(rig, 1);
+        const int sweepSteps = 60;
+        ColliderCapsule[] capsules = [CapsuleAt(0)];
+        simulation.Step([Identity], capsules, Identity, 0);
+        Assert.Equal(2, simulation.JointsFromAnchor.Length);
+
+        var counts = new ChainContactCounts();
+        var previousCounts = ChainContactCounts.Active;
+        ChainContactCounts.Active = counts;
+        float minimum = float.PositiveInfinity;
+        try
+        {
+            for (int frame = 1; frame <= sweepSteps + 1; frame++)
+            {
+                var previous = capsules[0];
+                capsules[0] = CapsuleAt(frame);
+                simulation.Step([Identity], capsules, Identity, StepSeconds);
+                float clearance = MeasureSheet(simulation, left, right, previous);
+                Assert.True(clearance >= obstacleRadius + bandRadius / 2 - Tolerance,
+                    $"Clearance at step {frame - 1}: {clearance} m.");
+                minimum = MathF.Min(minimum, clearance);
+            }
+        }
+        finally
+        {
+            ChainContactCounts.Active = previousCounts;
+        }
+
+        Assert.InRange(minimum, obstacleRadius + bandRadius / 2 - Tolerance, obstacleRadius + bandRadius + Tolerance);
+        Assert.True(counts[ChainContactQuery.ThickBandSkips] > 0, "The sweep must use the thick-band path.");
+
+        static ColliderCapsule CapsuleAt(int step)
+        {
+            float z = float.Lerp(-0.28f, -0.12f, Math.Min(step, sweepSteps) / (float)sweepSteps);
+            return new ColliderCapsule(new(0, -0.37f, z), new(0, -0.35f, z), obstacleRadius);
+        }
+    }
+
+    [Fact]
     public void Warm_sheet_contact_steps_allocate_nothing()
     {
         var rig = CreateSheet(bounded: true, out var left, out var right);

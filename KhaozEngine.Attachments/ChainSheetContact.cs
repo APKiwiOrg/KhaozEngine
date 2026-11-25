@@ -54,7 +54,7 @@ internal sealed class ChainSheetContact
     }
 
     internal void ProjectPositions(ChainParticles particles, int depth, ChainConstraints.JointStep[] placed,
-        ReadOnlySpan<ColliderCapsule> obstacles, ReadOnlySpan<ChainSettings> settings)
+        ReadOnlySpan<ColliderCapsule> obstacles, ReadOnlySpan<ChainSettings> settings, float largestObstacle)
     {
         var bands = _bandsByDepth[depth];
         _workspace.BeginDepth();
@@ -72,6 +72,12 @@ internal sealed class ChainSheetContact
                 opening.FirstLower, opening.SecondLower);
             ref var row = ref _workspace.Rows[index];
             row = new Row(opening, current, radius, reach);
+            // The fixed upper spacing is a lower bound on the largest row spacing.
+            if (largestObstacle > 0)
+            {
+                var upper = new Offset(current.SecondUpper) - new Offset(current.FirstUpper);
+                row.EligibleThick = ChainThickSheetClearance.GapEligible(0.25 * upper.LengthSquared, radius, largestObstacle);
+            }
             if (useCandidates)
             {
                 var indices = _workspace.Indices(index);
@@ -112,9 +118,14 @@ internal sealed class ChainSheetContact
                     if (!useCandidates && !particles.PlacementCull.ReachesBand(obstacle, row.Reach))
                         continue;
 
+                    row.Refresh(band.ReadCorners(particles.Positions));
                     ref var entry = ref _workspace.ForObstacle(index, obstacle, ref temporary);
+                    if (row.EligibleThick && SkipThick(particles, obstacle, obstacles[obstacle].Radius, ref row, ref entry))
+                        continue;
+
                     double thickness = (double)radius + obstacles[obstacle].Radius;
                     bandMoved |= ProjectTriangle(particles, band, false, placed, obstacle, thickness, ref row, ref entry, useTolerance);
+                    row.Refresh(band.ReadCorners(particles.Positions));
                     bandMoved |= ProjectTriangle(particles, band, true, placed, obstacle, thickness, ref row, ref entry, useTolerance);
                 }
 
@@ -138,7 +149,6 @@ internal sealed class ChainSheetContact
         ChainConstraints.JointStep[] placed, int obstacle, double thickness, ref Row row, ref Candidate entry,
         bool useTolerance)
     {
-        row.Refresh(band.ReadCorners(particles.Positions));
         if (!TryCurrent(particles, ref row, ref entry, obstacle, secondTriangle, velocity: false, out var sample))
             return false;
         var hit = sample.Contact;
@@ -276,6 +286,9 @@ internal sealed class ChainSheetContact
                     continue;
 
                 ref var entry = ref _workspace.ForObstacle(index, obstacle, ref temporary);
+                if (row.EligibleThick && SkipThick(particles, obstacle, obstacles[obstacle].Radius, ref row, ref entry))
+                    continue;
+
                 double thickness = radius + obstacles[obstacle].Radius;
                 StopTriangle(particles, band, false, placed, obstacle,
                     obstacles[obstacle], previous[obstacle], thickness, seconds, ref row, ref entry);
@@ -348,6 +361,19 @@ internal sealed class ChainSheetContact
         double strength = Math.Min(1, (thickness - Math.Sqrt(squared)) / TouchTolerance);
         RaiseVelocity(ref firstVelocity, firstSurface, firstTangent, impulse * firstGradient, strength);
         RaiseVelocity(ref secondVelocity, secondSurface, secondTangent, impulse * secondGradient, strength);
+    }
+
+    private static bool SkipThick(ChainParticles particles, int obstacle, float radius, ref Row row, ref Candidate entry)
+    {
+        if (entry.ThickRevision != row.Revision)
+        {
+            entry.ThickRevision = row.Revision;
+            entry.SkipThick = ChainThickSheetClearance.CanSkip(row.Current, row.Opening, row.HalfGapSquared(), row.Radius, radius,
+                particles.CapsuleAxes[obstacle], particles.PreviousCapsuleAxes[obstacle]);
+        }
+        if (entry.SkipThick)
+            ChainContactCounts.Record(ChainContactQuery.ThickBandSkips);
+        return entry.SkipThick;
     }
 
     private static bool TryCurrent(ChainParticles particles, ref Row row, ref Candidate entry, int obstacle,

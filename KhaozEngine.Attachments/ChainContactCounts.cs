@@ -6,12 +6,12 @@ internal enum ChainContactQuery
 {
     SegmentPlacement, SegmentOpening, SegmentVelocity, RoundingRecheck, FixedEdge,
     SheetCurrent, SheetOpening, SheetVelocity, SheetDiagonal, FaceBarrelResidual,
-    BandFilter, BandVisit, OpeningSlotsCleared, ChainReach,
+    BandFilter, BandVisit, OpeningSlotsCleared, ChainReach, BendCosines, FirstPassReuses, ThickBandSkips, ThickEdgeQueries,
 }
 
 internal sealed class ChainContactCounts
 {
-    private readonly long[] _counts = new long[(int)ChainContactQuery.ChainReach + 1];
+    private readonly long[] _counts = new long[(int)ChainContactQuery.ThickEdgeQueries + 1];
 
     private readonly long[] _segmentPasses = new long[ChainSegmentContact.ContactPasses + 1];
     private readonly long[] _bandPasses = new long[ChainSheetContact.MaxPasses + 1];
@@ -28,7 +28,8 @@ internal sealed class ChainContactCounts
     internal long this[ChainContactQuery kind] => _counts[(int)kind];
 
     internal long SegmentAxis => this[ChainContactQuery.SegmentPlacement] + this[ChainContactQuery.SegmentOpening] +
-        this[ChainContactQuery.SegmentVelocity] + this[ChainContactQuery.RoundingRecheck] + this[ChainContactQuery.FixedEdge];
+        this[ChainContactQuery.SegmentVelocity] + this[ChainContactQuery.RoundingRecheck] +
+        this[ChainContactQuery.FixedEdge] + this[ChainContactQuery.ThickEdgeQueries];
 
     internal long TriangleAxis => this[ChainContactQuery.SheetCurrent] + this[ChainContactQuery.SheetOpening] +
         this[ChainContactQuery.SheetVelocity];

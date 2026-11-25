@@ -134,12 +134,16 @@ public sealed class ChainPlacementCullTests(ITestOutputHelper output)
     [InlineData((int)ChainContactOptimization.RoundingMargin)]
     [InlineData((int)ChainContactOptimization.RoundingReuse)]
     [InlineData((int)ChainContactOptimization.PerTriangleRevision)]
+    [InlineData((int)ChainContactOptimization.FirstPassCandidates)]
+    [InlineData((int)ChainContactOptimization.BendCosine)]
     [InlineData((int)ChainContactOptimization.All)]
     public void Contact_reuse_preserves_every_joint_frame_bit(int disabled)
     {
         var flags = (ChainContactOptimization)disabled;
         CompareProbe(flags);
         CompareLayeredSweep(flags);
+        if (flags is ChainContactOptimization.FirstPassCandidates or ChainContactOptimization.BendCosine or ChainContactOptimization.All)
+            CompareProbe(flags, bounded: false);
     }
 
     [Fact]
@@ -149,9 +153,9 @@ public sealed class ChainPlacementCullTests(ITestOutputHelper output)
         CompareLayeredSweep(ChainContactOptimization.PassTolerance);
     }
 
-    private static void CompareProbe(ChainContactOptimization disabled)
+    private static void CompareProbe(ChainContactOptimization disabled, bool bounded = true)
     {
-        var rig = CreateRig(layered: true);
+        var rig = bounded ? CreateRig(layered: true) : ChainSwingFixture.CreateRig(capeJoints: 6, layered: true);
         var optimized = new ChainSimulation(rig, RestCapsules.Length);
         var control = new ChainSimulation(rig, RestCapsules.Length);
         var capsules = new ColliderCapsule[RestCapsules.Length];
@@ -304,6 +308,8 @@ public sealed class ChainPlacementCullTests(ITestOutputHelper output)
     {
         output.WriteLine($"Closest-point queries per layered wearer step over {Steps} steps");
         WriteCounts("Placement filter enabled", Count(disable: false));
+        WriteCounts("T3e changes disabled", Count(disable: false, ChainContactOptimization.ThickSheet |
+            ChainContactOptimization.FirstPassCandidates | ChainContactOptimization.BendCosine));
         WriteCounts("Placement filter disabled", Count(disable: true));
         WriteCounts("Exact settling", Count(disable: false, ChainContactOptimization.PassTolerance));
         WriteCounts("Exact cuts disabled", Count(disable: false,

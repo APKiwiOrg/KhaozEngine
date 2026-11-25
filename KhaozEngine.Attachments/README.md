@@ -681,7 +681,8 @@ Segment lengths use the posed rest scale. Capsule correction keeps the root and 
 and can exceed the bend limit to clear a collider. The solver can filter capsules by chain reach and
 by each segment's placement against the swept capsule bounds without changing the result. Sheet contact also
 filters the swept band and its triangles. Tight float rejection measures from the query bound to the
-capsule axis before the double precision solve. Contact passes settle at a quarter micrometre of movement
+capsule axis before the double precision solve. A thick capsule can use verified chain-edge clearance
+to keep at least half the band thickness clear. Contact passes settle at a quarter micrometre of movement
 relative to the parent, up to eight passes. The buffers hold the authored capsules and every segment exposed to the highest tier. Bend, length, capsule and width corrections
 move positions without turning the correction into speed. Velocity constraints remove motion that would leave the segment length,
 bend limit or width band. Capsule contact uses the velocity at the contact along the segment and limits

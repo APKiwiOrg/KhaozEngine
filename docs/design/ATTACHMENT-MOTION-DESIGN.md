@@ -289,6 +289,16 @@ sees only body and worn set capsules.
    in a pass and the same eight-pass cap. The bend limit and each chain's own contact then run again on moved
    corners. Unavailable leverage, a fixed edge, or a wedge between these constraints
    can leave a remaining overlap.
+   Thick obstacles can leave sheet contact to the two chain edges. Let `R` be the obstacle radius plus the
+   band thickness, and let `w` be the larger current row spacing. A circle of radius `R` through a gap of width
+   `w` reaches in by at most `d = R - sqrt(R² - (w/2)²)`. A point on the chord between two cleared edges has
+   squared distance from any axis point of at least the smaller squared edge clearance minus `w²/4`.
+   The shortcut requires `R >= w/2` and `d` at most half the band thickness. It verifies the actual band edges
+   against the required clearance and budgets for the diagonal's deviation from the chord. This covers
+   differing chain radii, unequal-length hem edges and warp. It also requires the capsule axis to stay on the
+   same side of each oriented face at the opening and current poses. If these checks pass, the current band
+   has at least half its thickness clear. Otherwise the full contact test applies, including for thin
+   obstacles, uncertain sides and edges held in a wedge. Shared-corner moves invalidate the certificate.
    The impulse that stops escaping width velocity increases continuously across the 0.5 mm approach margin inside
    the band, reaching a full stop at the edge within rounding tolerance. This avoids switching between free
    separation and a full stop while springs and gravity act on a cape at rest. The width velocity constraint runs
@@ -566,7 +576,12 @@ The wearables limits are 32 wearers, at most 2 ms added CPU preparation, no mana
   before any double precision contact query. Immediate consumers share one candidate row. The width pass
   reuses one row per chain in the largest bound group so it can finish a depth's velocity constraints after solving
   width. If that scratch cannot be represented or allocated, the solve uses the chain candidate list directly.
+  A linked chain reuses the ordered whole-chain reach candidates from its first pass when its root,
+  lengths, radius and tier obstacles still match. Each placement still filters its own reach and can replay
+  the full list. The first pass also supplies the bend cosine for the remaining placements in that substep.
   The sheet pass builds an ordered candidate list and reads the larger chain radius once per band and depth.
+  The fixed upper spacing and the tier's largest obstacle rule out the thick-obstacle shortcut for wide
+  bands before any per-obstacle work.
   The tight bounds reject against the prepared capsule axes before a double precision query. Position includes both opening
   and current corners so it can still test the relative chord. Velocity bounds the current face.
   The opening triangle and its signed closest result are reused across position passes and piercing velocity.

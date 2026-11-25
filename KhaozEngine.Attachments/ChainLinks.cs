@@ -12,6 +12,7 @@ internal sealed class ChainLinks
     private readonly int[] _degrees;
     private readonly int[] _linkedChains;
     private readonly bool[] _moved;
+    private readonly ChainFirstPassContacts[] _firstPass;
     private readonly ChainBoundGroups _boundGroups;
 
     internal ChainLinks(ChainRig rig, IReadOnlyList<ChainLink> links, int colliderCount)
@@ -48,10 +49,41 @@ internal sealed class ChainLinks
         _pairs = pairs.ToArray();
         _linkedChains = [.. linkedChains];
         _moved = new bool[_linkedChains.Length];
+        _firstPass = AllocateFirstPass(_linkedChains.Length, colliderCount);
         _boundGroups = new ChainBoundGroups(rig, widthPairs, colliderCount);
     }
 
     internal int PlacementRows => _boundGroups.PlacementRows;
+
+    private static ChainFirstPassContacts[] AllocateFirstPass(int chains, int obstacles)
+    {
+        try
+        {
+            var cache = new ChainFirstPassContacts[chains];
+            for (int index = 0; index < cache.Length; index++)
+                cache[index] = new ChainFirstPassContacts(obstacles);
+            return cache;
+        }
+        catch (OutOfMemoryException)
+        {
+            return [];
+        }
+    }
+
+    internal void BeginTier()
+    {
+        foreach (var first in _firstPass)
+            first.Begin();
+    }
+
+    internal ChainFirstPassContacts? FirstPass(int chain)
+    {
+        if (_firstPass.Length == 0)
+            return null;
+
+        int slot = Array.BinarySearch(_linkedChains, chain);
+        return slot < 0 ? null : _firstPass[slot];
+    }
 
     private void Apply(ChainParticles particles, float seconds)
     {
@@ -106,9 +138,9 @@ internal sealed class ChainLinks
 
             int anchor = particles.Rig.Chains[chain].Anchor;
             ChainConstraints.FollowChain(particles, chain, anchors[anchor], colliders, previousColliders,
-                settings[chain], seconds, pullTowardRest: false);
+                settings[chain], seconds, pullTowardRest: false, FirstPass(chain));
         }
 
-        _boundGroups.Follow(particles, anchors, colliders, previousColliders, settings, seconds);
+        _boundGroups.Follow(particles, anchors, colliders, previousColliders, settings, seconds, this);
     }
 }

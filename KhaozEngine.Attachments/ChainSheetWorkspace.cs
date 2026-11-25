@@ -81,6 +81,9 @@ internal sealed class ChainSheetWorkspace
         internal int CandidateCount;
         internal int LastNoOpRevision;
         internal int Visits;
+        internal bool EligibleThick;
+        private int _gapRevision;
+        private double _halfGapSquared;
 
         private TightBound _firstPosition, _secondPosition, _firstVelocity, _secondVelocity;
 
@@ -102,6 +105,16 @@ internal sealed class ChainSheetWorkspace
 
         internal readonly int TriangleRevision(bool second) =>
             second && ChainContactOptimizations.Use(ChainContactOptimization.PerTriangleRevision) ? _secondRevision : Revision;
+
+        internal double HalfGapSquared()
+        {
+            if (_gapRevision != Revision)
+            {
+                _halfGapSquared = ChainThickSheetClearance.HalfGapSquared(Current);
+                _gapRevision = Revision;
+            }
+            return _halfGapSquared;
+        }
 
         internal readonly ChainContactTriangle OpeningTriangle(bool second) => second ? _openingSecond : _openingFirst;
 
@@ -145,6 +158,8 @@ internal sealed class ChainSheetWorkspace
     internal struct Candidate
     {
         internal long Generation;
+        internal int ThickRevision;
+        internal bool SkipThick;
         internal TriangleState First;
         internal TriangleState Second;
         internal ChainContactTriangle.Diagonal CurrentDiagonal;

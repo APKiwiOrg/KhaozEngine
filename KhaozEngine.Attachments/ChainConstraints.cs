@@ -10,15 +10,19 @@ internal static class ChainConstraints
 
     internal static void FollowChain(ChainParticles particles, int chain, in Matrix4x4 anchor,
         ReadOnlySpan<ColliderCapsule> colliders, ReadOnlySpan<ColliderCapsule> previousColliders,
-        in ChainSettings settings, float seconds, bool pullTowardRest)
+        in ChainSettings settings, float seconds, bool pullTowardRest, ChainFirstPassContacts? firstPass = null)
     {
         var rig = particles.Rig;
         int first = rig.FirstJoint(chain);
         int last = first + rig.Chains[chain].Joints.Count - 1;
         float springWeight = pullTowardRest ? ChainMath.MidpointSpringWeight(settings.Stiffness, seconds) : 0;
-        float cosine = BendCosine(settings);
+        bool reuseCosine = ChainContactOptimizations.Use(ChainContactOptimization.BendCosine);
+        float cosine = !pullTowardRest && reuseCosine && firstPass?.BendCosine is { } previousCosine
+            ? previousCosine : BendCosine(settings);
+        if (pullTowardRest && reuseCosine && firstPass is not null)
+            firstPass.BendCosine = cosine;
         var parent = anchor;
-        var capsules = SelectCapsules(particles.CapsuleCull, particles, chain, settings.Radius, colliders);
+        var capsules = FollowCandidates(particles, chain, settings.Radius, colliders, pullTowardRest, firstPass);
         var velocity = new ChainVelocityConstraints(particles, first + chain, particles.StepCarries[chain],
             previousColliders, settings.Radius, seconds);
 
@@ -35,6 +39,23 @@ internal static class ChainConstraints
         }
     }
 
+    private static ChainCapsuleCandidates FollowCandidates(ChainParticles particles, int chain, float radius,
+        ReadOnlySpan<ColliderCapsule> colliders, bool first, ChainFirstPassContacts? firstPass)
+    {
+        if (firstPass is not null && ChainContactOptimizations.Use(ChainContactOptimization.FirstPassCandidates))
+        {
+            if (first)
+                return firstPass.Select(particles, chain, radius, colliders);
+            if (firstPass.TryReuse(particles, chain, radius, colliders.Length, out int count))
+            {
+                ChainContactCounts.Record(ChainContactQuery.FirstPassReuses);
+                return firstPass.Cull.Selected(colliders, count);
+            }
+        }
+
+        return SelectCapsules(particles.CapsuleCull, particles, chain, radius, colliders);
+    }
+
     internal static ChainCapsuleCandidates SelectCapsules(ChainCapsuleCull cull, ChainParticles particles,
         int chain, float radius, ReadOnlySpan<ColliderCapsule> colliders)
     {
@@ -43,8 +64,11 @@ internal static class ChainConstraints
             particles.Lengths.AsSpan(first, particles.Rig.Chains[chain].Joints.Count), radius, colliders, particles.CapsuleAxes, particles.PlacementCull);
     }
 
-    internal static float BendCosine(in ChainSettings settings) =>
-        settings.AngleLimit == MathF.PI ? -1 : MathF.Cos(settings.AngleLimit);
+    internal static float BendCosine(in ChainSettings settings)
+    {
+        ChainContactCounts.Record(ChainContactQuery.BendCosines);
+        return settings.AngleLimit == MathF.PI ? -1 : MathF.Cos(settings.AngleLimit);
+    }
 
     internal static JointStep PlaceJoint(ChainParticles particles, int chain, int joint, in Matrix4x4 parent,
         float springWeight, float cosine, float radius, float seconds, ChainCapsuleCandidates capsules, int placementRow = 0)

@@ -20,8 +20,11 @@ internal enum ChainContactOptimization
     RoundingMargin = 1 << 12,
     RoundingReuse = 1 << 13,
     PerTriangleRevision = 1 << 14,
-    All = (1 << 15) - 1,
-    PassTolerance = 1 << 15,
+    FirstPassCandidates = 1 << 15,
+    BendCosine = 1 << 16,
+    All = (1 << 17) - 1,
+    PassTolerance = 1 << 17,
+    ThickSheet = 1 << 18,
 }
 
 internal static class ChainContactOptimizations

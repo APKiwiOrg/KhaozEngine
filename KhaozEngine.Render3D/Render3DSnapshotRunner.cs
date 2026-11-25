@@ -1,5 +1,6 @@
 using System;
 using KhaozEngine.Gpu;
+using System.Diagnostics;
 using KhaozEngine.Windowing;
 
 namespace KhaozEngine.Render3D;
@@ -10,6 +11,12 @@ namespace KhaozEngine.Render3D;
 /// preparation is latched per frame.</summary>
 internal static class Render3DSnapshotRunner
 {
+    static void Stamp(string phase)
+    {
+        if (Activity.Current?.GetCustomProperty("KE.NativeMapWire") is Action<string> write)
+            write(phase);
+    }
+
     internal static void Validate(int width, int height, int frames, int warmupFrames)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(width, 1);
@@ -28,19 +35,24 @@ internal static class Render3DSnapshotRunner
         // A headless host has no AppWindow to register the native backend. Keep providers already seated by
         // the caller, and register both the resolved backend and the platform's fallback only when absent.
         GpuBackends.RegisterResolvedIfUnregistered();
+        Stamp("backend registration complete");
         // Keep the original snapshot's no-depth, no-sync, standard clip-Y headless options.
         using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
+        Stamp("GPU device created");
         IGpuDevice gd = gpu.GpuDevice;
         var factory = gd.Factory;
         using IGpuTexture target = factory.CreateTexture(GpuTextureDescription.Texture2D(
             (uint)width, (uint)height, GpuPixelFormat.R8G8B8A8UNorm,
             GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
         using IGpuFramebuffer framebuffer = factory.CreateFramebuffer(null, target);
+        Stamp("output target and framebuffer created");
         using var scene = new Scene3D(gd, framebuffer.Outputs, shadows);
+        Stamp("scene constructed");
         using IGpuCommandList commands = factory.CreateCommandList();
         try
         {
             setup(scene);
+            Stamp("scene setup/settle complete");
             for (int frame = 0; frame < frames; frame++)
             {
                 scene.Begin();
@@ -49,11 +61,15 @@ internal static class Render3DSnapshotRunner
                 // immediate context, and PrepareFrame also advances pending temporal diagnostics. The capture
                 // owns its image size, so bound water targets are prepared at that size.
                 scene.PrepareFrame(width, height);
+                Stamp("frame prepared");
                 using (GpuRecording.Open(gd, commands, "Render3DSnapshot.Capture"))
                     scene.RenderInternal(commands, width, height, framebuffer);
+                Stamp("frame encoded");
                 gd.Submit(commands);
+                Stamp("frame submitted");
                 if (frame < firstReadbackFrame) continue;
                 byte[] rgba = GpuReadback.ToRgba(gd, target, width, height);
+                Stamp("image read back");
                 onFrame(frame, new Render3DCapture(rgba, width, height, gd.Backend));
             }
         }

@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
@@ -97,7 +98,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         [SupportedOSPlatform("macos")]
         internal MetalShaderSet CreateShaderSet(string vertexGlsl, string fragmentGlsl, GpuShaderCompileOptions options = default)
         {
+            long started = Stopwatch.GetTimestamp();
             MetalMslProgram program = MetalShaderBuild.Pair(vertexGlsl, fragmentGlsl, _cache, memo: _memo, options: options);
+            MetalWireTrace.Cost("GLSL to MSL", started, $"vertex {vertexGlsl.Length} fragment {fragmentGlsl.Length}");
 
             // THE TABLE IS CANONICALISED AFTER THE COMPILE RATHER THAN BEFORE IT, so a program Metal rejects
             // leaves nothing in the cache. The cache is never evicted, so an entry made for a shader set that was
@@ -171,8 +174,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             string where = stage.Stage.ToString().ToLowerInvariant() + " stage '" + stage.EntryPointName + "'";
 
+            long started = Stopwatch.GetTimestamp();
             MTLLibrary library = MTLLibrary.NewWithSource(
                 _device, NSString.FromManaged(stage.Msl), options, out NSError error);
+            MetalWireTrace.Cost("newLibraryWithSource", started, $"{stage.Stage} {stage.Msl.Length}");
 
             if (library.IsNull)
             {
@@ -193,7 +198,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 };
             }
 
+            started = Stopwatch.GetTimestamp();
             MTLFunction function = library.NewFunction(NSString.FromManaged(stage.EntryPointName));
+            MetalWireTrace.Cost("newFunctionWithName", started, stage.Stage.ToString());
             if (function.IsNull)
             {
                 library.Release();

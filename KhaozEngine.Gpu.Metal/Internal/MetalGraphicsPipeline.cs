@@ -271,7 +271,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 // paths agree either way and the shape stays comparable.
                 if (plan.SampleCount > 1) descriptor.SetSampleCount((nuint)plan.SampleCount);
 
+                long started = System.Diagnostics.Stopwatch.GetTimestamp();
                 renderState = device.NewRenderPipelineState(descriptor, out NSError error);
+                KhaozEngine.Gpu.Internal.MetalWireTrace.Cost("newRenderPipelineState", started);
                 if (renderState.IsNull) throw Rejected(error);
             }
             finally

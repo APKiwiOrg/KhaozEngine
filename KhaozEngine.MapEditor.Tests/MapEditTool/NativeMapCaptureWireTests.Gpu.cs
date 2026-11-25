@@ -32,6 +32,13 @@ public sealed partial class NativeMapCaptureWireTests(ITestOutputHelper testOutp
         object phaseGate = new();
         var phases = new List<(string Name, long Timestamp)>();
         var compileDiagnostics = new D3D11ShaderCompileDiagnostics();
+        var metalCosts = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        void Trace(string name)
+        {
+            if (name.StartsWith("metal cost | ", StringComparison.Ordinal)) metalCosts.Enqueue(name);
+            else Stamp(name);
+        }
+        string MetalCosts() => string.Join(Environment.NewLine, metalCosts);
         void Stamp(string name)
         {
             lock (phaseGate) phases.Add((name, Stopwatch.GetTimestamp()));
@@ -70,7 +77,7 @@ public sealed partial class NativeMapCaptureWireTests(ITestOutputHelper testOutp
             catch (TimeoutException error)
             {
                 // Snapshot before harness disposal can wait for the timed-out capture to finish.
-                throw new TimeoutException($"{error.Message}{Environment.NewLine}{PhaseTable()}{Environment.NewLine}{CompileTable()}", error);
+                throw new TimeoutException($"{error.Message}{Environment.NewLine}{PhaseTable()}{Environment.NewLine}{CompileTable()}{Environment.NewLine}{MetalCosts()}", error);
             }
         }
         Stamp("test entry");
@@ -87,6 +94,8 @@ public sealed partial class NativeMapCaptureWireTests(ITestOutputHelper testOutp
                 int current = ++capture, frame = 0;
                 Stamp($"capture {current} entry");
                 using var compileScope = compileDiagnostics.Use();
+                using var activity = new Activity("KE.NativeMapWire").Start();
+                activity.SetCustomProperty("KE.NativeMapWire", (Action<string>)Trace);
                 var result = NativeMapSnapshot.Capture(request, scene =>
                 {
                     scene.Post.Temporal.HistoryDetail = TemporalHistoryDetail.Display;
@@ -131,6 +140,7 @@ public sealed partial class NativeMapCaptureWireTests(ITestOutputHelper testOutp
         {
             testOutput.WriteLine(PhaseTable());
             testOutput.WriteLine(CompileTable());
+            testOutput.WriteLine(MetalCosts());
             Directory.Delete(dir, true);
         }
     }

@@ -246,7 +246,7 @@ concurrency:
   # A rerun keeps its old commit, so keep it out of the group for the current PR head.
   group: >-
     ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
-        format('cross-platform-gpu-{0}-{1}', github.event_name, github.ref) ||
+        format('cross-platform-gpu-{0}-{1}-{2}', github.event_name, github.ref, inputs.metalWireDiagnostics) ||
         (github.event_name == 'pull_request' && github.run_attempt == 1 &&
         format('cross-platform-gpu-pr-{0}', github.event.pull_request.number) ||
         format('cross-platform-gpu-{0}-{1}', github.event_name, github.run_id)) }}
@@ -263,6 +263,11 @@ on:
     - cron: '0 18 * * 0'
   workflow_dispatch:
     inputs:
+      metalWireDiagnostics:
+        description: 'Temporary hosted Metal capture timing comparison'
+        type: choice
+        default: normal
+        options: [normal, layer-off]
       bake:
         description: 'Re-bake the per-backend goldens (KE_UPDATE_GOLDENS=1) and upload them as artifacts'
         type: boolean
@@ -598,7 +603,7 @@ jobs:
       # with itself while disagreeing with the run it is guarding. The predicate itself is unchanged: tier one is
       # the native Metal leg's on every trigger, because it is an environment variable with no install and no
       # measurable cost at this scale. The whole reasoning is on MTL_DEBUG_LAYER at the test step.
-      METAL_DEBUG_LAYER_TIER: ${{ (matrix.backend == 'metal-native') && '1' || '' }}
+      METAL_DEBUG_LAYER_TIER: ${{ (matrix.backend == 'metal-native' && inputs.metalWireDiagnostics != 'layer-off') && '1' || '' }}
       # WHETHER THIS RUN ARMS METAL'S DEEP TIER, as ONE expression with three readers, for the reason the Vulkan
       # variable above is one expression with three: the shader-validation variable, the capture variable and the
       # artifact NAME all have to agree, and a copy per site is how they stop agreeing.

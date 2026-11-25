@@ -14990,6 +14990,8 @@ no `TileSettings.NoDraw`). Public `TryDescribe` keeps that exclusion, hands back
 `LatticePosition` places one lattice point, and `Build(doc, region, plane)` returns a `TileGroundMesh` of every
 full-detail triangle in a region-plane, three region-local positions per triangle with indices 0, 1, 2 and on.
 None of them takes catalogs: an overlay id that is not 0 cuts its tile whether or not the catalogs define it.
+`TileGroundHeight.TrySample(doc, worldX, worldZ, plane, out height)` samples the full-detail triangles in world
+metres and returns false where the tile draws no ground.
 `TileWaterBodies.Collect(doc, catalogs, region, plane)` returns each water body as a `TileWaterBody(Rects,
 SurfaceY)`, with world tile rects and the still surface `SurfaceDropMetres` under the body's rim, and `IsWater`
 answers for one tile. The mesher's full-detail positions and the water planes are built from these rules, so the
@@ -19258,8 +19260,9 @@ exactly `PoseAt(tile)`.
 at that same centred point, so a body on an authored slope has its feet on the ground quad it is standing on, and
 so does a marker or a dropped item laid down through `presenter.PoseAt(tile)`. A gliding body resamples every
 frame at its interpolated planar position, which is what makes it FOLLOW a slope between two tile centres instead
-of stepping at the tile edge. Nothing to wire: `new TilePresenter(document)` reads the document's own bilinear
-height lattice, the same one the terrain mesh, the props and the lights are placed with.
+of stepping at the tile edge. `new TilePresenter(document)` samples the full-detail ground triangles shared by
+the terrain mesh and colliders. Where the document draws no triangle, it uses `TileWorldDocument.HeightAt` for
+the bilinear lattice height. Props and walk surfaces use the bilinear lattice for their placement anchors.
 
 ```csharp
 client.Presenter = new TilePresenter(document);   // terrain under every pose, no further call
@@ -19285,9 +19288,8 @@ TilePose me = client.LocalPose;                   // Position.Y is the ground un
   answering world METRES. That is the hook for a streamed or generated terrain, and it is what a test with a
   synthetic slope hands in. `TileDocumentGroundHeight` is the engine's document-backed one, and it is the single
   place tile units become world metres for a height read.
-- **A plane with no authored heights keeps its derived lift**, one `PlaneHeight` per plane over the lattice
-  below it, because that is what `TileWorldDocument.HeightAt` already answers. A fractional plane index, which is
-  what a body easing between planes carries, reads between the two planes' own samples rather than popping.
+- **A plane with no authored heights keeps its derived lift**, one `PlaneHeight` per plane over the base lattice.
+  A body easing between planes samples both at its drawn position and interpolates their heights.
 - **`Yaw` is untouched**, and the aimed pose below draws at the same height as the plain one for the same state.
 
 **A body holding a lock is drawn AIMING at it.** `TileMoveState.Facing` is the cardinal side the two footprints

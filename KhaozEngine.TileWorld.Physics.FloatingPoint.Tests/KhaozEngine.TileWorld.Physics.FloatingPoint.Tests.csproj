@@ -29,6 +29,7 @@
   <ItemGroup>
     <!-- Shared with KhaozEngine.TileWorld.Physics.Tests, which owns these files. Its split classes keep their default
          rows there and their changed-control rows here, under the same test names. -->
+    <Using Include="KhaozEngine.TileWorld" />
     <Compile Include="../test-shared/WaterPrismCensus/*.cs" Link="Fixtures/WaterPrismCensus/%(Filename)%(Extension)" />
     <Compile Include="../KhaozEngine.TileWorld.Physics.Tests/Fixtures/FrozenWater/*.cs" Link="Fixtures/FrozenWater/%(Filename)%(Extension)" />
     <Compile Include="../KhaozEngine.TileWorld.Physics.Tests/Fixtures/WaterFloatingPointEnvironment.cs" Link="Fixtures/WaterFloatingPointEnvironment.cs" />

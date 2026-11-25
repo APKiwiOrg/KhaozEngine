@@ -20,6 +20,9 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="../test-shared/WaterPrismCensus/*.cs" Link="Fixtures/WaterPrismCensus/%(Filename)%(Extension)" />
+    <!-- The frozen water arithmetic references the shared triangle types. Import their namespace here to preserve
+         the source bytes of FrozenTileWaterDrawnGroundRounding.cs. -->
+    <Using Include="KhaozEngine.TileWorld" />
     <EmbeddedResource Include="Fixtures/TileInstallationBaseline.json" />
     <EmbeddedResource Include="Fixtures/TileInstallationBaseline.navbake" />
     <EmbeddedResource Include="Fixtures/ContactTerrainFormatFour.navbake" />

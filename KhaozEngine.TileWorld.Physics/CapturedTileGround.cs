@@ -23,7 +23,7 @@ internal sealed class CapturedTileGround
             for (int z = region.OriginZ; z < region.OriginZ + TileRegion.Size; z++)
                 for (int x = region.OriginX; x < region.OriginX + TileRegion.Size; x++)
                 {
-                    int count = DrawnGroundTriangle.Describe(document, x, z, triangles);
+                    int count = DrawnGroundTriangle.Describe(document, x, z, plane: 0, triangles);
                     if (count > 0) _cells.Add((x, z), triangles[..count].ToArray());
                 }
         _sampler = new(document, regions, this);

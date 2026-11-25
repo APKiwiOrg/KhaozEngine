@@ -34,9 +34,9 @@ public readonly record struct TilePose(Vector3 Position, float Yaw);
 /// the ground quad it is standing on and so does a marker or a dropped item laid down through
 /// <see cref="PoseAt(TileCoord, TileDirection)"/>. A gliding body resamples every frame at its interpolated planar
 /// position, which is what makes it FOLLOW a slope between two tile centres instead of stepping at the tile edge.
-/// <see cref="TilePresenter(TileWorldDocument)"/> wires the document's own bilinear lattice, the same one the
-/// terrain mesh and the props are built from, and <see cref="TilePresenter(TileWorldDocument, TileWorldCatalogs)"/>
-/// raises that onto a walkable object top such as a bridge deck. A presenter with no ground source draws at the plane index times
+/// <see cref="TilePresenter(TileWorldDocument)"/> samples the document's full-detail terrain triangles, and
+/// <see cref="TilePresenter(TileWorldDocument, TileWorldCatalogs)"/> also considers walkable object tops such as
+/// bridge decks. A presenter with no ground source draws at the plane index times
 /// <see cref="PlaneHeight"/>, which is the flat placeholder and the only honest answer before a document is
 /// loaded.</para>
 /// <para>THE BODY GLIDES THE WHOLE STEP, LINEARLY. <see cref="Pose(in TileMoveState, float)"/> runs from <see cref="TileMoveState.StepFrom"/>
@@ -84,10 +84,9 @@ public sealed class TilePresenter
 
     /// <summary>Builds a presenter from a loaded document, which is where the real numbers live. A head builds one
     /// of these the moment it has the world file, and replaces the placeholder the client started with. It wires
-    /// the terrain-only <see cref="TileDocumentGroundHeight(TileWorldDocument)"/>, so the bodies this draws stand on
-    /// the SAME lattice the terrain mesh and the props are built from, with nothing for the head to call. No object
-    /// is consulted, so a body on a bridge deck stands on the ground under it: a world whose archetypes carry walk
-    /// surfaces wants <see cref="TilePresenter(TileWorldDocument, TileWorldCatalogs)"/>.</summary>
+    /// the terrain-only <see cref="TileDocumentGroundHeight(TileWorldDocument)"/>, so bodies stand on the
+    /// full-detail terrain. Use <see cref="TilePresenter(TileWorldDocument, TileWorldCatalogs)"/> to stand bodies
+    /// on walk surfaces such as bridge decks.</summary>
     /// <param name="document">The loaded world.</param>
     /// <exception cref="ArgumentNullException"><paramref name="document"/> is null.</exception>
     public TilePresenter(TileWorldDocument document)

@@ -19,7 +19,6 @@ using KhaozEngine.MapDoc.Water;
 using KhaozEngine.Tests.MapDoc;
 using KhaozEngine.Tests.MapDocCompatibility;
 using KhaozEngine.TileWorld;
-using KhaozEngine.TileWorld.Netcode;
 
 namespace KhaozEngine.Tests.MapDocOracle;
 
@@ -356,8 +355,9 @@ internal static class ShippedMarkerGuardFixtures
             case "wrong-source-count": nativeMarkers.RemoveAt(5); comparison["expectations"]!["total"] = 6; break;
             case "claimed-bound": roleRows[3]!["heightMode"] = "Support"; comparison["expectations"]!["supportBound"] = 7; break;
             case "twisted-bilinear":
-                // The client presenter's bilinear height, which a server body never stands at on this tile.
-                float bilinear = new TileDocumentGroundHeight(world).HeightAt(TwistedTileX, TwistedTileZ, 0);
+                // The bilinear lattice differs from the server's ground triangle on this tile.
+                float bilinear = world.HeightAt(TileWorldSpace.WorldX(TwistedTileX, world.TileSize),
+                    TileWorldSpace.WorldZ(TwistedTileZ, world.TileSize), 0);
                 nativeMarkers[5] = MapMarkerHeights.Apply(nativeMarkers[5], new(bilinear, null));
                 break;
             case "duplicate-destination": roleRows[1]!["id"] = roleRows[0]!["id"]!.DeepClone(); break;

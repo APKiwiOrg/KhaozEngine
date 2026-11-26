@@ -15,10 +15,56 @@ using KhaozEngine.Terrain;
 
 namespace KhaozEngine.Tests.MapDoc.Physics;
 
-/// <summary>Navigation tile fixtures: a resolver-1 strip three 64 m tiles long and a stacked shaft across a tile
-/// seam.</summary>
+/// <summary>Navigation tile fixtures for a resolver-1 strip three 64 m tiles long, a stacked shaft across a tile seam,
+/// and native terrain-only edits.</summary>
 internal static partial class NativeWorldFixtures
 {
+    internal static NativeFixture TerrainOnlyAtNavSeam(bool legacyFallback = false, bool startLegacy = false, bool withPaint = false)
+    {
+        var surfaces = new MapSurfaceSet();
+        var frame = legacyFallback ? MapLatticeFrame.ImportedMetreCentimetre : CentimetreHeights;
+        int z = legacyFallback ? -11 : 10;
+        AddSurface(surfaces, "edited-floor", frame, 62, z, 63, z + 1, (_, _) => 100);
+        if (legacyFallback)
+        {
+            var patch = surfaces.Patches.Values.Single();
+            patch.Cells[0] = patch.Cells[0] with { Underlay = 0 };
+            if (startLegacy) surfaces.Refs[0] = surfaces.Refs[0] with { PresencePolicy = MapPresencePolicy.LegacyTileWorld };
+        }
+        if (withPaint)
+        {
+            AddSurface(surfaces, "paint", frame, 62, z, 63, z + 1, (_, _) => 100);
+            surfaces.Refs[1] = surfaces.Refs[1] with { Role = MapSurfaceRole.PaintOverride, PaintTargetSurfaceId = "edited-floor" };
+        }
+        return ResolveAround(96, 0, surfaces, []);
+    }
+
+    internal static NativeFixture TerrainWithWallReadingAnotherFrame()
+    {
+        var surfaces = new MapSurfaceSet();
+        AddSurface(surfaces, "edited-floor", CentimetreHeights, 40, 10, 41, 11, (_, _) => 100);
+        MapSurfacePatch chains = RecordAnchor("chains", 120);
+        MapSurfacePatch wall = RecordAnchor("wall", 122);
+        chains.Records.Add(new MapBoundaryChain("lower", MapChainKind.Authored, null, Vertices("edited-floor", 100)));
+        chains.Records.Add(new MapBoundaryChain("upper", MapChainKind.Authored, null, Vertices("chains", 300)));
+        wall.Records.Add(new MapWallStrip("seam-wall", new("lower", chains.Key), new("upper", chains.Key), MapStripFacing.Front, 1));
+        return ResolveAround(96, 0, surfaces, []);
+
+        MapSurfacePatch RecordAnchor(string id, int x)
+        {
+            AddSurface(surfaces, id, CentimetreHeights, x, 10, x + 1, 11, (_, _) => 200);
+            MapSurfacePatch anchor = surfaces.Patches[MapPatchKey.ForCell(id, x, 10)];
+            anchor.SetPresent(0, 0, false);
+            return anchor;
+        }
+
+        static MapChainVertex[] Vertices(string id, int height) =>
+        [
+            new(new(id, MapLatticeAddress.Corner(126, 10)), height),
+            new(new(id, MapLatticeAddress.Corner(127, 11)), height),
+        ];
+    }
+
     /// <summary>The vertical link of <see cref="BuildStackedCaveAcrossTiles"/>.</summary>
     internal const string ShaftLinkRecordId = "shaft-link";
 

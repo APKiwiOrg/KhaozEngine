@@ -100,6 +100,10 @@ of its dependants or re-anchoring of its records, respectively. Re-anchoring upd
 including surface span metadata. `MapCompositeEdit` prepares its ordered edits as one candidate.
 `MapConvertFinePatch` reuses `MapFinePatchConversion`, including its authored-difference policy.
 Preparation validates references, seams and owners and refreshes affected surface semantic digests.
+The effects name patches with changed payloads, patches with changes to their surface frame, role or
+presence policy, and patches that anchor wall strips whose boundary chains read a changed frame. The
+old and new bounds use the respective surface declarations, so residency and navigation can invalidate
+both extents. Publication records declaration-only edits in `WriteSet.SurfaceIds`.
 Heights, smoothing, presence and ownership invalidate Terrain, Physics, Nav and Residency. Topology and
 conversion also invalidate Material. Cell material-ID changes alone invalidate Terrain and Material,
 other cell fields invalidate all five, and re-anchoring alone invalidates Residency.

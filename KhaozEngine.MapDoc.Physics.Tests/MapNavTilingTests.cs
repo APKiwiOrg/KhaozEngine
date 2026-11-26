@@ -4,6 +4,8 @@ using System.Numerics;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Physics;
+using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.MapDoc.Surfaces;
 using Xunit;
 
 namespace KhaozEngine.Tests.MapDoc.Physics;
@@ -67,6 +69,129 @@ public class MapNavTilingTests
         Assert.Contains(east, affected);
         Assert.DoesNotContain(new MapNavTileCoord(2, 0), affected);
         AssertInPartition(affected, after);
+    }
+
+    [Theory]
+    [InlineData("height")]
+    [InlineData("cell")]
+    [InlineData("row")]
+    public void SurfaceFrameEditInvalidatesOldAndNewTerrainCoverageWithoutWritingPatchPayload(string field)
+    {
+        // Regression #1903: terrain chunks have no placement effects to recover a missed surface edit.
+        var fixture = NativeWorldFixtures.TerrainOnlyAtNavSeam();
+        MapBuiltWorld before = NativeWorldFixtures.Build(fixture);
+        MapSurfaceRef surface = Assert.Single(fixture.Document.Surfaces.Refs);
+        MapLatticeFrame frame = field switch
+        {
+            "height" => surface.Frame with { HeightUnitMetres = new(1, 50) },
+            "cell" => surface.Frame with { CellUnitMetres = new(2, 1) },
+            _ => surface.Frame with { RowDirection = MapRowDirection.NegativeZ },
+        };
+        var edit = new MapReplaceTopology([], [], [surface with { Frame = frame }], []);
+        var prepared = MapDocumentTerrainEdits.Prepare(fixture.Document, fixture.Assets, edit);
+        MapBuiltWorld after = MapWorldBuilder.Build(prepared.After, fixture.Assets, NativeWorldFixtures.Options());
+        Assert.Empty(after.Placements);
+        AssertSurfaceOnlyWrite(prepared, surface.Id);
+
+        var beforeTiles = MapNavTiling.Partition(before, Grids, Options);
+        var afterTiles = MapNavTiling.Partition(after, Grids, Options);
+        var changed = beforeTiles.Where(tile => tile.CaptureIdentity != Identity(afterTiles, tile.Coord))
+            .Select(tile => tile.Coord).ToArray();
+        Assert.Contains(new MapNavTileCoord(1, 0), changed); // Old footprint's capture-only neighbour.
+        if (field == "cell") Assert.Contains(new MapNavTileCoord(2, 0), changed); // New footprint's capture-only neighbour.
+        Assert.Equal(changed, MapNavTiling.AffectedTiles(before, after, Grids, Options, prepared.Effects));
+
+        var oldChunk = Assert.Single(MapResidencyOwnership.Build(before, Grids));
+        var newChunk = Assert.Single(MapResidencyOwnership.Build(after, Grids));
+        var affected = MapResidencyOwnership.Affected(before, after, Grids, prepared.Effects);
+        Assert.Contains(oldChunk.OwnerId, affected.Owners);
+        Assert.Contains(newChunk.OwnerId, affected.Owners);
+        Assert.Equal(oldChunk.Membership.Union(newChunk.Membership).OrderBy(t => t.Z).ThenBy(t => t.X), affected.StorageTiles);
+        Assert.Equal(Assert.Single(fixture.Document.Surfaces.Patches).Key, Assert.Single(prepared.Effects.Patches));
+        Assert.Equal(new MapBox3(62, 1, 10, 63, 1, 11), prepared.Effects.OldBounds);
+        Assert.Equal(newChunk.WorldBounds, prepared.Effects.NewBounds);
+    }
+
+    [Fact]
+    public void SurfaceFrameEditInvalidatesWallUsingAChainAnchoredOnAnotherSurface()
+    {
+        // Regression #1903: the edited floor's footprint does not reach the wall or its seam captures.
+        var fixture = NativeWorldFixtures.TerrainWithWallReadingAnotherFrame();
+        MapBuiltWorld before = NativeWorldFixtures.Build(fixture);
+        MapSurfaceRef floor = fixture.Document.Surfaces.Refs.Single(s => s.Id == "edited-floor");
+        var edit = new MapReplaceTopology([], [], [floor with { Frame = floor.Frame with { HeightUnitMetres = new(1, 50) } }], []);
+        var prepared = MapDocumentTerrainEdits.Prepare(fixture.Document, fixture.Assets, edit);
+        MapBuiltWorld after = MapWorldBuilder.Build(prepared.After, fixture.Assets, NativeWorldFixtures.Options());
+        AssertSurfaceOnlyWrite(prepared, floor.Id);
+
+        var oldWall = Assert.Single(before.Terrain.Chunks, c => c.TriangleRoles.Contains(MapFaceRole.Wall));
+        var newWall = Assert.Single(after.Terrain.Chunks, c => c.TriangleRoles.Contains(MapFaceRole.Wall));
+        Assert.NotEqual(oldWall.Digest, newWall.Digest);
+        var seam = new MapNavTileCoord(2, 0);
+        Assert.NotEqual(Identity(MapNavTiling.Partition(before, Grids, Options), seam),
+            Identity(MapNavTiling.Partition(after, Grids, Options), seam));
+        Assert.Contains(seam, MapNavTiling.AffectedTiles(before, after, Grids, Options, prepared.Effects));
+        var affected = MapResidencyOwnership.Affected(before, after, Grids, prepared.Effects);
+        Assert.Contains(oldWall.ChunkId, affected.Owners);
+        Assert.Contains(newWall.ChunkId, affected.Owners);
+        Assert.Contains(new MapTileCoord(1, 0), affected.StorageTiles);
+        Assert.DoesNotContain(new MapTileCoord(2, 0), affected.StorageTiles);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void PresencePolicyEditInvalidatesLegacyFallbackTerrainWithoutWritingPatchPayload(bool toLegacy)
+    {
+        // Regression #1903: the imported frame can stay fixed as the legacy fallback policy removes or adds a chunk.
+        var fixture = NativeWorldFixtures.TerrainOnlyAtNavSeam(legacyFallback: true, startLegacy: !toLegacy);
+        MapBuiltWorld before = NativeWorldFixtures.Build(fixture);
+        MapSurfaceRef surface = Assert.Single(fixture.Document.Surfaces.Refs);
+        var policy = toLegacy ? MapPresencePolicy.LegacyTileWorld : MapPresencePolicy.Native;
+        var edit = new MapReplaceTopology([], [], [surface with { PresencePolicy = policy }], []);
+        var prepared = MapDocumentTerrainEdits.Prepare(fixture.Document, fixture.Assets, edit);
+        MapBuiltWorld after = MapWorldBuilder.Build(prepared.After, fixture.Assets, NativeWorldFixtures.Options());
+        AssertSurfaceOnlyWrite(prepared, surface.Id);
+        var chunk = Assert.Single(MapResidencyOwnership.Build(toLegacy ? before : after, Grids));
+        Assert.Empty(MapResidencyOwnership.Build(toLegacy ? after : before, Grids));
+
+        var seam = new MapNavTileCoord(1, 0);
+        Assert.NotEqual(Identity(MapNavTiling.Partition(before, Grids, Options), seam),
+            Identity(MapNavTiling.Partition(after, Grids, Options), seam));
+        Assert.Contains(seam, MapNavTiling.AffectedTiles(after, Grids, Options, prepared.Effects));
+        Assert.Equal(chunk.Membership, MapResidencyOwnership.Affected(after, Grids, prepared.Effects).StorageTiles);
+        Assert.Equal(Assert.Single(fixture.Document.Surfaces.Patches).Key, Assert.Single(prepared.Effects.Patches));
+    }
+
+    [Fact]
+    public void PaintPriorityEditWritesTheSurfaceWithoutInvalidatingTerrainPhysicsOrCapture()
+    {
+        // Regression #1903 control: a changed surface digest alone does not imply moved geometry.
+        var fixture = NativeWorldFixtures.TerrainOnlyAtNavSeam(withPaint: true);
+        MapBuiltWorld before = NativeWorldFixtures.Build(fixture);
+        MapSurfaceRef paint = fixture.Document.Surfaces.Refs.Single(s => s.Role == MapSurfaceRole.PaintOverride);
+        var edit = new MapReplaceTopology([], [], [paint with { PaintPriority = 2 }], []);
+        var prepared = MapDocumentTerrainEdits.Prepare(fixture.Document, fixture.Assets, edit);
+        MapBuiltWorld after = MapWorldBuilder.Build(prepared.After, fixture.Assets, NativeWorldFixtures.Options());
+        AssertSurfaceOnlyWrite(prepared, paint.Id);
+        Assert.Empty(prepared.Effects.Patches);
+        Assert.Null(prepared.Effects.OldBounds);
+        Assert.Null(prepared.Effects.NewBounds);
+        Assert.Empty(MapResidencyOwnership.Affected(before, after, Grids, prepared.Effects).Owners);
+        Assert.Empty(MapNavTiling.AffectedTiles(before, after, Grids, Options, prepared.Effects));
+        Assert.Equal(MapNavTiling.Partition(before, Grids, Options).Select(t => t.CaptureIdentity),
+            MapNavTiling.Partition(after, Grids, Options).Select(t => t.CaptureIdentity));
+    }
+
+    static void AssertSurfaceOnlyWrite(MapPrefabEditResult prepared, string surfaceId)
+    {
+        Assert.Empty(prepared.WriteSet.Patches);
+        Assert.Empty(prepared.WriteSet.RecordIds);
+        Assert.False(prepared.WriteSet.Placements);
+        Assert.Equal(surfaceId, Assert.Single(prepared.WriteSet.SurfaceIds));
+        var change = Assert.Single(prepared.Effects.DigestChanges);
+        Assert.Equal($"surface/{surfaceId}", change.Key);
+        Assert.NotEqual(change.Before, change.After);
     }
 
     [Fact]

@@ -14,9 +14,9 @@ internal static class MapTerrainEditChanges
     {
         var oldDigests = before.Patches.ToDictionary(p => p.Key, p => MapSurfaceSemantics.PatchDigest(p.Value));
         var newDigests = after.Patches.ToDictionary(p => p.Key, p => MapSurfaceSemantics.PatchDigest(p.Value));
-        MapPatchKey[] patches = oldDigests.Keys.Union(newDigests.Keys).Order()
+        MapPatchKey[] patchWrites = oldDigests.Keys.Union(newDigests.Keys).Order()
             .Where(key => oldDigests.GetValueOrDefault(key) != newDigests.GetValueOrDefault(key)).ToArray();
-        var affectedSurfaces = patches.Select(p => p.SurfaceId).ToHashSet(StringComparer.Ordinal);
+        var affectedSurfaces = patchWrites.Select(p => p.SurfaceId).ToHashSet(StringComparer.Ordinal);
         var oldRefs = before.Refs.ToDictionary(s => s.Id, StringComparer.Ordinal);
         foreach (MapSurfaceRef surface in after.Refs)
             if (!oldRefs.TryGetValue(surface.Id, out MapSurfaceRef? old) || Metadata(old) != Metadata(surface))
@@ -35,7 +35,7 @@ internal static class MapTerrainEditChanges
         string[] surfaces = oldRefs.Keys.Union(newRefs.Keys, StringComparer.Ordinal).Order(StringComparer.Ordinal)
             .Where(id => !oldRefs.TryGetValue(id, out MapSurfaceRef? old) || !newRefs.TryGetValue(id, out MapSurfaceRef? current) ||
                 old.SemanticSha256 != current.SemanticSha256 || Metadata(old) != Metadata(current)).ToArray();
-        var changes = patches.Select(key => new MapDigestChange($"patch/{Key(key)}",
+        var changes = patchWrites.Select(key => new MapDigestChange($"patch/{Key(key)}",
             oldDigests.GetValueOrDefault(key), newDigests.GetValueOrDefault(key))).ToList();
         foreach (string id in surfaces)
             changes.Add(new($"surface/{id}", Digest(before, id, oldDigests), Digest(after, id, newDigests)));
@@ -46,7 +46,7 @@ internal static class MapTerrainEditChanges
         foreach (string id in records)
             changes.Add(new($"record/{id}", oldRecords.GetValueOrDefault(id), newRecords.GetValueOrDefault(id)));
         var owners = new List<MapCornerOwnerChange>();
-        foreach (MapPatchKey key in patches)
+        foreach (MapPatchKey key in patchWrites)
             if (after.Patches.TryGetValue(key, out MapSurfacePatch? patch))
             {
                 before.Patches.TryGetValue(key, out MapSurfacePatch? old);
@@ -67,15 +67,17 @@ internal static class MapTerrainEditChanges
         var materials = new SortedSet<ushort>();
         Collect(before);
         Collect(after);
-        var writeSet = new MapNativeWriteSet(Array.AsReadOnly(patches), Array.AsReadOnly(surfaces), Array.AsReadOnly(records),
+        var writeSet = new MapNativeWriteSet(Array.AsReadOnly(patchWrites), Array.AsReadOnly(surfaces), Array.AsReadOnly(records),
             Array.AsReadOnly(spaces.ToArray()), owners.AsReadOnly(), Array.AsReadOnly(materials.ToArray()), false);
-        var effects = new MapNativeEditEffects(Bounds(before, patches), Bounds(after, patches), writeSet.Patches,
+
+        var effectPatches = MapTerrainPatchEffects.Collect(before, after, oldRefs, writeSet.Patches);
+        var effects = new MapNativeEditEffects(Bounds(before, effectPatches), Bounds(after, effectPatches), effectPatches,
             writeSet.SpaceIds, Array.AsReadOnly(dependencies.ToArray()), changes.AsReadOnly(), invalidates);
         return new(after, writeSet, effects);
 
         void Collect(MapSurfaceSet set)
         {
-            foreach (MapPatchKey key in patches)
+            foreach (MapPatchKey key in patchWrites)
                 if (set.Patches.TryGetValue(key, out MapSurfacePatch? patch))
                 {
                     foreach (MapCornerDependency dependency in patch.CornerDependencies) dependencies.Add(Key(dependency.Owner.Patch));
@@ -91,7 +93,7 @@ internal static class MapTerrainEditChanges
             MapTopologyRecord[] all = set.AllRecords().ToArray();
             foreach (MapSpaceFootprint footprint in all.OfType<MapSpaceFootprint>())
                 if (affectedSurfaces.Contains(footprint.Lower.SurfaceId ?? "") || affectedSurfaces.Contains(footprint.Upper.SurfaceId ?? "") ||
-                    patches.Contains(footprint.Lattice))
+                    patchWrites.Contains(footprint.Lattice))
                 {
                     spaces.Add(footprint.Space.Id);
                     dependencies.Add(footprint.Id);

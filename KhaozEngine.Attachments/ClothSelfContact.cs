@@ -3,13 +3,13 @@ using System.Numerics;
 
 namespace KhaozEngine.Attachments;
 
-internal sealed class ClothSelfContact(ClothRig rig, int maxVisits)
+internal sealed class ClothSelfContact(ClothRig rig, ClothWorkLimits limits)
 {
     private const float ContactMargin = .00025f;
     private const float SolveTolerance = .00025f;
     private const float VelocityTouchRoundoff = .000001f;
 
-    private readonly ClothSelfBroadPhase _broadPhase = new(rig, maxVisits);
+    private readonly ClothSelfBroadPhase _broadPhase = new(rig, limits.MaxContactChecks, limits.MaxSupports + limits.MaxHulls);
     private readonly float _thickness = 2 * rig.Material.HalfThickness;
 
     internal ClothSelfBroadPhase BroadPhase => _broadPhase;

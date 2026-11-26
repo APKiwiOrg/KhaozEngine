@@ -18,11 +18,11 @@ internal sealed class ClothSelfBroadPhase
     private readonly ClothBounds[] _coverage;
     private readonly Pair[] _pairs;
     private readonly int[] _supportFaces;
-    private int _supportFaceCount;
+    private readonly int[] _supportCounts;
     private int _pairCount;
     private bool _built;
 
-    internal ClothSelfBroadPhase(ClothRig rig, int maxVisits)
+    internal ClothSelfBroadPhase(ClothRig rig, int maxVisits, int supports)
     {
         _rig = rig;
         int faceCount = rig.Triangles.Length;
@@ -30,7 +30,8 @@ internal sealed class ClothSelfBroadPhase
         _bounds = new ClothBounds[_nodes.Length];
         _coverage = new ClothBounds[rig.RestPositions.Length];
         _pairs = new Pair[maxVisits];
-        _supportFaces = new int[faceCount];
+        _supportFaces = new int[supports * faceCount];
+        _supportCounts = new int[supports];
         _words = (faceCount + 63) / 64;
         _leafSets = new ulong[_words * _nodes.Length];
         _exclusionSets = new ulong[_leafSets.Length];
@@ -47,25 +48,39 @@ internal sealed class ClothSelfBroadPhase
     }
 
     internal ReadOnlySpan<Pair> Pairs => _pairs.AsSpan(0, _pairCount);
-    internal ReadOnlySpan<int> SupportFaces => _supportFaces.AsSpan(0, _supportFaceCount);
-
-    internal bool CollectSupport(in ClothBounds bounds, ClothContactWorkspace work)
+    internal bool CollectSupport(int support, scoped in ClothBounds bounds, ClothContactWorkspace work,
+        out ReadOnlySpan<int> faces)
     {
-        _supportFaceCount = 0;
-        if (!CollectSupportNode(0, bounds, work)) return false;
-        Array.Sort(_supportFaces, 0, _supportFaceCount);
+        int capacity = _rig.Triangles.Length;
+        Span<int> storage = _supportFaces.AsSpan(support * capacity, capacity);
+        int count = _supportCounts[support];
+        if (count < 0)
+        {
+            count = 0;
+            if (!CollectSupportNode(0, bounds, work, storage, ref count))
+            {
+                faces = default;
+                return false;
+            }
+
+            storage[..count].Sort();
+            _supportCounts[support] = count;
+        }
+        faces = storage[..count];
         return true;
     }
 
-    private bool CollectSupportNode(int nodeIndex, in ClothBounds bounds, ClothContactWorkspace work)
+    private bool CollectSupportNode(int nodeIndex, in ClothBounds bounds, ClothContactWorkspace work,
+        Span<int> faces, ref int count)
     {
         if (!work.Visit()) return false;
         if (!_bounds[nodeIndex].Overlaps(bounds)) return true;
         Node node = _nodes[nodeIndex];
         if (node.Leaf < 0)
-            return CollectSupportNode(node.Left, bounds, work) && CollectSupportNode(node.Right, bounds, work);
+            return CollectSupportNode(node.Left, bounds, work, faces, ref count) &&
+                CollectSupportNode(node.Right, bounds, work, faces, ref count);
 
-        _supportFaces[_supportFaceCount++] = node.Leaf;
+        faces[count++] = node.Leaf;
         return true;
     }
 
@@ -111,6 +126,7 @@ internal sealed class ClothSelfBroadPhase
                 _bounds[i] = ClothBounds.Enclose(_bounds[node.Left], _bounds[node.Right]);
         }
         _pairCount = 0;
+        Array.Fill(_supportCounts, -1);
         _built = Collect(0, 0, work);
         return _built;
     }

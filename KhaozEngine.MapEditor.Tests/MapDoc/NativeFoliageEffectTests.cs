@@ -91,6 +91,11 @@ public sealed class NativeFoliageEffectTests
         Assert.Equal(pure.Effects.Describe(), prepared.Effects.Describe());
         Assert.Equal(Writes(pure.WriteSet), Writes(prepared.WriteSet));
 
+        MapDocument local = NativeDocumentSnapshot.Clone(gui, MapDocRegistry.CreateDefault());
+        var localPreparation = new TerrainEditCommand(edit).Prepare(local, false, null);
+        Assert.Equal(Pose(f.Document), Pose(local));
+        Assert.Empty(localPreparation.Effects.ReseatedPlacements);
+
         // The published editor transaction re-seats the Y-null framed placement and names the water body identically.
         history.Execute(gui, new TerrainEditCommand(edit));
         MapNativeEditEffects published = history.LastNativeEffects!;
@@ -101,6 +106,21 @@ public sealed class NativeFoliageEffectTests
         Assert.Equal(pure.Effects.WaterBodyIds, published.WaterBodyIds);
         Assert.True(pure.Effects.Invalidates.HasFlag(MapNativeInvalidation.Medium) && published.Invalidates.HasFlag(MapNativeInvalidation.Medium));
         Assert.True(pure.WriteSet.NativeResourceTransforms && prepared.WriteSet.NativeResourceTransforms);
+
+        // #1348. Undo and redo report both ends of the move in the direction the editor applied it.
+        var move = new MapReseatedPlacement("a/item", Pose(f.Document), Pose(gui));
+        Assert.Equal(move, Assert.Single(published.ReseatedPlacements));
+        Assert.True(history.Undo(gui));
+        Assert.Equal(new(move.PlacementId, move.After, move.Before), Assert.Single(history.LastNativeEffects!.ReseatedPlacements));
+        Assert.True(history.Redo(gui));
+        Assert.Equal(move, Assert.Single(history.LastNativeEffects!.ReseatedPlacements));
+
+        MapDocument closureOnly = NativeDocumentSnapshot.Clone(f.Document, MapDocRegistry.CreateDefault());
+        var historyWithoutBounds = new EditorHistory();
+        historyWithoutBounds.BindNativeAssets(closureOnly, f.Assets);
+        historyWithoutBounds.Execute(closureOnly, new TerrainEditCommand(edit));
+        Assert.True(historyWithoutBounds.LastNativeEffects!.Invalidates.HasFlag(MapNativeInvalidation.Unbounded));
+        Assert.Equal(move, Assert.Single(historyWithoutBounds.LastNativeEffects.ReseatedPlacements));
     }
 
     // The unpacked hut with its item made a Y-null framed placement seated on the exterior floor, and a pond body covering

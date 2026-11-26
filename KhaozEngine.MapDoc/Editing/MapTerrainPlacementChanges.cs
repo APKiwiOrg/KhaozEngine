@@ -13,24 +13,33 @@ internal static class MapTerrainPlacementChanges
 {
     internal static MapPrefabEditResult Include(MapDocument before, MapPrefabEditResult prepared, MapAssetClosure assets)
     {
-        var effects = prepared.Effects;
+        var stamp = prepared.Stamp;
+        var effects = Include(before, prepared.WriteSet, prepared.Effects,
+            () => stamp?.Before.ResourcesFor(before) ?? MapPrefabResolver.Expand(before, assets),
+            () => stamp?.After.ResourcesFor(prepared.After) ?? MapPrefabResolver.Expand(prepared.After, assets));
+        return ReferenceEquals(effects, prepared.Effects) ? prepared : prepared with { Effects = effects };
+    }
+
+    /// <summary>Uses the caller's own before and after expansions, reading them only for an edit that can reseat placements.</summary>
+    internal static MapNativeEditEffects Include(MapDocument before, MapNativeWriteSet writes, MapNativeEditEffects effects,
+        Func<MapEffectiveResources> expandBefore, Func<MapEffectiveResources> expandAfter)
+    {
         if (before.ResolverIdentity?.ResolverVersion != 2 ||
-            (effects.Patches.Count == 0 && prepared.WriteSet.SurfaceIds.Count == 0) ||
+            (effects.Patches.Count == 0 && writes.SurfaceIds.Count == 0) ||
             (effects.Invalidates & MapTerrainEdits.Geometry) == 0 ||
             (before.Prefabs?.Instances.Count is not > 0 && before.Placements.All(p => p.Y is not null)))
-            return prepared;
+            return effects;
 
         MapEffectiveResources previous, current;
         try
         {
-            var stamp = prepared.Stamp;
-            previous = stamp?.Before.ResourcesFor(before) ?? MapPrefabResolver.Expand(before, assets);
-            current = stamp?.After.ResourcesFor(prepared.After) ?? MapPrefabResolver.Expand(prepared.After, assets);
+            previous = expandBefore();
+            current = expandAfter();
         }
         catch (MapDocumentException)
         {
             // The terrain transaction can repair an unresolved document. Its missing extent requires a reset.
-            return prepared with { Effects = effects with { Invalidates = effects.Invalidates | MapNativeInvalidation.Unbounded } };
+            return effects with { Invalidates = effects.Invalidates | MapNativeInvalidation.Unbounded };
         }
 
         var moved = new List<MapReseatedPlacement>();
@@ -41,6 +50,6 @@ internal static class MapTerrainPlacementChanges
             var newPose = current.Transforms[key];
             if (oldPose != newPose) moved.Add(new(support.PlacementId, oldPose, newPose));
         }
-        return moved.Count == 0 ? prepared : prepared with { Effects = effects with { ReseatedPlacements = moved.AsReadOnly() } };
+        return moved.Count == 0 ? effects : effects with { ReseatedPlacements = moved.AsReadOnly() };
     }
 }

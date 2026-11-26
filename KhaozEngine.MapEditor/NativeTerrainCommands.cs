@@ -26,22 +26,22 @@ public sealed class TerrainEditCommand : EditorCommand, INativeDocumentCommand
     public override void Revert(MapDocument doc) => NativeDocumentTransaction.Run(doc, this, true, null, localOnly: true);
 
     NativeDocumentPreparation INativeDocumentCommand.Prepare(MapDocument candidate, bool undo) => Prepare(candidate, undo, null);
-    internal NativeDocumentPreparation Prepare(MapDocument candidate, bool undo, MapAssetClosure? assets, MapDocRegistry? registry = null)
+    internal NativeDocumentPreparation Prepare(MapDocument candidate, bool undo, MapAssetClosure? assets, MapDocRegistry? registry = null) =>
+        Prepare(candidate, undo, assets, registry ?? MapDocRegistry.CreateDefault(), includePlacementEffects: true);
+
+    // Staging reads placement effects from the same expansions it uses for validation and the other effect channels.
+    internal NativeDocumentPreparation PrepareForStage(MapDocument candidate, bool undo, MapAssetClosure? assets, MapDocRegistry registry) =>
+        Prepare(candidate, undo, assets, registry, includePlacementEffects: false);
+
+    NativeDocumentPreparation Prepare(MapDocument candidate, bool undo, MapAssetClosure? assets, MapDocRegistry registry,
+        bool includePlacementEffects)
     {
-        registry ??= MapDocRegistry.CreateDefault();
         if (_writeSet is { } writes)
         {
             NativeDocumentSnapshot.PublishWriteSet(candidate, NativeDocumentSnapshot.Clone((undo ? _before : _after)!, registry), writes);
-            MapNativeEditEffects accepted = _effects!;
-            MapNativeEditEffects effects = undo ? accepted with
-            {
-                OldBounds = accepted.NewBounds,
-                NewBounds = accepted.OldBounds,
-                OldSpatialBounds = accepted.NewSpatialBounds,
-                NewSpatialBounds = accepted.OldSpatialBounds,
-                DigestChanges = Array.AsReadOnly(accepted.DigestChanges.Select(c => new MapDigestChange(c.Key, c.After, c.Before)).ToArray()),
-            } : accepted;
-            return new(undo ? _undoWriteSet! : writes, MapDocumentTerrainEdits.Name(candidate, effects), () => { });
+            MapNativeWriteSet selectedWrites = undo ? _undoWriteSet! : writes;
+            MapNativeEditEffects effects = undo ? NativeCompleteSnapshotCommand.Reverse(_effects!) : _effects!;
+            return new(selectedWrites, Describe((undo ? _after : _before)!, selectedWrites, effects), () => { });
         }
         if (undo) throw new InvalidOperationException("Revert called before Apply.");
         var before = NativeDocumentSnapshot.Clone(candidate, registry);
@@ -53,12 +53,19 @@ public sealed class TerrainEditCommand : EditorCommand, INativeDocumentCommand
             OwnerChanges = prepared.WriteSet.OwnerChanges.Where(c => before.Surfaces.Patches.ContainsKey(c.Dependent))
                 .Select(c => Invert(c, before.Surfaces, after.Surfaces)).ToArray(),
         };
-        var named = MapDocumentTerrainEdits.Name(candidate, surfaceEffects);
+        var named = Describe(before, writeset, surfaceEffects);
         return new(writeset, named, () =>
         {
             _before = before; _after = after; _writeSet = writeset;
             _undoWriteSet = undoWrites; _effects = surfaceEffects;
         });
+
+        MapNativeEditEffects Describe(MapDocument original, MapNativeWriteSet selectedWrites, MapNativeEditEffects surface)
+        {
+            var effects = MapDocumentTerrainEdits.Name(candidate, surface);
+            return !includePlacementEffects || assets is null ? effects : MapTerrainPlacementChanges.Include(original, selectedWrites, effects,
+                () => MapPrefabResolver.Expand(original, assets), () => MapPrefabResolver.Expand(candidate, assets));
+        }
     }
 
     // Undo reports new to old. A self-owned corner is a null old owner and the dependent's own address as new owner.

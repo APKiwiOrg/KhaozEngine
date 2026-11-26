@@ -110,7 +110,7 @@ internal static class NativeDocumentTransaction
         {
             AdoptSpawnsCommand adoption => adoption.PrepareAdoption(candidate, undo, selected!, out permit),
             INativeBoundDocumentCommand bound => bound.Prepare(candidate, undo, selected!),
-            TerrainEditCommand terrain => terrain.Prepare(candidate, undo, selected, registry),
+            TerrainEditCommand terrain => terrain.PrepareForStage(candidate, undo, selected, registry),
             INativeDocumentCommand native => native.Prepare(candidate, undo),
             INativePlacementCommand placement => PreparePlacement(document, candidate, placement, undo, selected),
             _ => throw new MapDocumentException(MapDocumentRefusal.OperationKindUnsupported, "This command does not support atomic native document editing.")
@@ -152,7 +152,11 @@ internal static class NativeDocumentTransaction
             MapBoundDocumentValidation.ValidateEffectiveWater(effective, selected!);
         }
         var effects = NativePlacementEffects.Describe(document, publication, selected, registry, placementBounds, beforeAssets, expandedBefore, expanded);
-        var named = NativePlacementEffects.NameResources(preparation.Effects, document, publication, preparation.WriteSet);
+        var preparedEffects = preparation.Effects;
+        if (command is TerrainEditCommand && expandedBefore is not null && expanded is not null)
+            preparedEffects = MapTerrainPlacementChanges.Include(document, preparation.WriteSet, preparedEffects,
+                () => expandedBefore.Value, () => expanded.Value);
+        var named = NativePlacementEffects.NameResources(preparedEffects, document, publication, preparation.WriteSet);
         effects = NativePlacementEffects.Combine(named, effects,
             document, publication, beforeAssets, selected, preparation.WriteSet, preparation.Mode, expandedBefore, expanded);
         if (expandedBefore is not null && expanded is not null && (HoldsMarkers(document) || HoldsMarkers(publication)))

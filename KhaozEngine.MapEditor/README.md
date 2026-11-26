@@ -916,7 +916,8 @@ matching forward preparation. Undoing a patch addition reports no owner changes 
 A rejected preparation never captures command state. Both modes validate the published
 surfaces, including space coverage. Direct terrain `Apply` and `Revert` check document-local validity
 only, while bound editor transactions also check the asset closure. `EditorDocument.LastNativeEffects`
-reports the accepted terrain execute, undo or redo. `MutationService.TerrainApply(edit)` runs this same
+reports the accepted terrain execute, undo or redo. Bound terrain edits report old and new resolved poses for
+placements the edit reseats, in the direction applied by the command. `MutationService.TerrainApply(edit)` runs this same
 command under the service session lock and returns `MapTerrainMutationResult` with identical document
 bytes and effects text. These are programmatic APIs. Terrain MCP verbs are deferred to R10.
 

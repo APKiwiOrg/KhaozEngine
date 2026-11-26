@@ -13,6 +13,9 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   while the row solves guide lengths and local contact. [Attachment motion](docs/design/ATTACHMENT-MOTION-DESIGN.md)
 - A capsule that passes outside a nearly collinear cloth triangle leaves the guides alone. A capsule crossing
   the thin face can still transfer velocity to them. [#1902](https://github.com/APKiwiOrg/KhaozEngine/issues/1902)
+- Worn motion fits the authored hang against the equipped capsules and lower-layer chains at bind, reset and
+  while held. Both switches between held and simulated motion check contact on the displayed blend.
+  [#1904](https://github.com/APKiwiOrg/KhaozEngine/issues/1904)
 - A terrain edit that changes a supported placement's height invalidates storage and navigation tiles reached
   by its old and new collider and interaction envelope. [#1348](https://github.com/APKiwiOrg/KhaozEngine/issues/1348)
 - Changing a terrain surface's frame invalidates physics chunks and navigation tiles across its old and new

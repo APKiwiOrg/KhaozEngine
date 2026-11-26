@@ -339,13 +339,22 @@ public sealed class WornMotionTests
         Assert.Contains(new ChainLink(4, 5), links);
     }
 
-    [Fact]
-    public void Motion_step_allocates_nothing_after_warmup_with_colliders()
+    [Theory]
+    [InlineData(MotionLevel.Simulated)]
+    [InlineData(MotionLevel.Held)]
+    public void Motion_step_allocates_nothing_after_warmup_with_colliders(MotionLevel level)
     {
         using var rig = new OutfitRig();
         WornMotion motion = WearChain(rig, [DistantCapsule]).CreateMotion(BodyColliders(rig, DistantCapsule));
-        Step(rig, motion);
-        AllocAssert.NoPerCallAllocation("a wearer's motion step", () => Step(rig, motion));
+        var model = rig.Model;
+        Advance();
+        AllocAssert.NoPerCallAllocation("a wearer's motion step", Advance);
+
+        void Advance()
+        {
+            model.Translation += .001f * Vector3.UnitX;
+            motion.Step(rig.Skeleton, rig.Palette, model, Frame, level);
+        }
     }
 
     [Theory]

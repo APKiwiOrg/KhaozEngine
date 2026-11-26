@@ -388,8 +388,8 @@ thickness and check the presented mesh during its animation.
 Opening-side contact follows a straight relative path between steps. A collider can still leave a segment
 behind if it moves farther than the segment can reach in one step. The shown shape is up to one step behind the latest solved shape
 relative to its anchor. A collider moving fast relative to the anchor can overlap the shown chain by up to one
-step of that motion while the stepped chain clears it. While a held chain blends back to the live one, the shown
-chain can overlap a capsule for at most the blend time, while the live chain already clears it. When linked panels
+step of that motion while the stepped chain clears it. Worn motion checks contact again on the displayed
+pose while entering or leaving Held. When linked panels
 sit on opposing sides of a capsule, contact can prevent them from reaching their width band. The width solve
 accepts that residual when length and bend reach rule out the band or solid clearance stops further travel.
 
@@ -411,11 +411,18 @@ falls behind the body.
 ### Resets and limits
 
 - **Reset.** The first step, `Reset()`, a wearer that moved farther than the teleport distance in one frame, and a
-  frame time longer than the longest gap all put every chain at its rest hang with no velocity, so a respawn or a
-  teleport is calm.
-- **Hold.** A frame at `MotionLevel.Held` runs no steps. The chains blend from their last shown shape to the rest
-  hang over the hold blend time and stay there. A later simulated step starts the live chain from the held shape with
-  no velocity and blends the shown chain to it over the same time. Each blend continues from the last shown swing, so
+  frame time longer than the longest gap all put every chain at rest with no velocity, so a respawn or a teleport
+  is calm. Worn motion places that hang against the current body, equipment capsules and lower chains using the
+  same segment and bounded sheet constraints as a step, with positions only. The authored frames still define
+  inverse binds and spring targets. Clearance can move a guide and its linked neighbours. An authored cut can
+  bridge empty space beneath the cloth because the placement adds no pull toward the body. A standalone
+  `ChainSimulation` uses the authored hang for rest.
+- **Hold.** A frame at `MotionLevel.Held` runs no fixed steps. The chains blend from their last shown shape to the
+  rest hang over the hold blend time. Worn motion refreshes the fitted target when the posed anchors, capsules or
+  settings change. The last displayed pose and capsule radii supply the opening side if a moving obstacle crosses
+  that hang, even when tuning changes the lower chain's thickness. A later simulated step starts the live chain
+  from the held shape with no velocity and blends the shown chain to it over the same time. Each blend continues
+  from the last shown swing, so
   an anchor turning through a half turn during a blend never switches arcs, and neither switch pops. A blend rebuilds
   the chain through the hierarchy as the step interpolation does, so lengths hold mid blend. It carries the
   last shown swings with the same transform check, and copies the target when it finishes. With a hold blend time of
@@ -549,7 +556,11 @@ Its canonical bytes and SHA-256 follow the region map's rules.
 
 - **Binding.** `Bind` resolves garment chain joints and host anchors and checks each chain's shape and inverse
   binds. `CreateMotion` combines the visible chains in worn order and copies each set's layer to its chains.
-  It resolves authored colliders against the host skin and allocates every buffer the wearer needs.
+  It resolves authored colliders against the host skin, allocates the wearer's buffers and fits the first displayed
+  hang using the host mesh's bind palette. An immediate `WornMotion.Reset()` uses the last accepted pose. Place
+  collider proxies to meet the guide surface on the intended side and leave room for its anchored length to clear. The positional
+  solver sees the authored guide and capsule geometry. An obstacle wholly past the authored surface may need a
+  different proxy or an adjusted cut to establish the exterior.
 - **Frame order.** Animate the body, step the motion once, then write draws and outlines through the motion as often
   as needed. With a batch, pose all bodies, step the batch once, then queue the draws. Draw calls only read
   the motion, so a draw and an outline always agree.

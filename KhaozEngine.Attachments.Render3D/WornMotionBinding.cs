@@ -10,7 +10,7 @@ internal static class WornMotionBinding
 {
     const int MaxColliders = 64;
 
-    internal static WornMotion Create(object bindingIdentity, Skeleton skeleton, ReadOnlySpan<Matrix4x4> inverseBind,
+    internal static WornMotion Create(object bindingIdentity, Skeleton skeleton, BoundAttachmentSet? hostBinding,
         IReadOnlyList<BoundAttachmentSet> worn, OutfitDraw[][]? draws, LoadedBodyColliders? body, string? bodyRigIdentity,
         ChainSimulationOptions? options)
     {
@@ -24,6 +24,7 @@ internal static class WornMotionBinding
         }
 
         BodyColliderSet? bodySet = body?.ForBody(skeleton, bodyRigIdentity);
+        ReadOnlySpan<Matrix4x4> inverseBind = hostBinding is null ? default : hostBinding.HostInverseBind;
         WornCollider[] colliders = BindColliders(skeleton, inverseBind, worn, body, bodySet);
 
         var anchors = new Dictionary<int, int>();
@@ -57,7 +58,10 @@ internal static class WornMotionBinding
         }
 
         var rig = new ChainRig(anchorBones.Count, chains, links);
-        return new WornMotion(bindingIdentity, skeleton, parts, rig, anchorBones.ToArray(), colliders, options);
+        var wornMotion = new WornMotion(bindingIdentity, skeleton, parts, rig, anchorBones.ToArray(), colliders, options);
+        if (hostBinding is not null)
+            wornMotion.InitializeRest(hostBinding.HostRestPose);
+        return wornMotion;
     }
 
     static bool[] VisibleParts(OutfitDraw[] draws, int partCount)

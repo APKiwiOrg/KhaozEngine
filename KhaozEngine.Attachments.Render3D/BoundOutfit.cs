@@ -56,14 +56,14 @@ public sealed partial class BoundOutfit : IDisposable
         ThrowIfDisposed();
         Skeleton skeleton = _hostSkeleton ?? (_worn.Length > 0 ? _worn[0].Skeleton :
             throw new InvalidOperationException("Creating motion requires a body skin or a worn set with a skeleton."));
-        ReadOnlySpan<Matrix4x4> inverseBind = default;
+        BoundAttachmentSet? hostBinding = null;
         foreach (BoundAttachmentSet set in _worn)
             if (ReferenceEquals(set.Skeleton, skeleton) && !set.HostInverseBind.IsEmpty)
             {
-                inverseBind = set.HostInverseBind;
+                hostBinding = set;
                 break;
             }
-        return WornMotionBinding.Create(MotionIdentity, skeleton, inverseBind, _worn, _draws,
+        return WornMotionBinding.Create(MotionIdentity, skeleton, hostBinding, _worn, _draws,
             bodyColliders, _bodyRigIdentity, options);
     }
 

@@ -32,13 +32,14 @@ public sealed class WornMotionBatchTests
         for (int frame = 0; frame < frames; frame++)
         {
             float seconds = frame * FrameTime;
+            var level = frame >= frames / 3 && frame < frames * 2 / 3 ? MotionLevel.Held : MotionLevel.Simulated;
             foreach (WearerPair pair in pairs)
             {
                 pair.Inline.Pose(seconds);
                 pair.Batched.Pose(seconds);
-                batch.Add(pair.Batched.Motion, rig.Skeleton, pair.Batched.Palette, pair.Batched.Model, FrameTime);
+                batch.Add(pair.Batched.Motion, rig.Skeleton, pair.Batched.Palette, pair.Batched.Model, FrameTime, level);
+                pair.Inline.Motion.Step(rig.Skeleton, pair.Inline.Palette.Span, pair.Inline.Model, FrameTime, level);
             }
-            foreach (WearerPair pair in pairs) pair.Inline.Step(FrameTime);
             batch.Step();
             batch.Clear();
             foreach (WearerPair pair in pairs) pair.AssertSameDraws();

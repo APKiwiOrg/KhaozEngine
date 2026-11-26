@@ -96,6 +96,27 @@ public sealed class ChainLayerContactTests
     }
 
     [Fact]
+    public void A_held_crossing_uses_the_lower_chains_opening_radius_when_it_grows()
+    {
+        // #1904: the old radius cleared the upper chain at the opening, even though the new radius would not.
+        var options = new ChainSimulationOptions { HoldBlendSeconds = 0 };
+        var simulation = new ChainSimulation(new ChainRig(2, [Upper, Lower], []), 0, options, fitRestContacts: true);
+        var before = Matrix4x4.CreateTranslation(-.075f, -.5f, 0);
+        var after = Matrix4x4.CreateTranslation(.05f, -.5f, 0);
+        simulation.Step([UpperAnchor, before], [], UpperAnchor, 0, MotionLevel.Held);
+
+        var tuned = Lower.Settings with { Radius = 2 * LowerRadius };
+        simulation.Tune(1, tuned);
+        simulation.Step([UpperAnchor, after], [], UpperAnchor, 0, MotionLevel.Held);
+
+        Span<Matrix4x4> worlds = stackalloc Matrix4x4[3];
+        simulation.ComposeJointWorlds([UpperAnchor, after], worlds);
+        Assert.True(worlds[1].Translation.X > worlds[2].Translation.X);
+        float required = UpperRadius + tuned.Radius;
+        Assert.InRange(Clearance(worlds, Upper), required - ClearanceTolerance, required + ClearanceTolerance);
+    }
+
+    [Fact]
     public void A_near_parent_lower_chain_arrives_and_leaves_without_exceeding_the_bend_limit()
     {
         const float bend = 0.16f;

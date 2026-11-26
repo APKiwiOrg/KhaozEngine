@@ -21,21 +21,7 @@ internal sealed class ChainStepPresentation(ChainRig rig, ChainPresentationHiera
             _current.Anchors[anchor] = new ChainPresentationAnchor(anchorWorlds[anchor], anchorInverses[anchor],
                 particles.StepAnchorRotations[anchor]);
 
-        var worlds = particles.JointWorlds;
-        for (int chain = 0; chain < rig.Chains.Count; chain++)
-        {
-            var definition = rig.Chains[chain];
-            int first = rig.FirstJoint(chain);
-            int end = first + definition.Joints.Count;
-            var inverse = anchorInverses[definition.Anchor];
-            var root = worlds[first] * inverse;
-            // The root is anchored exactly even when inverse composition rounds its offset.
-            root.Translation = rig.RestFromAnchor[first].Translation;
-            _current.Frames[first] = root;
-            for (int joint = first + 1; joint < end; joint++)
-                _current.Frames[joint] = worlds[joint] * inverse;
-        }
-        particles.JointSwings.CopyTo(_current.Swings, 0);
+        _current.CaptureJoints(particles);
     }
 
     internal void Show(float amount, ReadOnlySpan<ChainPose> anchors, ReadOnlySpan<ChainPresentationAnchor> frame,

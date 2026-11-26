@@ -15,6 +15,7 @@ public sealed class AttachmentSetBinding
     readonly Matrix4x4[] _worlds;
     readonly IReadOnlyList<CoverageConfigurationPart> _configurationParts;
     readonly Matrix4x4[]? _hostInverseBind;
+    readonly Matrix4x4[]? _hostRestPose;
 
     public AttachmentSetBinding(AttachmentSetDefinition definition, ContractJointMap map)
         : this(definition, map, null, null, null, null) { }
@@ -46,6 +47,7 @@ public sealed class AttachmentSetBinding
         }
         else SkinnedAttachmentBinding.ValidateHost(map, hostMesh);
         _hostInverseBind = hostMesh?.InverseBind.AsSpan().ToArray();
+        _hostRestPose = hostMesh?.RestPose.AsSpan().ToArray();
         var configurationParts = new CoverageConfigurationPart[definition.Parts.Count];
         _parts = new ResolvedPart[definition.Parts.Count];
         Dictionary<AttachmentMeshRef, IReadOnlyList<GarmentChainJoint>>? pendingChainJoints = null;
@@ -91,6 +93,7 @@ public sealed class AttachmentSetBinding
     internal bool MatchesHostSkin(SkinnedHostCoverage host) => _hostInverseBind is null || host.MatchesHostSkin(_hostInverseBind);
 
     internal ReadOnlySpan<Matrix4x4> HostInverseBind => _hostInverseBind;
+    internal ReadOnlySpan<Matrix4x4> HostRestPose => _hostRestPose;
     internal AttachmentChainBinding? Motion(int part) => _parts[part].Skin?.Motion;
 
     public Skeleton Skeleton { get; }

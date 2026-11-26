@@ -158,7 +158,8 @@ internal sealed class ChainBoundGroups
             SolveSheetPositions(sheet!, width!, particles, chains, colliders, settings, depth, reuseBend, nearSolids);
 
         // Local velocity constraints run after the shared width impulses.
-        width?.StopVelocities(particles, seconds);
+        if (seconds > 0)
+            width?.StopVelocities(particles, seconds);
         FinishDepth(particles, chains, colliders, previousColliders, settings, seconds, depth);
         if (sheetActive)
             sheet!.StopVelocities(particles, depth, _placed, colliders, previousColliders, seconds);
@@ -291,16 +292,19 @@ internal sealed class ChainBoundGroups
             if (!HasParticle(depth, rig.Chains[chain].Joints.Count))
                 continue;
             ref readonly var step = ref _placed[chain];
-            var setting = settings[chain];
-            int first = rig.FirstJoint(chain);
-            var velocity = new ChainVelocityConstraints(particles, first + chain, particles.StepCarries[chain],
-                previousColliders, setting.Radius, seconds);
-            velocity.FrameTurn = _incomingTurns[chain];
-            if (step.Joint == first)
-                velocity.Start(rig.Chains[chain].Anchor);
-            _incomingTurns[chain] = velocity.FrameTurn;
-            var placement = particles.PlacementCull.Selected(row, Capsules(row, colliders), step.PlacementCount);
-            velocity.ApplyLocal(step.Particle, step.Length, step.Direction, step.Rest, step.Clamped, placement);
+            if (seconds > 0)
+            {
+                var setting = settings[chain];
+                int first = rig.FirstJoint(chain);
+                var velocity = new ChainVelocityConstraints(particles, first + chain, particles.StepCarries[chain],
+                    previousColliders, setting.Radius, seconds);
+                velocity.FrameTurn = _incomingTurns[chain];
+                if (step.Joint == first)
+                    velocity.Start(rig.Chains[chain].Anchor);
+                _incomingTurns[chain] = velocity.FrameTurn;
+                var placement = particles.PlacementCull.Selected(row, Capsules(row, colliders), step.PlacementCount);
+                velocity.ApplyLocal(step.Particle, step.Length, step.Direction, step.Rest, step.Clamped, placement);
+            }
             ChainConstraints.WriteSwing(particles, step);
         }
     }

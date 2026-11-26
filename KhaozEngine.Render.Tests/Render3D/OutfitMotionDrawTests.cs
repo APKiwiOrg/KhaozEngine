@@ -21,6 +21,67 @@ public sealed class OutfitMotionDrawTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public void Outfit_draws_keep_a_close_chain_outside_equipment_at_bind_and_immediate_reset(bool reset)
+    {
+        // #1904: use the actual submitted palette for the same chain with and without a lower set.
+        using var rig = new OutfitRig();
+        var bindPose = (Matrix4x4[])rig.Palette.Clone();
+        // The mesh can supply a bind palette distinct from the skeleton's pose.
+        bindPose[0].Translation += Vector3.UnitY;
+        bindPose[HostHipBone].Translation -= Vector3.UnitY;
+        var host = new SkinnedGltfMesh(rig.Body.Vertices, rig.Body.Indices32, rig.Body.InverseBind, bindPose, rig.Skeleton);
+        var chainSet = ChainSet(rig.Source.Mesh("chain.glb", SkinnedAttachmentGlbFixture.Chained().Build()));
+        var chain = rig.Load("chain.json", new AttachmentSetDefinition(chainSet.Parts, AttachmentLayer.Outerwear, []))
+            .Bind(rig.Map, host);
+        var center = new Vector3(.55f, 1, -.04f);
+        var obstacle = new ColliderDefinition("knee", center, center, .125f);
+        var hardware = OutfitRig.Rigid(1, rig.Source.Mesh("hardware.glb", AttachmentTestSource.Glb()), "alpha");
+        var lower = rig.Load("hardware.json", new AttachmentSetDefinition([hardware], AttachmentLayer.Armour, [], [obstacle]))
+            .Bind(rig.Map, host);
+        var body = rig.BodyRegions(new RegionRun(0, 4));
+        using var bare = rig.Cache.BindOutfit(body, [chain]);
+        using var equipped = rig.Cache.BindOutfit(body, [chain, lower]);
+        var bareMotion = bare.CreateMotion(null);
+        var equippedMotion = equipped.CreateMotion(null);
+        var pose = (Matrix4x4[])bindPose.Clone();
+        if (reset)
+        {
+            // Move only the lower joint. Reset is visible immediately, before the next Step.
+            var displacement = new Vector3(0, 0, -.04f);
+            pose[0].Translation += displacement;
+            center += displacement;
+            equippedMotion.Step(rig.Skeleton, pose, rig.Model, 0);
+            equippedMotion.Reset();
+        }
+
+        var barePalette = ReadPalette(bare, bareMotion);
+        var wornPalette = ReadPalette(equipped, equippedMotion);
+        Assert.Equal(barePalette[ChainRootSlot].Translation, wornPalette[ChainRootSlot].Translation);
+        float radius = obstacle.Radius + FallSettings.Radius;
+        Assert.True(DistanceToFirstSegment(barePalette) < radius);
+        Assert.True(DistanceToFirstSegment(wornPalette) >= radius - .0002f);
+        Assert.True(wornPalette[LastChainJointSlot].Translation.Z > barePalette[LastChainJointSlot].Translation.Z);
+
+        Matrix4x4[] ReadPalette(BoundOutfit outfit, WornMotion motion)
+        {
+            var draws = new AttachmentDraw[outfit.DrawCount(0)];
+            Assert.Equal(1, outfit.WriteDraws(0, motion, rig.Skeleton, pose, rig.Model, rig.Key,
+                new RigidInstanceDraw(default, Matrix4x4.Identity), draws));
+            return Assert.Single(draws).BoneMatrices.ToArray();
+        }
+
+        float DistanceToFirstSegment(Matrix4x4[] palette)
+        {
+            var root = palette[ChainRootSlot].Translation;
+            var segment = palette[LastChainJointSlot].Translation - root;
+            float along = Math.Clamp(Vector3.Dot(center - root, segment) / segment.LengthSquared(), 0, 1);
+            return Vector3.Distance(center, root + along * segment);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void Motion_draws_use_current_anchors_and_preserve_submission_fields(bool asOutfit)
     {
         using var rig = new OutfitRig();

@@ -19,7 +19,7 @@ public sealed class WornMotion
     readonly WornCollider[] _colliders;
     readonly Matrix4x4[] _anchorWorlds;
     readonly ColliderCapsule[] _colliderWorlds;
-    bool _rest = true;
+    bool _useAuthoredRest = true;
 
     internal IReadOnlyList<ChainLink> RigLinksForTests => _simulation.Rig.Links;
     internal ReadOnlySpan<Matrix4x4> JointsFromAnchor => _simulation.JointsFromAnchor;
@@ -30,11 +30,20 @@ public sealed class WornMotion
         _bindingIdentity = bindingIdentity;
         _skeleton = skeleton;
         _parts = parts;
-        _simulation = new ChainSimulation(rig, colliders.Length, options);
+        _simulation = new ChainSimulation(rig, colliders.Length, options, fitRestContacts: true);
         _anchorBones = anchorBones;
         _colliders = colliders;
         _anchorWorlds = new Matrix4x4[anchorBones.Length];
         _colliderWorlds = new ColliderCapsule[colliders.Length];
+    }
+
+    internal void InitializeRest(ReadOnlySpan<Matrix4x4> bindPose)
+    {
+        if (!_simulation.HasRestContacts)
+            return;
+
+        Step(_skeleton, bindPose, Matrix4x4.Identity, 0, MotionLevel.Held);
+        _simulation.Reset();
     }
 
     internal void RequireBinding(object? bindingIdentity)
@@ -76,17 +85,22 @@ public sealed class WornMotion
     internal void StepPrepared(in Matrix4x4 model, float deltaSeconds, MotionLevel level)
     {
         _simulation.StepPrepared(_anchorWorlds, _colliderWorlds, model, deltaSeconds, level);
-        _rest = false;
+        _useAuthoredRest = false;
     }
 
-    /// <summary>Show the rest hang immediately and clear velocity on the next valid step.</summary>
+    /// <summary>Show the fitted rest hang from the last accepted pose. Clear velocity on the next valid step.</summary>
     public void Reset()
     {
+        _useAuthoredRest = !_simulation.HasRestContacts;
+        if (!_useAuthoredRest)
+        {
+            using var scope = DeterministicFpScope.Enter();
+            _simulation.ShowResetPose();
+        }
         _simulation.Reset();
-        _rest = true;
     }
 
-    /// <summary>Apply settings to a visible part's declared chain starting with the next simulation substep.</summary>
+    /// <summary>Apply settings to a visible part's declared chain starting with the next placement or simulation substep.</summary>
     /// <remarks>Worn indices are zero-based in outfit order. A bare set uses worn index zero.</remarks>
     public void Tune(int wornIndex, uint partId, int chain, in ChainSettings settings)
     {
@@ -108,7 +122,7 @@ public sealed class WornMotion
         for (int index = 0; index < chains.Length; index++)
         {
             BoundAttachmentChain chain = chains[index];
-            ReadOnlySpan<Matrix4x4> frames = _rest ? chain.RestFromAnchor :
+            ReadOnlySpan<Matrix4x4> frames = _useAuthoredRest ? chain.RestFromAnchor :
                 JointsFromAnchor.Slice(_simulation.Rig.FirstJoint(part.FirstChain + index), chain.PaletteBones.Length);
             chain.CopyPalette(frames, palette[chain.AnchorBone], destination);
             foreach (int bone in chain.PaletteBones)

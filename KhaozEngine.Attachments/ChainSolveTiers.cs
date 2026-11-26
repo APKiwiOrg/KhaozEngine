@@ -70,7 +70,8 @@ internal sealed class ChainSolveTiers
             foreach (int chain in tier.Chains)
             {
                 int anchor = particles.Rig.Chains[chain].Anchor;
-                particles.Predict(chain, settings[chain], gravity, seconds, oldWearer, newWearer, wearerTurn);
+                if (seconds > 0)
+                    particles.Predict(chain, settings[chain], gravity, seconds, oldWearer, newWearer, wearerTurn);
                 ChainConstraints.FollowChain(particles, chain, anchors[anchor],
                     obstacles, opening, settings[chain], seconds, pullTowardRest: true, tier.Links.FirstPass(chain));
             }

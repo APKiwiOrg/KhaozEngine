@@ -25,6 +25,7 @@ public sealed partial class BoundAttachmentSet
     internal object MotionIdentity => _motionIdentity ??= new object();
     internal AttachmentSetCache Owner => _owner;
     internal ReadOnlySpan<Matrix4x4> HostInverseBind => _binding.HostInverseBind;
+    internal ReadOnlySpan<Matrix4x4> HostRestPose => _binding.HostRestPose;
     internal AttachmentChainBinding? PartMotion(int part) => _binding.Motion(part);
     /// <summary>The cache key the set was loaded under, so an outfit refusal can name the piece.</summary>
     internal string SourceName { get; }
@@ -77,7 +78,7 @@ public sealed partial class BoundAttachmentSet
     public WornMotion CreateMotion(LoadedBodyColliders? bodyColliders, ChainSimulationOptions? options = null)
     {
         _owner.ThrowIfDisposed();
-        return WornMotionBinding.Create(MotionIdentity, _binding.Skeleton, _binding.HostInverseBind,
+        return WornMotionBinding.Create(MotionIdentity, _binding.Skeleton, this,
             [this], null, bodyColliders, null, options);
     }
 

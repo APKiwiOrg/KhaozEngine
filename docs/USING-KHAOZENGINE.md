@@ -7846,8 +7846,9 @@ Load colliders for the binding's skeleton instance. `CreateMotion` raises `BodyC
 different skeleton instance, even when the joint names match. Pass null to use only the worn sets'
 capsules. A single bound set also supports
 `CreateMotion` and takes that motion in its `Queue`, `WriteDraws` and `QueueOutline` overloads. Keep each
-motion with its originating binding and animate before stepping. Use `Reset()` to restore the rest hang
-immediately.
+motion with its originating binding and animate before stepping. `CreateMotion` fits the authored hang against
+the bound capsules and lower-layer chains in the body's bind pose. `Reset()` shows the fitted hang for the
+last accepted pose immediately. Step with the current palette before drawing an animated pose.
 
 Set `ChainSimulationOptions.MaxStepSeconds` to choose the fixed simulation step (1/120 s by default).
 `MaxStepsPerFrame` caps the number of steps a frame can run (8 by default). The solver samples the frame
@@ -7861,8 +7862,9 @@ on a short tail or widening a cloak's bend limits while using `linkStretch` to k
 
 For multiple wearers, call `MotionLevels.Assign(wearerPositions, viewerPosition, simulateWithin, maxSimulated,
 scratch, levels)` before stepping. It assigns `Simulated` to the nearest wearers within the distance limit
-up to the count limit. The rest receive `Held` and blend toward the rest hang. Reuse the scratch span with
-space for the smaller of the wearer count and the count limit, and one output level per wearer.
+up to the count limit. The rest receive `Held` and blend toward the hang fitted against their posed colliders
+and lower layers. Held checks positions without a fixed simulation step. Reuse the scratch span with space
+for the smaller of the wearer count and the count limit, and one output level per wearer.
 
 Keep one `WornMotionBatch` for the frame loop. Pose all bodies into their reusable palettes before stepping
 the batch. Queue draws and outlines with the individual motions after the batch returns.

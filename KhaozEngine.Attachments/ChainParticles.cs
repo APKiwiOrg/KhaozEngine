@@ -33,7 +33,7 @@ internal sealed class ChainParticles
     }
 
     internal ChainRig Rig { get; }
-    internal Vector3[] Positions { get; }
+    internal Vector3[] Positions { get; private set; }
     internal Vector3[] Velocities { get; }
     internal Vector3[] RestPositions { get; }
     internal Vector3[] SubstepStarts { get; }
@@ -119,6 +119,19 @@ internal sealed class ChainParticles
         for (int anchor = 0; anchor < anchors.Length; anchor++)
             PreviousAnchorRotations[anchor] = anchors[anchor].Rotation;
 
+        PlaceFromShown(anchors, frames);
+        Array.Clear(Velocities);
+    }
+
+    internal Vector3[] ExchangePositions(Vector3[] positions)
+    {
+        var previous = Positions;
+        Positions = positions;
+        return previous;
+    }
+
+    internal void PlaceFromShown(ReadOnlySpan<ChainPose> anchors, ReadOnlySpan<Matrix4x4> frames)
+    {
         for (int chain = 0; chain < Rig.Chains.Count; chain++)
         {
             var definition = Rig.Chains[chain];
@@ -133,8 +146,6 @@ internal sealed class ChainParticles
             }
             Positions[end + chain] = Vector3.Transform(definition.Tip, parent);
         }
-
-        Array.Clear(Velocities);
     }
 
     internal void RememberAnchorRotations() =>

@@ -331,7 +331,9 @@ its first such worn set. A collider index names its position in the normalized s
 Animate the host, call `motion.Step(skeleton, palette, model, deltaSeconds)` once with its current
 pose, then draw and outline as often as needed. Pass the motion first to the set's mixed
 `WriteDraws`, `Queue` or `QueueOutline`, or after `wornIndex` to the outfit's `WriteDraws` or
-`QueueOutline`. These calls only read the motion. Overloads without motion draw the rest hang.
+`QueueOutline`. These calls only read the motion. Overloads without motion draw the authored rest hang.
+Before the first step, a new `WornMotion` displays the hang fitted on the host's bind pose. Step first to
+fit against an animated palette or a scaled model.
 
 `ChainSimulationOptions.MaxStepSeconds` sets the fixed step length (default 1/120 s).
 `MaxStepsPerFrame` caps the steps processed in one frame (default 8). The solver interpolates the
@@ -344,10 +346,12 @@ current body pose. Frames with no grid step still update that interpolation. If 
 `Step` uses the binding's exact skeleton and full host skin palette. It validates the model and
 the joint matrices it reads for anchors and capsules. Each draw validates the matrices it reads.
 Valid steps and draws allocate nothing once warm. Use `MotionLevels.Assign` to select simulated wearers
-by distance and count and pass each level to `Step`. `MotionLevel.Held` blends toward rest.
+by distance and count and pass each level to `Step`. `MotionLevel.Held` blends toward a contact-fitted hang
+for the current pose, with no fixed simulation steps. Repeated poses reuse the fitted target.
 When simulation resumes, motion starts from the held shape with zero velocity and the display blends
-toward the live shape. `Reset()` restores the rest hang immediately and clears velocity on the next
-valid step. `Tune(wornIndex, partId, chain, settings)` changes settings on the next simulation step.
+toward the live shape. Both switches check contact on the displayed blend. `Reset()` shows the fitted hang
+from the latest accepted pose immediately and resets velocity on the next valid step.
+`Tune(wornIndex, partId, chain, settings)` changes settings on the next placement or simulation step.
 Worn and chain indices are zero-based and a bare set uses worn index zero. A fully hidden part
 has no tunable chains. Wearers can share a binding and have independent motions. Each motion
 belongs to its originating set or outfit and owns no disposable scene state. Passing it to another

@@ -20,6 +20,80 @@ public sealed class ChainSheetContactTests
     private static readonly Matrix4x4 Identity = Matrix4x4.Identity;
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_close_sheet_clears_a_protrusion_at_rest_and_through_motion_switches(bool lowerChain)
+    {
+        // #1904: the authored hang can cross a solid between its guides.
+        var rig = CreateSheet(bounded: true, out var left, out var right, layered: lowerChain);
+        var motion = new ChainSimulation(rig, lowerChain ? 0 : 1, null, fitRestContacts: true);
+        var bareRig = new ChainRig(1, [left, right], rig.Links);
+        var bare = new ChainSimulation(bareRig, 0);
+        bare.Step([Identity], [], Identity, 0, MotionLevel.Held);
+        var obstacle = Capsule(-0.012f);
+        Assert.True(MeasureSheet(bare, left, right, obstacle) < Clearance);
+
+        Step(obstacle, 0, MotionLevel.Simulated);
+        for (int frame = 0; frame < 32; frame++)
+            Step(obstacle, StepSeconds, MotionLevel.Simulated);
+        for (int frame = 0; frame < 16; frame++)
+            Step(obstacle, 1f / 60, MotionLevel.Held);
+        // A posed lower layer can pass through the authored hang. The displayed sheet must keep its side.
+        Step(Capsule(0.006f), 1f / 60, MotionLevel.Held);
+        for (int frame = 0; frame < 16; frame++)
+            Step(obstacle, 1f / 60, MotionLevel.Simulated);
+        motion.Reset();
+        Step(obstacle, 0, MotionLevel.Held);
+
+        // When the lower layer moves away, the same held garment recovers its close cut.
+        Step(Capsule(SweepStart), 1f / 60, MotionLevel.Held);
+        var clearShape = motion.JointsFromAnchor[..bareRig.JointCount];
+        for (int joint = 0; joint < clearShape.Length; joint++)
+            Assert.InRange(Vector3.Distance(clearShape[joint].Translation, bare.JointsFromAnchor[joint].Translation), 0, Tolerance);
+        Assert.InRange(Vector3.Distance(Tip(motion, left, 0), Tip(bare, left, 0)), 0, Tolerance);
+        Assert.InRange(Vector3.Distance(Tip(motion, right, left.Joints.Count), Tip(bare, right, left.Joints.Count)), 0, Tolerance);
+
+        void Step(ColliderCapsule capsule, float seconds, MotionLevel level)
+        {
+            if (lowerChain)
+                motion.Step([Identity, LowerAnchor(capsule.Start.Z)], [], Identity, seconds, level);
+            else
+                motion.Step([Identity], [capsule], Identity, seconds, level);
+
+            float distance = MeasureSheet(motion, left, right, capsule);
+            Assert.True(distance >= Clearance - Tolerance, $"{level} presented clearance: {distance} m.");
+            var hem = (Tip(motion, left, 0) + Tip(motion, right, left.Joints.Count)) / 2;
+            Assert.True(hem.Z > capsule.Start.Z);
+        }
+    }
+
+    [Fact]
+    public void Projecting_the_resume_display_does_not_change_the_live_sheet_motion()
+    {
+        // #1904: length and width corrections on a displayed blend must not change live velocities.
+        var sheet = CreateSheet(bounded: true, out var left, out var right);
+        left = left with { Settings = left.Settings with { Gravity = .5f } };
+        right = right with { Settings = right.Settings with { Gravity = 1 } };
+        var rig = new ChainRig(1, [left, right], sheet.Links);
+        var options = new ChainSimulationOptions { Gravity = new(4, 0, 12), HoldBlendSeconds = .125f };
+        var immediate = new ChainSimulation(rig, 1, options with { HoldBlendSeconds = 0 }, fitRestContacts: true);
+        var blended = new ChainSimulation(rig, 1, options, fitRestContacts: true);
+        var capsule = Capsule(-.012f);
+        immediate.Step([Identity], [capsule], Identity, 0, MotionLevel.Held);
+        blended.Step([Identity], [capsule], Identity, 0, MotionLevel.Held);
+        var initial = Tip(immediate, right, left.Joints.Count);
+        for (int frame = 0; frame < 24; frame++)
+        {
+            immediate.Step([Identity], [capsule], Identity, StepSeconds);
+            blended.Step([Identity], [capsule], Identity, StepSeconds);
+        }
+
+        var live = Tip(immediate, right, left.Joints.Count);
+        Assert.True(Vector3.Distance(initial, live) > Tolerance);
+        Assert.InRange(Vector3.Distance(live, Tip(blended, right, left.Joints.Count)), 0, Tolerance);
+    }
+
+    [Theory]
     [InlineData(true, 112)]
     [InlineData(false, 112)]
     [InlineData(true, 1)]

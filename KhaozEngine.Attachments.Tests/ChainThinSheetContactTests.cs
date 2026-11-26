@@ -63,6 +63,42 @@ public sealed class ChainThinSheetContactTests
         Assert.InRange(contact.Residual.LengthSquared, squaredGap - 1, squaredGap + 1);
     }
 
+    [Theory]
+    [InlineData(false, 4)]
+    [InlineData(true, 4)]
+    [InlineData(false, 0)]
+    [InlineData(true, 0)]
+    [InlineData(false, -4)]
+    [InlineData(true, -4)]
+    public void A_thin_face_resolves_piercing_and_projection_near_either_axis_endpoint(bool reverse, int nearZ)
+    {
+        const float length = 65536;
+        var triangle = new ChainContactTriangle(Vector3.Zero, new(length, 0, 0), new(length, 4, 0));
+        float extent = MathF.ScaleB(69, 74);
+        var far = new Vector3(0.75f * length, 1, -extent);
+        var near = far with { Z = nearZ };
+        var capsule = new ColliderCapsule(reverse ? near : far, reverse ? far : near, 0.25f);
+        var axis = new Axis(capsule);
+
+        // The axis meets Z = 0 strictly inside the face when nearZ is positive.
+        // Otherwise the near endpoint's projection attains the distance to the face.
+        var hit = triangle.Closest(axis, out _);
+        double separation = Math.Max(0, -nearZ);
+        Assert.Equal(separation * separation, hit.Residual.LengthSquared);
+
+        // Doubling the far endpoint distance moves the piercing witness four units
+        // below the face. A witness on the stationary near endpoint stays there.
+        var previousFar = far with { Z = -2 * extent };
+        var previous = new ColliderCapsule(reverse ? near : previousFar, reverse ? previousFar : near, 0.25f);
+        double previousSeparation = nearZ > 0 ? nearZ : separation;
+        Assert.InRange(triangle.MaterialResidual(new Axis(previous), hit).Z,
+            previousSeparation - 1e-10, previousSeparation + 1e-10);
+        var still = new ChainCarry(Vector3.Zero, Vector3.Zero, Quaternion.Identity);
+        var velocity = SurfaceVelocity(capsule, previous, hit.Fraction, Vector3.UnitZ, still, StepSeconds);
+        float expectedSpeed = Math.Max(0, nearZ) / StepSeconds;
+        Assert.InRange(velocity.Z, expectedSpeed - 0.001f, expectedSpeed + 0.001f);
+    }
+
     [Fact]
     public void A_capsule_piercing_a_thin_face_can_transfer_velocity_to_its_guides()
     {

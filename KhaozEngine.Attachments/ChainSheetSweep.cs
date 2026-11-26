@@ -52,7 +52,7 @@ internal readonly struct ChainSheetSweep(
             var path = new Axis(previous.Start, current.Start - translation);
             ChainContactCounts.Active?.Record(ChainContactQuery.SheetOpening);
             var hit = opening.Closest(path, out _);
-            return AtFeature(hit with { Along = 0 }, openingNormal, lastNormal, radius, tolerance);
+            return AtFeature(hit with { Fraction = default }, openingNormal, lastNormal, radius, tolerance);
         }
 
         double start = 0, end = 1;
@@ -135,8 +135,8 @@ internal readonly struct ChainSheetSweep(
     private double AtFeature(in ChainContactTriangle.Contact hit, Offset firstNormal, Offset lastNormal,
         double radius, double tolerance)
     {
-        var first = opening.MaterialResidual(previous, hit.Weights, hit.Along);
-        var last = prediction.MaterialResidual(current, hit.Weights, hit.Along);
+        var first = opening.MaterialResidual(previous, hit);
+        var last = prediction.MaterialResidual(current, hit);
         double side = Offset.Dot(firstNormal, first);
         if (Math.Abs(side) <= tolerance || side * Offset.Dot(lastNormal, last) >= 0)
             return 0;

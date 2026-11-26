@@ -13,26 +13,57 @@ internal readonly struct ChainThinTriangleWitness(Offset ab, Offset ac)
         DifferenceOfProducts(ab.Z, ac.X, ab.X, ac.Z),
         DifferenceOfProducts(ab.X, ac.Y, ab.Y, ac.X));
 
-    internal bool TryPierce(Offset root, in Axis axis, out Offset weights, out double along) =>
-        TryIntersect(Difference.Between(axis.Start, root), Difference.Between(axis.End, axis.Start), out weights, out along);
-
-    internal bool TryProject(Offset root, Offset end, Offset normal, out Offset weights, out double travel) =>
-        TryIntersect(Difference.Between(end, root), new Difference(normal, default), out weights, out travel);
-
-    // Signed volumes give the line intersection's weights without first rounding its
-    // position onto the face. Using the normal as direction projects an axis endpoint.
-    private bool TryIntersect(Difference fromRoot, Difference direction, out Offset weights, out double along)
+    internal bool TryPierce(Offset root, in Axis axis, out Offset weights, out AxisFraction fraction)
     {
         weights = default;
-        along = 0;
-        // A determinant has six triple products, each with up to four terms. A
-        // difference can double that count. Retain these terms until the edge-side tests.
-        const int termsPerDeterminant = 6 * 4;
-        var a = new Expansion(stackalloc double[(2 + 4 + 4) * termsPerDeterminant]);
-        var b = new Expansion(stackalloc double[4 * termsPerDeterminant]);
-        var c = new Expansion(stackalloc double[4 * termsPerDeterminant]);
+        fraction = default;
+        var fromStart = Difference.Between(axis.Start, root);
+        double startHeight = SignedHeight(fromStart);
+        double endHeight = SignedHeight(Difference.Between(axis.End, root));
+
+        // Classify the open segment before division can round an interior fraction to an endpoint.
+        if (!(startHeight < 0 && endHeight > 0 || startHeight > 0 && endHeight < 0) ||
+            !TryLineWeights(fromStart, Difference.Between(axis.End, axis.Start), out weights, out double slope))
+            return false;
+
+        // Retain the smaller fraction so the same material point survives movement on a long axis.
+        fraction = Math.Abs(startHeight) <= Math.Abs(endHeight)
+            ? AxisFraction.FromStart(-startHeight / slope)
+            : AxisFraction.FromEnd(endHeight / slope);
+        return true;
+    }
+
+    internal bool TryProject(Offset root, Offset end, Offset normal, out Offset weights, out double travel)
+    {
+        var fromRoot = Difference.Between(end, root);
+        travel = 0;
+        if (!TryLineWeights(fromRoot, new Difference(normal, default), out weights, out double slope))
+            return false;
+
+        travel = -SignedHeight(fromRoot) / slope;
+        return double.IsFinite(travel);
+    }
+
+    // A determinant has six triple products, each with up to four terms. A difference can double that count.
+    private const int TermsPerDeterminant = 6 * 4;
+
+    private double SignedHeight(Difference fromRoot)
+    {
+        var height = new Expansion(stackalloc double[2 * TermsPerDeterminant]);
+        height.AddDeterminant(ab, new Difference(ac, default), fromRoot);
+        return height.Leading;
+    }
+
+    // Signed volumes give the line intersection's weights before constructing its position.
+    // Using the normal as direction projects an axis endpoint.
+    private bool TryLineWeights(Difference fromRoot, Difference direction, out Offset weights, out double denominator)
+    {
+        weights = default;
+        var a = new Expansion(stackalloc double[(2 + 4 + 4) * TermsPerDeterminant]);
+        var b = new Expansion(stackalloc double[4 * TermsPerDeterminant]);
+        var c = new Expansion(stackalloc double[4 * TermsPerDeterminant]);
         a.AddDeterminant(ab, new Difference(ac, default), direction);
-        double denominator = a.Leading;
+        denominator = a.Leading;
         if (denominator == 0 || !double.IsFinite(denominator))
             return false;
 
@@ -45,11 +76,8 @@ internal readonly struct ChainThinTriangleWitness(Offset ab, Offset ac)
         if (a.Leading * sign < 0 || b.Leading * sign < 0 || c.Leading * sign < 0)
             return false;
 
-        var height = new Expansion(stackalloc double[2 * termsPerDeterminant]);
-        height.AddDeterminant(ab, new Difference(ac, default), fromRoot);
-        along = -height.Leading / denominator;
         weights = new Offset(a.Leading / denominator, b.Leading / denominator, c.Leading / denominator);
-        return double.IsFinite(along);
+        return true;
     }
 
     private static double DifferenceOfProducts(double a, double b, double c, double d)

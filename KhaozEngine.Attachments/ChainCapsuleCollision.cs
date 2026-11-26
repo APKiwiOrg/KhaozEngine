@@ -22,18 +22,24 @@ internal static partial class ChainCapsuleCollision
     }
 
     internal static Vector3 SurfaceVelocity(in ColliderCapsule capsule, in ColliderCapsule previous,
-        double along, Vector3 normal, in ChainCarry carry, float seconds)
+        double along, Vector3 normal, in ChainCarry carry, float seconds) =>
+        SurfaceVelocity(capsule, previous, AxisFraction.FromStart(along), normal, carry, seconds);
+
+    internal static Vector3 SurfaceVelocity(in ColliderCapsule capsule, in ColliderCapsule previous,
+        AxisFraction fraction, Vector3 normal, in ChainCarry carry, float seconds)
     {
         // Compare the same material point on the axis. Endpoint deltas avoid cancellation on long axes.
         var previousStart = new Offset(previous.Start);
         var previousEnd = new Offset(previous.End);
         var startMotion = new Offset(capsule.Start) - previousStart;
         var endMotion = new Offset(capsule.End) - previousEnd;
-        var motion = startMotion * (1 - along) + endMotion * along - new Offset(carry.Offset);
+        double startWeight = fraction.StartWeight;
+        double endWeight = fraction.EndWeight;
+        var motion = startMotion * startWeight + endMotion * endWeight - new Offset(carry.Offset);
         if (carry.Turn != Quaternion.Identity)
         {
             var pivot = new Offset(carry.Pivot);
-            var fromPivot = (previousStart - pivot) * (1 - along) + (previousEnd - pivot) * along;
+            var fromPivot = (previousStart - pivot) * startWeight + (previousEnd - pivot) * endWeight;
             var axis = new Offset(carry.Turn.X, carry.Turn.Y, carry.Turn.Z);
             // Subtract the quaternion's displacement without differencing distant rotated points.
             var twiceCross = Offset.Cross(axis, fromPivot) * 2;
@@ -42,6 +48,21 @@ internal static partial class ChainCapsuleCollision
 
         motion += new Offset(normal) * ((double)capsule.Radius - previous.Radius);
         return (motion * (1d / seconds)).ToVector3();
+    }
+
+    // The sign records which endpoint the fraction is measured from.
+    internal readonly struct AxisFraction
+    {
+        private readonly double _fraction;
+
+        private AxisFraction(double fraction) => _fraction = fraction;
+
+        internal static AxisFraction FromStart(double fraction) => new(fraction);
+        internal static AxisFraction FromEnd(double fraction) => new(-fraction);
+
+        internal bool IsFromEnd => double.IsNegative(_fraction);
+        internal double StartWeight => IsFromEnd ? -_fraction : 1 - _fraction;
+        internal double EndWeight => IsFromEnd ? 1 + _fraction : _fraction;
     }
 
     internal readonly record struct Offset(double X, double Y, double Z)

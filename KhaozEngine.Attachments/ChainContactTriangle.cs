@@ -76,8 +76,9 @@ internal readonly struct ChainContactTriangle
         return (Math.Min(a, Math.Min(b, c)), Math.Max(a, Math.Max(b, c)));
     }
 
-    internal Offset MaterialResidual(in Axis axis, Offset weights, double along) =>
-        (_root - axis.Start) + _ab * weights.Y + _ac * weights.Z - axis.Direction * along;
+    internal Offset MaterialResidual(in Axis axis, in Contact hit) => hit.Fraction.IsFromEnd
+        ? (_root - axis.End) + _ab * hit.Weights.Y + _ac * hit.Weights.Z + axis.Direction * hit.Fraction.StartWeight
+        : (_root - axis.Start) + _ab * hit.Weights.Y + _ac * hit.Weights.Z - axis.Direction * hit.Fraction.EndWeight;
 
     internal ChainContactTriangle Interpolate(in ChainContactTriangle target, double time) =>
         new(_root + (target._root - _root) * time, _ab + (target._ab - _ab) * time, _ac + (target._ac - _ac) * time);
@@ -93,7 +94,11 @@ internal readonly struct ChainContactTriangle
         double Bound(Offset a) => Math.Max(a.LengthSquared, Math.Max((a + b).LengthSquared, (a + c).LengthSquared));
     }
 
-    internal readonly record struct Contact(Offset Residual, Offset Weights, double Along);
+    internal readonly record struct Contact(Offset Residual, Offset Weights, AxisFraction Fraction)
+    {
+        internal Contact(Offset residual, Offset weights, double along)
+            : this(residual, weights, AxisFraction.FromStart(along)) { }
+    }
 
     internal Contact Closest(in Axis axis, out Offset normal)
     {
@@ -110,9 +115,8 @@ internal readonly struct ChainContactTriangle
         {
             var witness = new ChainThinTriangleWitness(_ab, _ac);
             if (!axis.IsPoint &&
-                witness.TryPierce(_root, axis, out var weights, out double along) &&
-                along is > 0 and < 1)
-                return new Contact(default, weights, along);
+                witness.TryPierce(_root, axis, out var weights, out var fraction))
+                return new Contact(default, weights, fraction);
         }
         else if (areaSquared > 0)
         {
@@ -187,7 +191,10 @@ internal readonly struct ChainContactTriangle
         {
             var witness = new ChainThinTriangleWitness(_ab, _ac);
             if (witness.TryProject(_root, end, normal, out var projectedWeights, out double travel))
-                KeepCloser(ref best, new Contact(normal * travel, projectedWeights, along));
+            {
+                var fraction = along == 0 ? AxisFraction.FromStart(0) : AxisFraction.FromEnd(0);
+                KeepCloser(ref best, new Contact(normal * travel, projectedWeights, fraction));
+            }
             return;
         }
 

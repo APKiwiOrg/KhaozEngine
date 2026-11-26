@@ -388,8 +388,8 @@ internal sealed class ChainSheetContact
         double secondWeight = secondTriangle ? hit.Weights.Y : hit.Weights.Z;
         double firstUpperWeight = hit.Weights.X;
         double secondUpperWeight = secondTriangle ? hit.Weights.Z : 0;
-        var firstSurface = SurfaceVelocity(capsule, previous, hit.Along, normal, particles.StepCarries[band.FirstChain], seconds);
-        var secondSurface = SurfaceVelocity(capsule, previous, hit.Along, normal, particles.StepCarries[band.SecondChain], seconds);
+        var firstSurface = SurfaceVelocity(capsule, previous, hit.Fraction, normal, particles.StepCarries[band.FirstChain], seconds);
+        var secondSurface = SurfaceVelocity(capsule, previous, hit.Fraction, normal, particles.StepCarries[band.SecondChain], seconds);
         var velocities = particles.Velocities;
         ref var firstVelocity = ref velocities[band.FirstLower];
         ref var secondVelocity = ref velocities[band.SecondLower];

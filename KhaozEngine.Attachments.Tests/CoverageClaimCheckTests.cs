@@ -17,31 +17,41 @@ public class CoverageClaimCheckTests
         var fixture = SkinnedAttachmentGlbFixture.Chained();
         fixture.SetIndexedMaterialParts([0, 1, 2], 3);
         Vector3 z = Vector3.UnitZ * .01f;
-        fixture.SetPositions(0, [FlatPositions[FlatIndices[0]] + z, FlatPositions[FlatIndices[1]] + z, FlatPositions[FlatIndices[2]] + z]);
-        fixture.SetPositions(1, [FlatPositions[3] + z, FlatPositions[2] + z, FlatPositions[4] + z]);
-        fixture.SetPositions(2, [FlatPositions[4] + z, FlatPositions[5] + z, FlatPositions[3] + z]);
-        fixture.SetUniformSkinning(0, 3, new Vector4(3), Vector4.UnitX);
-        fixture.SetUniformSkinning(1, 3, new Vector4(3), Vector4.UnitX);
-        fixture.SetUniformSkinning(2, 3, Vector4.Zero, Vector4.UnitX);
+        Vector3[] face = [FlatPositions[FlatIndices[0]] + z, FlatPositions[FlatIndices[1]] + z, FlatPositions[FlatIndices[2]] + z];
+        for (int primitive = 0; primitive < 3; primitive++)
+        {
+            fixture.SetPositions(primitive, face);
+            fixture.SetUniformSkinning(primitive, 3, new Vector4(primitive == 2 ? 0 : 3), Vector4.UnitX);
+        }
         byte[] glb = fixture.Build();
         string hash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(glb));
         var surface = new ClothSurfaceFile(hash, 9, 3, new(1, 3, 4, 5, 1, 0, .01f, 0, 0),
-            [Vector3.Zero, Vector3.UnitX, Vector3.UnitY], [Vector2.Zero, Vector2.UnitX, Vector2.UnitY],
+            [..face], [Vector2.Zero, Vector2.UnitX, Vector2.One],
             [new(0, 1, 2)], [], [new(0, new(0, 0, 0))],
-            [new(new(0, 1, 0), 0, Vector3.UnitX, 0)], [new(0, 0, 0), new(0, 0, 1), new(0, 0, 2)]);
-        var motion = new ClothMotionDefinition(new("piece.kecs", hash),
-            new ChainMotionDefinition([new ChainDefinition(["left1"], Vector3.UnitX, new ChainSettings(0, 2, 1, 1, MathF.PI, .01f))], []));
-        bool[] flags = AttachmentGlb.SwingingVertices(glb, "piece.glb", motion, surface);
-        Assert.Equal([false, false, false, true, false, false, true, true, true], flags);
+            [new(new(0, 1, 2), 0, Vector3.UnitZ, 0), new(new(0, 2, 0), 0, Vector3.UnitX, 0),
+             new(new(0, 2, 1), 0, Vector3.UnitY, 0), new(new(0, 2, 2), 0, Vector3.UnitZ, 0)],
+            [new(0, 0, 0), new(0, 0, 1), new(0, 2, 0, Vector3.UnitZ)]);
+        byte[] sidecar = ClothSurfaceJson.Write(surface);
+        string surfaceHash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(sidecar));
+        var motion = new ClothMotionDefinition(new("piece.kecs", surfaceHash),
+            new ChainMotionDefinition([new ChainDefinition(["left0", "left1"], Vector3.UnitX,
+                new ChainSettings(0, 2, 1, 1, MathF.PI, .01f))], []));
+        bool[] flags = AttachmentGlb.SwingingVertices(glb, "piece.glb", motion, sidecar);
+        Assert.Equal([false, false, false, false, false, true, true, true, true], flags);
+
+        byte[] differentPattern = ClothSurfaceJson.Write(surface with { Render = surface.Render.RemoveAt(0) });
+        var error = Assert.Throws<ClothSurfaceDataException>(() =>
+            AttachmentGlb.SwingingVertices(glb, "piece.glb", motion, differentPattern));
+        Assert.Equal(ClothSurfaceRefusal.AssetDigest, error.Reason);
+        Assert.Equal(motion.Surface.Key, error.SourceName);
+
         var piece = new AttachmentSetDefinition([new SkinnedAttachmentPartDefinition(7, new("piece.glb", hash))
         {
             Motion = motion,
             Regions = [new("upper", 1), new("lower", 2)],
         }], AttachmentLayer.Garment, ["upper", "lower"]);
-        var mesh = new CoverageClaimMesh(new Vector3[] { FlatPositions[FlatIndices[0]] + z, FlatPositions[FlatIndices[1]] + z, FlatPositions[FlatIndices[2]] + z,
-            FlatPositions[3] + z, FlatPositions[2] + z, FlatPositions[4] + z,
-            FlatPositions[4] + z, FlatPositions[5] + z, FlatPositions[3] + z },
-            new uint[] { 0, 1, 2, 3, 4, 5, 6, 7, 8 }) { PartId = 7, Swinging = flags };
+        Vector3[] positions = [..face, ..face, ..face];
+        var mesh = new CoverageClaimMesh(positions, new uint[] { 0, 1, 2, 3, 4, 5, 6, 7, 8 }) { PartId = 7, Swinging = flags };
         CoverageClaimReport report = CoverageClaimCheck.Verify(FlatBody, FlatMap, piece, [mesh], Limit);
         Assert.Equal(2, report.IgnoredSwingingTriangleCount);
         Assert.Equal([new CoverageClaimTriangle(0, 1)], report.Regions.Single(r => r.Name == "upper").Uncovered);

@@ -210,7 +210,79 @@ public sealed partial class SkinnedAttachmentBindingTests
         Assert.Equal([sentinel, sentinel, sentinel], output);
     }
 
-    static (AttachmentSetDefinition Set, byte[] Bytes) ClothAsset(OutfitRig rig, bool wrongMesh = false, bool collapsible = false)
+    [Theory]
+    [InlineData(true, "$.pins[1]", 1)]
+    [InlineData(false, "$.fallback[2]", 2)]
+    public void A_zero_offset_cloth_triangle_sample_refuses_late_collapse_atomically(bool pin, string path, int index)
+    {
+        using var rig = new OutfitRig();
+        BoundAttachmentSet set = rig.Wear("zero-offset.json", ClothAsset(rig, zeroOffsetSamples: true).Set);
+        var surface = Assert.IsType<BoundClothSurface>(set.ClothSurface(ClothPartId));
+        var sentinel = new Vector3(99, 98, 97);
+        Vector3[] output = [sentinel, sentinel, sentinel];
+        Matrix4x4 hip = Matrix4x4.CreateTranslation(0, 1, 0);
+        Matrix4x4[] host = [hip, hip];
+        Matrix4x4[] garment = rig.Draws(set)[0].BoneMatrices.ToArray();
+        garment[1] = garment[3] = hip;
+
+        var error = Assert.Throws<ClothSurfaceDataException>(() =>
+        {
+            if (pin) surface.CopyPins(host, Matrix4x4.Identity, output);
+            else surface.CopyFallbackNodes(garment, Matrix4x4.Identity, output);
+        });
+        Assert.Equal(ClothSurfaceRefusal.FittedTriangle, error.Reason);
+        Assert.Equal(ClothKey, error.SourceName);
+        Assert.Equal(ClothPartId, error.PartId);
+        Assert.Equal(index, error.ElementIndex);
+        Assert.Equal(path, error.JsonPath);
+        Assert.Equal([sentinel, sentinel, sentinel], output);
+    }
+
+    [Theory]
+    [InlineData(false, 1)]
+    [InlineData(true, 0)]
+    public void A_fallback_joint_cannot_anchor_another_chain_and_the_refused_mesh_can_be_retried(bool childFirst, int chainIndex)
+    {
+        using var rig = new OutfitRig();
+        var fixture = ClothAsset(rig);
+        AttachmentSetDefinition invalid = SeparateFallbackChains(fixture.Set, childFirst);
+        int live = rig.Scene.LiveSkinnedMeshCount;
+        var error = Assert.Throws<ClothSurfaceDataException>(() => rig.Load("anchor.json", invalid));
+        Assert.Equal(ClothSurfaceRefusal.FallbackHierarchy, error.Reason);
+        Assert.Equal(ClothPartId, error.PartId);
+        Assert.Equal(ClothKey, error.SourceName);
+        Assert.Equal(chainIndex, error.ElementIndex);
+        Assert.Equal(live, rig.Scene.LiveSkinnedMeshCount);
+        Assert.Empty(rig.Cache.MeshSnapshotHashesForTests);
+
+        Assert.NotNull(rig.Wear("anchor.json", fixture.Set).ClothSurface(ClothPartId));
+    }
+
+    [Fact]
+    public void Separate_fallback_chains_can_share_one_fixed_host_anchor()
+    {
+        using var rig = new OutfitRig();
+        AttachmentSetDefinition set = SeparateFallbackChains(ClothAsset(rig, sharedAnchor: true).Set);
+        var bound = rig.Wear("shared-anchor.json", set);
+        Assert.NotNull(bound.ClothSurface(ClothPartId));
+        Matrix4x4[] palette = rig.Draws(bound)[0].BoneMatrices.ToArray();
+        Assert.Equal(new Vector3(.25f, 2, 0), palette[2].Translation);
+        Assert.Equal(new Vector3(.75f, 2, 0), palette[0].Translation);
+    }
+
+    static AttachmentSetDefinition SeparateFallbackChains(AttachmentSetDefinition set, bool childFirst = false)
+    {
+        var part = Assert.IsType<SkinnedAttachmentPartDefinition>(Assert.Single(set.Parts));
+        var motion = Assert.IsType<ClothMotionDefinition>(part.Motion);
+        ChainDefinition chain = Assert.Single(motion.Fallback.Chains);
+        ChainDefinition parent = chain with { Joints = ["left0"] };
+        ChainDefinition child = chain with { Joints = ["left1"] };
+        ChainMotionDefinition fallback = motion.Fallback with { Chains = childFirst ? [child, parent] : [parent, child] };
+        part = part with { Motion = motion with { Fallback = fallback } };
+        return new AttachmentSetDefinition([part], AttachmentLayer.Armour, []);
+    }
+
+    static (AttachmentSetDefinition Set, byte[] Bytes) ClothAsset(OutfitRig rig, bool wrongMesh = false, bool collapsible = false, bool zeroOffsetSamples = false, bool sharedAnchor = false)
     {
         SkinnedAttachmentGlbFixture glb = SkinnedAttachmentGlbFixture.Chained();
         glb.SetIndexedMaterialParts([0, 1, 2], 3);
@@ -230,6 +302,17 @@ public sealed partial class SkinnedAttachmentBindingTests
         for (int primitive = 1; primitive < 4; primitive++)
             glb.SetUniformSkinning(primitive, 3, Vector4.Zero, Vector4.UnitX);
 
+        if (sharedAnchor)
+        {
+            glb.Nodes[0]!["children"]!.AsArray().Add(3);
+            glb.Nodes[2]!.AsObject().Remove("children");
+            glb.Nodes[3]!["translation"]![0] = .75f;
+        }
+        if (zeroOffsetSamples)
+        {
+            glb.SetUniformSkinning(0, 3, new Vector4(3), Vector4.UnitX);
+            glb.SetElement(glb.Primitives[0]!["attributes"]!["JOINTS_0"]!.GetValue<int>(), 2, 1, 0, 0, 0);
+        }
         if (collapsible)
             glb.SetElement(glb.Primitives[1]!["attributes"]!["JOINTS_0"]!.GetValue<int>(), 2, 1, 0, 0, 0);
 
@@ -243,6 +326,12 @@ public sealed partial class SkinnedAttachmentBindingTests
              new(new(0, 3, 0), 0, Vector3.UnitX, SkinOffset), new(new(0, 3, 1), 0, Vector3.UnitY, SkinOffset),
              new(new(0, 3, 2), 0, Vector3.UnitY, -SkinOffset)],
             [new(0, 0, 0), new(0, 0, 1), new(0, 1, 0, Vector3.UnitZ, -SkinOffset)]);
+        if (zeroOffsetSamples)
+            sidecar = sidecar with
+            {
+                Pins = [new(0, new(0, 0, 0)), new(1, new(0, 0, 0, Vector3.UnitY))],
+                Fallback = sidecar.Fallback.SetItem(2, new(0, 0, 0, Vector3.UnitZ)),
+            };
         byte[] bytes = ClothSurfaceJson.Write(sidecar);
         string hash = rig.Source.Add(ClothKey, bytes);
         var part = (SkinnedAttachmentPartDefinition)ChainSet(mesh).Parts[0];

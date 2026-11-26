@@ -11,7 +11,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Attachments;
 
-public class JsonTests
+public partial class JsonTests
 {
     [Fact]
     public void Cloth_format_embeds_the_existing_fallback_and_round_trips()

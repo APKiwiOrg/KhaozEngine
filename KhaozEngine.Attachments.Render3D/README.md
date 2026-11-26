@@ -105,7 +105,8 @@ both authored and outfit offsets in the reconstruction.
 
 `CopyPins` samples the fixed seam in rig pin order from the current host palette and model transform.
 `CopyFallbackNodes` takes the garment palette, including its fallback joints, and samples every
-material node. Both return positions under the supplied model transform and publish their outputs only after every sample validates. `ClothHulls` exposes each
+material node. Both return positions under the supplied model transform and publish their outputs only after every sample validates.
+A barycentric sample needs a nondegenerate posed triangle even when its signed offset is zero. `ClothHulls` exposes each
 part's rigid hull in body rest-model space and the indices of the corresponding cheap set capsules.
 Compose the hull with the rigid draw's movement from its bind frame. The static part-local transform
 cancels, including non-unit scale. Its contact identity uses the caller's source ID, full

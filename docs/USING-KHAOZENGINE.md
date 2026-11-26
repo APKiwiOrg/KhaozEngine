@@ -7911,7 +7911,8 @@ pattern, fixed seam samples, moving vertex embeddings and fallback node samples 
 `ClothSurfaceFile`. Check them with `ClothSurfaceBinding.Check`, write `ClothSurfaceJson.Write(file)`,
 and use the exact bytes' SHA-256 in the `ClothSurfaceRef` of a `ClothMotionDefinition`. Include the
 ordinary chain recipe in that definition. Format 8 uses the same part ID, GLB materials, lift and
-region runs. Permanent coverage excludes both cloth movement and chain fallback movement.
+region runs. For permanent coverage, `AttachmentGlb.SwingingVertices(glb, sourceName, motion, surfaceBytes)`
+checks the exact sidecar digest and excludes both cloth movement and chain fallback movement.
 
 Load and bind the set normally. `bound.ClothSurface(partId)` gives the checked material rig, fitted
 nodes and source sampling data. `outfit.ClothSurface(wornIndex, partId)` incorporates the outfit's

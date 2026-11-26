@@ -18,24 +18,26 @@ internal static class AttachmentSetMotion
         uint partId = skinned.Id;
         if (!layered)
             throw PartRefusal(AttachmentSetRefusal.MotionWithoutLayer, partId, partIndex, "motion requires a set with a layer.", "");
+        string motionPath = MotionPath(partIndex);
+        string chainPath = motion is ClothMotionDefinition ? motionPath + ".fallback" : motionPath;
         if (PartMotionFallback.Chains(motion) is not { } chains)
             throw new AttachmentSetArgumentException(AttachmentSetRefusal.MotionKindUnsupported, $"Attachment part {partId}: unsupported motion kind.", "parts")
-            { PartId = partId, PartIndex = partIndex, ActualType = motion.GetType(), JsonPath = MotionPath(partIndex) + ".kind" };
+            { PartId = partId, PartIndex = partIndex, ActualType = motion.GetType(), JsonPath = motion is ClothMotionDefinition ? chainPath : motionPath + ".kind" };
 
         IReadOnlyList<ChainDefinition> definitions = chains.Chains ?? [];
-        CheckChainCount(definitions.Count, partId, partIndex);
+        CheckChainCount(definitions.Count, partId, partIndex, chainPath);
         var jointNames = new HashSet<string>(StringComparer.Ordinal);
         var owned = ImmutableArray.CreateBuilder<ChainDefinition>(definitions.Count);
         for (int chainIndex = 0; chainIndex < definitions.Count; chainIndex++)
-            owned.Add(OwnChain(definitions[chainIndex], jointNames, partId, partIndex, chainIndex));
-        ImmutableArray<ChainLink> links = OwnLinks(chains.Links ?? [], definitions.Count, partId, partIndex);
+            owned.Add(OwnChain(definitions[chainIndex], jointNames, partId, partIndex, chainIndex, chainPath));
+        ImmutableArray<ChainLink> links = OwnLinks(chains.Links ?? [], definitions.Count, partId, partIndex, chainPath);
         if (chains.LinkStretch is { } linkStretch)
         {
             if (!ChainLink.IsValidStretch(linkStretch))
-                throw LinkStretchRangeRefusal(partId, partIndex);
+                throw LinkStretchRangeRefusal(partId, partIndex, chainPath);
             if (links.IsEmpty)
                 throw PartRefusal(AttachmentSetRefusal.LinkStretchWithoutLinks, partId, partIndex,
-                    "linkStretch requires at least one link.", ".linkStretch", settingName: "linkStretch");
+                    "linkStretch requires at least one link.", ".linkStretch", settingName: "linkStretch", motionPath: chainPath);
         }
         ChainMotionDefinition fallback = chains with { Chains = owned.MoveToImmutable(), Links = links };
         if (motion is ClothMotionDefinition cloth)
@@ -51,10 +53,10 @@ internal static class AttachmentSetMotion
         return skinned with { Motion = fallback };
     }
 
-    static ChainDefinition OwnChain(ChainDefinition? chain, HashSet<string> jointNames, uint partId, int partIndex, int chainIndex)
+    static ChainDefinition OwnChain(ChainDefinition? chain, HashSet<string> jointNames, uint partId, int partIndex, int chainIndex, string motionPath)
     {
         IReadOnlyList<string> joints = chain?.Joints ?? [];
-        CheckJointCount(joints.Count, partId, partIndex, chainIndex);
+        CheckJointCount(joints.Count, partId, partIndex, chainIndex, motionPath);
         var owned = ImmutableArray.CreateBuilder<string>(joints.Count);
         for (int jointIndex = 0; jointIndex < joints.Count; jointIndex++)
         {
@@ -72,23 +74,23 @@ internal static class AttachmentSetMotion
                     _ => $"the joint '{name}' is already in a chain of the part.",
                 };
                 throw PartRefusal(reason, partId, partIndex, message, $".chains[{chainIndex}].joints[{jointIndex}]",
-                    chainIndex: chainIndex, jointIndex: jointIndex, jointName: name);
+                    chainIndex: chainIndex, jointIndex: jointIndex, jointName: name, motionPath: motionPath);
             }
             owned.Add(name);
         }
         Vector3 tip = chain!.Tip;
         if (!float.IsFinite(tip.X) || !float.IsFinite(tip.Y) || !float.IsFinite(tip.Z) || tip == Vector3.Zero)
             throw PartRefusal(AttachmentSetRefusal.ChainTipInvalid, partId, partIndex, "the chain tip must be finite and nonzero.",
-                $".chains[{chainIndex}].tip", chainIndex: chainIndex);
+                $".chains[{chainIndex}].tip", chainIndex: chainIndex, motionPath: motionPath);
         if (chain.Settings.FirstInvalidMember() is { } setting)
             throw PartRefusal(AttachmentSetRefusal.ChainSettingOutOfRange, partId, partIndex, $"the chain setting '{setting}' is out of range.",
-                $".chains[{chainIndex}].{setting}", chainIndex: chainIndex, settingName: setting);
+                $".chains[{chainIndex}].{setting}", chainIndex: chainIndex, settingName: setting, motionPath: motionPath);
         return chain with { Joints = owned.MoveToImmutable() };
     }
 
-    static ImmutableArray<ChainLink> OwnLinks(IReadOnlyList<ChainLink> links, int chainCount, uint partId, int partIndex)
+    static ImmutableArray<ChainLink> OwnLinks(IReadOnlyList<ChainLink> links, int chainCount, uint partId, int partIndex, string motionPath)
     {
-        CheckLinkCount(links.Count, partId, partIndex);
+        CheckLinkCount(links.Count, partId, partIndex, motionPath);
         var seen = new HashSet<ChainLink>();
         var owned = ImmutableArray.CreateBuilder<ChainLink>(links.Count);
         for (int linkIndex = 0; linkIndex < links.Count; linkIndex++)
@@ -96,14 +98,14 @@ internal static class AttachmentSetMotion
             ChainLink link = links[linkIndex];
             if ((uint)link.First >= (uint)chainCount || (uint)link.Second >= (uint)chainCount || link.First == link.Second)
                 throw PartRefusal(AttachmentSetRefusal.ChainLinkInvalid, partId, partIndex, "a link must name two distinct chains of the part.",
-                    $".links[{linkIndex}]", linkIndex: linkIndex);
+                    $".links[{linkIndex}]", linkIndex: linkIndex, motionPath: motionPath);
             if (link.Stretch is not null)
                 throw PartRefusal(AttachmentSetRefusal.ChainLinkStretchInDefinition, partId, partIndex,
-                    "a set definition declares linkStretch on the part's motion.", $".links[{linkIndex}]", linkIndex: linkIndex);
+                    "a set definition declares linkStretch on the part's motion.", $".links[{linkIndex}]", linkIndex: linkIndex, motionPath: motionPath);
             if (link.First > link.Second) link = new ChainLink(link.Second, link.First);
             if (!seen.Add(link))
                 throw PartRefusal(AttachmentSetRefusal.ChainLinkDuplicate, partId, partIndex, "a link already names this pair of chains.",
-                    $".links[{linkIndex}]", linkIndex: linkIndex);
+                    $".links[{linkIndex}]", linkIndex: linkIndex, motionPath: motionPath);
             owned.Add(link);
         }
         owned.Sort(static (left, right) => left.First != right.First ? left.First.CompareTo(right.First) : left.Second.CompareTo(right.Second));
@@ -141,31 +143,31 @@ internal static class AttachmentSetMotion
         return ImmutableArray.CreateRange(owned);
     }
 
-    internal static void CheckChainCount(int count, uint partId, int partIndex)
+    internal static void CheckChainCount(int count, uint partId, int partIndex, string motionPath)
     {
         if (count == 0)
             throw PartRefusal(AttachmentSetRefusal.ChainsEmpty, partId, partIndex, "chain motion requires at least one chain.",
-                ".chains", actualCount: count, expectedCount: 1);
+                ".chains", actualCount: count, expectedCount: 1, motionPath: motionPath);
         if (count > MaxChains)
             throw PartRefusal(AttachmentSetRefusal.TooManyChains, partId, partIndex, $"a part holds at most {MaxChains} chains.",
-                ".chains", actualCount: count, expectedCount: MaxChains);
+                ".chains", actualCount: count, expectedCount: MaxChains, motionPath: motionPath);
     }
 
-    internal static void CheckJointCount(int count, uint partId, int partIndex, int chainIndex)
+    internal static void CheckJointCount(int count, uint partId, int partIndex, int chainIndex, string motionPath)
     {
         if (count == 0)
             throw PartRefusal(AttachmentSetRefusal.ChainJointsEmpty, partId, partIndex, "a chain requires at least one joint.",
-                $".chains[{chainIndex}].joints", chainIndex: chainIndex, actualCount: count, expectedCount: 1);
+                $".chains[{chainIndex}].joints", chainIndex: chainIndex, actualCount: count, expectedCount: 1, motionPath: motionPath);
         if (count > MaxJoints)
             throw PartRefusal(AttachmentSetRefusal.TooManyChainJoints, partId, partIndex, $"a chain holds at most {MaxJoints} joints.",
-                $".chains[{chainIndex}].joints", chainIndex: chainIndex, actualCount: count, expectedCount: MaxJoints);
+                $".chains[{chainIndex}].joints", chainIndex: chainIndex, actualCount: count, expectedCount: MaxJoints, motionPath: motionPath);
     }
 
-    internal static void CheckLinkCount(int count, uint partId, int partIndex)
+    internal static void CheckLinkCount(int count, uint partId, int partIndex, string motionPath)
     {
         if (count > MaxLinks)
             throw PartRefusal(AttachmentSetRefusal.TooManyLinks, partId, partIndex, $"a part holds at most {MaxLinks} links.",
-                ".links", actualCount: count, expectedCount: MaxLinks);
+                ".links", actualCount: count, expectedCount: MaxLinks, motionPath: motionPath);
     }
 
     internal static void CheckColliderCount(int count)
@@ -178,16 +180,16 @@ internal static class AttachmentSetMotion
 
     internal static string MotionPath(int partIndex) => $"$.parts[{partIndex}].motion";
 
-    internal static AttachmentSetArgumentException LinkStretchRangeRefusal(uint partId, int partIndex) =>
+    internal static AttachmentSetArgumentException LinkStretchRangeRefusal(uint partId, int partIndex, string motionPath) =>
         PartRefusal(AttachmentSetRefusal.LinkStretchOutOfRange, partId, partIndex,
-            "linkStretch must be finite, greater than zero and at most one.", ".linkStretch", settingName: "linkStretch");
+            "linkStretch must be finite, greater than zero and at most one.", ".linkStretch", settingName: "linkStretch", motionPath: motionPath);
 
     static AttachmentSetArgumentException PartRefusal(AttachmentSetRefusal reason, uint partId, int partIndex, string message,
         string suffix, int? chainIndex = null, int? jointIndex = null, int? linkIndex = null, string? jointName = null,
-        string? settingName = null, int? actualCount = null, int? expectedCount = null) =>
+        string? settingName = null, int? actualCount = null, int? expectedCount = null, string? motionPath = null) =>
         new(reason, $"Attachment part {partId}: {message}", "parts")
         {
-            JsonPath = MotionPath(partIndex) + suffix,
+            JsonPath = (motionPath ?? MotionPath(partIndex)) + suffix,
             PartId = partId,
             PartIndex = partIndex,
             ChainIndex = chainIndex,

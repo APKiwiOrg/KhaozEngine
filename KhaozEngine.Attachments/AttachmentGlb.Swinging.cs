@@ -21,17 +21,25 @@ public static partial class AttachmentGlb
         return flags;
     }
 
-    /// <summary>Return the union of cloth and fallback movement in flattened GLB primitive order.</summary>
-    public static bool[] SwingingVertices(ReadOnlyMemory<byte> glb, string sourceName, ClothMotionDefinition motion, ClothSurfaceFile surface)
+    /// <summary>Return the union of cloth and fallback movement using the exact sidecar bytes named by the motion.</summary>
+    public static bool[] SwingingVertices(ReadOnlyMemory<byte> glb, string sourceName, ClothMotionDefinition motion,
+        ReadOnlyMemory<byte> surfaceBytes)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceName);
         ArgumentNullException.ThrowIfNull(motion);
-        ArgumentNullException.ThrowIfNull(surface);
-        surface.CreateRig(sourceName);
-        if (Convert.ToHexStringLower(SHA256.HashData(glb.Span)) != surface.MeshSha256)
+        ClothSurfaceRef reference = motion.Surface;
+        ArgumentException.ThrowIfNullOrWhiteSpace(reference.Key);
+        byte[] sidecar = surfaceBytes.ToArray();
+        if (Convert.ToHexStringLower(SHA256.HashData(sidecar)) != reference.Sha256)
+            throw new ClothSurfaceDataException(ClothSurfaceRefusal.AssetDigest, reference.Key, "The cloth sidecar bytes differ from the declared SHA-256.");
+
+        ClothSurfaceFile surface = ClothSurfaceJson.Parse(sidecar, reference.Key);
+        byte[] mesh = glb.ToArray();
+        if (Convert.ToHexStringLower(SHA256.HashData(mesh)) != surface.MeshSha256)
             throw new ClothSurfaceDataException(ClothSurfaceRefusal.MeshDigest, sourceName, "The cloth sidecar tags different GLB bytes.");
         string[] joints = PartMotionFallback.Chains(motion)!.Chains.SelectMany(chain => chain.Joints).ToArray();
         bool[] flags = [];
-        Validate(glb, sourceName, container => flags = ReadSkinned(container, joints, surface, sourceName));
+        Validate(mesh, sourceName, container => flags = ReadSkinned(container, joints, surface, reference.Key));
         return flags;
     }
 

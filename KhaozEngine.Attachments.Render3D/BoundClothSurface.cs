@@ -83,7 +83,7 @@ public sealed class BoundClothSurface
                 throw asset.Refuse(ClothSurfaceRefusal.FittedTriangle, "$.fallback", "The fitted fallback sample is degenerate.", i);
         for (int i = 0; i < _pins.Length; i++)
             if (!_pins[i].TrySample(posed, out _fittedNodes[asset.File.Pins[i].Node]))
-                throw asset.Refuse(ClothSurfaceRefusal.FittedTriangle, "$.pins", "The fitted pin sample is nonfinite.", i);
+                throw asset.Refuse(ClothSurfaceRefusal.FittedTriangle, "$.pins", "The fitted pin sample is degenerate or nonfinite.", i);
 
         var frames = new ClothFittedFrame[Rig.Triangles.Length];
         for (int triangle = 0; triangle < frames.Length; triangle++)

@@ -121,10 +121,10 @@ internal sealed class CheckedClothSurface
         {
             if (point.Barycentric is Vector3 weights &&
                 triangles.TryGetValue((point.Mesh, point.Primitive, point.Element), out var triangle))
-                return new(triangle.A, triangle.B, triangle.C, weights, point.SignedOffset);
+                return new(triangle.A, triangle.B, triangle.C, weights, point.SignedOffset, IsTriangle: true);
             if (point.Barycentric is null &&
                 sourceVertices.TryGetValue(new(point.Mesh, point.Primitive, point.Element), out int vertex))
-                return new(vertex, vertex, vertex, Vector3.UnitX, 0);
+                return new(vertex, vertex, vertex, Vector3.UnitX, 0, IsTriangle: false);
             throw Refuse(ClothSurfaceRefusal.SourcePoint, path, "The sample names a missing GLB vertex or triangle.", index);
         }
     }
@@ -140,6 +140,7 @@ internal sealed class CheckedClothSurface
         var skin = new Dictionary<string, int>(StringComparer.Ordinal);
         for (int bone = 0; bone < skeleton.BoneCount; bone++)
             skin.Add(skeleton.NodeNames[skeleton.JointToNode[bone]], bone);
+        var fallbackJoints = fallback.Chains.SelectMany(chain => chain.Joints).ToHashSet(StringComparer.Ordinal);
         var bones = new bool[skeleton.BoneCount];
         for (int chainIndex = 0; chainIndex < fallback.Chains.Count; chainIndex++)
         {
@@ -153,6 +154,8 @@ internal sealed class CheckedClothSurface
                 int parent = skeleton.ParentIndices[node];
                 if (previous >= 0 ? parent != previous : parent < 0 || string.IsNullOrEmpty(skeleton.NodeNames[parent]))
                     throw Refuse(ClothSurfaceRefusal.FallbackHierarchy, "$.fallback.chains", "A fallback requires an ordered parent line below a named anchor.", chainIndex);
+                if (previous < 0 && fallbackJoints.Contains(skeleton.NodeNames[parent]))
+                    throw Refuse(ClothSurfaceRefusal.FallbackHierarchy, "$.fallback.chains", "A fallback anchor must be outside every fallback chain.", chainIndex);
                 bones[bone] = true;
                 previous = node;
             }
@@ -183,7 +186,7 @@ internal sealed class CheckedClothSurface
         for (int i = 0; i < _pins.Length; i++)
         {
             if (!_pins[i].TrySample(posed, out Vector3 pin))
-                throw Refuse(ClothSurfaceRefusal.FittedTriangle, "$.pins", "The fitted pin sample is nonfinite.", i);
+                throw Refuse(ClothSurfaceRefusal.FittedTriangle, "$.pins", "The fitted pin sample is degenerate or nonfinite.", i);
             int node = File.Pins[i].Node;
             pinError = MathF.Max(pinError, CheckError(pin, nodes[node], "$.pins", i));
             nodes[node] = pin;
@@ -225,18 +228,18 @@ internal sealed class CheckedClothSurface
 
 internal readonly record struct ResolvedClothVertex(int Source, ClothRenderEmbedding Embedding);
 
-internal readonly record struct ResolvedClothPoint(int A, int B, int C, Vector3 Weights, float Offset)
+internal readonly record struct ResolvedClothPoint(int A, int B, int C, Vector3 Weights, float Offset, bool IsTriangle)
 {
     internal bool TrySample(ReadOnlySpan<Vector3> source, out Vector3 point) => TrySample(source[A], source[B], source[C], out point);
 
     internal bool TrySample(Vector3 a, Vector3 b, Vector3 c, out Vector3 point)
     {
-        point = a * Weights.X + b * Weights.Y + c * Weights.Z;
-        if (Offset == 0) return ChainMath.IsFinite(point);
+        point = IsTriangle ? a * Weights.X + b * Weights.Y + c * Weights.Z : a;
+        if (!IsTriangle) return ChainMath.IsFinite(point);
         Vector3 normal = Vector3.Cross(b - a, c - a);
         float length = normal.Length();
         if (!(length > 0) || !float.IsFinite(length)) return false;
-        point += normal / length * Offset;
+        if (Offset != 0) point += normal / length * Offset;
         return ChainMath.IsFinite(point);
     }
 }

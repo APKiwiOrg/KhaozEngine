@@ -235,10 +235,12 @@ Create a `ClothSurfaceFile`, call `ClothSurfaceJson.Write` and hash its result f
 `ClothSurfaceRef`. `ClothSurfaceJson.Parse` and the writer both validate intrinsic data with
 `ClothRig`. The first profile admits 128 material nodes, 256 material triangles, 4,096 expanded GLB
 vertices and up to 8,192 GLB triangles. The fitted checker permits 0.5 mm of authored round-trip
-error. `AttachmentGlb.SwingingVertices(glb, sourceName, motion, surface)` supplies the union of
-cloth and fallback chain influences in raw mesh, primitive and vertex order for coverage proof.
+error. `AttachmentGlb.SwingingVertices(glb, sourceName, motion, surfaceBytes)` verifies the exact
+sidecar bytes against the motion's reference and supplies the union of cloth and fallback chain
+influences in raw mesh, primitive and vertex order for coverage proof.
 Any triangle with a moving vertex is excluded from permanent coverage. A vertex weighted to a
 fallback chain joint needs an embedding. Vertices outside the embedding follow the host skin.
+Separate fallback chains may share a fixed host anchor. A fallback joint cannot anchor a different chain.
 
 A layered rigid part can supply `clothHulls`. Each entry has a positive `group`, one or more
 `capsules` identified by their zero-based indices in canonical set collider order,

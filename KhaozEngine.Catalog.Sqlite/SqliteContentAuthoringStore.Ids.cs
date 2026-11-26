@@ -308,6 +308,9 @@ public sealed partial class SqliteContentAuthoringStore
             return 0;
         }
 
+        int id = await ReadNextUnoccupiedFamilyIdAsync(family.Type, block, transaction, cancellationToken)
+            .ConfigureAwait(false);
+        bool canIssue = id < block.TopExclusive;
         using (SqliteCommand update = Command(
             """
             UPDATE catalog_family_block SET next_free_id = $next, updated_at_utc = $now
@@ -315,7 +318,7 @@ public sealed partial class SqliteContentAuthoringStore
             """,
             transaction))
         {
-            Bind(update, "$next", (long)block.NextFreeId + 1);
+            Bind(update, "$next", canIssue ? (long)id + 1 : id);
             Bind(update, "$now", Millis(_clock()));
             Bind(update, "$family", familyId);
             Bind(update, "$ordinal", (long)blockOrdinal);
@@ -323,7 +326,7 @@ public sealed partial class SqliteContentAuthoringStore
         }
 
         transaction.Commit();
-        return block.NextFreeId;
+        return canIssue ? id : 0;
     }
 
     /// <summary>One family with its blocks, or null. The caller already holds the lease.</summary>

@@ -440,6 +440,24 @@ public sealed class SqlServerContentAuthoringStoreConformanceTests : ContentAuth
         => base.ADraftHoldingACarriedAddReadsBackWithItsIdIntact();
 
     /// <inheritdoc />
+    [CatalogSqlServerTheory]
+    [InlineData(true)]
+    [InlineData(false)]
+    [InlineData(null)]
+    public override Task ACarriedFamilyIdAdvancesItsOwnBlockCursor(bool? importFirst)
+        => base.ACarriedFamilyIdAdvancesItsOwnBlockCursor(importFirst);
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task CarriedFamilyIdsOnlyAdvanceTheirMatchingBlocks()
+        => base.CarriedFamilyIdsOnlyAdvanceTheirMatchingBlocks();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task ACarriedFamilySeedPreservesARivalAdvance()
+        => base.ACarriedFamilySeedPreservesARivalAdvance();
+
+    /// <inheritdoc />
     [CatalogSqlServerFact]
     public override Task ACarriedAddOnALiveRowsIdIsRefusedAndChangesNothing()
         => base.ACarriedAddOnALiveRowsIdIsRefusedAndChangesNothing();

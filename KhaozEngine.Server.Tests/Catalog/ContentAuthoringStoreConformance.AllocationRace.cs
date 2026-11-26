@@ -208,6 +208,15 @@ public abstract partial class ContentAuthoringStoreConformance
             return await inner.CommitFamilyIssueAsync(familyId, blockOrdinal, cancellationToken).ConfigureAwait(false);
         }
 
+        public async Task CommitFamilyCarriedThroughAsync(
+            ContentTypeId type, long familyId, int blockOrdinal, int carriedId,
+            CancellationToken cancellationToken = default)
+        {
+            await RivalFirstAsync().ConfigureAwait(false);
+            await inner.CommitFamilyCarriedThroughAsync(type, familyId, blockOrdinal, carriedId, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         async Task RivalFirstAsync()
         {
             if (_fired)

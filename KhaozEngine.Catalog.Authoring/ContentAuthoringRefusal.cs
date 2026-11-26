@@ -495,4 +495,7 @@ public enum ContentAuthoringRefusal
     /// Carries no identifiers. The constructor's exception is the inner cause.</summary>
     BundleConstructorRuleUnmapped,
 
+    /// <summary>Refuses a carried family id when its persistence cannot advance the block cursor.
+    /// Carries <c>Type</c>, <c>Id</c> and <c>FamilyId</c>.</summary>
+    FamilyCarriedCursorUnsupported,
 }

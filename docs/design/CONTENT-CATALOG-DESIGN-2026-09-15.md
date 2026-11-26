@@ -1785,12 +1785,18 @@ Without this preparation, a bundle carrying id 1 and an unnamed row of the same 
 both, and `KEC0036` refuses the import. Seeding first makes the unnamed plain row take id 2 or higher.
 Seeding the block tops also prevents a plain row from landing inside a restored family block and failing
 `KEC0037`. An import with neither carried ids nor restored blocks raises nothing here. The ordinary publish
-can reapply the carried-id seed after allocation, but that does not replace this preparation.
+applies its own carried-id seeds before allocation.
+
+For an ordinary publish, seed the type marks from its largest carried id and each matching family block
+cursor past its largest carried id before allocating any ids. The prior durable block reservation covers
+that advance. Both compare against the live value in their own commits. A direct import and a family
+allocation in the same draft therefore keep distinct ids in either edit order. SQL-backed family allocation
+also checks published ids in the unissued portion of the block to repair stale cursors left by earlier builds.
 
 For each `Add`, in edit ordinal order:
 
 1. If the edit already CARRIES an id, meaning its `definition_id` is non-zero, keep it and allocate nothing.
-   Only `catalog-import` writes an `Add` that way, and only into an empty database (section 10.9).
+   Bundle import and content upgrades write an `Add` that way (section 10.9).
 2. Otherwise, if the edit names a family, call `AllocateInFamilyAsync(familyId)` (section 4.7).
 3. Otherwise call `AllocateAsync(typeId, 1)`.
 
@@ -3524,8 +3530,8 @@ section 6.3 and nowhere else, because two mechanisms described in two places is 
 in the first place:
 
 - A row that NAMES an id is imported with it. `catalog-import` writes an `Add` edit carrying the
-  `definition_id`, step 3 of the publish skips allocation for it, and the type's high-water marks are seeded
-  from the largest carried id afterwards. This is the case that makes an adoption a no-op for stored data, it
+  `definition_id`, step 3 of the publish skips allocation for it, and seeding runs before allocating any id
+  (section 6.3). This is the case that makes an adoption a no-op for stored data, it
   is contracts 5.1's narrow exception (CCR-2), and it is why the import half of the exception is licensed
   only into an empty database: nothing is there to collide with.
 - The other path that carries an id is a CONTENT UPGRADE, which adds a row the committed bundle already names

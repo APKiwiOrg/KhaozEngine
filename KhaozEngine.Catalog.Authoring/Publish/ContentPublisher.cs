@@ -9,11 +9,10 @@ namespace KhaozEngine.Catalog.Authoring;
 /// The publish pipeline of spec 6, in order, with each step delegating to its named type. This file holds
 /// the ORDER and nothing else, so adding work to a step never grows it.
 /// <para>
-/// <b>Steps 1 to 8 write nothing durable.</b> Step 9 writes files nothing references, step 10 is the one
-/// commit and step 11 is a sweep after it, and all three belong to <c>ContentPublishCommit</c>. The
-/// invariant the whole section is built around is one sentence, a crash at any point leaves either the old
-/// version or the new one and never a torn one, and it holds because nothing observable changes until step
-/// 10 and step 10 is a single transaction.
+/// Steps 1 to 8 prepare the version, with durable commits for the draft freeze and allocator state.
+/// Step 9 writes files nothing references, step 10 commits the new version and step 11 sweeps after it.
+/// Those three steps belong to <c>ContentPublishCommit</c>. A crash leaves either the old version or the
+/// new one because step 10 commits the version in one transaction.
 /// </para>
 /// <para>
 /// <b>The base version arrives on the BASELINE rather than being read here.</b> The commit reads the base
@@ -130,9 +129,10 @@ public sealed class ContentPublisher
         // rather than in step 4's sweep: the seeding inside step 3 raises the type's two marks on their own
         // commits, so a carried id the sweep refused would leave them raised for a version nobody published.
         // The family read is only paid by a draft that actually carries an id.
+        IReadOnlyList<ContentFamily> families = [];
         if (ContentCarriedIdChecks.CarriesAnId(draft.Changes))
         {
-            IReadOnlyList<ContentFamily> families = await _store
+            families = await _store
                 .ListFamiliesAsync(default, cancellationToken).ConfigureAwait(false);
             IReadOnlyList<ContentFinding> carriedFindings =
                 ContentCarriedIdChecks.Check(baseline, draft.Changes, _registry, families);
@@ -155,7 +155,7 @@ public sealed class ContentPublisher
         // STEP 3. Allocate, BEFORE validation, because KEC0006 and KEC0010 need the ids the new rows carry.
         Step(ContentPublishStep.BeforeIdAllocation);
         ContentIdAllocationRecord allocation = await ContentIdAllocation
-            .RunAsync(rows, _allocator, _idPersistence, cancellationToken).ConfigureAwait(false);
+            .RunAsync(rows, families, _allocator, _idPersistence, cancellationToken).ConfigureAwait(false);
         Step(ContentPublishStep.AfterIdAllocation);
 
         IReadOnlyList<RemapRule> appended = Materialize(pending, baseline, version);

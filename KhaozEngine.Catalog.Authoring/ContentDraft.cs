@@ -179,6 +179,7 @@ public sealed class ContentEdit
     /// The publish refuses a carried id that is not free: one a live or retired row already holds, one a
     /// second add in the same draft names, one over the type's declared ceiling, and one that disagrees with
     /// the type's family blocks. The refusal lands before any id mark moves.
+    /// A carried family id advances its block's cursor when the cursor has yet to pass it.
     /// </para>
     /// </summary>
     /// <param name="type">The content type.</param>

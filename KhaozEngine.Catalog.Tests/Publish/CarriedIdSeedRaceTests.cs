@@ -120,6 +120,11 @@ public class CarriedIdSeedRaceTests
             long familyId, int blockOrdinal, CancellationToken cancellationToken = default)
             => inner.CommitFamilyIssueAsync(familyId, blockOrdinal, cancellationToken);
 
+        public Task CommitFamilyCarriedThroughAsync(
+            ContentTypeId type, long familyId, int blockOrdinal, int carriedId,
+            CancellationToken cancellationToken = default)
+            => inner.CommitFamilyCarriedThroughAsync(type, familyId, blockOrdinal, carriedId, cancellationToken);
+
         async Task RivalFirstAsync(ContentTypeId written, CancellationToken cancellationToken)
         {
             if (Fired || written != watched)

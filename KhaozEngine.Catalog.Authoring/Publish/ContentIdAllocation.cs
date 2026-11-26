@@ -22,16 +22,18 @@ namespace KhaozEngine.Catalog.Authoring;
 static class ContentIdAllocation
 {
     /// <summary>
-    /// Seeds the high-water marks from every CARRIED id, then issues ids for the remaining new definitions
-    /// in edit ordinal order.
+    /// Seeds family block cursors and the per-type high-water marks from carried ids, then issues ids for
+    /// the remaining new definitions in edit ordinal order.
     /// </summary>
     /// <param name="rows">Every candidate row, in edit ordinal order for the ones that need an id.</param>
+    /// <param name="families">The family blocks checked by carried-id preflight.</param>
     /// <param name="allocator">The reserve-then-issue allocator.</param>
     /// <param name="persistence">The durable half, which the seeding writes through.</param>
     /// <param name="cancellationToken">Cancels the call.</param>
     /// <exception cref="ContentAuthoringException">An allocation crossed a type's declared id ceiling, or named a family the store does not hold.</exception>
     public static async Task<ContentIdAllocationRecord> RunAsync(
         IReadOnlyList<ContentCandidateRow> rows,
+        IReadOnlyList<ContentFamily> families,
         ContentIdAllocator allocator,
         IContentIdPersistence persistence,
         CancellationToken cancellationToken)
@@ -53,6 +55,8 @@ static class ContentIdAllocation
             }
         }
 
+        await ContentFamilyCursorSeeds.CommitAsync(rows, families, persistence, cancellationToken)
+            .ConfigureAwait(false);
         IReadOnlyList<ContentIdSeed> seeds = await SeedAsync(carried, persistence, cancellationToken)
             .ConfigureAwait(false);
 

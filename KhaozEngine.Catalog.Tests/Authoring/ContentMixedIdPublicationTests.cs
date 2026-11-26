@@ -161,6 +161,30 @@ public sealed class ContentMixedIdPublicationTests
         Assert.Equal(129, await store.AllocateAsync(type, 1));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AFamilySeedPreservesTheBlockWithAnUnrepresentableExclusiveEnd(bool sqlite)
+    {
+        // Issue #1210 tracks the cursor representation. A seed must preserve the allocator's full-block path.
+        using var catalog = new PublicationCatalog(sqlite);
+        IContentAuthoringStore store = catalog.Store;
+        await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
+        var type = new ContentTypeId(PublishFixtures.ThingTypeId);
+        var ids = (IContentIdPersistence)store;
+        await ids.CommitReservedThroughAsync(type, int.MaxValue - ContentFamily.MinBlockSize + 1);
+        ContentFamily family = await store.CreateFamilyAsync(
+            type, "last_block", ContentFamily.MinBlockSize, PublishFixtures.Actor, "oid:tests");
+        ContentFamilyBlock block = Assert.Single(family.Blocks);
+
+        await ids.CommitFamilyCarriedThroughAsync(type, family.FamilyId, block.BlockOrdinal, int.MaxValue);
+
+        Assert.Equal(block.NextFreeId, Assert.Single((await ids.ReadFamilyAsync(family.FamilyId))!.Blocks).NextFreeId);
+        ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
+            () => store.AllocateInFamilyAsync(family.FamilyId));
+        Assert.Equal(ContentAuthoringRefusal.FamilyReservationCeilingExceeded, refused.Refusal);
+    }
+
     static async Task<ContentPublishResult> PublishAsync(IContentAuthoringStore store, int expectedVersion)
     {
         try

@@ -349,6 +349,8 @@ knows which SQL rule refused the transaction but no expected or actual version p
 BEFORE any id in it is issued, in its own transaction, so a crash can skip ids that were never issued and can
 never reissue one. Reserving a family block advances the type's issued mark to the block top in the same
 transaction as the block insert, which is what keeps the plain counter from walking under the block.
+Family allocation locks the block cursor and checks the remaining type and id range for published rows.
+This advances stale cursors left by older direct imports in the same transaction that takes the next id.
 
 `CreateFamilyAsync` writes the family, its first block, both high-water marks and the `family-create` audit
 in one Serializable transaction. It locks the type's high-water row before the family reads and writes.

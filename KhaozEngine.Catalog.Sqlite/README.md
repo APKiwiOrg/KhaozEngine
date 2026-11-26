@@ -320,6 +320,8 @@ froze.
 BEFORE any id in it is issued, in its own transaction, so a crash can skip ids that were never issued and can
 never reissue one. Reserving a family block advances the type's issued mark to the block top in the same
 transaction as the block insert, which is what keeps the plain counter from walking under the block.
+Family allocation checks the remaining type and id range for published rows while holding the write
+transaction. This advances stale cursors left by older direct imports before handing out another id.
 
 `CreateFamilyAsync` writes the family, its first block, both high-water marks and the `family-create` audit
 in one transaction. An audit failure rolls them all back, and a retry reserves the same initial id range.

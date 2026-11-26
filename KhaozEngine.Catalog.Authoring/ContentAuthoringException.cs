@@ -219,6 +219,9 @@ public sealed class ContentAuthoringException : Exception
     /// </summary>
     public const string TextOperationUnavailableReason = "text-operation-unavailable";
 
+    /// <summary>The id persistence cannot advance the reserved family block past a carried id.</summary>
+    public const string FamilyCarriedCursorUnsupportedReason = "family-carried-cursor-unsupported";
+
     /// <summary>
     /// A committed version has no complete text record, so its values and language mappings are unknown. An
     /// unknown version is never read as empty, except on a read-only proof that its manifests named no

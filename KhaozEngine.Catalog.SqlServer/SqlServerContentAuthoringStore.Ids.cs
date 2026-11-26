@@ -319,7 +319,7 @@ public sealed partial class SqlServerContentAuthoringStore
             cancellationToken);
 
     /// <inheritdoc />
-    /// <remarks>ONE statement that compares and advances, so two takes on one block queue on the row.</remarks>
+    /// <remarks>Two takes on one block queue on the same row lock.</remarks>
     public Task<int> CommitFamilyIssueAsync(
         long familyId,
         int blockOrdinal,
@@ -327,23 +327,10 @@ public sealed partial class SqlServerContentAuthoringStore
         => WriteAsync(
             async (scope, token) =>
             {
-                await using (SqlCommand take = Command(
-                    scope,
-                    """
-                    UPDATE dbo.catalog_family_block
-                    SET next_free_id = next_free_id + 1, updated_at_utc = @now
-                    OUTPUT deleted.next_free_id
-                    WHERE family_id = @family AND block_ordinal = @blockOrdinal
-                      AND next_free_id < base_id + block_size;
-                    """))
+                int? issued = await TakeFamilyIdAsync(scope, familyId, blockOrdinal, token).ConfigureAwait(false);
+                if (issued is int id)
                 {
-                    BindTime(take, "@now", _clock());
-                    BindBigInt(take, "@family", familyId);
-                    BindInt(take, "@blockOrdinal", blockOrdinal);
-                    if (await take.ExecuteScalarAsync(token).ConfigureAwait(false) is int id)
-                    {
-                        return id;
-                    }
+                    return id;
                 }
 
                 // Nothing taken: a full block answers 0, and a family that is not there is refused by name.

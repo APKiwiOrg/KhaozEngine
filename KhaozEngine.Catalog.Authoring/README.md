@@ -207,6 +207,7 @@ Retired rows count toward a ceiling, because ids are never reused and a retired 
 | `AllocationCeilingExceeded` | A plain id range whose top exceeds the type's inclusive ceiling | `Type`, `Ceiling`, `IssuedThrough`, `ReservedThrough`, `RequestedCount` |
 | `FamilyReservationCeilingExceeded` | A new aligned family block whose highest id exceeds the type's inclusive ceiling | `Type`, `FamilyKey`, `Ceiling`, `BaseId`, `HighestId`, `IssuedThrough`, `ReservedThrough` |
 | `FamilyUnknown` | Allocation or block reservation by a family id the persistence does not hold | `FamilyId`, with `Type` left at its default because the family is unknown |
+| `FamilyCarriedCursorUnsupported` | A carried family id that still needs cursor advancement when the persistence lacks that operation | `Type`, `Id`, `FamilyId` |
 | `EditTargetOperationCollision` | A change-set target already held under a different edit operation | `Type`, `Id`, `RowKey`, `StandingOperation`, `RequestedOperation` |
 | `TypeUnknown` | A diff, candidate, rollback or pack row whose type the registry does not declare | `Type`, with the existing `Id` retained where the row is known |
 
@@ -225,16 +226,17 @@ the next call writes. `CommitReservedThroughAsync` raises the reservation to at 
 higher one standing. `CommitIssueAsync` takes the next `count` plain ids only while the live reservation still
 covers them and answers the first, or 0. `CommitFamilyBlockAsync` inserts a block only while the type's issued
 mark is still below its base and answers null otherwise. `CommitFamilyIssueAsync` takes a block's next free id,
-or answers 0 for a full block. `CommitCarriedThroughAsync` is the publish's seeding write and raises both marks
-to at least a carried id. A 0 or a null means a rival allocation succeeded in between, so the allocator reads
+or answers 0 for a full block. `CommitCarriedThroughAsync` raises both type marks to at least a carried id.
+`CommitFamilyCarriedThroughAsync` advances the owning block's cursor past a carried id when the cursor has
+yet to pass it. A 0 or a null means the requested take or reservation did not happen, so the allocator reads
 the marks again and tries once more, and the ceiling check on every pass ends it when the id space runs out.
 
 ## The publish pipeline
 
-`ContentPublisher` is publish, in order, with each step delegating to its named type. **Steps 1 to 8 write
-nothing durable.** They freeze the draft, build the candidate, allocate ids, validate, compute the temporal
-rows, select the affected chunks, encode and hash them, and build both manifests. `ContentPublishCommit` is
-steps 9 to 11, the half that writes.
+`ContentPublisher` runs steps 1 to 8. They freeze the draft, build the candidate, allocate ids, validate,
+compute the temporal rows, select the affected chunks, encode and hash them, and build both manifests.
+The draft freeze and allocator state commit during preparation. `ContentPublishCommit` runs steps 9 to 11,
+including the transaction that writes the new version.
 
 ```csharp
 var publisher = new ContentPublisher(store, idPersistence, registry);
@@ -497,8 +499,12 @@ and the allocator's durable mark sits above the highest row id whenever an earli
 it reserved. Before allocating any new id, the high-water marks are SEEDED from the largest carried id per
 type. A single ordinary `ApplyEditsAsync` and `PublishAsync` candidate can therefore combine `Import` and
 `Add` for the same type in either edit order, preserving the imported ids and allocating plain additions above
-the carried maximum. Additions still allocate in edit ordinal order, and new family blocks open above the
-carried maximum. `ContentIdAllocationRecord.Seeds` is empty when a publish carries no ids.
+the carried maximum. For a carried family id, the publication also advances the matching block's cursor
+past the greatest carried id in that block. Slots skipped by this advance are unavailable to the allocator,
+including after a later publish failure. The block is already durably reserved, and comparing the cursor
+inside the advance keeps any progress from a rival allocation. Additions still allocate in edit ordinal order,
+and new family blocks open above the carried maximum. `ContentIdAllocationRecord.Seeds` reports only type
+high-water marks that moved.
 
 The seeding raises each mark to the greater of its current value and the carried id, and the store makes that
 comparison inside the same commit as the write. Two upgrade runners seed one type without a lock spanning
@@ -1340,8 +1346,8 @@ A repeated wire spelling always repeats its normalized language identity, so it 
 `BundleLanguageIdentityDuplicate`. A repeated target is checked before an undeclared language, matching the
 section constructor's guard order.
 
-An import runs through the ORDINARY publish and there is no second mechanism. It restores the families and
-their blocks verbatim, including each family's `IsRetired` flag through family reads and later exports in
+An import runs through the ORDINARY publish and there is no second mechanism. It first restores the families and
+their blocks, including each family's `IsRetired` flag through family reads and later exports in
 every store. It restamps the bundle's rules as the new line's, turns every row into an `Add` edit and publishes
 the draft as version 1. `ContentEdit.Import` is the only factory that may name a definition id, and
 it is also the only one that may say a row is ALREADY retired, because a bundle carries its retired rows and

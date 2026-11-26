@@ -38,7 +38,7 @@ public readonly record struct ContentIdHighWater(int ReservedThrough, int Issued
 /// </para>
 /// <para>
 /// It is a separate seam from <see cref="IContentAuthoringStore"/> because the allocator and the seeding step
-/// need three reads and five writes rather than a whole store, and because a backend implements it with its
+/// need only the allocator's reads and writes, and because a backend implements it with its
 /// own transactions.
 /// </para>
 /// </summary>
@@ -136,8 +136,7 @@ public interface IContentIdPersistence
 
     /// <summary>
     /// Issues the next free id of one block, in one commit that reads the next free id it advances, which is
-    /// how an id inside a block is issued. A block a rival filled since the caller read it answers 0, which is
-    /// never an id.
+    /// how an id inside a block is issued. A block found full inside the commit answers 0, which is never an id.
     /// </summary>
     /// <param name="familyId">The family the block belongs to.</param>
     /// <param name="blockOrdinal">The block's position in the family's ordered list.</param>
@@ -147,6 +146,30 @@ public interface IContentIdPersistence
         long familyId,
         int blockOrdinal,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Advances an already reserved block past a carried id in one commit. The live cursor is compared
+    /// inside the commit, and a cursor that already passed the id stays where it stands.
+    /// </summary>
+    /// <param name="type">The content type that owns the block.</param>
+    /// <param name="familyId">The family that owns the block.</param>
+    /// <param name="blockOrdinal">The ordinal of the block holding the carried id.</param>
+    /// <param name="carriedId">The greatest carried id in the block, validated by the caller.</param>
+    /// <param name="cancellationToken">Cancels the call.</param>
+    /// <exception cref="ContentAuthoringException">The persistence does not support advancing a carried family id.</exception>
+    Task CommitFamilyCarriedThroughAsync(
+        ContentTypeId type,
+        long familyId,
+        int blockOrdinal,
+        int carriedId,
+        CancellationToken cancellationToken = default)
+        => Task.FromException(new ContentAuthoringException(
+            ContentAuthoringRefusal.FamilyCarriedCursorUnsupported,
+            "This catalog persistence cannot advance a family cursor for a carried id.",
+            type,
+            carriedId,
+            ContentAuthoringException.FamilyCarriedCursorUnsupportedReason)
+        { FamilyId = familyId });
 }
 
 /// <summary>

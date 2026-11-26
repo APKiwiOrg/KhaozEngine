@@ -418,5 +418,10 @@ public class ContentIdAllocatorTests
             _writes.Add(FormattableString.Invariant($"next {id + 1}"));
             return id;
         }
+
+        public Task CommitFamilyCarriedThroughAsync(
+            ContentTypeId type, long familyId, int blockOrdinal, int carriedId,
+            CancellationToken cancellationToken = default)
+            => inner.CommitFamilyCarriedThroughAsync(type, familyId, blockOrdinal, carriedId, cancellationToken);
     }
 }

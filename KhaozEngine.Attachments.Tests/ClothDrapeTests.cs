@@ -15,7 +15,17 @@ public sealed class ClothDrapeTests(ITestOutputHelper output, ClothDrapeEvidence
         HangingPanelFixture.HalfThickness, .38f, .25f, NormalAirDrag: .8162874f);
 
     [Fact]
-    public void Loaded_lip_supports_the_free_panel_through_breath() => CheckGeometry(withdrawn: false);
+    public void Loaded_lip_supports_the_free_panel_through_breath()
+    {
+        CheckGeometry(withdrawn: false);
+        var expectedTicks = Enumerable.Range(FirstMeasured * 2, (LastMeasured - FirstMeasured) * 2 + 1);
+        foreach (bool flat in new[] { false, true })
+        {
+            var measuredTicks = evidence.Samples.Where(sample => !sample.Withdrawn && sample.Flat == flat)
+                .Select(sample => sample.Tick);
+            Assert.Equal(expectedTicks, measuredTicks);
+        }
+    }
 
     [Fact]
     public void A_withdrawn_lip_releases_the_hem_to_its_bare_plumb_line() => CheckGeometry(withdrawn: true);
@@ -43,20 +53,28 @@ public sealed class ClothDrapeTests(ITestOutputHelper output, ClothDrapeEvidence
             }
 
             Require(sample.Flat || geometry.IsLipLoaded, "loaded lip", geometry.MarkerGap);
-            if (geometry.IsLipLoaded)
+            if (sample.Bearing is { } bearing)
+            {
+                Require(bearing.Acceptable, $"flat bearing {bearing.Verdict}", geometry.MarkerGap);
+                if (sample.Tick == LastMeasured * 2)
+                    Require(bearing.Verdict != FlatLipBearingVerdict.Closing, "unfinished flat bearing window", geometry.MarkerGap);
+            }
+            else if (geometry.IsLipLoaded)
+            {
                 Require(geometry.HasBearing, "bearing", geometry.MarkerGap);
+            }
             Require(material.HemAngleDegrees <= HangingPanelFixture.HemAngleLimit, "tail angle", material.HemAngleDegrees);
             Require(material.TensileStrain <= HangingPanelFixture.StrainLimit, "strain", material.TensileStrain);
             Require(material.BridgeClearance >= HangingPanelFixture.BridgeDaylight, "bridge", material.BridgeClearance);
             if (!sample.Flat || sample.PhaseSeconds == 0)
                 Require(material.TangentError is <= HangingPanelFixture.TangentLimit, "tangent", material.TangentError ?? float.NaN);
-            if (sample.Flat && sample.Frame == LastMeasured)
+            if (sample.Flat && sample.Tick == LastMeasured * 2)
                 Require(material.LipPlumbError <= HangingPanelFixture.PlumbLimit, "flat plumb", material.LipPlumbError);
 
             void Require(bool pass, string measurement, float value)
             {
                 if (!pass)
-                    failures.Add($"{(sample.Flat ? "flat" : "raised")} frame {sample.Frame} {measurement} {value:R} ({sample.Status})");
+                    failures.Add($"{(sample.Flat ? "flat" : "raised")} tick {sample.Tick} {measurement} {value:R} ({sample.Status})");
             }
         }
         Assert.True(failures.Count == 0, $"{failures.Count} failed sample checks. {string.Join(", ", failures.Take(20))}");

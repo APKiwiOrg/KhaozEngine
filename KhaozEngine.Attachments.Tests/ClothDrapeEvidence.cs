@@ -11,7 +11,7 @@ namespace KhaozEngine.Tests.Attachments;
 public sealed class ClothDrapeEvidence
 {
     private const int Cycle = 4 * 60;
-    private const int FirstMeasured = 2 * Cycle;
+    internal const int FirstMeasured = 2 * Cycle;
     internal const int LastMeasured = 4 * Cycle;
     internal const int LastReleased = 5 * Cycle;
     internal const float StepSeconds = 1f / 120;
@@ -29,6 +29,7 @@ public sealed class ClothDrapeEvidence
         Span<ClothSupport> last = stackalloc ClothSupport[2];
         foreach (bool flat in new[] { false, true })
         {
+            FlatLipReentry? reentry = flat ? new FlatLipReentry(IsFlatLipEligible) : null;
             var limits = new ClothWorkLimits(4, 24, 256, 4096, MaxMaterialFactorProducts: 1_675_728);
             var simulation = new ClothSimulation(fixture.Rig, limits);
             simulation.Reset(fixture.Fitted);
@@ -57,12 +58,15 @@ public sealed class ClothDrapeEvidence
                 }
                 opening = pose;
 
-                if (tick % 2 == 0 && tick >= FirstMeasured * 2)
+                if (tick >= FirstMeasured * 2 && (!withdrawn || tick % 2 == 0))
                 {
                     PresentedPanel panel = fixture.Present(simulation.Positions, pose, recoveries);
                     ClothObservation geometry = HangingPanelFixture.Observe(pose, panel);
-                    samples.Add(new DrapeSample(flat, withdrawn, tick / 2, pose.PhaseSeconds,
-                        geometry, status, checks, candidates, velocityContacts, factorProducts));
+                    float lipClearance = MathF.Min(geometry.Lining.Lip, MathF.Min(geometry.Outer.Lip, geometry.Rim.Lip));
+                    FlatLipBearingDecision? bearing = withdrawn ? null :
+                        reentry?.Observe(time, geometry.IsLipLoaded, geometry.MarkerGap, lipClearance);
+                    samples.Add(new DrapeSample(flat, withdrawn, tick, tick / 2, time, pose.PhaseSeconds,
+                        geometry, bearing, status, checks, candidates, velocityContacts, factorProducts));
                 }
             }
         }
@@ -81,7 +85,20 @@ public sealed class ClothDrapeEvidence
         return flat ? pose.WithFlatLip() : pose;
     }
 
-    internal sealed record DrapeSample(bool Flat, bool Withdrawn, int Frame, double PhaseSeconds,
-        ClothObservation Geometry, ClothStepStatus Status, int PeakContactChecks, int PeakContactCandidates,
-        int PeakNormalVelocityContacts, long PeakMaterialFactorProducts);
+    private static bool IsFlatLipEligible(double seconds)
+    {
+        HangingPanelPose pose = At(seconds, flat: true);
+        Vector3 pin = Vector3.Transform(HangingPanelFixture.Seam, pose.Chest * pose.Wearer);
+        Vector3 support = Vector3.Transform(pose.Support.Translation, pose.Wearer);
+        float radius = HangingPanelFixture.LipRadius + HangingPanelFixture.HalfThickness;
+        return PanelDrape.TryTangent(pin, support, radius, out _);
+    }
+
+    internal sealed record DrapeSample(bool Flat, bool Withdrawn, int Tick, int Frame, double DrivenSeconds,
+        double PhaseSeconds, ClothObservation Geometry, FlatLipBearingDecision? Bearing, ClothStepStatus Status,
+        int PeakContactChecks, int PeakContactCandidates, int PeakNormalVelocityContacts, long PeakMaterialFactorProducts)
+    {
+        public bool PresentationSample => Tick % 2 == 0;
+        public float RawBearingExcess => MathF.Max(0, Geometry.MarkerGap - HangingPanelFixture.BearingLimit);
+    }
 }

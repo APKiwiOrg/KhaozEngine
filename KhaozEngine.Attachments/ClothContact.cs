@@ -56,8 +56,28 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
         return status;
     }
 
-    internal ClothStepStatus VerifyFit(Vector3[] positions, in ClothSubstep step) =>
-        Visit(positions, positions, step, verify: true, collectVelocity: false);
+    internal ClothStepStatus VerifyFit(Vector3[] positions, in ClothSubstep step)
+    {
+        Span<Vector3> vertices = stackalloc Vector3[ClothSupportHull.VertexLimit];
+        float required = rig.Material.HalfThickness;
+        foreach (ClothAffineHull hull in _workspace.AffineHulls)
+        {
+            _workspace.PartId = hull.Identity.PartId;
+            if (!hull.TryReadVertices(vertices, out ClothBounds bounds, out Vector3 center))
+                return ClothStepStatus.UnsupportedHullTransform;
+
+            bounds = bounds.Expand(required);
+            foreach (ClothTriangle face in rig.Triangles)
+            {
+                if (!_workspace.Visit()) return ClothStepStatus.ContactWork;
+                var facet = new ClothFacet(face, positions);
+                if (!facet.Bounds.Overlaps(bounds)) continue;
+                if (!_workspace.Candidate()) return ClothStepStatus.ContactCapacity;
+                if (!hull.Clears(facet, vertices, center, required)) return ClothStepStatus.UnresolvedContact;
+            }
+        }
+        return Visit(positions, positions, step, verify: true, collectVelocity: false);
+    }
 
     internal ClothStepStatus VerifyDisplay(Vector3[] opening, Vector3[] positions, in ClothSubstep step) =>
         Visit(opening, positions, step, verify: true, collectVelocity: false);
@@ -67,10 +87,7 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
     {
         _pass++;
         _workspace.PartId = null;
-        int startChecks = _workspace.Checks;
-        bool broadReady = _self is null || _self.Prepare(opening, positions, _workspace);
-        SelfContactChecks += _workspace.Checks - startChecks;
-        if (!broadReady) return ClothStepStatus.ContactWork;
+        if (!PrepareCoverage(opening, positions, externallyChanged: true)) return ClothStepStatus.ContactWork;
 
         for (int i = 0; i < step.ClosingSupports.Length; i++)
         {
@@ -93,10 +110,20 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
         }
         _workspace.PartId = null;
         if (_self is null) return ClothStepStatus.Accepted;
+        if (!PrepareCoverage(opening, positions)) return ClothStepStatus.ContactWork;
         int priorChecks = _workspace.Checks;
         ClothStepStatus self = _self.Visit(opening, positions, _positionBias, _workspace, _normalVelocity, verify, collectVelocity);
         SelfContactChecks += _workspace.Checks - priorChecks;
         return self;
+    }
+
+    private bool PrepareCoverage(Vector3[] opening, Vector3[] positions, bool externallyChanged = false)
+    {
+        if (_self is null || (!externallyChanged && _self.BroadPhase.IsCurrent)) return true;
+        int startChecks = _workspace.Checks;
+        bool result = _self.Prepare(opening, positions, _workspace);
+        SelfContactChecks += _workspace.Checks - startChecks;
+        return result;
     }
 
     private ClothStepStatus ProjectPlane(Vector3[] opening, Vector3[] positions, in ClothSupport first,
@@ -117,7 +144,7 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
                 {
                     if (!_workspace.Candidate()) return ClothStepStatus.ContactCapacity;
                     if (!collectVelocity) continue;
-                    Vector3 motion = last.SurfaceDisplacement(first, positions[i] - distance * normal);
+                    Vector3 motion = last.SurfaceClosingDerivative(first, positions[i] - distance * normal);
                     ClothStepStatus status = AddVelocityWitness(node, Vector3.UnitX, normal, motion, seconds);
                     if (status != ClothStepStatus.Accepted) return status;
                 }
@@ -150,14 +177,18 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
         var supportBounds = new ClothCapsuleSweep(default, default, first, last).Bounds
             .Expand(reach - now.Radius);
         ClothSelfBroadPhase? broadPhase = _self?.BroadPhase;
-        ReadOnlySpan<int> indices = [];
-        if (broadPhase is not null && !broadPhase.CollectSupport(offset / Math.Max(rig.Triangles.Length, positions.Length),
-            supportBounds, _workspace, out indices))
-            return ClothStepStatus.ContactWork;
         ReadOnlySpan<ClothTriangle> faces = rig.Triangles;
-        int count = broadPhase is not null ? indices.Length : faces.Length;
-        for (int candidate = 0; candidate < count; candidate++)
+        int support = offset / Math.Max(faces.Length, positions.Length);
+        ReadOnlySpan<int> indices = [];
+        for (int candidate = 0; ; candidate++)
         {
+            if (broadPhase is not null && (candidate == 0 || !broadPhase.IsCurrent))
+            {
+                if (!PrepareCoverage(opening, positions) || !broadPhase.CollectSupport(support, supportBounds, _workspace, out indices))
+                    return ClothStepStatus.ContactWork;
+                candidate = 0;
+            }
+            if (candidate == (broadPhase is null ? faces.Length : indices.Length)) break;
             if (!_workspace.Visit()) return ClothStepStatus.ContactWork;
             int i = broadPhase is not null ? indices[candidate] : candidate;
             ClothTriangle face = faces[i];
@@ -183,12 +214,10 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
             if (distance >= now.Radius + required)
             {
                 var pair = new ClothCapsuleSweep(previousFacet, currentFacet, first, last);
-                ClothStepStatus swept = _workspace.CheckSweep(pair, required, out Vector3 side);
-                if (swept == ClothStepStatus.UnresolvedContact && !verify && side != Vector3.Zero)
+                ClothStepStatus swept = _workspace.CheckSweep(pair, required, out ClothSweepImpact impact);
+                if (swept == ClothStepStatus.UnresolvedContact && !verify && impact.OpeningNormal != Vector3.Zero)
                 {
-                    float target = ClothContactSweep.ClosingTarget(pair, side, rig.Material.HalfThickness + ContactMargin);
-                    float surface = currentFacet.MinProjection(side) - pair.Gap(1, side);
-                    if (!ProjectSweepPlane(face, positions, side, surface + target)) return swept;
+                    if (!ProjectSweepWitness(face, positions, impact)) return swept;
                     load.Expire();
                     continue;
                 }
@@ -203,7 +232,7 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
                 if (collectVelocity && distance <= reach)
                 {
                     Vector3 direction = (hit.Residual * (1d / distance)).ToVector3();
-                    Vector3 motion = last.CapsuleDisplacement(first, CapsulePoint(now, hit.Fraction, direction), hit.Fraction, direction);
+                    Vector3 motion = last.CapsuleClosingDerivative(first, CapsulePoint(now, hit.Fraction, direction), hit.Fraction, direction);
                     ClothStepStatus status = AddVelocityWitness(face, hit.Weights.ToVector3(), direction, motion, seconds);
                     if (status != ClothStepStatus.Accepted) return status;
                 }
@@ -244,14 +273,18 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
         float required = MathF.Max(.0000001f, rig.Material.HalfThickness - SolveTolerance);
         ClothBounds bounds = hull.SweptBounds.Expand(extent);
         ClothSelfBroadPhase? broadPhase = _self?.BroadPhase;
-        ReadOnlySpan<int> indices = [];
-        if (broadPhase is not null && !broadPhase.CollectSupport(offset / Math.Max(rig.Triangles.Length, positions.Length),
-            bounds, _workspace, out indices))
-            return ClothStepStatus.ContactWork;
         ReadOnlySpan<ClothTriangle> faces = rig.Triangles;
-        int count = broadPhase is not null ? indices.Length : faces.Length;
-        for (int candidate = 0; candidate < count; candidate++)
+        int support = offset / Math.Max(faces.Length, positions.Length);
+        ReadOnlySpan<int> indices = [];
+        for (int candidate = 0; ; candidate++)
         {
+            if (broadPhase is not null && (candidate == 0 || !broadPhase.IsCurrent))
+            {
+                if (!PrepareCoverage(opening, positions) || !broadPhase.CollectSupport(support, bounds, _workspace, out indices))
+                    return ClothStepStatus.ContactWork;
+                candidate = 0;
+            }
+            if (candidate == (broadPhase is null ? faces.Length : indices.Length)) break;
             if (!_workspace.Visit()) return ClothStepStatus.ContactWork;
             int i = broadPhase is not null ? indices[candidate] : candidate;
             ClothTriangle face = faces[i];
@@ -271,11 +304,11 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
             ClothSweepSample prior = pair.Sample(0);
             if (hit.Distance >= required || verify)
             {
-                ClothStepStatus swept = _workspace.CheckSweep(pair, required, out Vector3 side);
+                ClothStepStatus swept = _workspace.CheckSweep(pair, required, out ClothSweepImpact impact);
                 if (swept != ClothStepStatus.Accepted)
                 {
-                    if (verify || swept != ClothStepStatus.UnresolvedContact || side == Vector3.Zero ||
-                        !ProjectToOpeningExterior(face, positions, after, pair, side))
+                    if (verify || swept != ClothStepStatus.UnresolvedContact || impact.OpeningNormal == Vector3.Zero ||
+                        !ProjectSweepWitness(face, positions, impact))
                         return swept;
                     load.Expire();
                     continue;
@@ -283,7 +316,8 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
             }
             else if (hit.Distance <= 0 || Vector3.Dot(prior.Normal, hit.Normal) <= 0)
             {
-                if (prior.Normal == Vector3.Zero || !ProjectToOpeningExterior(face, positions, after, pair, prior.Normal))
+                var impact = new ClothSweepImpact(1, prior.Normal, new ClothSweepSample(hit.Distance, hit.Normal, hit.Weights));
+                if (prior.Normal == Vector3.Zero || !ProjectSweepWitness(face, positions, impact))
                     return ClothStepStatus.UnresolvedContact;
                 load.Expire();
                 continue;
@@ -299,7 +333,7 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
             if (verify)
             {
                 if (!collectVelocity) continue;
-                ClothStepStatus status = AddVelocityWitness(face, hit.Weights, hit.Normal, motion, seconds);
+                ClothStepStatus status = AddVelocityWitness(face, hit.Weights, hit.Normal, hull.ClosingDerivative(hit.LocalPoint), seconds);
                 if (status != ClothStepStatus.Accepted) return status;
                 continue;
             }
@@ -313,18 +347,26 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
         return ClothStepStatus.Accepted;
     }
 
-    private bool ProjectToOpeningExterior<T>(ClothTriangle face, Vector3[] positions, in ClothFacet after,
-        in T pair, Vector3 side) where T : struct, IClothSweepPair
+    private bool ProjectSweepWitness(ClothTriangle face, Vector3[] positions, in ClothSweepImpact impact)
     {
-        float target = ClothContactSweep.ClosingTarget(pair, side, rig.Material.HalfThickness + ContactMargin);
-        float surface = after.MinProjection(side) - pair.Gap(1, side);
-        return ProjectSweepPlane(face, positions, side, surface + target);
+        float clearance = rig.Material.HalfThickness + ContactMargin;
+        Vector3 weights = impact.Sample.Weights;
+        var mass = new Vector3(rig.InverseMasses[face.A], rig.InverseMasses[face.B], rig.InverseMasses[face.C]);
+        Vector3 share = weights * mass;
+        float inverseMass = Vector3.Dot(weights, share);
+        if (inverseMass == 0) return false;
+        Vector3 correction = impact.ClosingCorrection(clearance) / inverseMass * impact.Normal;
+        if (!ChainMath.IsFinite(correction)) return false;
+        BiasNode(face.A, share.X * correction, positions);
+        BiasNode(face.B, share.Y * correction, positions);
+        BiasNode(face.C, share.Z * correction, positions);
+        return true;
     }
 
     private ClothStepStatus AddVelocityWitness(ClothTriangle face, Vector3 weights, Vector3 normal,
-        Vector3 supportDisplacement, float seconds)
+        Vector3 closingDerivative, float seconds)
     {
-        float supportSpeed = Vector3.Dot(supportDisplacement, normal) / seconds;
+        float supportSpeed = Vector3.Dot(closingDerivative, normal) / seconds;
         return _normalVelocity.Add(face, weights, normal, supportSpeed, rig.InverseMasses, _workspace.PartId);
     }
 
@@ -367,6 +409,12 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
                 : desired;
             Apply(positions, load.Tangent - previous);
         }
+        if (_self is not null)
+        {
+            if (share.X != 0) _self.BroadPhase.RecordMove(a, positions[a], _workspace);
+            if (share.Y != 0) _self.BroadPhase.RecordMove(b, positions[b], _workspace);
+            if (share.Z != 0) _self.BroadPhase.RecordMove(c, positions[c], _workspace);
+        }
         return true;
 
         void Apply(Vector3[] target, Vector3 displacement)
@@ -377,20 +425,12 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
         }
     }
 
-    private bool ProjectSweepPlane(ClothTriangle face, Vector3[] positions, Vector3 normal, float minimum)
+    private void BiasNode(int node, Vector3 change, Vector3[] positions)
     {
-        return ProjectNode(face.A) && ProjectNode(face.B) && ProjectNode(face.C);
-
-        bool ProjectNode(int node)
-        {
-            float correction = minimum - Vector3.Dot(positions[node], normal);
-            if (correction <= 0) return true;
-            if (rig.InverseMasses[node] == 0) return false;
-            Vector3 change = correction * normal;
-            positions[node] += change;
-            _positionBias[node] += change;
-            return true;
-        }
+        if (change == Vector3.Zero) return;
+        positions[node] += change;
+        _positionBias[node] += change;
+        _self?.BroadPhase.RecordMove(node, positions[node], _workspace);
     }
 
     private readonly record struct ContactPoint(ClothTriangle Face, Vector3 Weights, int Feature, Vector3 Normal,

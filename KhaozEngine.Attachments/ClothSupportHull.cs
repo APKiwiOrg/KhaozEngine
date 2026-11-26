@@ -192,7 +192,7 @@ internal readonly record struct ClothHullPose(Quaternion Rotation, Vector3 Trans
     }
 
     internal ClothHullPose At(in ClothHullPose other, float time) =>
-        new(Quaternion.Slerp(Rotation, other.Rotation, time), Vector3.Lerp(Translation, other.Translation, time),
+        new(ClothContactSweep.Interpolate(Rotation, other.Rotation, time), Vector3.Lerp(Translation, other.Translation, time),
             float.Lerp(Scale, other.Scale, time));
 
     internal Vector3 World(Vector3 local) => Translation + Vector3.Transform(Scale * local, Rotation);

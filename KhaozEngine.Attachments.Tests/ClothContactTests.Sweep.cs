@@ -54,6 +54,36 @@ public sealed partial class ClothContactTests
         Vector3 WorldTip(float t) => Vector3.Transform(tip, Pose(t));
     }
     [Fact]
+    public void A_finite_angular_sweep_can_clear_without_moving_distant_pins()
+    {
+        const float angle = MathF.PI / 6, radius = .001f, reach = .025f, plane = .0255f;
+        Vector3[] rest = [new(plane, -.036f, -.022f), new(plane, .036f, -.022f), new(plane, 0, .022f)];
+        var simulation = new ClothSimulation(Triangle(rest, [0, 1]), ClothWorkLimits.LayeredContact);
+        simulation.Reset(rest);
+        var corner = reach * Vector3.UnitX;
+        var sphere = new ColliderCapsule(corner, corner, radius);
+        ClothSupport first = ClothSupport.Capsule(sphere, Rotation(0), Vector3.Zero);
+        ClothSupport last = ClothSupport.Capsule(sphere, Rotation(1), Vector3.Zero);
+        Assert.True(DistanceToTriangle(corner, rest[0], rest[1], rest[2]) < radius);
+
+        ClothStepResult step = simulation.Advance(new ClothSubstep(rest.AsSpan(0, 2), [first], [last], Seconds, Vector3.Zero));
+
+        Assert.Equal(ClothStepStatus.Accepted, step.Status);
+        Assert.Equal(rest[0], simulation.Positions[0]);
+        Assert.Equal(rest[1], simulation.Positions[1]);
+        for (int sample = 0; sample <= 64; sample++)
+        {
+            float time = sample / 64f;
+            Vector3 center = Vector3.Transform(corner, Rotation(time));
+            Vector3 apex = Vector3.Lerp(rest[2], simulation.Positions[2], time);
+            Assert.True(DistanceToTriangle(center, rest[0], rest[1], apex) >= radius + Material.HalfThickness);
+        }
+
+        static Quaternion Rotation(float time) =>
+            Quaternion.CreateFromAxisAngle(Vector3.UnitZ, float.Lerp(-angle, angle, time));
+    }
+
+    [Fact]
     public void A_moving_lower_segment_with_an_independent_radius_reaches_a_thin_edge()
     {
         Vector3[] rest = [new(0, -.02f, 0), new(0, .02f, 0), new(0, 0, .0008f)];

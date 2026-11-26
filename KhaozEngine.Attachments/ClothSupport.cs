@@ -76,7 +76,7 @@ public readonly struct ClothSupport
             return new ColliderCapsule(Vector3.Lerp(LocalCapsule.Start, target.LocalCapsule.Start, time),
                 Vector3.Lerp(LocalCapsule.End, target.LocalCapsule.End, time),
                 float.Lerp(LocalCapsule.Radius, target.LocalCapsule.Radius, time));
-        Quaternion rotation = Quaternion.Slerp(Rotation, target.Rotation, time);
+        Quaternion rotation = ClothContactSweep.Interpolate(Rotation, target.Rotation, time);
         Vector3 translation = Vector3.Lerp(Translation, target.Translation, time);
         return new ColliderCapsule(Vector3.Transform(LocalCapsule.Start, rotation) + translation,
             Vector3.Transform(LocalCapsule.End, rotation) + translation, LocalCapsule.Radius);
@@ -93,6 +93,20 @@ public readonly struct ClothSupport
     {
         Vector3 local = Vector3.Transform(worldPoint - Translation, Quaternion.Conjugate(Rotation));
         return worldPoint - previous.ToWorld(local);
+    }
+
+    internal Vector3 SurfaceClosingDerivative(in ClothSupport previous, Vector3 worldPoint) =>
+        Translation - previous.Translation + Vector3.Cross(
+            ClothContactSweep.AngularDisplacement(previous.Rotation, Rotation), worldPoint - Translation);
+
+    internal Vector3 CapsuleClosingDerivative(in ClothSupport previous, Vector3 point,
+        ChainCapsuleCollision.AxisFraction fraction, Vector3 normal)
+    {
+        if (!IsLowerSegment) return SurfaceClosingDerivative(previous, point);
+
+        ColliderCapsule before = previous.LocalCapsule, now = LocalCapsule;
+        return (float)fraction.StartWeight * (now.Start - before.Start) +
+            (float)fraction.EndWeight * (now.End - before.End) + (now.Radius - before.Radius) * normal;
     }
 
     internal Vector3 CapsuleDisplacement(in ClothSupport previous, Vector3 point,

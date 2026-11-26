@@ -84,7 +84,19 @@ internal sealed class ClothSelfBroadPhase
         return true;
     }
 
+    internal bool IsCurrent => _built;
+
     internal void Begin() => _built = false;
+
+    internal void RecordMove(int node, Vector3 point, ClothContactWorkspace work)
+    {
+        if (_built && (!work.Visit() || !Contains(_coverage[node], point)))
+            _built = false;
+    }
+
+    private static bool Contains(in ClothBounds bounds, Vector3 point) =>
+        point.X >= bounds.Min.X && point.Y >= bounds.Min.Y && point.Z >= bounds.Min.Z &&
+        point.X <= bounds.Max.X && point.Y <= bounds.Max.Y && point.Z <= bounds.Max.Z;
 
     internal bool EnsureCoverage(Vector3[] opening, Vector3[] closing, float thickness, ClothContactWorkspace work)
     {
@@ -94,10 +106,7 @@ internal sealed class ClothSelfBroadPhase
             for (int i = 0; i < closing.Length; i++)
             {
                 if (!work.Visit()) return false;
-                Vector3 point = closing[i];
-                ClothBounds bounds = _coverage[i];
-                if (point.X < bounds.Min.X || point.Y < bounds.Min.Y || point.Z < bounds.Min.Z ||
-                    point.X > bounds.Max.X || point.Y > bounds.Max.Y || point.Z > bounds.Max.Z)
+                if (!Contains(_coverage[i], closing[i]))
                 {
                     covered = false;
                     break;

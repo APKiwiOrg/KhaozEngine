@@ -23,8 +23,15 @@ internal sealed class ClothSelfContact(ClothRig rig, ClothWorkLimits limits)
         ClothContactWorkspace work, ClothContactVelocity velocities, bool verify, bool collectVelocity)
     {
         float reach = _thickness + ContactMargin + VelocityTouchRoundoff;
-        foreach (ClothSelfBroadPhase.Pair candidate in _broadPhase.Pairs)
+        for (int index = 0; ; index++)
         {
+            if (!_broadPhase.IsCurrent)
+            {
+                if (!Prepare(opening, positions, work)) return ClothStepStatus.ContactWork;
+                index = 0;
+            }
+            if (index == _broadPhase.Pairs.Length) break;
+            ClothSelfBroadPhase.Pair candidate = _broadPhase.Pairs[index];
             if (!work.Visit()) return ClothStepStatus.ContactWork;
             ClothTriangle a = rig.Triangles[candidate.First], b = rig.Triangles[candidate.Last];
             var beforeA = new ClothFacet(a, opening);
@@ -42,11 +49,11 @@ internal sealed class ClothSelfContact(ClothRig rig, ClothWorkLimits limits)
             float required = MathF.Max(.0000001f, _thickness - SolveTolerance);
             if (distance >= required || verify)
             {
-                ClothStepStatus swept = work.CheckSweep(pair, required, out Vector3 openingNormal);
+                ClothStepStatus swept = work.CheckSweep(pair, required, out ClothSweepImpact impact);
                 if (swept != ClothStepStatus.Accepted)
                 {
-                    if (verify || swept != ClothStepStatus.UnresolvedContact || openingNormal == Vector3.Zero ||
-                        !SeparateSwept(a, b, positions, bias, openingNormal))
+                    if (verify || swept != ClothStepStatus.UnresolvedContact || impact.OpeningNormal == Vector3.Zero ||
+                        !SeparateSwept(a, b, positions, bias, impact, work))
                         return swept;
                     continue;
                 }
@@ -59,7 +66,8 @@ internal sealed class ClothSelfContact(ClothRig rig, ClothWorkLimits limits)
                 Vector3 side = pair.Sample(0).Normal;
                 if (Vector3.Dot(side, normal) <= 0)
                 {
-                    if (side == Vector3.Zero || !SeparateSwept(a, b, positions, bias, side))
+                    var impact = new ClothSweepImpact(1, side, new ClothSweepSample(distance, normal, hit.Weights, hit.OpposingWeights));
+                    if (side == Vector3.Zero || !SeparateSwept(a, b, positions, bias, impact, work))
                         return ClothStepStatus.UnresolvedContact;
                     continue;
                 }
@@ -78,30 +86,22 @@ internal sealed class ClothSelfContact(ClothRig rig, ClothWorkLimits limits)
             float correction = _thickness + ContactMargin - distance;
             if (correction <= 0) continue;
             float physical = MathF.Max(0, MathF.Min(_thickness + ContactMargin, openingDistance) - distance);
-            if (!Separate(a, hit.Weights, b, hit.OpposingWeights, positions, bias, normal, correction, correction - physical))
+            if (!Separate(a, hit.Weights, b, hit.OpposingWeights, positions, bias, normal, correction, correction - physical, work))
                 return ClothStepStatus.UnresolvedContact;
         }
         return ClothStepStatus.Accepted;
     }
 
-    private bool SeparateSwept(ClothTriangle a, ClothTriangle b, Vector3[] positions, Vector3[] bias, Vector3 normal)
+    private bool SeparateSwept(ClothTriangle a, ClothTriangle b, Vector3[] positions, Vector3[] bias,
+        in ClothSweepImpact impact, ClothContactWorkspace work)
     {
-        Span<int> nodesA = [a.A, a.B, a.C];
-        Span<int> nodesB = [b.A, b.B, b.C];
-        foreach (int nodeA in nodesA)
-        foreach (int nodeB in nodesB)
-        {
-            float distance = Vector3.Dot(positions[nodeA] - positions[nodeB], normal);
-            float correction = _thickness + ContactMargin - distance;
-            if (correction > 0 && !Separate(new ClothTriangle(nodeA, nodeA, nodeA), Vector3.UnitX,
-                new ClothTriangle(nodeB, nodeB, nodeB), Vector3.UnitX, positions, bias, normal, correction, correction))
-                return false;
-        }
-        return true;
+        float correction = impact.ClosingCorrection(_thickness + ContactMargin);
+        return float.IsFinite(correction) && Separate(a, impact.Sample.Weights, b, impact.Sample.OpposingWeights,
+            positions, bias, impact.Normal, correction, correction, work);
     }
 
     private bool Separate(ClothTriangle a, Vector3 weightsA, ClothTriangle b, Vector3 weightsB,
-        Vector3[] positions, Vector3[] bias, Vector3 normal, float correction, float biasCorrection)
+        Vector3[] positions, Vector3[] bias, Vector3 normal, float correction, float biasCorrection, ClothContactWorkspace work)
     {
         var massA = new Vector3(rig.InverseMasses[a.A], rig.InverseMasses[a.B], rig.InverseMasses[a.C]);
         var massB = new Vector3(rig.InverseMasses[b.A], rig.InverseMasses[b.B], rig.InverseMasses[b.C]);
@@ -123,6 +123,9 @@ internal sealed class ClothSelfContact(ClothRig rig, ClothWorkLimits limits)
             bias[face.A] += share.X * adjustment;
             bias[face.B] += share.Y * adjustment;
             bias[face.C] += share.Z * adjustment;
+            if (share.X != 0) _broadPhase.RecordMove(face.A, positions[face.A], work);
+            if (share.Y != 0) _broadPhase.RecordMove(face.B, positions[face.B], work);
+            if (share.Z != 0) _broadPhase.RecordMove(face.C, positions[face.C], work);
         }
     }
 }
@@ -159,7 +162,8 @@ internal readonly struct ClothSelfSweep(ClothFacet firstA, ClothFacet lastA, Clo
     {
         ClothFacetContact hit = ClothFacetContact.Closest(firstA.At(lastA, time), firstB.At(lastB, time));
         double distance = Math.Sqrt(hit.SquaredDistance);
-        return new ClothSweepSample((float)distance, distance > 0 ? (hit.Residual * (1 / distance)).ToVector3() : Vector3.Zero);
+        return new ClothSweepSample((float)distance, distance > 0 ? (hit.Residual * (1 / distance)).ToVector3() : Vector3.Zero,
+            hit.Weights, hit.OpposingWeights);
     }
 
     public float Gap(float time, Vector3 normal) =>

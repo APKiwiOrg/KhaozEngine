@@ -22,6 +22,8 @@ public sealed partial class ClothContactTests(ITestOutputHelper output)
         PoseInventory(opening, first);
         int broad = 0, narrow = 0, sweeps = 0, impulse = 0, peakTick = 0, self = 0;
         float minimumCapsuleClearance = float.PositiveInfinity;
+        float minimumTailClearance = float.PositiveInfinity;
+        Span<float> hullClearance = [float.PositiveInfinity, float.PositiveInfinity];
         const int cycle = 4 * 120;
         for (int tick = 1; tick <= 3 * cycle; tick++)
         {
@@ -56,16 +58,24 @@ public sealed partial class ClothContactTests(ITestOutputHelper output)
             Assert.True(geometry.HasBearing);
             Assert.True(geometry.Material!.Value.BridgeClearance >= HangingPanelFixture.BridgeDaylight);
             Assert.InRange(geometry.Material.Value.SeamError, 0, HangingPanelFixture.SeamLimit);
-            minimumCapsuleClearance = MathF.Min(minimumCapsuleClearance, MeasureExtraCapsules(panel, last));
+            (float capsules, float tails) = MeasureExtraCapsules(panel, last);
+            minimumCapsuleClearance = MathF.Min(minimumCapsuleClearance, capsules);
+            minimumTailClearance = MathF.Min(minimumTailClearance, tails);
+            for (int i = 0; i < hulls.Length; i++)
+                hullClearance[i] = MathF.Min(hullClearance[i], MeasureVisibleHull(panel, hulls[i].Closing, i));
         }
 
         output.WriteLine($"Broad {broad} at tick {peakTick}, self and shared refit {self}, narrow {narrow}, " +
-            $"sweeps {sweeps}, normal work {impulse}, extra capsule clearance {minimumCapsuleClearance:R} m.");
+            $"sweeps {sweeps}, normal work {impulse}, extra capsule clearance {minimumCapsuleClearance:R} m. " +
+            $"Tail clearance {minimumTailClearance:R} m and hull clearances {hullClearance[0]:R}, {hullClearance[1]:R} m.");
+        Assert.InRange(minimumTailClearance, -HangingPanelFixture.ClearanceTolerance, .00055f);
+        for (int i = 0; i < hullClearance.Length; i++)
+            Assert.InRange(hullClearance[i], 0, .00055f);
     }
 
-    private static float MeasureExtraCapsules(in PresentedPanel panel, ReadOnlySpan<ClothSupport> supports)
+    private static (float Minimum, float Tails) MeasureExtraCapsules(in PresentedPanel panel, ReadOnlySpan<ClothSupport> supports)
     {
-        float minimum = float.PositiveInfinity;
+        float minimum = float.PositiveInfinity, tails = float.PositiveInfinity;
         for (int i = 2; i < supports.Length; i++)
         {
             if (i is 13 or 14) continue;
@@ -76,11 +86,96 @@ public sealed partial class ClothContactTests(ITestOutputHelper output)
                 PanelTriangleContact contact = PanelGeometry.Contact(visible, panel.Vertices[face.A],
                     panel.Vertices[face.B], panel.Vertices[face.C]);
                 minimum = MathF.Min(minimum, contact.Clearance);
+                if (i >= 20) tails = MathF.Min(tails, contact.Clearance);
             }
             Assert.True(minimum >= -HangingPanelFixture.ClearanceTolerance,
                 $"Support {i} presented clearance {minimum:R} m.");
         }
+        return (minimum, tails);
+    }
+
+    private static float MeasureVisibleHull(in PresentedPanel panel, Matrix4x4 pose, int hull)
+    {
+        Assert.True(Matrix4x4.Invert(pose, out Matrix4x4 inverse));
+        Vector3 size = VisibleHullExtents[hull];
+        Vector3 interior = size - new Vector3(HangingPanelFixture.ClearanceTolerance);
+        float minimum = .002f;
+        foreach (PanelTriangle face in panel.Faces)
+        {
+            Vector3 a = Vector3.Transform(panel.Vertices[face.A], inverse);
+            Vector3 b = Vector3.Transform(panel.Vertices[face.B], inverse);
+            Vector3 c = Vector3.Transform(panel.Vertices[face.C], inverse);
+            Vector3 low = Vector3.Min(a, Vector3.Min(b, c)), high = Vector3.Max(a, Vector3.Max(b, c));
+            if (!BoxOverlaps(low, high, size + new Vector3(minimum))) continue;
+            Assert.False(ClipsBox(a, b, c, interior), $"Panel enters visible hull {hull}.");
+            foreach (Vector3 vertex in VisibleHullSamples[hull])
+                minimum = MathF.Min(minimum, Vector3.Distance(vertex, PanelGeometry.ClosestPoint(vertex, a, b, c)));
+        }
         return minimum;
+    }
+
+    private static bool BoxOverlaps(Vector3 low, Vector3 high, Vector3 size) =>
+        low.X <= size.X && high.X >= -size.X && low.Y <= size.Y && high.Y >= -size.Y &&
+        low.Z <= size.Z && high.Z >= -size.Z;
+
+    // Clip the presented triangle against all six visible planes. This also
+    // finds an intersection entirely between the sampled mesh vertices.
+    private static bool ClipsBox(Vector3 a, Vector3 b, Vector3 c, Vector3 size)
+    {
+        Span<Vector3> input = stackalloc Vector3[10];
+        Span<Vector3> output = stackalloc Vector3[10];
+        input[0] = a;
+        input[1] = b;
+        input[2] = c;
+        int count = 3;
+        for (int axis = 0; axis < 3; axis++)
+        for (int side = -1; side <= 1; side += 2)
+        {
+            int next = 0;
+            Vector3 first = input[count - 1];
+            float firstGap = side * first[axis] - size[axis];
+            for (int i = 0; i < count; i++)
+            {
+                Vector3 last = input[i];
+                float lastGap = side * last[axis] - size[axis];
+                if (firstGap * lastGap < 0)
+                    output[next++] = Vector3.Lerp(first, last, firstGap / (firstGap - lastGap));
+                if (lastGap <= 0) output[next++] = last;
+                (first, firstGap) = (last, lastGap);
+            }
+            if (next == 0) return false;
+            output[..next].CopyTo(input);
+            count = next;
+        }
+        return true;
+    }
+
+    private static readonly Vector3[] VisibleHullExtents =
+    [
+        new(.02198f, .02598f, .00348f),
+        new(.01798f, .02298f, .00398f),
+    ];
+
+    private static readonly Vector3[][] VisibleHullSamples = [Samples(VisibleHullExtents[0]), Samples(VisibleHullExtents[1])];
+
+    private static Vector3[] Samples(Vector3 extent)
+    {
+        const int divisions = 6;
+        var samples = new Vector3[6 * (divisions + 1) * (divisions + 1)];
+        int index = 0;
+        for (int axis = 0; axis < 3; axis++)
+        for (int side = -1; side <= 1; side += 2)
+        for (int row = 0; row <= divisions; row++)
+        for (int column = 0; column <= divisions; column++)
+        {
+            Vector3 point = default;
+            point[axis] = side * extent[axis];
+            int u = (axis + 1) % 3, v = (axis + 2) % 3;
+            point[u] = float.Lerp(-extent[u], extent[u], (float)row / divisions);
+            point[v] = float.Lerp(-extent[v], extent[v], (float)column / divisions);
+            samples[index++] = point;
+        }
+        return samples;
     }
 
     private static readonly ClothSupportIdentity[] HullIdentities =
@@ -97,10 +192,17 @@ public sealed partial class ClothContactTests(ITestOutputHelper output)
 
     private static Matrix4x4 HullPose(in HangingPanelPose pose, int index)
     {
-        float swing = (float)Math.Sin(Math.Tau * pose.PhaseSeconds / HangingPanelFixture.CycleSeconds);
-        return index == 0
-            ? Matrix4x4.CreateRotationY(.13f * swing) * Matrix4x4.CreateTranslation(-.215f, 1.18f, -.027f) * pose.Chest
-            : Matrix4x4.CreateRotationY(-.17f * swing) * Matrix4x4.CreateTranslation(.217f, .925f, .028f);
+        float phase = (float)(Math.Tau * pose.PhaseSeconds / HangingPanelFixture.CycleSeconds);
+        Vector3 pin = Vector3.Transform(HangingPanelFixture.Seam, pose.Chest);
+        var drape = new PanelDrape(pin, pose.Support.Translation, HangingPanelFixture.LipRadius + HangingPanelFixture.HalfThickness);
+        (Vector3 tangent, Vector3 normal) = drape.AtLength(index == 0 ? .13f : .34f);
+        float yaw = (index == 0 ? .035f : -.045f) * MathF.Sin(phase);
+        float arm = index == 0 ? -.215f : .217f;
+        float depth = index == 0 ? .0035f : .004f;
+        float advance = -.006f + .010f * (1 - MathF.Cos(phase)) * .5f;
+        Vector3 center = tangent + arm * Vector3.UnitX + (advance - depth) * normal;
+        float pitch = -MathF.Atan2(normal.Y, normal.Z);
+        return Matrix4x4.CreateRotationY(yaw) * Matrix4x4.CreateRotationX(pitch) * Matrix4x4.CreateTranslation(center);
     }
 
     private static void PoseInventory(in HangingPanelPose pose, Span<ClothSupport> result)
@@ -132,12 +234,14 @@ public sealed partial class ClothContactTests(ITestOutputHelper output)
         for (int tail = 0; tail < 4; tail++)
         {
             float x = (tail - 1.5f) * .128f;
-            Vector3 from = new(x, .805f, .034f);
+            float tailBack = tail is 0 or 3 ? pose.MarkerInModel.Z - .024f +
+                .020f * (1 - MathF.Cos(phase)) * .5f : .034f;
+            Vector3 from = new(x, .805f, tailBack);
             for (int segment = 0; segment < 3; segment++)
             {
                 float depth = segment + 1;
                 Vector3 to = new(x + .002f * depth * MathF.Sin(phase + tail), .805f - .095f * depth,
-                    .034f - .004f * depth + .003f * depth * MathF.Sin(phase - .7f * depth + tail));
+                    tailBack - .0015f * depth + .001f * depth * MathF.Sin(phase - .7f * depth + tail));
                 float radius = .011f - .001f * segment + .001f * MathF.Cos(phase + tail);
                 result[20 + 3 * tail + segment] = ClothSupport.LowerSegment(new ColliderCapsule(from, to, radius),
                     new ClothSupportIdentity(4, (uint)tail + 1, segment + 1, AttachmentLayer.Garment));

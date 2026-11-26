@@ -1,10 +1,12 @@
 using System;
-using System.Numerics;
 
 namespace KhaozEngine.Attachments;
 
 internal sealed class ClothContactWorkspace(ClothWorkLimits limits)
 {
+    private readonly ClothAffineHull[] _affine = new ClothAffineHull[limits.MaxHulls];
+    private int _affineCount;
+
     private readonly ClothPosedHull[] _hulls = new ClothPosedHull[limits.MaxHulls];
 
     internal int Checks { get; private set; }
@@ -13,6 +15,7 @@ internal sealed class ClothContactWorkspace(ClothWorkLimits limits)
     internal uint? PartId { get; set; }
     private int _hullCount;
 
+    internal ReadOnlySpan<ClothAffineHull> AffineHulls => _affine.AsSpan(0, _affineCount);
     internal ReadOnlySpan<ClothPosedHull> Hulls => _hulls.AsSpan(0, _hullCount);
 
     internal void Begin()
@@ -21,6 +24,8 @@ internal sealed class ClothContactWorkspace(ClothWorkLimits limits)
         Candidates = 0;
         SweepRefinements = 0;
         PartId = null;
+        Array.Clear(_affine, 0, _affineCount);
+        _affineCount = 0;
         Array.Clear(_hulls, 0, _hullCount);
         _hullCount = 0;
     }
@@ -40,11 +45,13 @@ internal sealed class ClothContactWorkspace(ClothWorkLimits limits)
         foreach (ClothHullSupport hull in step.Hulls)
         {
             PartId = hull.Identity.PartId;
-            if (!ClothHullPose.TryCreate(hull.Opening, out ClothHullPose opening) ||
-                !ClothHullPose.TryCreate(hull.Closing, out ClothHullPose closing))
+            bool openingValid = ClothHullPose.TryCreate(hull.Opening, out ClothHullPose opening);
+            bool closingValid = ClothHullPose.TryCreate(hull.Closing, out ClothHullPose closing);
+            if (!closingValid || (!openingValid && (!closingOnly || allowCoarse)))
             {
                 if (!allowCoarse || !HasFallback(hull.Identity, step.ClosingSupports))
                     return ClothStepStatus.UnsupportedHullTransform;
+                _affine[_affineCount++] = new ClothAffineHull(hull.Identity, hull.Hull, hull.Closing);
                 continue;
             }
             _hulls[_hullCount++] = new ClothPosedHull(hull.Identity, hull.Hull, closingOnly ? closing : opening, closing);
@@ -53,7 +60,6 @@ internal sealed class ClothContactWorkspace(ClothWorkLimits limits)
         int rigid = 0, lower = 0;
         foreach (ClothSupport support in step.ClosingSupports)
         {
-            if (Replaced(support)) continue;
             if (support.IsLowerSegment ? ++lower > limits.MaxLowerSegments : ++rigid > limits.MaxRigidSupports)
             {
                 PartId = support.Identity.PartId;
@@ -93,11 +99,11 @@ internal sealed class ClothContactWorkspace(ClothWorkLimits limits)
         return true;
     }
 
-    internal ClothStepStatus CheckSweep<T>(in T pair, float required, out Vector3 normal)
+    internal ClothStepStatus CheckSweep<T>(in T pair, float required, out ClothSweepImpact impact)
         where T : struct, IClothSweepPair
     {
         ClothStepStatus status = ClothContactSweep.Check(pair, required, limits.MaxSweepRefinements,
-            out int refinements, out normal);
+            out int refinements, out impact);
         SweepRefinements += refinements;
         return status;
     }

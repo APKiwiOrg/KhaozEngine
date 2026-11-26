@@ -30,7 +30,20 @@ internal readonly record struct ClothFacet(Vector3 A, Vector3 B, Vector3 C)
     internal float MaxProjection(Vector3 axis) => -MinProjection(-axis);
 }
 
-internal readonly record struct ClothSweepSample(float Distance, Vector3 Normal);
+internal readonly record struct ClothSweepSample(float Distance, Vector3 Normal, Vector3 Weights, Vector3 OpposingWeights = default);
+
+internal readonly record struct ClothSweepImpact(float Time, Vector3 OpeningNormal, ClothSweepSample Sample, float Slack = 0)
+{
+    internal Vector3 Normal => Vector3.Dot(OpeningNormal, Sample.Normal) > 0 ? Sample.Normal : OpeningNormal;
+
+    internal float ClosingCorrection(float clearance)
+    {
+        // Only the closing positions move. Their contribution at impact is
+        // the normalized time times the corresponding material weight.
+        float gap = Vector3.Dot(OpeningNormal, Sample.Normal) > 0 ? Sample.Distance : -MathF.Abs(Sample.Distance);
+        return (clearance + Slack - gap) / Time;
+    }
+}
 
 internal interface IClothSweepPair
 {
@@ -49,11 +62,11 @@ internal static class ClothContactSweep
     private readonly record struct Window(float Start, float End, ClothSweepSample First, ClothSweepSample Last);
 
     internal static ClothStepStatus Check<T>(in T pair, float required, int maxRefinements, out int refinements,
-        out Vector3 openingNormal) where T : struct, IClothSweepPair
+        out ClothSweepImpact impact) where T : struct, IClothSweepPair
     {
         refinements = 0;
         ClothSweepSample first = pair.Sample(0), last = pair.Sample(1);
-        openingNormal = first.Normal;
+        impact = new ClothSweepImpact(1, first.Normal, last);
         if (!float.IsFinite(first.Distance) || !float.IsFinite(last.Distance) || !float.IsFinite(pair.Curvature))
             return ClothStepStatus.NonfiniteState;
         if (last.Distance < required) return ClothStepStatus.UnresolvedContact;
@@ -76,29 +89,38 @@ internal static class ClothContactSweep
             float time = .5f * (window.Start + window.End);
             ClothSweepSample middle = pair.Sample(time);
             if (!float.IsFinite(middle.Distance)) return ClothStepStatus.NonfiniteState;
-            if (middle.Distance < threshold - ProjectionRoundoff) return ClothStepStatus.UnresolvedContact;
+            if (middle.Distance < threshold - ProjectionRoundoff)
+            {
+                // Account for the curved support over each adjacent half-window.
+                float width = window.End - window.Start;
+                impact = new ClothSweepImpact(time, first.Normal, middle, pair.Curvature * width * width / 32);
+                return ClothStepStatus.UnresolvedContact;
+            }
             windows[count++] = new Window(window.Start, time, window.First, middle);
             windows[count++] = new Window(time, window.End, middle, window.Last);
         }
         return ClothStepStatus.Accepted;
     }
 
-    internal static float ClosingTarget<T>(in T pair, Vector3 normal, float clearance) where T : struct, IClothSweepPair
+    internal static float Angle(Quaternion opening, Quaternion closing) =>
+        AngularDisplacement(opening, closing).Length();
+
+    internal static Vector3 AngularDisplacement(Quaternion opening, Quaternion closing)
     {
-        float height = .5f * pair.Curvature;
-        float start = pair.Gap(0, normal);
-        float spare = MathF.Max(0, start - clearance);
-        if (spare >= height) return clearance;
-        // Maximum closing clearance required by the parabolic chord bound,
-        // given the clearance already available at the opening end.
-        float extra = MathF.Sqrt(height) - MathF.Sqrt(spare);
-        return clearance + extra * extra;
+        Quaternion delta = closing * Quaternion.Conjugate(opening);
+        var axis = new Vector3(delta.X, delta.Y, delta.Z);
+        float length = axis.Length();
+        if (length == 0) return Vector3.Zero;
+        float angle = 2 * MathF.Atan2(length, MathF.Abs(delta.W));
+        return (MathF.CopySign(angle, delta.W) / length) * axis;
     }
 
-    internal static float Angle(Quaternion opening, Quaternion closing)
+    internal static Quaternion Interpolate(Quaternion opening, Quaternion closing, float time)
     {
-        Quaternion delta = Quaternion.Conjugate(opening) * closing;
-        return 2 * MathF.Atan2(new Vector3(delta.X, delta.Y, delta.Z).Length(), MathF.Abs(delta.W));
+        Vector3 angular = AngularDisplacement(opening, closing);
+        float angle = angular.Length();
+        if (angle == 0) return opening;
+        return Quaternion.CreateFromAxisAngle(angular / angle, angle * time) * opening;
     }
 
     private static bool Certifies<T>(in T pair, in Window window, Vector3 normal, float required)
@@ -137,7 +159,7 @@ internal readonly struct ClothCapsuleSweep(ClothFacet first, ClothFacet last, Cl
         ChainContactTriangle.Contact hit = first.At(last, time).Triangle.Closest(axis, out _);
         double distance = Math.Sqrt(hit.Residual.LengthSquared);
         Vector3 normal = distance > 0 ? (hit.Residual * (1 / distance)).ToVector3() : Vector3.Zero;
-        return new ClothSweepSample((float)distance - capsule.Radius, normal);
+        return new ClothSweepSample((float)distance - capsule.Radius, normal, hit.Weights.ToVector3());
     }
 
     public float Gap(float time, Vector3 normal)

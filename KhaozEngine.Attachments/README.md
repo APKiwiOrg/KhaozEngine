@@ -652,12 +652,19 @@ step seconds and world gravity. Express positions and support poses in one world
 - `ClothSupport.Plane` uses the exterior half-space of a posed local plane.
 - `ClothWorkLimits.LayeredContact` selects the near profile, including self-contact between folds
   that do not share a node or a one-edge rest neighbourhood. The frame driver submits up to eight
-  substeps of 1/120 s. The numerical solver caps each at 128 nodes, 256 faces, 64 active rigid or
-  body supports, 64 lower-chain segments, two hulls of up to 16 vertices each and four iterations.
+  substeps of 1/120 s. The numerical solver caps each at 128 nodes, 256 faces and four iterations.
+  Support admission counts up to 64 authored rigid or body supports, 64 lower-chain segments
+  and two separately supplied hulls of up to 16 vertices each. The ordinary opening and closing
+  spans also have a combined-kind `MaxSupports` bound. Capsules replaced by a hull count towards
+  both authored capsule limits. Contact work counts only the geometry tested after selection.
 
 The contact search includes triangle interiors, edges and vertices. It checks swept positions
 and the angular path of a fitted support, then checks again after the material corrections.
-Support-point displacement includes rotation when deriving relative friction and normal speed.
+Sweep correction moves the finite witness by its barycentric shares and inverse masses, accounting
+for how much of the closing movement reaches the sampled time. Friction measures the integrated
+support-point displacement. Normal impulses use the support-point derivative at the closing pose.
+That derivative includes rotation, translation and uniform scale for hulls, and endpoint and radius
+rates for lower-chain segments.
 The normal impulse solve accumulates nonnegative multipliers. A compressive impulse requires
 the corresponding contact to remain seated. Impulse updates and residual checks share the
 `MaxNormalVelocityChecks` limit. Positioning bias supplies neither physical velocity nor
@@ -668,13 +675,17 @@ part ID where applicable and attempted work. The near profile caps broad-phase v
 and narrow-phase attempts at 512 per substep. Work includes rejected broad pairs,
 candidate rechecks and up to eight interior sweep refinements per narrow-phase attempt. The spatial
 tree can reuse a support's candidate indices while verified node coverage still contains the surface.
+A correction outside that coverage rebuilds the tree and restarts an affected traversal under the
+same work caps.
 `MaxMaterialFactorProducts` independently bounds work in the material solver.
 
 A refusal retains the last accepted positions and velocities. To supply a current outfit fit for
 recovery, pass it to `Advance` as `fittedFallback`. A separate bounded check verifies the pins,
 material frames and closing clearance. An unsupported hull transform reports
-`UnsupportedHullTransform` and checks its coarse group when fitted recovery is requested.
-`Recovered` means that the checked fit was published with cleared velocity. The original reason
+`UnsupportedHullTransform`. Fitted recovery checks the matching coarse group and full material
+half-thickness against the actual closing affine hull. A singular, nonfinite or intersecting closing
+shape refuses recovery. An unsupported opening pose still permits an independently valid closing
+fit. `Recovered` means that the checked fit was published with cleared velocity. The original reason
 remains in `Status`, and `FallbackStatus` and `FallbackWork` describe the recovery attempt.
 
 `ProjectDisplay` re-pins a supplied display sample and projects it against the closing supports

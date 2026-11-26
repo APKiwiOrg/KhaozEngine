@@ -8,31 +8,44 @@ namespace KhaozEngine.Tests.Attachments;
 public sealed partial class ClothContactTests
 {
     [Theory]
-    [InlineData(1f)]
-    [InlineData(1.015f)]
-    public void A_rotating_hull_corner_clears_the_independently_tessellated_hardware(float closingScale)
+    [InlineData(1f, false)]
+    [InlineData(1.015f, false)]
+    [InlineData(1f, true)]
+    public void A_rotating_hull_corner_clears_the_independently_tessellated_hardware(float closingScale, bool pinned)
     {
         const float angle = MathF.PI / 6, plane = .0254f;
         Vector3 center = .024f * Vector3.UnitX;
         Vector3[] rest = [new(plane, -.036f, -.022f), new(plane, .036f, -.022f), new(plane, 0, .022f)];
-        var simulation = new ClothSimulation(Triangle(rest), ClothWorkLimits.LayeredContact);
+        ClothRig rig = Triangle(rest, pinned ? [0, 1] : []);
+        var simulation = new ClothSimulation(rig, ClothWorkLimits.LayeredContact);
         simulation.Reset(rest);
         ClothSupportHull hull = Box(center, new Vector3(.002f, .003f, .003f));
         var support = new ClothHullSupport(Identity, hull, Pose(0), Pose(1));
+        var visibleHalfExtent = new Vector3(.0019f, .0029f, .0029f);
+        Vector3[] visibleSamples = Samples(visibleHalfExtent);
 
         Assert.True(MaxVisibleX(0) + Material.HalfThickness < plane);
         Assert.True(MaxVisibleX(1) + Material.HalfThickness < plane);
         Assert.True(MaxVisibleX(.5f) > plane);
-        ClothStepResult step = simulation.Advance(new ClothSubstep([], [], [], Seconds, Vector3.Zero, [support]));
+        ClothStepResult step = simulation.Advance(new ClothSubstep(pinned ? rest.AsSpan(0, 2) : [],
+            [], [], Seconds, Vector3.Zero, [support]));
 
         Assert.Equal(ClothStepStatus.Accepted, step.Status);
         Assert.InRange(step.SweepRefinements, 1, 8 * step.ContactCandidates);
         for (int sample = 0; sample <= 32; sample++)
         {
             float time = sample / 32f;
-            float visible = MaxVisibleX(time);
-            for (int node = 0; node < rest.Length; node++)
-                Assert.True(float.Lerp(rest[node].X, simulation.Positions[node].X, time) - Material.HalfThickness >= visible);
+            var pose = Pose(time);
+            Assert.True(Matrix4x4.Invert(pose, out Matrix4x4 inverse));
+            Vector3 a = Vector3.Lerp(rest[0], simulation.Positions[0], time);
+            Vector3 b = Vector3.Lerp(rest[1], simulation.Positions[1], time);
+            Vector3 c = Vector3.Lerp(rest[2], simulation.Positions[2], time);
+            Assert.False(ClipsBox(Local(a), Local(b), Local(c), visibleHalfExtent));
+            foreach (Vector3 vertex in visibleSamples)
+                Assert.True(DistanceToTriangle(Vector3.Transform(center + vertex, pose), a, b, c) >=
+                    Material.HalfThickness - .00025f);
+
+            Vector3 Local(Vector3 point) => Vector3.Transform(point, inverse) - center;
         }
 
         Matrix4x4 Pose(float t) => Matrix4x4.CreateScale(float.Lerp(1, closingScale, t)) *

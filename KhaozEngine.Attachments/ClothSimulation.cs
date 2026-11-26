@@ -4,6 +4,7 @@ using System.Numerics;
 namespace KhaozEngine.Attachments;
 
 /// <summary>Bounds for one cloth substep, including all narrow-phase witness evaluations.</summary>
+/// <remarks>MaxSupports bounds the combined raw capsule and plane span before hull replacement.</remarks>
 public readonly record struct ClothWorkLimits(int Iterations, int MaxSupports, int MaxContactCandidates,
     int MaxContactChecks, float MaxNodeTravel = .025f, long MaxMaterialFactorProducts = 1_000_000)
 {
@@ -31,8 +32,11 @@ public readonly record struct ClothWorkLimits(int Iterations, int MaxSupports, i
     /// <summary>Checks non-neighbouring folds of the same material sheet.</summary>
     public bool EnableSelfContact { get; init; }
 
+    /// <summary>Raw rigid and plane support count, including capsules replaced by a hull.</summary>
     public int MaxRigidSupports { get; init; } = RigidSupportLimit;
+    /// <summary>Raw count of the separately supplied lower chain segments.</summary>
     public int MaxLowerSegments { get; init; } = LowerSegmentLimit;
+    /// <summary>Raw count of detailed hull descriptions in their separate span.</summary>
     public int MaxHulls { get; init; } = HullLimit;
 
     internal const int NormalVelocityCheckLimit = 16_384;

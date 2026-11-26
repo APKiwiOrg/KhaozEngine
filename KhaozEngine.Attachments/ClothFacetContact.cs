@@ -64,6 +64,14 @@ internal readonly record struct ClothPosedHull(ClothSupportIdentity Identity, Cl
         }
     }
 
+    internal Vector3 ClosingDerivative(Vector3 localPoint)
+    {
+        Vector3 radial = Vector3.Transform(Closing.Scale * localPoint, Closing.Rotation);
+        Vector3 angular = ClothContactSweep.AngularDisplacement(Opening.Rotation, Closing.Rotation);
+        Vector3 scale = Vector3.Transform((Closing.Scale - Opening.Scale) * localPoint, Closing.Rotation);
+        return Closing.Translation - Opening.Translation + Vector3.Cross(angular, radial) + scale;
+    }
+
     internal Vector3 SurfaceDisplacement(Vector3 localPoint) => Closing.World(localPoint) - Opening.World(localPoint);
 }
 
@@ -74,7 +82,7 @@ internal readonly struct ClothHullSweep(ClothFacet first, ClothFacet last, Cloth
     public ClothSweepSample Sample(float time)
     {
         HullContact contact = Witness(time);
-        return new ClothSweepSample(contact.Distance, contact.Normal);
+        return new ClothSweepSample(contact.Distance, contact.Normal, contact.Weights);
     }
 
     public float Gap(float time, Vector3 normal)

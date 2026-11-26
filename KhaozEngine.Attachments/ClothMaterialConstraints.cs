@@ -14,25 +14,33 @@ internal sealed class ClothMaterialConstraints(ClothRig rig, ClothWorkLimits lim
 
     internal void Begin() => Array.Clear(_multipliers);
 
-    internal bool Project(Vector3[] positions, Vector3[] opening, float seconds)
+    internal bool HasMaterialFrames(ReadOnlySpan<Vector3> positions)
+    {
+        foreach (ClothMembrane membrane in rig.Membranes)
+            if (!membrane.HasFrame(positions)) return false;
+        return true;
+    }
+
+    internal ClothStepStatus Project(Vector3[] positions, Vector3[] opening, float seconds)
     {
         float inverseStepSquared = 1 / (seconds * seconds);
         float damping = rig.Material.DampingSeconds / seconds;
         _system.Begin(damping);
         for (int i = 0; i < rig.Membranes.Length; i++)
-            rig.Membranes[i].Add(_system, positions, opening, inverseStepSquared, damping, _multipliers.AsSpan(3 * i, 3),
-                _rows.AsSpan(3 * i, 3));
+            if (!rig.Membranes[i].TryAdd(_system, positions, opening, inverseStepSquared, damping,
+                _multipliers.AsSpan(3 * i, 3), _rows.AsSpan(3 * i, 3)))
+                return ClothStepStatus.CollapsedMaterial;
         int firstHinge = 3 * rig.Membranes.Length;
         for (int i = 0; i < rig.Hinges.Length; i++)
             _rows[firstHinge + i] = rig.Hinges[i].Add(_system, positions, opening, inverseStepSquared,
                 damping, _multipliers[firstHinge + i]);
 
-        if (!_system.Solve()) return false;
+        if (!_system.Solve()) return ClothStepStatus.NonfiniteState;
         for (int i = 0; i < _rows.Length; i++)
             _multipliers[i] += _rows[i].UpdateMultiplier(_system, damping);
         for (int i = 0; i < positions.Length; i++)
             positions[i] += _system.Delta(i);
-        return true;
+        return ClothStepStatus.Accepted;
     }
 }
 
@@ -55,6 +63,8 @@ internal readonly record struct ClothMembrane(ClothTriangle Face, Vector2 Weft, 
         Vector2 warp = new Vector2(-vv.X, uv.X) / determinant;
         Vector3 across = weft.X * pq + weft.Y * pr, down = warp.X * pq + warp.Y * pr;
         float acrossLength = across.Length(), downLength = down.Length();
+        if (!Usable(across, acrossLength, down, downLength))
+            return false;
         Vector3 metric = new(acrossLength, downLength, Vector3.Dot(across / acrossLength, down / downLength));
         var compliance = Vector3.One / (area * new Vector3(material.WeftStiffness, material.WarpStiffness, material.ShearStiffness));
         if (!ChainMath.IsFinite(metric) || !ChainMath.IsFinite(compliance))
@@ -64,18 +74,20 @@ internal readonly record struct ClothMembrane(ClothTriangle Face, Vector2 Weft, 
         return true;
     }
 
-    internal void Add(ClothMaterialSystem system, Vector3[] positions, Vector3[] opening, float inverseStepSquared,
+    internal bool HasFrame(ReadOnlySpan<Vector3> positions)
+    {
+        var (weft, warp) = Tangents(positions);
+        return Usable(weft, weft.Length(), warp, warp.Length());
+    }
+
+    internal bool TryAdd(ClothMaterialSystem system, Vector3[] positions, Vector3[] opening, float inverseStepSquared,
         float damping, ReadOnlySpan<float> lambda, Span<ClothMaterialRow> rows)
     {
         var (a, b, c) = Face;
-        Vector3 ab = positions[b] - positions[a], ac = positions[c] - positions[a];
-        Vector3 weft = Weft.X * ab + Weft.Y * ac, warp = Warp.X * ab + Warp.Y * ac;
+        var (weft, warp) = Tangents(positions);
         float weftLength = weft.Length(), warpLength = warp.Length();
-        if (weftLength < 1e-7f || warpLength < 1e-7f)
-        {
-            rows.Clear();
-            return;
-        }
+        if (!Usable(weft, weftLength, warp, warpLength))
+            return false;
 
         Vector3 u = weft / weftLength, v = warp / warpLength;
         float cosine = Vector3.Dot(u, v);
@@ -87,6 +99,7 @@ internal readonly record struct ClothMembrane(ClothTriangle Face, Vector2 Weft, 
         rows[1] = AddRow(gradient, Warp.X * v, Warp.Y * v, alpha.Y, lambda[1], warpLength - RestMetric.Y);
         rows[2] = AddRow(gradient, Weft.X * shearWeft + Warp.X * shearWarp, Weft.Y * shearWeft + Warp.Y * shearWarp,
             alpha.Z, lambda[2], cosine - RestMetric.Z);
+        return true;
 
         ClothMaterialRow AddRow(Span<ClothNodeGradient> terms, Vector3 second, Vector3 third, float compliance,
             float multiplier, float error)
@@ -98,6 +111,16 @@ internal readonly record struct ClothMembrane(ClothTriangle Face, Vector2 Weft, 
         }
     }
 
+    private (Vector3 Weft, Vector3 Warp) Tangents(ReadOnlySpan<Vector3> positions)
+    {
+        var (a, b, c) = Face;
+        Vector3 ab = positions[b] - positions[a], ac = positions[c] - positions[a];
+        return (Weft.X * ab + Weft.Y * ac, Warp.X * ab + Warp.Y * ac);
+    }
+
+    private static bool Usable(Vector3 weft, float weftLength, Vector3 warp, float warpLength) =>
+        float.IsFinite(weftLength) && float.IsFinite(warpLength) && weftLength >= 1e-7f && warpLength >= 1e-7f &&
+        Vector3.Cross(weft / weftLength, warp / warpLength).LengthSquared() > 1e-12f;
 }
 
 internal readonly record struct ClothHinge(int First, int Second, int Left, int Right, float RestAngle, float Compliance)

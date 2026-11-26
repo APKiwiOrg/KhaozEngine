@@ -628,7 +628,7 @@ The table lists the other identifiers and the locations supplied by direct model
 ## Numerical cloth simulation
 
 `ClothRig.Create` takes an oriented triangular midsurface, material coordinates in metres (weft, warp),
-ordered pins and optional natural angles for interior hinges. It copies the pattern and derives node mass
+ordered pins and optional natural angles for interior hinges. It validates edge winding and each vertex fan, copies the pattern and derives node mass
 from tributary rest area. A hinge without an override uses its rest geometry. Keep the pattern's natural
 curvature separate from the fitted positions, so the material can relax when a support moves away.
 An empty pin span describes a free sheet. `ClothMaterial.NormalAirDrag` opts into still-air damping
@@ -645,7 +645,9 @@ step seconds and world gravity. `ClothSupport.Capsule` takes a capsule in suppor
 in the surface-relative friction calculation.
 
 Read `Positions` after an accepted step. `ClothStepResult` reports refusals and attempted work.
-A refused step preserves the previous accepted position and velocity. A caller that uses a fitted
+A refused step preserves the previous accepted position and velocity. Reset requires nondegenerate
+fitted triangles. A step that collapses a material frame reports `CollapsedMaterial`. Positioning
+bias supplies neither physical velocity nor compressive friction load. A caller that uses a fitted
 fallback can reset the instance from its fitted positions before resuming. This numerical API is
 separate from the attachment JSON, outfit draw and motion-level APIs.
 

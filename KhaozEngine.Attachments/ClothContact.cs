@@ -13,12 +13,16 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
     private readonly ContactLoad[] _loads = new ContactLoad[checked(limits.MaxSupports *
         Math.Max(rig.Triangles.Length, rig.RestPositions.Length))];
 
+    private readonly Vector3[] _positionBias = new Vector3[rig.RestPositions.Length];
+
+    internal ReadOnlySpan<Vector3> PositionBias => _positionBias;
     internal int Candidates { get; private set; }
     internal int Checks { get; private set; }
 
     internal void Begin()
     {
         Array.Clear(_loads);
+        Array.Clear(_positionBias);
         Candidates = 0;
         Checks = 0;
     }
@@ -50,11 +54,17 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
                 if (distance < rig.Material.HalfThickness - SolveTolerance) return ClothStepStatus.UnresolvedContact;
                 continue;
             }
-            if (distance >= rig.Material.HalfThickness + ContactMargin) continue;
             ref ContactLoad load = ref _loads[offset + i];
+            if (distance >= rig.Material.HalfThickness + ContactMargin)
+            {
+                load.Expire();
+                continue;
+            }
             if (!CountCandidate(ref load)) return ClothStepStatus.ContactCapacity;
             Vector3 supportPoint = positions[i] - distance * normal;
-            var contact = new ContactPoint(new ClothTriangle(i, i, i), Vector3.UnitX, normal, distance, supportPoint);
+            float openingDistance = Vector3.Dot(opening[i] - first.Translation, first.PlaneNormal);
+            var contact = new ContactPoint(new ClothTriangle(i, i, i), Vector3.UnitX, 1, normal, openingDistance,
+                distance, supportPoint);
             if (!ProjectPoint(opening, positions, first, last, contact, ref load))
                 return ClothStepStatus.UnresolvedContact;
         }
@@ -74,8 +84,12 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
         for (int i = 0; i < faces.Length; i++)
         {
             ClothTriangle face = faces[i];
-            if (!Overlaps(face, opening, positions, min, max)) continue;
             ref ContactLoad load = ref _loads[offset + i];
+            if (!Overlaps(face, opening, positions, min, max))
+            {
+                load.Expire();
+                continue;
+            }
             if (!CountCandidate(ref load)) return ClothStepStatus.ContactCapacity;
             if (!CountCheck()) return ClothStepStatus.ContactWork;
 
@@ -94,7 +108,11 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
                 continue;
             }
 
-            if (!crossed && distance >= extent) continue;
+            if (!crossed && distance >= extent)
+            {
+                load.Expire();
+                continue;
+            }
             Vector3 normal;
             if (crossed || distance == 0)
             {
@@ -106,7 +124,12 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
 
             Vector3 supportPoint = (float)hit.Fraction.StartWeight * now.Start + (float)hit.Fraction.EndWeight * now.End +
                 now.Radius * normal;
-            var contact = new ContactPoint(face, hit.Weights.ToVector3(), normal, distance - now.Radius, supportPoint);
+            Vector3 weights = hit.Weights.ToVector3();
+            int triangleFeature = (weights.X > 0 ? 1 : 0) | (weights.Y > 0 ? 2 : 0) | (weights.Z > 0 ? 4 : 0);
+            int axisFeature = hit.Fraction.EndWeight == 0 ? 1 : hit.Fraction.StartWeight == 0 ? 2 : 3;
+            float openingDistance = (float)Math.Sqrt(openingResidual.LengthSquared) - before.Radius;
+            var contact = new ContactPoint(face, weights, triangleFeature | (axisFeature << 3), normal,
+                openingDistance, distance - now.Radius, supportPoint);
             if (!ProjectPoint(opening, positions, first, last, contact, ref load))
                 return ClothStepStatus.UnresolvedContact;
         }
@@ -122,16 +145,25 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
         Vector3 share = weights * mass;
         float inverseMass = Vector3.Dot(weights, share);
         if (inverseMass == 0)
+        {
+            load.Expire();
             return contact.Distance >= rig.Material.HalfThickness - SolveTolerance;
+        }
 
-        float normalImpulse = (rig.Material.HalfThickness + ContactMargin - contact.Distance) / inverseMass;
-        load.Normal += normalImpulse;
-        Apply(normalImpulse * contact.Normal);
+        load.Use(contact.Feature, contact.Normal);
+        float envelope = rig.Material.HalfThickness + ContactMargin;
+        float correction = envelope - contact.Distance;
+        // Resolve closing travel physically. Clearance already missing at the opening is
+        // positioning bias, so it supplies neither velocity nor a friction budget.
+        float physical = MathF.Max(0, MathF.Min(envelope, contact.OpeningDistance) - contact.Distance);
+        load.Normal += physical / inverseMass;
+        Apply(positions, (correction / inverseMass) * contact.Normal);
+        Apply(_positionBias, ((correction - physical) / inverseMass) * contact.Normal);
 
         if (rig.Material.StaticFriction > 0)
         {
             Vector3 motion = contact.Face.Blend(positions, weights) - contact.Face.Blend(opening, weights) -
-                last.SurfaceDisplacement(first, contact.SupportPoint);
+                contact.Face.Blend(_positionBias, weights) - last.SurfaceDisplacement(first, contact.SupportPoint);
             Vector3 tangent = motion - Vector3.Dot(motion, contact.Normal) * contact.Normal;
             Vector3 previous = load.Tangent - Vector3.Dot(load.Tangent, contact.Normal) * contact.Normal;
             Vector3 desired = previous - tangent / inverseMass;
@@ -139,15 +171,15 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
             load.Tangent = desiredLength > rig.Material.StaticFriction * load.Normal
                 ? (rig.Material.KineticFriction * load.Normal / desiredLength) * desired
                 : desired;
-            Apply(load.Tangent - previous);
+            Apply(positions, load.Tangent - previous);
         }
         return true;
 
-        void Apply(Vector3 correction)
+        void Apply(Vector3[] target, Vector3 displacement)
         {
-            positions[a] += share.X * correction;
-            positions[b] += share.Y * correction;
-            positions[c] += share.Z * correction;
+            target[a] += share.X * displacement;
+            target[b] += share.Y * displacement;
+            target[c] += share.Z * displacement;
         }
     }
 
@@ -177,13 +209,30 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
             high.X >= min.X && high.Y >= min.Y && high.Z >= min.Z;
     }
 
-    private readonly record struct ContactPoint(ClothTriangle Face, Vector3 Weights, Vector3 Normal, float Distance,
-        Vector3 SupportPoint);
+    private readonly record struct ContactPoint(ClothTriangle Face, Vector3 Weights, int Feature, Vector3 Normal,
+        float OpeningDistance, float Distance, Vector3 SupportPoint);
 
     private struct ContactLoad
     {
         internal bool Counted;
         internal float Normal;
         internal Vector3 Tangent;
+        private int _feature;
+        private Vector3 _direction;
+
+        internal void Use(int feature, Vector3 direction)
+        {
+            if (_feature != feature || Vector3.Dot(_direction, direction) <= 0)
+                Expire();
+            _feature = feature;
+            _direction = direction;
+        }
+
+        internal void Expire()
+        {
+            _feature = 0;
+            Normal = 0;
+            Tangent = Vector3.Zero;
+        }
     }
 }

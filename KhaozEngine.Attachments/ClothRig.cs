@@ -32,6 +32,7 @@ public enum ClothRigRefusal
     InvalidPin,
     UnpinnedComponent,
     InvalidHinge,
+    NonManifoldVertex,
 }
 
 /// <summary>A malformed cloth pattern with the index of the affected input element.</summary>
@@ -129,6 +130,7 @@ internal sealed class ClothRigTopology
         ClothMaterial material)
     {
         var edges = new Dictionary<Edge, Neighbours>();
+        var fans = new List<(int First, int Second)>?[rest.Length];
         float[] mass = new float[rest.Length];
         int[] components = new int[rest.Length];
         Membranes = new ClothMembrane[triangles.Length];
@@ -155,10 +157,14 @@ internal sealed class ClothRigTopology
             Connect(face.A, face.B, face.C, i);
             Connect(face.B, face.C, face.A, i);
             Connect(face.C, face.A, face.B, i);
+            (fans[face.A] ??= []).Add((face.B, face.C));
+            (fans[face.B] ??= []).Add((face.C, face.A));
+            (fans[face.C] ??= []).Add((face.A, face.B));
             components[Find(components, face.B)] = Find(components, face.A);
             components[Find(components, face.C)] = Find(components, face.A);
         }
 
+        ValidateVertexLinks(fans);
         InverseMasses = MakeInverseMasses(mass, pins, components);
         Hinges = MakeHinges(rest, restHinges, material, edges);
 
@@ -169,6 +175,9 @@ internal sealed class ClothRigTopology
                 neighbours = new Neighbours();
             if (neighbours.Left >= 0 && neighbours.Right >= 0)
                 throw new ClothRigException(ClothRigRefusal.NonManifoldEdge, faceIndex, "An edge has more than two incident triangles.");
+
+            if (neighbours.Left == opposite || neighbours.Right == opposite)
+                throw new ClothRigException(ClothRigRefusal.InvalidTriangle, faceIndex, "A material triangle cannot be repeated.");
 
             bool left = a == edge.First;
             if (left ? neighbours.Left >= 0 : neighbours.Right >= 0)
@@ -183,6 +192,42 @@ internal sealed class ClothRigTopology
     internal ClothMembrane[] Membranes { get; }
     internal ClothHinge[] Hinges { get; }
     internal float[] InverseMasses { get; }
+
+    private static void ValidateVertexLinks(List<(int First, int Second)>?[] fans)
+    {
+        // Edge incidence already bounds each link's degree to two. A manifold
+        // vertex therefore needs one connected path or cycle in its link.
+        var parents = new Dictionary<int, int>();
+        for (int node = 0; node < fans.Length; node++)
+        {
+            if (fans[node] is not { Count: > 1 } fan) continue;
+
+            parents.Clear();
+            int components = 0;
+            foreach ((int first, int second) in fan)
+            {
+                if (parents.TryAdd(first, first)) components++;
+                if (parents.TryAdd(second, second)) components++;
+                int rootFirst = Root(parents, first), rootSecond = Root(parents, second);
+                if (rootFirst == rootSecond) continue;
+
+                parents[rootSecond] = rootFirst;
+                components--;
+            }
+            if (components != 1)
+                throw new ClothRigException(ClothRigRefusal.NonManifoldVertex, node, "A material node needs one connected face fan.");
+        }
+
+        static int Root(Dictionary<int, int> link, int node)
+        {
+            while (link[node] != node)
+            {
+                link[node] = link[link[node]];
+                node = link[node];
+            }
+            return node;
+        }
+    }
 
     private static int Find(int[] components, int node)
     {

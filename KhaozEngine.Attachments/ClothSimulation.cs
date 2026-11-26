@@ -26,6 +26,7 @@ public enum ClothStepStatus
     NodeTravel,
     UnresolvedContact,
     NonfiniteState,
+    CollapsedMaterial,
 }
 
 /// <summary>Outcome and attempted work. Factor products bound the work across attempted factorizations.
@@ -75,6 +76,9 @@ public sealed class ClothSimulation
         if (fittedPositions.Length != _accepted.Length || !AreFinite(fittedPositions))
             throw new ArgumentException("Reset needs a finite fitted position for each node.", nameof(fittedPositions));
 
+        if (!_material.HasMaterialFrames(fittedPositions))
+            throw new ArgumentException("Reset requires nondegenerate fitted material triangles.", nameof(fittedPositions));
+
         fittedPositions.CopyTo(_accepted);
         Array.Clear(_velocities);
         _stepSeconds = 0;
@@ -107,23 +111,23 @@ public sealed class ClothSimulation
         while (status == ClothStepStatus.Accepted && iterations < _limits.Iterations)
         {
             iterations++;
-            if (!_material.Project(_working, _accepted, step.Seconds))
-            {
-                status = ClothStepStatus.NonfiniteState;
-                break;
-            }
+            status = _material.Project(_working, _accepted, step.Seconds);
+            if (status != ClothStepStatus.Accepted) break;
             status = CheckTravel();
             if (status == ClothStepStatus.Accepted)
                 status = _contact.Project(_accepted, _working, step, verify: false);
         }
         if (status == ClothStepStatus.Accepted)
             status = CheckTravel();
+        if (status == ClothStepStatus.Accepted && !_material.HasMaterialFrames(_working))
+            status = ClothStepStatus.CollapsedMaterial;
         if (status == ClothStepStatus.Accepted)
             status = _contact.Project(_accepted, _working, step, verify: true);
         if (status == ClothStepStatus.Accepted)
         {
+            ReadOnlySpan<Vector3> positioningBias = _contact.PositionBias;
             for (int i = 0; i < _working.Length; i++)
-                _velocities[i] = (_working[i] - _accepted[i]) / step.Seconds;
+                _velocities[i] = (_working[i] - _accepted[i] - positioningBias[i]) / step.Seconds;
             (_accepted, _working) = (_working, _accepted);
         }
         return new ClothStepResult(status, iterations, _contact.Candidates, _contact.Checks,

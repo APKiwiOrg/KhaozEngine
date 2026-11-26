@@ -32,7 +32,8 @@ public static class MapBoundaryGeometry
         => ResolveChain(chain, view, null);
 
     internal static MapChainResolution ResolveChain(MapBoundaryChain chain, MapScopedSurfaces view,
-        Func<MapPatchKey, MapBoundarySurface?>? preparedSource)
+        Func<MapPatchKey, MapBoundarySurface?>? preparedSource,
+        Func<string, MapExactPoint, MapExactPoint>? worldPoint = null)
     {
         ArgumentNullException.ThrowIfNull(chain);
         ArgumentNullException.ThrowIfNull(view);
@@ -58,14 +59,14 @@ public static class MapBoundaryGeometry
                     if (vertex.Vertex.SurfaceId != source.Surface.Id ||
                         !source.Vertices.TryGetValue(vertex.Vertex.Address, out MapExactPoint point))
                         return Failure(MapResolveStatus.Invalid, "chain source vertex is not a surface edge vertex");
-                    points.Add(MapEffectiveGeometry.Point(view, vertex.Vertex.SurfaceId, point));
+                    points.Add(WorldPoint(vertex.Vertex.SurfaceId, point));
                 }
                 else
                 {
                     MapSurfaceRef? surface = Surface(view, vertex.Vertex.SurfaceId);
                     if (surface is null) return Failure(MapResolveStatus.MissingGeometry, "unresolved chain surface");
                     MapExactXz xz = surface.Frame.WorldXz(vertex.Vertex.Address);
-                    points.Add(MapEffectiveGeometry.Point(view, surface.Id, new(xz.X, surface.Frame.Metres(new(vertex.HeightUnits!.Value, 1)), xz.Z)));
+                    points.Add(WorldPoint(surface.Id, new(xz.X, surface.Frame.Metres(new(vertex.HeightUnits!.Value, 1)), xz.Z)));
                 }
             }
             return new(MapResolveStatus.Resolved, points.AsReadOnly(), null);
@@ -83,6 +84,9 @@ public static class MapBoundaryGeometry
         {
             return Failure(MapResolveStatus.Invalid, error.Message) with { Finding = MapDocumentFinding.FromException(error), Cause = error };
         }
+
+        MapExactPoint WorldPoint(string id, MapExactPoint point) =>
+            worldPoint is null ? MapEffectiveGeometry.Point(view, id, point) : worldPoint(id, point);
     }
 
     static MapChainResolution Failure(MapResolveStatus status, string detail, MapResolveStatus? detailStatus = null) =>

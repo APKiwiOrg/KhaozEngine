@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Editing;
+using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapEditor;
 using KhaozEngine.Tests.MapDoc;
@@ -13,6 +14,32 @@ public sealed class TerrainTransactionRegressionTests
 {
     static string Text(EditorDocument editor) => MapDocumentFile.SaveText(editor.Doc, editor.Registry);
     static string[] Ids(MapDocument doc) => doc.Surfaces.Refs.Select(s => s.Id).ToArray();
+
+    [Fact]
+    public void TerrainFrameUndoAndRedoReportBoundsInTheStandaloneSurfaceWorldFrame()
+    {
+        // Regression #1903: editor history replays the effective bounds in either direction.
+        MapDocument document = SurfaceStorageFixtures.ThreeSurfaces();
+        MapSurfaceRef ridge = document.Surfaces.Refs.Single(s => s.Id == "ridge");
+        document.NativeResourceTransforms =
+            [new(MapPrefabChildKind.Surface, ridge.Id, new(64, 5, 256, Math.PI / 2, 2), new string('a', 64))];
+        var edit = new MapReplaceTopology([], [], [ridge with { Frame = ridge.Frame with { HeightUnitMetres = new(1, 50) } }], []);
+        MapTerrainEditResult local = MapTerrainEdits.Prepare(document.Surfaces, edit);
+        Assert.Equal(new MapBox3(60, 15, 0, 64, 15, 4), local.Effects.OldBounds);
+
+        var editor = new EditorDocument(document);
+        editor.BindNativeAssets(SurfaceStorageFixtures.Assets());
+        editor.Execute(new TerrainEditCommand(edit));
+        var before = new MapBox3(64, 35, 128, 72, 35, 136);
+        var after = new MapBox3(64, 65, 128, 72, 65, 136);
+        Assert.Equal((before, after), Bounds());
+        Assert.True(editor.Undo());
+        Assert.Equal((after, before), Bounds());
+        Assert.True(editor.Redo());
+        Assert.Equal((before, after), Bounds());
+
+        (MapBox3?, MapBox3?) Bounds() => (editor.LastNativeEffects!.OldBounds, editor.LastNativeEffects.NewBounds);
+    }
 
     [Fact]
     public void TopologyUndo_RestoresARemovedLeadingSurfaceAtItsPosition()

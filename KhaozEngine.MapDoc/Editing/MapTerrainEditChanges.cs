@@ -10,7 +10,11 @@ namespace KhaozEngine.MapDoc.Editing;
 /// <summary>Canonical deltas determine publication and consequences from the final composite candidate.</summary>
 internal static class MapTerrainEditChanges
 {
-    internal static MapTerrainEditResult Describe(MapSurfaceSet before, MapSurfaceSet after, MapNativeInvalidation invalidates)
+    internal static MapTerrainEditResult Describe(MapSurfaceSet before, MapSurfaceSet after, MapNativeInvalidation invalidates) =>
+        Describe(before, after, invalidates, includeBounds: true, out _);
+
+    internal static MapTerrainEditResult Describe(MapSurfaceSet before, MapSurfaceSet after, MapNativeInvalidation invalidates,
+        bool includeBounds, out (MapTerrainPatchEffects Before, MapTerrainPatchEffects After) geometry)
     {
         var oldDigests = before.Patches.ToDictionary(p => p.Key, p => MapSurfaceSemantics.PatchDigest(p.Value));
         var newDigests = after.Patches.ToDictionary(p => p.Key, p => MapSurfaceSemantics.PatchDigest(p.Value));
@@ -70,8 +74,11 @@ internal static class MapTerrainEditChanges
         var writeSet = new MapNativeWriteSet(Array.AsReadOnly(patchWrites), Array.AsReadOnly(surfaces), Array.AsReadOnly(records),
             Array.AsReadOnly(spaces.ToArray()), owners.AsReadOnly(), Array.AsReadOnly(materials.ToArray()), false);
 
-        var effectPatches = MapTerrainPatchEffects.Collect(before, after, oldRefs, writeSet.Patches);
-        var effects = new MapNativeEditEffects(Bounds(before, effectPatches), Bounds(after, effectPatches), effectPatches,
+        geometry = MapTerrainPatchEffects.Collect(before, after, oldRefs, writeSet.Patches);
+        var (oldGeometry, newGeometry) = geometry;
+        var effectPatches = Array.AsReadOnly(oldGeometry.Patches.Union(newGeometry.Patches).Order().ToArray());
+        var effects = new MapNativeEditEffects(includeBounds ? oldGeometry.Bounds(before) : null,
+            includeBounds ? newGeometry.Bounds(after) : null, effectPatches,
             writeSet.SpaceIds, Array.AsReadOnly(dependencies.ToArray()), changes.AsReadOnly(), invalidates);
         return new(after, writeSet, effects);
 
@@ -131,41 +138,5 @@ internal static class MapTerrainEditChanges
             foreach (MapTopologyRecord record in patch.Records)
                 result.Add(record.Id, MapSurfaceSemantics.RecordDigest(patch.Key, record));
         return result;
-    }
-
-    static MapBox3? Bounds(MapSurfaceSet set, IReadOnlyList<MapPatchKey> patches)
-    {
-        MapBox3? bounds = null;
-        MapScopedSurfaces view = MapScopedSurfaces.CompleteView(set);
-        foreach (MapPatchKey key in patches)
-            if (set.Patches.TryGetValue(key, out MapSurfacePatch? patch))
-            {
-                MapSurfaceRef surface = set.Refs.Single(s => s.Id == key.SurfaceId);
-                foreach (MapExactPoint point in new MapBoundarySurface(surface, patch).Vertices.Values) Add(point);
-                IEnumerable<MapRecordRef> chains = patch.Records.OfType<MapWallStrip>().SelectMany(s => new[] { s.LowerChain, s.UpperChain });
-                foreach (var (chain, reference) in Boundaries())
-                {
-                    MapChainResolution resolution = MapBoundaryGeometry.ResolveChain(chain, view);
-                    if (resolution.Status != MapResolveStatus.Resolved) throw resolution.Refuse(resolution.Detail!, reference);
-                    foreach (MapExactPoint point in resolution.Points) Add(point);
-                }
-
-                IEnumerable<(MapBoundaryChain Chain, MapRecordRef Reference)> Boundaries()
-                {
-                    foreach (MapBoundaryChain chain in patch.Records.OfType<MapBoundaryChain>())
-                        yield return (chain, new(chain.Id, key));
-                    foreach (MapRecordRef reference in chains)
-                        if (set.TryGetRecord(reference, out MapTopologyRecord? record) && record is MapBoundaryChain chain)
-                            yield return (chain, reference);
-                }
-            }
-        return bounds;
-
-        void Add(MapExactPoint point)
-        {
-            double x = point.X.ToDouble(), y = point.Y.ToDouble(), z = point.Z.ToDouble();
-            bounds = bounds is { } b ? new(Math.Min(b.MinX, x), Math.Min(b.MinY, y), Math.Min(b.MinZ, z),
-                Math.Max(b.MaxX, x), Math.Max(b.MaxY, y), Math.Max(b.MaxZ, z)) : new(x, y, z, x, y, z);
-        }
     }
 }

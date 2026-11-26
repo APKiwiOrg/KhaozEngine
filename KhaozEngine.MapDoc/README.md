@@ -101,9 +101,12 @@ including surface span metadata. `MapCompositeEdit` prepares its ordered edits a
 `MapConvertFinePatch` reuses `MapFinePatchConversion`, including its authored-difference policy.
 Preparation validates references, seams and owners and refreshes affected surface semantic digests.
 The effects name patches with changed payloads, patches with changes to their surface frame, role or
-presence policy, and patches that anchor wall strips whose boundary chains read a changed frame. The
-old and new bounds use the respective surface declarations, so residency and navigation can invalidate
-both extents. Publication records declaration-only edits in `WriteSet.SurfaceIds`.
+presence policy, and patches that anchor wall strips whose boundary chains read a changed frame.
+For a declaration-only edit, the bounds cover the selected surface geometry and wall strips.
+`MapDocumentTerrainEdits.Prepare` and editor transactions apply each snapshot's standalone surface poses to
+its terrain vertices and boundary points, so residency and navigation can invalidate both world extents.
+The surface-only API reports bounds in authored coordinates. Publication records declaration-only surface
+edits in `WriteSet.SurfaceIds`.
 Heights, smoothing, presence and ownership invalidate Terrain, Physics, Nav and Residency. Topology and
 conversion also invalidate Material. Cell material-ID changes alone invalidate Terrain and Material,
 other cell fields invalidate all five, and re-anchoring alone invalidates Residency.

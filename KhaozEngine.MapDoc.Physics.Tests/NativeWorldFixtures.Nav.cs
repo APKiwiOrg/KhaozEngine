@@ -19,7 +19,8 @@ namespace KhaozEngine.Tests.MapDoc.Physics;
 /// and native terrain-only edits.</summary>
 internal static partial class NativeWorldFixtures
 {
-    internal static NativeFixture TerrainOnlyAtNavSeam(bool legacyFallback = false, bool startLegacy = false, bool withPaint = false)
+    internal static NativeFixture TerrainOnlyAtNavSeam(bool legacyFallback = false, bool startLegacy = false,
+        bool withPaint = false, bool withUnrelatedChain = false)
     {
         var surfaces = new MapSurfaceSet();
         var frame = legacyFallback ? MapLatticeFrame.ImportedMetreCentimetre : CentimetreHeights;
@@ -35,6 +36,16 @@ internal static partial class NativeWorldFixtures
         {
             AddSurface(surfaces, "paint", frame, 62, z, 63, z + 1, (_, _) => 100);
             surfaces.Refs[1] = surfaces.Refs[1] with { Role = MapSurfaceRole.PaintOverride, PaintTargetSurfaceId = "edited-floor" };
+        }
+        if (withUnrelatedChain)
+        {
+            // Authored chain vertices can address a surface frame without occupying its lattice cells.
+            surfaces.Refs.Add(new("remote", frame, MapSurfaceRole.SupportFloor, MapPresencePolicy.Native, null, null, ""));
+            surfaces.Patches.Values.Single().Records.Add(new MapBoundaryChain("remote-chain", MapChainKind.Authored, null,
+            [
+                new(new("remote", MapLatticeAddress.Corner(70_000, 70_000)), 200),
+                new(new("remote", MapLatticeAddress.Corner(70_001, 70_001)), 200),
+            ]));
         }
         return ResolveAround(96, 0, surfaces, []);
     }

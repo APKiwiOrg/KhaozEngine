@@ -112,11 +112,20 @@ public class MapNavTilingTests
         Assert.Equal(newChunk.WorldBounds, prepared.Effects.NewBounds);
     }
 
-    [Fact]
-    public void SurfaceFrameEditInvalidatesWallUsingAChainAnchoredOnAnotherSurface()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SurfaceFrameEditInvalidatesWallUsingAChainAnchoredOnAnotherSurface(bool transformed)
     {
         // Regression #1903: the edited floor's footprint does not reach the wall or its seam captures.
         var fixture = NativeWorldFixtures.TerrainWithWallReadingAnotherFrame();
+        if (transformed)
+        {
+            fixture.Document.Bounds.MaxZ = 192;
+            fixture.Document.NativeResourceTransforms = fixture.Document.Surfaces.Refs.Select(s =>
+                new MapStandaloneResourceTransform(MapPrefabChildKind.Surface, s.Id,
+                    new(32, 4, 256, System.Math.PI / 2, 2), new string('a', 64))).ToArray();
+        }
         MapBuiltWorld before = NativeWorldFixtures.Build(fixture);
         MapSurfaceRef floor = fixture.Document.Surfaces.Refs.Single(s => s.Id == "edited-floor");
         var edit = new MapReplaceTopology([], [], [floor with { Frame = floor.Frame with { HeightUnitMetres = new(1, 50) } }], []);
@@ -127,15 +136,20 @@ public class MapNavTilingTests
         var oldWall = Assert.Single(before.Terrain.Chunks, c => c.TriangleRoles.Contains(MapFaceRole.Wall));
         var newWall = Assert.Single(after.Terrain.Chunks, c => c.TriangleRoles.Contains(MapFaceRole.Wall));
         Assert.NotEqual(oldWall.Digest, newWall.Digest);
-        var seam = new MapNavTileCoord(2, 0);
+        var seam = transformed ? new MapNavTileCoord(0, -1) : new MapNavTileCoord(2, 0);
         Assert.NotEqual(Identity(MapNavTiling.Partition(before, Grids, Options), seam),
             Identity(MapNavTiling.Partition(after, Grids, Options), seam));
         Assert.Contains(seam, MapNavTiling.AffectedTiles(before, after, Grids, Options, prepared.Effects));
         var affected = MapResidencyOwnership.Affected(before, after, Grids, prepared.Effects);
         Assert.Contains(oldWall.ChunkId, affected.Owners);
         Assert.Contains(newWall.ChunkId, affected.Owners);
-        Assert.Contains(new MapTileCoord(1, 0), affected.StorageTiles);
-        Assert.DoesNotContain(new MapTileCoord(2, 0), affected.StorageTiles);
+        Assert.Contains(transformed ? new MapTileCoord(0, 0) : new MapTileCoord(1, 0), affected.StorageTiles);
+        Assert.DoesNotContain(new MapTileCoord(seam.X, seam.Z), affected.StorageTiles);
+        if (transformed)
+        {
+            Assert.Equal(new MapBox3(52, 6, 2, 54, 10, 176), prepared.Effects.OldBounds);
+            Assert.Equal(new MapBox3(52, 8, 2, 54, 10, 176), prepared.Effects.NewBounds);
+        }
     }
 
     [Theory]
@@ -161,6 +175,53 @@ public class MapNavTilingTests
         Assert.Contains(seam, MapNavTiling.AffectedTiles(after, Grids, Options, prepared.Effects));
         Assert.Equal(chunk.Membership, MapResidencyOwnership.Affected(after, Grids, prepared.Effects).StorageTiles);
         Assert.Equal(Assert.Single(fixture.Document.Surfaces.Patches).Key, Assert.Single(prepared.Effects.Patches));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TranslatedSurfaceEditRetiresOldCoverageWithOnlyTheAfterWorld(bool removeLegacyFallback)
+    {
+        // Regression #1903: the built world can no longer supply the old footprint for a moved or removed chunk.
+        var fixture = NativeWorldFixtures.TerrainOnlyAtNavSeam(legacyFallback: removeLegacyFallback);
+        MapSurfaceRef surface = Assert.Single(fixture.Document.Surfaces.Refs);
+        MapEffectiveTransform transform = removeLegacyFallback ? new(64, 0, 0, 0, 1) : new(0, 0, 64, 0, 1);
+        fixture.Document.NativeResourceTransforms =
+            [new(MapPrefabChildKind.Surface, surface.Id, transform, new string('a', 64))];
+        fixture.Document.Bounds.MaxZ = 128;
+        MapBuiltWorld before = NativeWorldFixtures.Build(fixture);
+        MapSurfaceRef changed = removeLegacyFallback ? surface with { PresencePolicy = MapPresencePolicy.LegacyTileWorld }
+            : surface with { Frame = surface.Frame with { RowDirection = MapRowDirection.NegativeZ } };
+        var edit = new MapReplaceTopology([], [], [changed], []);
+        var prepared = MapDocumentTerrainEdits.Prepare(fixture.Document, fixture.Assets, edit);
+        MapBuiltWorld after = MapWorldBuilder.Build(prepared.After, fixture.Assets, NativeWorldFixtures.Options());
+        AssertSurfaceOnlyWrite(prepared, surface.Id);
+        if (removeLegacyFallback) Assert.Empty(after.Terrain.Chunks);
+
+        var oldCapture = removeLegacyFallback ? new MapNavTileCoord(2, 0) : new MapNavTileCoord(0, 1);
+        Assert.NotEqual(Identity(MapNavTiling.Partition(before, Grids, Options), oldCapture),
+            Identity(MapNavTiling.Partition(after, Grids, Options), oldCapture));
+        Assert.Contains(oldCapture, MapNavTiling.AffectedTiles(after, Grids, Options, prepared.Effects));
+        var oldChunk = Assert.Single(MapResidencyOwnership.Build(before, Grids));
+        var affected = MapResidencyOwnership.Affected(after, Grids, prepared.Effects);
+        Assert.All(oldChunk.Membership, tile => Assert.Contains(tile, affected.StorageTiles));
+        Assert.DoesNotContain(removeLegacyFallback ? new MapTileCoord(0, 0) : new MapTileCoord(0, -1), affected.StorageTiles);
+        Assert.Equal(oldChunk.WorldBounds, prepared.Effects.OldBounds);
+    }
+
+    [Fact]
+    public void SurfaceFrameEditExcludesAnUnrelatedRemoteChainStoredWithTheTerrain()
+    {
+        // Regression #1903: an anchor is storage ownership. The unchanged remote chain reads its own frame.
+        var fixture = NativeWorldFixtures.TerrainOnlyAtNavSeam(withUnrelatedChain: true);
+        var surface = fixture.Document.Surfaces.Refs.Single(s => s.Id == "edited-floor");
+        var edit = new MapReplaceTopology([], [], [surface with { Frame = surface.Frame with { HeightUnitMetres = new(1, 50) } }], []);
+        var prepared = MapDocumentTerrainEdits.Prepare(fixture.Document, fixture.Assets, edit);
+        MapBuiltWorld after = MapWorldBuilder.Build(prepared.After, fixture.Assets, NativeWorldFixtures.Options());
+        AssertSurfaceOnlyWrite(prepared, surface.Id);
+        Assert.Equal(new[] { new MapTileCoord(0, 0) }, MapResidencyOwnership.Affected(after, Grids, prepared.Effects).StorageTiles);
+        Assert.Equal(new[] { new MapNavTileCoord(0, 0), new MapNavTileCoord(1, 0) },
+            MapNavTiling.AffectedTiles(after, Grids, Options, prepared.Effects));
     }
 
     [Fact]

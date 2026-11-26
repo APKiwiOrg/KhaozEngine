@@ -33,7 +33,11 @@ public static class MapTerrainEdits
         MapNativeInvalidation.Nav | MapNativeInvalidation.Residency;
     internal const MapNativeInvalidation All = Geometry | MapNativeInvalidation.Material;
 
-    public static MapTerrainEditResult Prepare(MapSurfaceSet surfaces, MapTerrainEdit edit)
+    public static MapTerrainEditResult Prepare(MapSurfaceSet surfaces, MapTerrainEdit edit) =>
+        PrepareCore(surfaces, edit, includeBounds: true, out _);
+
+    internal static MapTerrainEditResult PrepareCore(MapSurfaceSet surfaces, MapTerrainEdit edit, bool includeBounds,
+        out (MapTerrainPatchEffects Before, MapTerrainPatchEffects After) geometry)
     {
         ArgumentNullException.ThrowIfNull(surfaces);
         ArgumentNullException.ThrowIfNull(edit);
@@ -48,7 +52,7 @@ public static class MapTerrainEdits
                 RequireValid(MapSeamValidator.ValidateCornerDependencyFindings(patch, view));
             foreach (MapSurfaceSeam seam in candidate.AllRecords().OfType<MapSurfaceSeam>())
                 RequireValid(MapSeamValidator.ValidateFindings(seam, view));
-            return MapTerrainEditChanges.Describe(surfaces, candidate, invalidates);
+            return MapTerrainEditChanges.Describe(surfaces, candidate, invalidates, includeBounds, out geometry);
         }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
         {

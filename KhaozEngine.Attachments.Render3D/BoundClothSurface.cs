@@ -119,6 +119,11 @@ public sealed class BoundClothSurface
     }
 
     public uint PartId => _checked.PartId;
+    internal bool CompatibleMaterial(BoundClothSurface other) =>
+        ReferenceEquals(Rig, other.Rig) || (_checked.SidecarDigest is { } digest &&
+            digest == other._checked.SidecarDigest && Description.MeshSha256 == other.Description.MeshSha256);
+
+    internal int JointCount => _inverseBind.Length;
     public ClothRig Rig => _checked.Rig;
     public ClothSurfaceFile Description => _checked.File;
     public ClothRoundTrip RoundTrip => _checked.RoundTrip;

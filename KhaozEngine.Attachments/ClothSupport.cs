@@ -7,7 +7,7 @@ namespace KhaozEngine.Attachments;
 public readonly struct ClothSupport
 {
     private ClothSupport(ColliderCapsule capsule, Vector3 planeNormal, Quaternion rotation, Vector3 translation,
-        ClothSupportIdentity identity = default, bool lowerSegment = false)
+        ClothSupportIdentity identity = default, bool lowerSegment = false, bool adjustable = false)
     {
         if (!float.IsFinite(rotation.LengthSquared()) || MathF.Abs(rotation.LengthSquared() - 1) > .0001f)
             throw new ArgumentOutOfRangeException(nameof(rotation), "A unit rotation is required.");
@@ -20,6 +20,7 @@ public readonly struct ClothSupport
         Translation = translation;
         Identity = identity;
         IsLowerSegment = lowerSegment;
+        Adjustable = adjustable;
     }
 
     internal ColliderCapsule LocalCapsule { get; }
@@ -28,6 +29,15 @@ public readonly struct ClothSupport
     internal Vector3 Translation { get; }
     public ClothSupportIdentity Identity { get; }
     public bool IsLowerSegment { get; }
+
+    private bool Adjustable { get; }
+
+    internal static ClothSupport PosedCapsule(ColliderCapsule local, Quaternion rotation, Vector3 translation,
+        ClothSupportIdentity identity)
+    {
+        ValidateCapsule(local);
+        return new ClothSupport(local, default, rotation, translation, identity, adjustable: true);
+    }
 
     internal bool IsPlane => LocalPlaneNormal != Vector3.Zero;
 
@@ -78,8 +88,12 @@ public readonly struct ClothSupport
                 float.Lerp(LocalCapsule.Radius, target.LocalCapsule.Radius, time));
         Quaternion rotation = ClothContactSweep.Interpolate(Rotation, target.Rotation, time);
         Vector3 translation = Vector3.Lerp(Translation, target.Translation, time);
-        return new ColliderCapsule(Vector3.Transform(LocalCapsule.Start, rotation) + translation,
-            Vector3.Transform(LocalCapsule.End, rotation) + translation, LocalCapsule.Radius);
+        ColliderCapsule local = Adjustable ? new ColliderCapsule(
+            Vector3.Lerp(LocalCapsule.Start, target.LocalCapsule.Start, time),
+            Vector3.Lerp(LocalCapsule.End, target.LocalCapsule.End, time),
+            float.Lerp(LocalCapsule.Radius, target.LocalCapsule.Radius, time)) : LocalCapsule;
+        return new ColliderCapsule(Vector3.Transform(local.Start, rotation) + translation,
+            Vector3.Transform(local.End, rotation) + translation, local.Radius);
     }
 
     internal Vector3 PlaneNormal => Vector3.Transform(LocalPlaneNormal, Rotation);
@@ -87,7 +101,36 @@ public readonly struct ClothSupport
     internal bool Matches(in ClothSupport other) =>
         (IsPlane || LocalCapsule.Radius > 0) && Identity == other.Identity &&
         IsLowerSegment == other.IsLowerSegment && LocalPlaneNormal == other.LocalPlaneNormal &&
-        (IsLowerSegment ? other.LocalCapsule.Radius > 0 : LocalCapsule == other.LocalCapsule);
+        Adjustable == other.Adjustable &&
+        (IsLowerSegment || Adjustable ? other.LocalCapsule.Radius > 0 : LocalCapsule == other.LocalCapsule);
+
+    internal bool SamePose(in ClothSupport other) => Rotation == other.Rotation && Translation == other.Translation &&
+        LocalCapsule == other.LocalCapsule;
+
+    internal float CurvedCapsuleReach(in ClothSupport other, float angle)
+    {
+        float reach = MathF.Max(LocalCapsule.Start.Length(), LocalCapsule.End.Length());
+        if (!Adjustable) return reach * angle * angle;
+        float lastReach = MathF.Max(other.LocalCapsule.Start.Length(), other.LocalCapsule.End.Length());
+        float shift = MathF.Max(Vector3.Distance(LocalCapsule.Start, other.LocalCapsule.Start),
+            Vector3.Distance(LocalCapsule.End, other.LocalCapsule.End));
+        return MathF.Max(reach, lastReach) * angle * angle + 2 * angle * shift;
+    }
+
+    internal ClothSupport Interpolate(in ClothSupport target, float amount)
+    {
+        if (amount == 1) return target;
+        if (IsLowerSegment) return LowerSegment(CapsuleAt(target, amount), Identity);
+        var local = new ColliderCapsule(Vector3.Lerp(LocalCapsule.Start, target.LocalCapsule.Start, amount),
+            Vector3.Lerp(LocalCapsule.End, target.LocalCapsule.End, amount),
+            float.Lerp(LocalCapsule.Radius, target.LocalCapsule.Radius, amount));
+        return PosedCapsule(local, Quaternion.Slerp(Rotation, target.Rotation, amount),
+            Vector3.Lerp(Translation, target.Translation, amount), Identity);
+    }
+
+    internal ClothSupport Rebased(Vector3 change) => IsLowerSegment
+        ? LowerSegment(LocalCapsule with { Start = LocalCapsule.Start + change, End = LocalCapsule.End + change }, Identity)
+        : new ClothSupport(LocalCapsule, LocalPlaneNormal, Rotation, Translation + change, Identity, adjustable: Adjustable);
 
     internal Vector3 SurfaceDisplacement(in ClothSupport previous, Vector3 worldPoint)
     {
@@ -102,22 +145,32 @@ public readonly struct ClothSupport
     internal Vector3 CapsuleClosingDerivative(in ClothSupport previous, Vector3 point,
         ChainCapsuleCollision.AxisFraction fraction, Vector3 normal)
     {
-        if (!IsLowerSegment) return SurfaceClosingDerivative(previous, point);
+        if (!IsLowerSegment && !Adjustable) return SurfaceClosingDerivative(previous, point);
 
         ColliderCapsule before = previous.LocalCapsule, now = LocalCapsule;
-        return (float)fraction.StartWeight * (now.Start - before.Start) +
-            (float)fraction.EndWeight * (now.End - before.End) + (now.Radius - before.Radius) * normal;
+        Vector3 axisChange = (float)fraction.StartWeight * (now.Start - before.Start) +
+            (float)fraction.EndWeight * (now.End - before.End);
+        Vector3 radiusChange = (now.Radius - before.Radius) * normal;
+        return IsLowerSegment ? axisChange + radiusChange :
+            SurfaceClosingDerivative(previous, point) + Vector3.Transform(axisChange, Rotation) + radiusChange;
     }
 
     internal Vector3 CapsuleDisplacement(in ClothSupport previous, Vector3 point,
         ChainCapsuleCollision.AxisFraction fraction, Vector3 normal)
     {
-        if (!IsLowerSegment) return SurfaceDisplacement(previous, point);
+        if (!IsLowerSegment && !Adjustable) return SurfaceDisplacement(previous, point);
 
         ColliderCapsule before = previous.LocalCapsule, now = LocalCapsule;
         Vector3 priorCenter = (float)fraction.StartWeight * before.Start + (float)fraction.EndWeight * before.End;
-        Vector3 previousNormal = PreviousRadial(now.End - now.Start, before.End - before.Start, normal);
-        return point - (priorCenter + before.Radius * previousNormal);
+        if (IsLowerSegment)
+        {
+            Vector3 previousNormal = PreviousRadial(now.End - now.Start, before.End - before.Start, normal);
+            return point - (priorCenter + before.Radius * previousNormal);
+        }
+
+        Vector3 localNormal = Vector3.Transform(normal, Quaternion.Conjugate(Rotation));
+        Vector3 priorRadial = PreviousRadial(now.End - now.Start, before.End - before.Start, localNormal);
+        return point - previous.ToWorld(priorCenter + before.Radius * priorRadial);
     }
 
     private static Vector3 PreviousRadial(Vector3 from, Vector3 to, Vector3 normal)

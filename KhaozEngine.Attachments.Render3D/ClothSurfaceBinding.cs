@@ -25,7 +25,7 @@ public static class ClothSurfaceBinding
     }
 
     internal static CheckedClothSurface Read(ReadOnlyMemory<byte> glb, string digest, ClothSurfaceFile file,
-        ChainMotionDefinition fallback, ClothRig rig, string sourceName, uint partId)
+        ChainMotionDefinition fallback, ClothRig rig, string sourceName, uint partId, string? sidecarDigest = null)
     {
         if (digest != file.MeshSha256)
             throw new ClothSurfaceDataException(ClothSurfaceRefusal.MeshDigest, sourceName, "The cloth sidecar tags different GLB bytes.")
@@ -34,7 +34,7 @@ public static class ClothSurfaceBinding
         {
             AttachmentGlb.ValidateSkinnedEmbedded(glb, sourceName);
             var (materials, source) = GltfLoader.LoadSkinnedSource(glb, sourceName, digest);
-            return new CheckedClothSurface(file, rig, fallback, sourceName, partId, source, materials);
+            return new CheckedClothSurface(file, rig, fallback, sourceName, partId, source, materials, sidecarDigest);
         }
         catch (AttachmentSkinnedGeometryDataException error)
         {
@@ -58,10 +58,13 @@ internal sealed class CheckedClothSurface
     readonly ResolvedClothPoint[] _fallback;
     readonly ResolvedClothVertex[] _render;
 
+    internal string? SidecarDigest { get; }
+
     internal CheckedClothSurface(ClothSurfaceFile file, ClothRig rig, ChainMotionDefinition fallback,
-        string sourceName, uint partId, CoverageSourceTopology source, SkinnedGltfMesh[] materials)
+        string sourceName, uint partId, CoverageSourceTopology source, SkinnedGltfMesh[] materials, string? sidecarDigest)
     {
         File = file;
+        SidecarDigest = sidecarDigest;
         Rig = rig;
         SourceName = sourceName;
         PartId = partId;

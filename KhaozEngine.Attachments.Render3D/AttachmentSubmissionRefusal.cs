@@ -14,4 +14,10 @@ public enum AttachmentSubmissionRefusal
 
     /// <summary>Refuses the second occurrence of a motion in a batch and identifies its entry index.</summary>
     DuplicateMotion,
+
+    /// <summary>Refuses the second claim of a reservation in one batch.</summary>
+    DuplicateClothSlot,
+
+    /// <summary>The selected part is absent or has no cloth definition.</summary>
+    ClothPartUnavailable,
 }

@@ -14,6 +14,185 @@ public sealed class WornMotionBatchTests
 {
     const float FrameTime = 1f / 144;
 
+    [Fact]
+    public void Duplicate_cloth_slot_refuses_before_publishing_a_wearer_surface()
+    {
+        using var rig = new OutfitRig();
+        var set = rig.Wear("batch-cloth.json", SkinnedAttachmentBindingTests.ClothAsset(rig).Set);
+        const uint part = SkinnedAttachmentBindingTests.ClothPartId;
+        var first = set.CreateMotion(null);
+        var second = set.CreateMotion(null);
+        var slot = new WornClothSlot();
+        slot.Prepare(set.ClothSurface(part)!);
+        var selection = new WornClothSelection(slot, 0, part);
+        var batch = new WornMotionBatch(new SingleThreadedJobScheduler());
+        batch.Add(first, rig.Skeleton, rig.Palette, rig.Model, 0, MotionLevel.Held, selection);
+        batch.Add(second, rig.Skeleton, rig.Palette, rig.Model, 0, MotionLevel.Held, selection);
+        var error = Assert.Throws<AttachmentSubmissionArgumentException>(batch.Step);
+        Assert.Equal(AttachmentSubmissionRefusal.DuplicateClothSlot, error.Reason);
+        Assert.Equal(1, error.EntryIndex);
+        Assert.False(first.TryGetClothPresentation(0, part, out _));
+        Assert.False(second.TryGetClothPresentation(0, part, out _));
+
+        batch.Clear();
+        batch.Add(first, rig.Skeleton, rig.Palette, rig.Model, 0, MotionLevel.Held, selection);
+        batch.Step();
+        Assert.True(first.TryGetClothPresentation(0, part, out _));
+    }
+
+    [Fact]
+    public void Cloth_batch_matches_direct_pose_display_and_support_work()
+    {
+        using var rig = new OutfitRig();
+        var set = rig.Wear("pair-cloth.json", SkinnedAttachmentBindingTests.ClothAsset(rig).Set);
+        const uint part = SkinnedAttachmentBindingTests.ClothPartId;
+        var direct = set.CreateMotion(null);
+        var batched = set.CreateMotion(null);
+        var other = set.CreateMotion(null);
+        var firstSlot = new WornClothSlot();
+        var secondSlot = new WornClothSlot();
+        var surface = set.ClothSurface(part)!;
+        firstSlot.Prepare(surface);
+        secondSlot.Prepare(surface);
+        using var workers = new WorkerJobScheduler(2);
+        var batch = new WornMotionBatch(workers);
+        var pose = (Matrix4x4[])rig.Palette.Clone();
+
+        for (int i = 0; i < 24; i++)
+        {
+            float step = i is >= 8 and < 16 ? .003f : 0;
+            pose[1].Translation += new Vector3(0, 0, step);
+            var model = Matrix4x4.CreateRotationY(i * .001f);
+            batch.Add(other, rig.Skeleton, rig.Palette, rig.Model, FrameTime);
+            batch.Add(batched, rig.Skeleton, pose, model, FrameTime, MotionLevel.Simulated, new(secondSlot, 0, part));
+            direct.Step(rig.Skeleton, pose, model, FrameTime, MotionLevel.Simulated, new(firstSlot, 0, part));
+            batch.Step();
+            batch.Clear();
+
+            Assert.Equal(direct.ClothStatus, batched.ClothStatus);
+            Assert.True(direct.TryGetClothPresentation(0, part, out var expected));
+            Assert.True(batched.TryGetClothPresentation(0, part, out var actual));
+            Assert.True(MemoryMarshal.AsBytes(expected.Nodes).SequenceEqual(MemoryMarshal.AsBytes(actual.Nodes)));
+            Assert.True(direct.JointsFromAnchor.SequenceEqual(batched.JointsFromAnchor));
+            Assert.False(other.TryGetClothPresentation(0, part, out _));
+        }
+    }
+
+    [Fact]
+    public void Late_invalid_cloth_pose_leaves_the_current_display_and_both_clocks_unchanged()
+    {
+        using var rig = new OutfitRig();
+        var set = rig.Wear("atomic-cloth.json", SkinnedAttachmentBindingTests.ClothAsset(rig).Set);
+        const uint part = SkinnedAttachmentBindingTests.ClothPartId;
+        var surface = set.ClothSurface(part)!;
+        var first = set.CreateMotion(null);
+        var second = set.CreateMotion(null);
+        var slot = new WornClothSlot();
+        var otherSlot = new WornClothSlot();
+        slot.Prepare(surface);
+        otherSlot.Prepare(surface);
+        first.Step(rig.Skeleton, rig.Palette, rig.Model, 0, MotionLevel.Simulated, new(slot, 0, part));
+        Assert.True(first.TryGetClothPresentation(0, part, out var before));
+        ulong revision = before.DisplayRevision;
+        ulong secondPose = second.PoseRevision;
+
+        var invalid = (Matrix4x4[])rig.Palette.Clone();
+        invalid[0].M43 = float.NaN;
+        var batch = new WornMotionBatch(new SingleThreadedJobScheduler());
+        batch.Add(first, rig.Skeleton, rig.Palette, rig.Model, FrameTime, MotionLevel.Simulated, new(slot, 0, part));
+        batch.Add(second, rig.Skeleton, invalid, rig.Model, FrameTime, MotionLevel.Simulated, new(otherSlot, 0, part));
+        var error = Assert.Throws<AttachmentBindingArgumentException>(batch.Step);
+        Assert.Equal(AttachmentBindingRefusal.HostJointPoseInvalid, error.Reason);
+        Assert.False(otherSlot.IsOccupied);
+        Assert.Equal(secondPose, second.PoseRevision);
+        Assert.True(first.TryGetClothPresentation(0, part, out var after));
+        Assert.Equal(revision, after.DisplayRevision);
+        Assert.Equal(revision, first.PoseRevision);
+    }
+
+    [Fact]
+    public void Warm_local_cloth_and_compatible_slot_turnover_allocate_nothing()
+    {
+        using var rig = new OutfitRig();
+        var set = rig.Wear("allocation-cloth.json", SkinnedAttachmentBindingTests.ClothAsset(rig).Set);
+        const uint part = SkinnedAttachmentBindingTests.ClothPartId;
+        var slot = new WornClothSlot();
+        var wearer = set.CreateMotion(null);
+        var rebound = set.CreateMotion(null);
+        var ordinary = set.CreateMotion(null);
+        Assert.False(slot.IsPrepared);
+        ordinary.Step(rig.Skeleton, rig.Palette, rig.Model, FrameTime);
+        Assert.False(slot.IsPrepared);
+        Assert.Equal(0, ordinary.ClothStatus.Substeps);
+
+        slot.Prepare(set.ClothSurface(part)!);
+        var selection = new WornClothSelection(slot, 0, part);
+        wearer.Step(rig.Skeleton, rig.Palette, rig.Model, 0, MotionLevel.Held, selection);
+        for (int i = 0; i < 8; i++) Frame();
+        long start = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 16; i++) Frame();
+        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - start);
+        Assert.True(wearer.TryGetClothPresentation(0, part, out _));
+
+        void Frame()
+        {
+            _ = slot.Rebind(rebound, 0, part);
+            (wearer, rebound) = (rebound, wearer);
+            wearer.Step(rig.Skeleton, rig.Palette, rig.Model, 0, MotionLevel.Held, selection);
+            wearer.Step(rig.Skeleton, rig.Palette, rig.Model, FrameTime, MotionLevel.Held, selection);
+            ordinary.Step(rig.Skeleton, rig.Palette, rig.Model, FrameTime);
+        }
+    }
+
+    [Fact]
+    public void Slot_replacement_waits_for_the_outgoing_surface_before_the_next_wearer_solves()
+    {
+        using var rig = new OutfitRig();
+        var set = rig.Wear("reassign-cloth.json", SkinnedAttachmentBindingTests.ClothAsset(rig).Set);
+        const uint part = SkinnedAttachmentBindingTests.ClothPartId;
+        var slot = new WornClothSlot();
+        slot.Prepare(set.ClothSurface(part)!);
+        var options = new ChainSimulationOptions { HoldBlendSeconds = .025f };
+        var first = set.CreateMotion(null, options);
+        var second = set.CreateMotion(null, options);
+        var request = new WornClothSelection(slot, 0, part);
+        first.Step(rig.Skeleton, rig.Palette, rig.Model, 0, MotionLevel.Held, request);
+        for (int i = 0; i < 6; i++)
+            first.Step(rig.Skeleton, rig.Palette, rig.Model, FrameTime, MotionLevel.Held, request);
+        Assert.Equal(WornClothTier.Cloth, first.ClothStatus.Tier);
+
+        using var workers = new WorkerJobScheduler(2);
+        var batch = new WornMotionBatch(workers);
+        bool reassigned = false;
+        for (int i = 0; i < 6; i++)
+        {
+            batch.Clear();
+            batch.Add(second, rig.Skeleton, rig.Palette, rig.Model, FrameTime, MotionLevel.Held, request);
+            batch.Add(first, rig.Skeleton, rig.Palette, rig.Model, FrameTime, MotionLevel.Held);
+            batch.Step();
+            Assert.Equal(0, first.ClothStatus.Substeps);
+            if (first.TryGetClothPresentation(0, part, out _))
+            {
+                Assert.Equal(WornClothFallback.SlotOccupied, second.ClothStatus.Fallback);
+                Assert.False(second.TryGetClothPresentation(0, part, out _));
+            }
+            else
+                reassigned |= second.TryGetClothPresentation(0, part, out _);
+        }
+        Assert.True(reassigned);
+    }
+
+    [Fact]
+    public void Cloth_wearer_selection_retains_incumbent_and_breaks_distance_ties_by_stable_id()
+    {
+        WornClothCandidate[] candidates = [new(20, Vector3.UnitX, true), new(1, Vector3.UnitY, true),
+            new(3, Vector3.UnitZ * 2, true), new(0, Vector3.Zero, false, true)];
+        Assert.Equal(3ul, WornClothWearerChoice.Select(candidates, Vector3.Zero, 1, 2, 3));
+        Assert.Equal(1ul, WornClothWearerChoice.Select(candidates, Vector3.Zero, 1, 2, 0));
+        candidates[0] = candidates[0] with { Preferred = true };
+        Assert.Equal(20ul, WornClothWearerChoice.Select(candidates, Vector3.Zero, 1, 2, 3));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

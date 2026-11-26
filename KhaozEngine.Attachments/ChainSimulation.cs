@@ -28,6 +28,7 @@ public sealed class ChainSimulation
     private bool _needsReset = true;
     private bool _held;
     private bool _resuming;
+    private ChainExclusion _lastExclusion;
 
     /// <summary>Allocates the state and all step buffers for a rig and a fixed collider count.</summary>
     public ChainSimulation(ChainRig rig, int colliderCount, ChainSimulationOptions? options = null)
@@ -84,13 +85,15 @@ public sealed class ChainSimulation
     }
 
     internal void StepPrepared(ReadOnlySpan<Matrix4x4> anchorWorlds, ReadOnlySpan<ColliderCapsule> colliders,
-        in Matrix4x4 wearer, float deltaSeconds, MotionLevel level)
+        in Matrix4x4 wearer, float deltaSeconds, MotionLevel level, IChainExternalStep? exterior = null)
     {
         var frameWearer = new ChainPose(wearer);
 
-        bool reset = _needsReset || deltaSeconds > Options.LongestGapSeconds ||
-            ChainMath.DistanceSquared(wearer.Translation, _previousWearer.Matrix.Translation) >
-                (double)Options.TeleportDistance * Options.TeleportDistance;
+        bool reset = NeedsReset(wearer, deltaSeconds);
+        ChainExclusion excluded = exterior?.Excluded ?? default;
+        if (excluded != _lastExclusion)
+            _tiers.SeedOpeningRadii(Rig, _previousStepColliders, _settings, excluded);
+        _lastExclusion = excluded;
         if (reset)
         {
             ShowRest(anchorWorlds, _frameAnchors, colliders);
@@ -98,14 +101,23 @@ public sealed class ChainSimulation
                 _particles.SetRest(anchorWorlds, reset: true);
             else
                 _particles.SeedFromShown(_frameAnchors, _shown.Frames);
-            _tiers.SeedOpeningRadii(Rig, _previousStepColliders, _settings);
+            _tiers.SeedOpeningRadii(Rig, _previousStepColliders, _settings, excluded);
             _clock.Reset();
             _stepPresentation.Reset(_shown);
             _blend.Finish(Options.HoldBlendSeconds);
             _resuming = false;
         }
         else if (level == MotionLevel.Held)
-            Hold(anchorWorlds, colliders, deltaSeconds);
+        {
+            Hold(anchorWorlds, colliders, deltaSeconds, excluded);
+            if (exterior is not null)
+            {
+                int count = _clock.Advance(deltaSeconds, out bool droppedTime);
+                if (droppedTime) exterior.OnDroppedTime();
+                for (int step = 0; step < count; step++)
+                    exterior.OnSubstep(this, null, _clock.StepFraction(step, count, deltaSeconds));
+            }
+        }
         else
         {
             if (_held)
@@ -113,14 +125,14 @@ public sealed class ChainSimulation
                 _restPlacement?.Invalidate();
                 _particles.SeedFromShown(_previousAnchors, _shown.Frames);
                 var openingSettings = _restPlacement is { } placement ? placement.OpeningSettings(_settings) : _settings;
-                _tiers.SeedOpeningRadii(Rig, _previousStepColliders, openingSettings);
-                _clock.Reset();
+                _tiers.SeedOpeningRadii(Rig, _previousStepColliders, openingSettings, excluded);
+                if (exterior is null) _clock.Reset();
                 _stepPresentation.Reset(_shown);
                 _blend.Begin();
                 _resuming = true;
             }
 
-            Advance(colliders, frameWearer, deltaSeconds);
+            Advance(colliders, frameWearer, deltaSeconds, excluded, exterior);
             if (_resuming)
             {
                 _restPlacement?.BeginBlend(_shown);
@@ -130,7 +142,7 @@ public sealed class ChainSimulation
                     _resuming = _blend.Advance(_shown, _frameAnchors, _framePresentationAnchors,
                         deltaSeconds, Options.HoldBlendSeconds, _blend.LiveTarget);
                 }
-                ProjectBlend(anchorWorlds, colliders);
+                ProjectBlend(anchorWorlds, colliders, excluded);
             }
             else if (deltaSeconds > 0)
                 _stepPresentation.Show(_clock.Interpolation, _frameAnchors, _framePresentationAnchors, _shown);
@@ -152,6 +164,80 @@ public sealed class ChainSimulation
 
     /// <summary>Requests a rest hang with no velocity on the next valid step.</summary>
     public void Reset() => _needsReset = true;
+
+    internal bool NeedsReset(in Matrix4x4 wearer, float seconds) =>
+        _needsReset || seconds > Options.LongestGapSeconds ||
+        ChainMath.DistanceSquared(wearer.Translation, _previousWearer.Matrix.Translation) >
+            (double)Options.TeleportDistance * Options.TeleportDistance;
+
+    internal float Interpolation => _clock.Interpolation;
+    internal float Radius(int chain) => _settings[chain].Radius;
+
+    internal ColliderCapsule ShownSegment(in ChainSegment segment)
+    {
+        int anchor = Rig.Chains[segment.Chain].Anchor;
+        return segment.Pose(_shown.Frames, _previousAnchors[anchor].Matrix, Radius(segment.Chain));
+    }
+
+    internal ColliderCapsule HeldSegment(in ChainSegment segment)
+    {
+        int anchor = Rig.Chains[segment.Chain].Anchor;
+        return segment.Pose(_shown.Frames, _frameAnchors[anchor].Matrix, Radius(segment.Chain));
+    }
+
+    internal void SeedRange(int first, int count) => _particles.SeedRange(_previousAnchors, _shown.Frames, first, count);
+
+    internal void SeedFittedRange(ChainExclusion range)
+    {
+        if (_restPlacement is not { } placement)
+        {
+            SeedRange(range.First, range.Count);
+            return;
+        }
+
+        Span<ChainPresentationAnchor> presentation = stackalloc ChainPresentationAnchor[_previousAnchors.Length];
+        for (int i = 0; i < presentation.Length; i++)
+        {
+            var anchor = _previousAnchors[i];
+            _stepAnchors[i] = anchor.Matrix;
+            ChainMath.TryInvert(anchor.Matrix, out var inverse);
+            presentation[i] = new(anchor.Matrix, inverse, anchor.Rotation);
+        }
+        placement.UpdateFit(_stepAnchors, _previousAnchors, presentation, _previousFrameColliders, _settings);
+        int first = Rig.FirstJoint(range.First);
+        int stop = range.First + range.Count;
+        int end = stop == Rig.Chains.Count ? Rig.JointCount : Rig.FirstJoint(stop);
+        var joints = new Range(first, end);
+        _shown.CopyJoints(placement.Fit, joints);
+        _stepPresentation.SeedJoints(placement.Fit, joints);
+        _particles.SeedRange(_previousAnchors, placement.Fit.Frames, range.First, range.Count);
+    }
+
+    internal void Rebase(Vector3 change)
+    {
+        if (change == Vector3.Zero) return;
+        _restPlacement?.Invalidate();
+        _previousWearer = Translate(_previousWearer);
+        _stepWearerPosition += change;
+        for (int i = 0; i < _previousAnchors.Length; i++)
+            _previousAnchors[i] = Translate(_previousAnchors[i]);
+        Shift(_previousFrameColliders);
+        Shift(_previousStepColliders);
+        _particles.Rebase(change);
+
+        ChainPose Translate(in ChainPose pose)
+        {
+            var matrix = pose.Matrix;
+            matrix.Translation += change;
+            return new(matrix);
+        }
+
+        void Shift(Span<ColliderCapsule> capsules)
+        {
+            for (int i = 0; i < capsules.Length; i++)
+                capsules[i] = capsules[i] with { Start = capsules[i].Start + change, End = capsules[i].End + change };
+        }
+    }
 
     internal bool HasRestContacts => _restPlacement is not null;
 
@@ -180,7 +266,7 @@ public sealed class ChainSimulation
         _shown.CopyFrom(_restPlacement.Fit);
     }
 
-    private void Hold(ReadOnlySpan<Matrix4x4> anchors, ReadOnlySpan<ColliderCapsule> colliders, float seconds)
+    private void Hold(ReadOnlySpan<Matrix4x4> anchors, ReadOnlySpan<ColliderCapsule> colliders, float seconds, ChainExclusion excluded)
     {
         _resuming = false;
         if (!_held)
@@ -191,7 +277,7 @@ public sealed class ChainSimulation
         if (placement is not null)
         {
             bool changed = placement.UpdateFit(anchors, _frameAnchors, _framePresentationAnchors, colliders, _settings,
-                _previousAnchors, _shown.Frames, _previousFrameColliders);
+                _previousAnchors, _shown.Frames, _previousFrameColliders, excluded);
             if (_held && !changed && !_blend.Continues(0, duration))
                 return;
             if (_blend.Continues(seconds, duration))
@@ -199,12 +285,12 @@ public sealed class ChainSimulation
         }
 
         if (_blend.Advance(_shown, _frameAnchors, _framePresentationAnchors, seconds, duration, placement?.Fit))
-            ProjectBlend(anchors, colliders);
+            ProjectBlend(anchors, colliders, excluded);
     }
 
-    private void ProjectBlend(ReadOnlySpan<Matrix4x4> anchors, ReadOnlySpan<ColliderCapsule> colliders) =>
+    private void ProjectBlend(ReadOnlySpan<Matrix4x4> anchors, ReadOnlySpan<ColliderCapsule> colliders, ChainExclusion excluded) =>
         _restPlacement?.ProjectBlend(anchors, _frameAnchors, _framePresentationAnchors, colliders,
-            _previousFrameColliders, _settings, _shown, _previousAnchors);
+            _previousFrameColliders, _settings, _shown, _previousAnchors, excluded);
 
     /// <summary>Sets a chain's parameters for the next substep without resetting it.</summary>
     public void Tune(int chain, in ChainSettings settings)
@@ -273,17 +359,22 @@ public sealed class ChainSimulation
             throw new ArgumentException("Supply one pose per rig anchor.", nameof(anchorWorlds));
     }
 
-    private void Advance(ReadOnlySpan<ColliderCapsule> colliders, in ChainPose wearer, float deltaSeconds)
+    private void Advance(ReadOnlySpan<ColliderCapsule> colliders, in ChainPose wearer, float deltaSeconds,
+        ChainExclusion excluded, IChainExternalStep? exterior)
     {
         int count = _clock.Advance(deltaSeconds, out bool droppedTime);
         if (droppedTime)
-            SkipToRetainedStep(colliders, wearer, _clock.StepFraction(-1, count, deltaSeconds));
+        {
+            SkipToRetainedStep(colliders, wearer, _clock.StepFraction(-1, count, deltaSeconds), excluded);
+            exterior?.OnDroppedTime();
+        }
 
         for (int step = 0; step < count; step++)
-            Substep(colliders, wearer, _clock.StepFraction(step, count, deltaSeconds));
+            Substep(colliders, wearer, _clock.StepFraction(step, count, deltaSeconds), excluded, exterior);
     }
 
-    private void Substep(ReadOnlySpan<ColliderCapsule> colliders, in ChainPose wearer, float fraction)
+    private void Substep(ReadOnlySpan<ColliderCapsule> colliders, in ChainPose wearer, float fraction,
+        ChainExclusion excluded, IChainExternalStep? exterior)
     {
         float seconds = Options.MaxStepSeconds;
         _particles.SnapshotOpening();
@@ -299,23 +390,25 @@ public sealed class ChainSimulation
         _particles.SetRest(_stepAnchors, reset: false);
 
         _tiers.Solve(_particles, _stepAnchors, _stepColliders, _previousStepColliders,
-            _settings, Options.Gravity, seconds, _stepWearerPosition, position, turn);
+            _settings, Options.Gravity, seconds, _stepWearerPosition, position, turn, excluded);
+        exterior?.OnSubstep(this, _particles, fraction);
 
         _stepWearerPosition = position;
         _stepWearerRotation = rotation;
-        _stepPresentation.Capture(_particles, _stepAnchors, _stepAnchorInverses);
+        _stepPresentation.Capture(_particles, _stepAnchors, _stepAnchorInverses, excluded);
         _particles.RememberAnchorRotations();
         (_previousStepColliders, _stepColliders) = (_stepColliders, _previousStepColliders);
     }
 
-    private void SkipToRetainedStep(ReadOnlySpan<ColliderCapsule> colliders, in ChainPose wearer, float fraction)
+    private void SkipToRetainedStep(ReadOnlySpan<ColliderCapsule> colliders, in ChainPose wearer, float fraction,
+        ChainExclusion excluded)
     {
         SampleAnchors(fraction);
         var (position, rotation) = SampleWearer(wearer, fraction);
         var turn = WearerTurn(rotation);
         _particles.SetRest(_stepAnchors, reset: false);
         for (int chain = 0; chain < _settings.Length; chain++)
-            _particles.CarryAcrossDroppedTime(chain, _settings[chain].Trail, _stepWearerPosition, position, turn);
+            if (excluded.Includes(chain)) _particles.CarryAcrossDroppedTime(chain, _settings[chain].Trail, _stepWearerPosition, position, turn);
 
         // Seed the first retained step from its actual opening poses without taking a physics step.
         _stepWearerPosition = position;

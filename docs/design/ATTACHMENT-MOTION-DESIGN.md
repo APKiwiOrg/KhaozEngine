@@ -544,6 +544,17 @@ Its canonical bytes and SHA-256 follow the region map's rules.
   for a live tuner.
 - `WornMotionBatch(IJobScheduler)` reuses the storage for `Add(motion, skeleton, palette, model, deltaSeconds, level)`.
   `Step()` advances the prepared frames and `Clear()` removes the entries for reuse.
+- The optional final `WornClothSelection` names a prewarmed `WornClothSlot`, worn index and part ID.
+  The existing chain tier runs first at every fixed step. The cloth observer borrows opening and
+  closing lower particles directly, including the highest remaining chain tier. Excluding one
+  part's contiguous chain and link range lets ordinary wearers use the same tier storage.
+- A borrowed CPU `WornClothPresentation` carries one accepted revision of the subject mesh, material
+  nodes, fixed palette and model. The presentation sweep uses the previous shown nodes and support
+  poses, even between ticks. A refused sweep retains the last accepted snapshot and its revision.
+  At a fixed boundary, the cloth sample uses the newest accepted state. Between ticks it projects
+  the last tick's motion forward to the current presentation time, at most one fixed step, then
+  re-pins and sweeps against the current supports. Display projection remains independent of the
+  live physical solution. A fresh reset or fit starts with zero relative velocity.
 - Overloads of `BoundOutfit.WriteDraws` and `QueueOutline`, and of `BoundAttachmentSet.WriteDraws`, `Queue` and
   `QueueOutline`, that take the motion. A motion made for another outfit or set refuses with a typed reason.
 

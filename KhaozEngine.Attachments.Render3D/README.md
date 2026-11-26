@@ -110,8 +110,7 @@ A barycentric sample needs a nondegenerate posed triangle even when its signed o
 part's rigid hull in body rest-model space and the indices of the corresponding cheap set capsules.
 Compose the hull with the rigid draw's movement from its bind frame. The static part-local transform
 cancels, including non-unit scale. Its contact identity uses the caller's source ID, full
-part ID, feature group and layer. Ordinary bind, draw and outline APIs continue to use the existing
-chain recipe.
+part ID, feature group and layer. The cloth recipe includes a chain fallback for ordinary draw and outline APIs.
 
 GLB preflight propagates `AttachmentGlbContainerDataException`, `AttachmentAccessorDataException`,
 `AttachmentHierarchyDataException`, `AttachmentRigidGeometryDataException` and
@@ -371,7 +370,8 @@ current body pose. Frames with no grid step still update that interpolation. If 
 the joint matrices it reads for anchors and capsules. Each draw validates the matrices it reads.
 Valid steps and draws allocate nothing once warm. Use `MotionLevels.Assign` to select simulated wearers
 by distance and count and pass each level to `Step`. `MotionLevel.Held` blends toward a contact-fitted hang
-for the current pose, with no fixed simulation steps. Repeated poses reuse the fitted target.
+for the current pose. Held chains use fitted geometry at each cloth tick when a selected garment uses cloth.
+Repeated held poses reuse the fitted target.
 When simulation resumes, motion starts from the held shape with zero velocity and the display blends
 toward the live shape. Both switches check contact on the displayed blend. `Reset()` shows the fitted hang
 from the latest accepted pose immediately and resets velocity on the next valid step.
@@ -390,6 +390,39 @@ motion with `DuplicateMotion` and the repeated entry's zero-based index. `Clear(
 retaining storage. Reuse a `WorkerJobScheduler` for allocation-free parallel steps or a
 `SingleThreadedJobScheduler` for inline steps. The caller owns the scheduler and keeps draw submission on its
 render thread.
+
+### One local cloth reservation
+
+Create a caller-owned `WornClothSlot` and call `Prepare(fittedSurface, scale)` at equip time.
+The default scale is 1. A positive uniform model scale must match the prepared scale. The live
+profile uses the wearer's 1/120 s clock and a cap of eight fixed steps per frame. One prewarmed
+slot owns the material solver, transfer history and contact work for one garment.
+
+Pass a `WornClothSelection(slot, wornIndex, partId)` as the final argument to `WornMotion.Step`
+or `WornMotionBatch.Add`. Nominate the designated visible local wearer. Ordinary swing and held
+selection still uses `MotionLevels.Assign`. A caller sharing a slot can use `WornClothWearerChoice.Select`
+for a preferred wearer, incumbent hysteresis and a stable ID tie break. The batch refuses duplicate
+slot claims before any wearer changes pose. The wearer reports its effective tier, handoff progress,
+fallback reason and work through `ClothStatus`.
+
+The selected surface samples body capsules, lower-layer rigid equipment and their detailed hulls
+and the actual opening and closing segments of eligible lower chains. The selected part's cheap
+chains and their links are bypassed during live cloth. Cloth and lower chains use a common,
+world-aligned clock and origin with gravity in world space. A held lower part supplies its fitted
+segment poses. Omitting the request starts an outgoing blend. The next wearer can claim the slot
+after it becomes free. Use `Release()` for a wearer leaving visibility and `Rebind` when the same
+wearer changes outfits. Matching mesh and sidecar hashes transfer material nodes across fitted
+bindings and caches, then rebind pins and clear physical contact history.
+
+`TryGetClothPresentation` on a set, outfit or motion borrows the last admissible CPU sample.
+Read it before the next step, reset, rebind or release. `Surface` identifies the fitted and visible
+material views. `Nodes` are in world-aligned metres relative to `WorldOrigin`. Invert
+`RelativeModel` to get model-space coordinates without losing precision at large translations.
+Use the sample's `GarmentPalette` for fixed vertices and its `Model` for the resulting draw.
+After a refused sweep, `IsCurrentPose` can be false. Keep the entire accepted sample together,
+including its palette and model. Its `DisplayRevision` and `HistoryRevision` identify the accepted
+sample and its continuity with an earlier sample on the same motion. Ordinary draw descriptors
+carry the chain fallback.
 
 When the cache loads a chained set through a shipped `Scene3D` upload lease, it expands the
 chained meshes' rest bounds for culling. Each chain contributes a sphere at its first joint's

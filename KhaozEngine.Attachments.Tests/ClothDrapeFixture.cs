@@ -45,7 +45,7 @@ internal sealed class ClothDrapeFixture
             faces[cell + 1] = new ClothTriangle(node, node + Columns + 1, node + Columns);
         }
 
-        Rig = ClothRig.Create(rest, coordinates, faces, pins, [], ClothDrapeTests.Woven);
+        Rig = ClothRig.Create(rest, coordinates, faces, pins, [], ClothMaterial.HeavyWoven with { HalfThickness = HangingPanelFixture.HalfThickness });
         for (int row = 0; row < HangingPanelCut.Rows; row++)
         for (int column = 0; column < HangingPanelCut.Columns; column++)
         {
@@ -53,6 +53,14 @@ internal sealed class ClothDrapeFixture
             _embedding[vertex] = Embed(row, _cut.Rest[vertex].X, faces);
         }
     }
+
+    internal (int Triangle, Vector3 Weights) DenseBinding(int vertex)
+    {
+        VertexEmbedding embedding = _embedding[vertex];
+        return (Rig.Triangles.IndexOf(embedding.Face), embedding.Weights);
+    }
+
+    internal static int DenseRow(int node) => Rows[node / Columns];
 
     internal void PosePins(in HangingPanelPose pose, Span<Vector3> target)
     {

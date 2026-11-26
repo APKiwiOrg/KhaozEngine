@@ -36,7 +36,7 @@ public sealed partial class AttachmentSetCache
             throw new ClothSurfaceDataException(ClothSurfaceRefusal.AssetDigest, reference.Key, "The cloth sidecar bytes differ from the declared SHA-256.")
             { PartId = request.PartId };
         ClothSurfaceFile file = ClothSurfaceJson.ParseChecked(sidecar, reference.Key, request.PartId, out ClothRig rig);
-        return ClothSurfaceBinding.Read(glb, request.MeshSha256, file, request.Motion.Fallback, rig, reference.Key, request.PartId);
+        return ClothSurfaceBinding.Read(glb, request.MeshSha256, file, request.Motion.Fallback, rig, reference.Key, request.PartId, reference.Sha256);
     }
 
     readonly record struct ClothRequest(int Index, uint PartId, string MeshSha256, ClothMotionDefinition Motion);

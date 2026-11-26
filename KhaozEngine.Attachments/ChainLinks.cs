@@ -70,10 +70,10 @@ internal sealed class ChainLinks
         }
     }
 
-    internal void BeginTier()
+    internal void BeginTier(ChainExclusion excluded)
     {
-        foreach (var first in _firstPass)
-            first.Begin();
+        for (int i = 0; i < _firstPass.Length; i++)
+            if (excluded.Includes(_linkedChains[i])) _firstPass[i].Begin();
     }
 
     internal ChainFirstPassContacts? FirstPass(int chain)
@@ -85,7 +85,7 @@ internal sealed class ChainLinks
         return slot < 0 ? null : _firstPass[slot];
     }
 
-    private void Apply(ChainParticles particles, float seconds)
+    private void Apply(ChainParticles particles, float seconds, ChainExclusion excluded)
     {
         Array.Clear(_moved);
         if (_pairs.Length == 0 || seconds == 0)
@@ -93,10 +93,13 @@ internal sealed class ChainLinks
 
         Array.Clear(_corrections);
         float halfWeight = 0.5f * ChainMath.MidpointSpringWeight(LinkFrequency, seconds);
+        var (firstExcluded, excludedCount) = excluded.ParticleRange(particles.Rig);
         foreach (var pair in _pairs)
         {
             int first = pair.First;
             int second = pair.Second;
+            if ((uint)(first - firstExcluded) < (uint)excludedCount || (uint)(second - firstExcluded) < (uint)excludedCount)
+                continue;
             var rest = particles.RestPositions[second] - particles.RestPositions[first];
             var predicted = particles.Positions[second] - particles.Positions[first];
             var started = particles.SubstepStarts[second] - particles.SubstepStarts[first];
@@ -111,6 +114,7 @@ internal sealed class ChainLinks
         for (int index = 0; index < _linkedChains.Length; index++)
         {
             int chain = _linkedChains[index];
+            if (!excluded.Includes(chain)) continue;
             int root = rig.FirstJoint(chain) + chain;
             int tip = root + rig.Chains[chain].Joints.Count;
             for (int particle = root + 1; particle <= tip; particle++)
@@ -127,13 +131,14 @@ internal sealed class ChainLinks
     }
 
     internal void FinishStep(ChainParticles particles, ReadOnlySpan<Matrix4x4> anchors, ReadOnlySpan<ColliderCapsule> colliders,
-        ReadOnlySpan<ColliderCapsule> previousColliders, ReadOnlySpan<ChainSettings> settings, float seconds)
+        ReadOnlySpan<ColliderCapsule> previousColliders, ReadOnlySpan<ChainSettings> settings, float seconds,
+        ChainExclusion excluded = default)
     {
-        Apply(particles, seconds);
+        Apply(particles, seconds, excluded);
         for (int index = 0; index < _linkedChains.Length; index++)
         {
             int chain = _linkedChains[index];
-            if (!_moved[index] || _boundGroups.Contains(chain))
+            if (!excluded.Includes(chain) || !_moved[index] || _boundGroups.Contains(chain))
                 continue;
 
             int anchor = particles.Rig.Chains[chain].Anchor;
@@ -141,6 +146,6 @@ internal sealed class ChainLinks
                 settings[chain], seconds, pullTowardRest: false, FirstPass(chain));
         }
 
-        _boundGroups.Follow(particles, anchors, colliders, previousColliders, settings, seconds, this);
+        _boundGroups.Follow(particles, anchors, colliders, previousColliders, settings, seconds, this, excluded);
     }
 }

@@ -163,6 +163,10 @@ public sealed class ClothSimulation
     /// <summary>The most recently accepted node positions, or an empty span before reset.</summary>
     public ReadOnlySpan<Vector3> Positions => _initialized ? _accepted : [];
 
+    internal ReadOnlySpan<Vector3> Velocities => _velocities;
+
+    internal bool CanSeed(ReadOnlySpan<Vector3> positions) => AreFinite(positions) && _material.HasMaterialFrames(positions);
+
     /// <summary>Copies the fitted positions and discards prior physical velocity and step duration.</summary>
     public void Reset(ReadOnlySpan<Vector3> fittedPositions)
     {
@@ -244,26 +248,61 @@ public sealed class ClothSimulation
     public ClothStepResult ProjectDisplay(ReadOnlySpan<Vector3> source, Span<Vector3> displayed, in ClothSubstep pose)
     {
         Validate(pose);
-        if (source.Length != _working.Length || displayed.Length != source.Length || !AreFinite(source))
+        return ProjectDisplayCore(source, source, displayed, ClosingOnly(pose), closingOnly: true);
+    }
+
+    /// <summary>Sweeps the last displayed nodes and opening support poses to a new presentation sample.</summary>
+    internal ClothStepResult ProjectDisplay(ReadOnlySpan<Vector3> opening, ReadOnlySpan<Vector3> source,
+        Span<Vector3> displayed, in ClothSubstep pose) => ProjectDisplayCore(opening, source, displayed, pose, closingOnly: false);
+
+    private ClothStepResult ProjectDisplayCore(ReadOnlySpan<Vector3> opening, ReadOnlySpan<Vector3> source,
+        Span<Vector3> displayed, in ClothSubstep pose, bool closingOnly)
+    {
+        Validate(pose);
+        if (opening.Length != _working.Length || source.Length != _working.Length || displayed.Length != source.Length ||
+            !AreFinite(opening) || !AreFinite(source))
             throw new ArgumentException("Display projection needs one finite position and one output slot per node.", nameof(source));
-        source.CopyTo(_displayOpening);
+        opening.CopyTo(_displayOpening);
+        source.CopyTo(_displayWorking);
         for (int i = 0; i < _rig.Pins.Length; i++)
-            _displayOpening[_rig.Pins[i]] = pose.Pins[i];
-        _displayOpening.CopyTo(_displayWorking, 0);
-        ClothSubstep closing = ClosingOnly(pose);
+        {
+            if (closingOnly) _displayOpening[_rig.Pins[i]] = pose.Pins[i];
+            _displayWorking[_rig.Pins[i]] = pose.Pins[i];
+        }
         _contact.Begin();
-        ClothStepStatus status = _contact.Prepare(closing, closingOnly: true);
+        ClothStepStatus status = _contact.Prepare(pose, closingOnly);
         if (status == ClothStepStatus.Accepted)
-            status = _contact.Project(_displayOpening, _displayWorking, closing);
+            status = _contact.Project(_displayOpening, _displayWorking, pose);
         if (status == ClothStepStatus.Accepted)
-            status = CheckTravel(_displayOpening, _displayWorking);
+        {
+            float limitSquared = _limits.MaxNodeTravel * _limits.MaxNodeTravel;
+            for (int node = 0; node < source.Length; node++)
+            {
+                if (!ChainMath.IsFinite(_displayWorking[node]))
+                {
+                    status = ClothStepStatus.NonfiniteState;
+                    break;
+                }
+                if (Vector3.DistanceSquared(closingOnly ? _displayOpening[node] : source[node], _displayWorking[node]) > limitSquared)
+                {
+                    status = ClothStepStatus.NodeTravel;
+                    break;
+                }
+            }
+        }
         if (status == ClothStepStatus.Accepted && !_material.HasMaterialFrames(_displayWorking))
             status = ClothStepStatus.CollapsedMaterial;
         if (status == ClothStepStatus.Accepted)
-            status = _contact.VerifyDisplay(_displayOpening, _displayWorking, closing);
+            status = _contact.VerifyDisplay(_displayOpening, _displayWorking, pose);
         if (status == ClothStepStatus.Accepted)
             _displayWorking.AsSpan().CopyTo(displayed);
         return StepResult(status, 0, 0);
+    }
+
+    internal void Rebase(Vector3 change)
+    {
+        for (int i = 0; i < _accepted.Length; i++)
+            _accepted[i] += change;
     }
 
     private ClothStepStatus CheckFallback(in ClothSubstep step, ReadOnlySpan<Vector3> fitted)

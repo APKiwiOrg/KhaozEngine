@@ -9,7 +9,7 @@ namespace KhaozEngine.Attachments.Render3D;
 /// <summary>Independent chain state for one wearer of a bound set or outfit.</summary>
 /// <remarks>Animate the host and step once per frame. Keep one motion per wearer and use it with the binding that
 /// created it. The motion owns its CPU state and holds no scene resources. Calls on one motion must not overlap.</remarks>
-public sealed class WornMotion
+public sealed partial class WornMotion
 {
     readonly object _bindingIdentity;
     readonly Skeleton _skeleton;
@@ -25,11 +25,15 @@ public sealed class WornMotion
     internal ReadOnlySpan<Matrix4x4> JointsFromAnchor => _simulation.JointsFromAnchor;
 
     internal WornMotion(object bindingIdentity, Skeleton skeleton, Dictionary<uint, WornMotionPart>?[] parts,
-        ChainRig rig, int[] anchorBones, WornCollider[] colliders, ChainSimulationOptions? options)
+        ChainRig rig, int[] anchorBones, WornCollider[] colliders, ChainSimulationOptions? options,
+        Dictionary<uint, WornClothBinding?>?[]? cloth = null)
     {
         _bindingIdentity = bindingIdentity;
         _skeleton = skeleton;
         _parts = parts;
+        _cloth = cloth ?? new Dictionary<uint, WornClothBinding?>?[parts.Length];
+        bool hasCloth = cloth is not null && Array.Exists(cloth, parts => parts is not null);
+        _lastHost = hasCloth ? new Matrix4x4[skeleton.BoneCount] : [];
         _simulation = new ChainSimulation(rig, colliders.Length, options, fitRestContacts: true);
         _anchorBones = anchorBones;
         _colliders = colliders;
@@ -60,32 +64,54 @@ public sealed class WornMotion
     /// the caller's controls on return. Valid steps allocate no managed memory once warm.</remarks>
     public void Step(Skeleton skeleton, ReadOnlySpan<Matrix4x4> palette, in Matrix4x4 model,
         float deltaSeconds, MotionLevel level = MotionLevel.Simulated)
+        => Step(skeleton, palette, model, deltaSeconds, level, null);
+
+    /// <summary>Advance the wearer, with an optional request for the local cloth slot.</summary>
+    public void Step(Skeleton skeleton, ReadOnlySpan<Matrix4x4> palette, in Matrix4x4 model,
+        float deltaSeconds, MotionLevel level, WornClothSelection? cloth)
     {
         using var scope = DeterministicFpScope.Enter();
-        PrepareStep(skeleton, palette, model, deltaSeconds, level);
-        StepPrepared(model, deltaSeconds, level);
+        PrepareStep(skeleton, palette, model, deltaSeconds, level, cloth);
+        StepPrepared(palette, model, deltaSeconds, level, cloth);
     }
 
     // Prepare only unpublished frame scratch so a batch can validate every wearer before advancing any.
     internal void PrepareStep(Skeleton skeleton, ReadOnlySpan<Matrix4x4> palette, in Matrix4x4 model,
-        float deltaSeconds, MotionLevel level)
+        float deltaSeconds, MotionLevel level, WornClothSelection? cloth)
     {
         AttachmentSetBinding.ValidateFrame(_skeleton, skeleton, palette);
         AttachmentSetBinding.ValidateModel(model);
+        Matrix4x4 relative = PrepareClothFrame(skeleton, palette, model, cloth);
         for (int anchor = 0; anchor < _anchorBones.Length; anchor++)
-            _anchorWorlds[anchor] = PoseJoint(_anchorBones[anchor], palette, model);
+            _anchorWorlds[anchor] = PoseJoint(_anchorBones[anchor], palette, relative);
         for (int index = 0; index < _colliders.Length; index++)
         {
             ref readonly WornCollider collider = ref _colliders[index];
-            _colliderWorlds[index] = collider.Pose(PoseJoint(collider.Bone, palette, model));
+            _colliderWorlds[index] = collider.Pose(PoseJoint(collider.Bone, palette, relative));
         }
-        _simulation.PrepareStep(_anchorWorlds, _colliderWorlds, model, deltaSeconds, level);
+        _simulation.PrepareStep(_anchorWorlds, _colliderWorlds, relative, deltaSeconds, level);
     }
 
-    internal void StepPrepared(in Matrix4x4 model, float deltaSeconds, MotionLevel level)
+    internal void StepPrepared(ReadOnlySpan<Matrix4x4> palette, in Matrix4x4 model, float deltaSeconds,
+        MotionLevel level, WornClothSelection? cloth)
     {
-        _simulation.StepPrepared(_anchorWorlds, _colliderWorlds, model, deltaSeconds, level);
+        Matrix4x4 relative = Relative(model, _preparedOrigin);
+        _simulation.Rebase(_origin - _preparedOrigin);
+        _origin = _preparedOrigin;
+        PoseRevision++;
+        if (_simulation.NeedsReset(relative, deltaSeconds))
+            HistoryRevision++;
+        WornClothState? exterior = BeginCloth(palette, relative, model, deltaSeconds, level, cloth);
+        _simulation.StepPrepared(_anchorWorlds, _colliderWorlds, relative, deltaSeconds, level, exterior);
         _useAuthoredRest = false;
+        if (exterior is not null)
+            EndCloth(exterior, palette, relative, model, deltaSeconds, level);
+        if (_lastHost.Length > 0)
+        {
+            palette.CopyTo(_lastHost);
+            _lastModel = model;
+            _hasLastHost = true;
+        }
     }
 
     /// <summary>Show the fitted rest hang from the last accepted pose. Clear velocity on the next valid step.</summary>
@@ -97,6 +123,7 @@ public sealed class WornMotion
             using var scope = DeterministicFpScope.Enter();
             _simulation.ShowResetPose();
         }
+        ResetCloth();
         _simulation.Reset();
     }
 
@@ -115,8 +142,11 @@ public sealed class WornMotion
 
     // Replace only the chain slots of a garment palette. The supplied anchors may be in model or world space.
     internal void CopyChainPalette(int wornIndex, uint partId, ReadOnlySpan<Matrix4x4> palette,
-        Span<Matrix4x4> destination)
+        Span<Matrix4x4> destination, bool useClothFallback = false)
     {
+        if (!useClothFallback && _activeCloth?.State is { Live: true } state &&
+            state.Binding.WornIndex == wornIndex && state.Binding.Surface.PartId == partId)
+            return;
         if (_parts[wornIndex] is not { } parts || !parts.TryGetValue(partId, out WornMotionPart part)) return;
         BoundAttachmentChain[] chains = part.Binding.Chains;
         for (int index = 0; index < chains.Length; index++)
@@ -131,7 +161,7 @@ public sealed class WornMotion
         }
     }
 
-    static Matrix4x4 PoseJoint(int bone, ReadOnlySpan<Matrix4x4> palette, in Matrix4x4 model)
+    internal static Matrix4x4 PoseJoint(int bone, ReadOnlySpan<Matrix4x4> palette, in Matrix4x4 model)
     {
         Matrix4x4 pose = palette[bone];
         Matrix4x4 world = pose * model;

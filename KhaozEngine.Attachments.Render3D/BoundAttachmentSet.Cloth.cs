@@ -1,4 +1,7 @@
+using System;
 using System.Collections.Immutable;
+using System.Numerics;
+using KhaozEngine.Render3D;
 
 namespace KhaozEngine.Attachments.Render3D;
 
@@ -16,6 +19,18 @@ public sealed partial class BoundAttachmentSet
     {
         get { _owner.ThrowIfDisposed(); return _binding.ClothHulls; }
     }
+
+    /// <summary>Borrow the fitted cloth sample from a motion created by this set.</summary>
+    public bool TryGetClothPresentation(WornMotion motion, uint partId, out WornClothPresentation presentation)
+    {
+        _owner.ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(motion);
+        motion.RequireBinding(MotionIdentity);
+        return motion.TryGetClothPresentation(0, partId, out presentation);
+    }
+
+    internal void CopyClothFallbackPalette(Skeleton skeleton, ReadOnlySpan<Matrix4x4> host, uint partId,
+        Span<Matrix4x4> garment) => _binding.CopySkinnedPalette(skeleton, host, partId, garment);
 
     internal BoundClothSurface? PartCloth(int part) => _binding.Cloth(part);
 }

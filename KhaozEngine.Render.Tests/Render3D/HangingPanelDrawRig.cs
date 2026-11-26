@@ -9,7 +9,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Render3D;
 
-internal sealed class HangingPanelDrawRig : IDisposable
+internal sealed partial class HangingPanelDrawRig : IDisposable
 {
     private const int HostJointCount = 2;
     private const int JointsPerGuide = 16;
@@ -50,26 +50,38 @@ internal sealed class HangingPanelDrawRig : IDisposable
         return (rig.Map.Bone("hip"), rig.Map.Bone("knee"), body, regions);
     }
 
-    internal HangingPanelDrawRig(HangingPanelCut cut, in HangingPanelPose bindPose)
+    internal HangingPanelDrawRig(HangingPanelCut cut, in HangingPanelPose bindPose, ClothDrapeFixture? cloth = null)
     {
         (chestBone, supportBone, host, bodyRegions) = CreateHost();
         supportFromBind = Matrix4x4.CreateTranslation(-bindPose.Support.Translation);
         BoundAttachmentSet support = WearSupport(bindPose.Support.Translation);
         var drape = new PanelDrape(HangingPanelFixture.Seam, HangingPanelFixture.PoseAt(0).Support.Translation,
             HangingPanelCut.FittedRadius);
-        (BoundAttachmentSet garmentSet, GarmentMeshDigest, GarmentDefinitionDigest) = WearPanel(cut, drape);
+        (BoundAttachmentSet garmentSet, GarmentMeshDigest, GarmentDefinitionDigest) = WearPanel(cut, drape, cloth);
         outfit = rig.Cache.BindOutfit(bodyRegions, [support, garmentSet]);
         garmentIndex = 1;
-        motion = outfit.CreateMotion(null, new ChainSimulationOptions { Gravity = new Vector3(0, -9.81f, 0) });
+        motion = outfit.CreateMotion(null, new ChainSimulationOptions
+        {
+            Gravity = new Vector3(0, -9.81f, 0),
+            HoldBlendSeconds = cloth is null ? .25f : 0,
+        });
         Assert.Equal(HangingPanelCut.Columns - 1, motion.RigLinksForTests.Count);
         Assert.All(motion.RigLinksForTests, link => Assert.Equal(GuideStretch, link.Stretch));
         Assert.False(ChainSheetContact.DisabledForTests);
 
         SetPose(bindPose);
         AttachmentDraw fitted = Write(garmentIndex, bindPose.Wearer);
-        Assert.True(rig.Scene.IsSkinnedMeshView(fitted.Skinned.Mesh));
-        garment = new DrawPanel(rig.Scene, fitted, cut.Faces);
-        garment.VerifyRestPositions(cut.Fit(drape));
+        garment = new DrawPanel(rig.Scene, fitted, cloth is null ? cut.Faces : null);
+        if (cloth is null)
+        {
+            Assert.True(rig.Scene.IsSkinnedMeshView(fitted.Skinned.Mesh));
+            garment.VerifyRestPositions(cut.Fit(drape));
+        }
+        else
+        {
+            garment.VerifyRestPositions(cut.Fit(drape), allowTrailing: true);
+            InitializeCloth(cloth, cut, garmentSet.ClothSurface(1)!.Materials[0]);
+        }
         hardware = new DrawPanel(rig.Scene, Write(0, bindPose.Wearer));
     }
 
@@ -100,13 +112,16 @@ internal sealed class HangingPanelDrawRig : IDisposable
         SetPose(pose);
         motion?.Step(rig.Skeleton, palette, pose.Wearer, seconds, level);
         garment.Read(Write(garmentIndex, pose.Wearer));
-        if (hardware is { } lip)
-        {
-            lip.Read(Write(0, pose.Wearer));
-            // The middle, outboard generator is a fixed vertex in the hardware draw.
-            Assert.InRange(Vector3.Distance(lip.Positions[SupportRingSize], pose.MarkerInModel), 0, .000001f);
-        }
+        VerifySupportPose(pose);
         return new PresentedPanel(garment.Positions, garment.Faces, cut is null ? default : cut.MaterialTriangles, cut?.Probes);
+    }
+
+    private void VerifySupportPose(in HangingPanelPose pose)
+    {
+        if (hardware is not { } lip) return;
+        lip.Read(Write(0, pose.Wearer));
+        // The middle, outboard generator is a fixed vertex in the hardware draw.
+        Assert.InRange(Vector3.Distance(lip.Positions[SupportRingSize], pose.MarkerInModel), 0, .000001f);
     }
 
     private void SetPose(in HangingPanelPose pose)
@@ -124,10 +139,13 @@ internal sealed class HangingPanelDrawRig : IDisposable
         return draws[0];
     }
 
-    private (BoundAttachmentSet Set, string MeshDigest, string DefinitionDigest) WearPanel(HangingPanelCut cut, PanelDrape drape)
+    private (BoundAttachmentSet Set, string MeshDigest, string DefinitionDigest) WearPanel(HangingPanelCut cut, PanelDrape drape, ClothDrapeFixture? cloth)
     {
         SkinnedAttachmentGlbFixture glb = HostGlb(HostJointCount + HangingPanelCut.Columns * JointsPerGuide);
         ChainMotionDefinition chainMotion = WriteGuides(glb, drape);
+        if (cloth is not null)
+            return WearClothPanel(glb, cut, drape, chainMotion, cloth);
+
         Vector3[] sourcePositions = cut.Fit(drape);
         var liftDirections = new Vector3[sourcePositions.Length];
         var liftBearings = new float[sourcePositions.Length];
@@ -288,6 +306,7 @@ internal sealed class HangingPanelDrawRig : IDisposable
 
         internal Vector3[] Positions { get; }
         internal PanelTriangle[] Faces { get; }
+        internal SkinnedGltfMesh SourceMesh => mesh;
 
         internal DrawPanel(Scene3D scene, AttachmentDraw draw, PanelTriangle[]? reference = null)
         {
@@ -299,9 +318,9 @@ internal sealed class HangingPanelDrawRig : IDisposable
             Faces = reference is null ? [] : ReadFaces(mesh.Indices32, reference);
         }
 
-        internal void VerifyRestPositions(Vector3[] expected)
+        internal void VerifyRestPositions(Vector3[] expected, bool allowTrailing = false)
         {
-            Assert.Equal(expected.Length, mesh.Vertices.Length);
+            Assert.Equal(expected.Length, allowTrailing ? Math.Min(expected.Length, mesh.Vertices.Length) : mesh.Vertices.Length);
             for (int i = 0; i < expected.Length; i++)
                 Assert.InRange(Vector3.Distance(expected[i], mesh.Vertices[i].Position), 0, .000001f);
         }

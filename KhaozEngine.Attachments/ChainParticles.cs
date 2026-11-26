@@ -123,6 +123,24 @@ internal sealed class ChainParticles
         Array.Clear(Velocities);
     }
 
+    internal void SeedRange(ReadOnlySpan<ChainPose> anchors, ReadOnlySpan<Matrix4x4> frames,
+        int firstChain, int chainCount)
+    {
+        for (int chain = firstChain; chain < firstChain + chainCount; chain++)
+        {
+            PlaceChain(anchors, frames, chain);
+            Array.Clear(Velocities, Rig.FirstJoint(chain) + chain, Rig.Chains[chain].Joints.Count + 1);
+        }
+    }
+
+    internal void Rebase(Vector3 change)
+    {
+        for (int i = 0; i < Positions.Length; i++)
+            Positions[i] += change;
+        for (int i = 0; i < JointWorlds.Length; i++)
+            JointWorlds[i].Translation += change;
+    }
+
     internal Vector3[] ExchangePositions(Vector3[] positions)
     {
         var previous = Positions;
@@ -133,19 +151,22 @@ internal sealed class ChainParticles
     internal void PlaceFromShown(ReadOnlySpan<ChainPose> anchors, ReadOnlySpan<Matrix4x4> frames)
     {
         for (int chain = 0; chain < Rig.Chains.Count; chain++)
+            PlaceChain(anchors, frames, chain);
+    }
+
+    private void PlaceChain(ReadOnlySpan<ChainPose> anchors, ReadOnlySpan<Matrix4x4> frames, int chain)
+    {
+        var definition = Rig.Chains[chain];
+        var anchor = anchors[definition.Anchor].Matrix;
+        var parent = anchor;
+        int first = Rig.FirstJoint(chain);
+        int end = first + definition.Joints.Count;
+        for (int joint = first; joint < end; joint++)
         {
-            var definition = Rig.Chains[chain];
-            var anchor = anchors[definition.Anchor].Matrix;
-            var parent = anchor;
-            int first = Rig.FirstJoint(chain);
-            int end = first + definition.Joints.Count;
-            for (int joint = first; joint < end; joint++)
-            {
-                parent = frames[joint] * anchor;
-                Positions[joint + chain] = parent.Translation;
-            }
-            Positions[end + chain] = Vector3.Transform(definition.Tip, parent);
+            parent = frames[joint] * anchor;
+            Positions[joint + chain] = parent.Translation;
         }
+        Positions[end + chain] = Vector3.Transform(definition.Tip, parent);
     }
 
     internal void RememberAnchorRotations() =>

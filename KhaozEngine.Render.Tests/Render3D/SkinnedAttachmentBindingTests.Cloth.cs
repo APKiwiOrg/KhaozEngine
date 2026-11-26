@@ -12,7 +12,7 @@ namespace KhaozEngine.Tests.Render3D;
 
 public sealed partial class SkinnedAttachmentBindingTests
 {
-    const uint ClothPartId = uint.MaxValue;
+    internal const uint ClothPartId = uint.MaxValue;
     const string ClothKey = "coat.kecs";
     const float SkinOffset = .015625f;
 
@@ -282,7 +282,7 @@ public sealed partial class SkinnedAttachmentBindingTests
         return new AttachmentSetDefinition([part], AttachmentLayer.Armour, []);
     }
 
-    static (AttachmentSetDefinition Set, byte[] Bytes) ClothAsset(OutfitRig rig, bool wrongMesh = false, bool collapsible = false, bool zeroOffsetSamples = false, bool sharedAnchor = false)
+    internal static (AttachmentSetDefinition Set, byte[] Bytes) ClothAsset(OutfitRig rig, bool wrongMesh = false, bool collapsible = false, bool zeroOffsetSamples = false, bool sharedAnchor = false)
     {
         SkinnedAttachmentGlbFixture glb = SkinnedAttachmentGlbFixture.Chained();
         glb.SetIndexedMaterialParts([0, 1, 2], 3);

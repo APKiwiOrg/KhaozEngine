@@ -14,14 +14,20 @@ internal sealed class ChainStepPresentation(ChainRig rig, ChainPresentationHiera
         _current.CopyFrom(shown);
     }
 
-    internal void Capture(ChainParticles particles, ReadOnlySpan<Matrix4x4> anchorWorlds, ReadOnlySpan<Matrix4x4> anchorInverses)
+    internal void SeedJoints(ChainPresentationFrame source, Range joints)
+    {
+        _previous.CopyJoints(source, joints);
+        _current.CopyJoints(source, joints);
+    }
+
+    internal void Capture(ChainParticles particles, ReadOnlySpan<Matrix4x4> anchorWorlds, ReadOnlySpan<Matrix4x4> anchorInverses, ChainExclusion excluded)
     {
         (_previous, _current) = (_current, _previous);
         for (int anchor = 0; anchor < anchorInverses.Length; anchor++)
             _current.Anchors[anchor] = new ChainPresentationAnchor(anchorWorlds[anchor], anchorInverses[anchor],
                 particles.StepAnchorRotations[anchor]);
 
-        _current.CaptureJoints(particles);
+        _current.CaptureJoints(particles, excluded);
     }
 
     internal void Show(float amount, ReadOnlySpan<ChainPose> anchors, ReadOnlySpan<ChainPresentationAnchor> frame,

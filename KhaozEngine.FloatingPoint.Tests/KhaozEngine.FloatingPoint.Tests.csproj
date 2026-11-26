@@ -51,5 +51,6 @@
     <Compile Include="../KhaozEngine.TileWorld.Physics.Tests/DefaultFloatingPointEnvironmentGuardTests.cs" Link="DefaultFloatingPointEnvironmentGuardTests.cs" />
     <Compile Include="../KhaozEngine.Game.Tests/AllocSensitiveCollection.cs" Link="Fixtures/AllocSensitiveCollection.cs" />
     <Compile Include="../KhaozEngine.Game.Tests/Physics/SupportProposalAdmissionTests.Shared.cs" Link="Physics/SupportProposalAdmissionTests.Shared.cs" />
+    <Compile Include="../test-shared/SkinnedAttachmentGlbFixture.cs" Link="Fixtures/SkinnedAttachmentGlbFixture.cs" />
   </ItemGroup>
 </Project>

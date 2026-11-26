@@ -61,6 +61,55 @@ public sealed class WornMotionFloatingPointTests
         AssertBits(direct.JointsFromAnchor, batched.JointsFromAnchor);
     }
 
+    [Fact]
+    public void Cloth_direct_and_batched_match_at_non_tick_poses_under_changed_rounding()
+    {
+        if (!DeterministicFp.IsSupported) return;
+        using var fixture = new WornClothFloatingPointFixture();
+        var direct = fixture.Set.CreateMotion(null);
+        var batched = fixture.Set.CreateMotion(null);
+        var directSlot = new WornClothSlot();
+        var batchSlot = new WornClothSlot();
+        directSlot.Prepare(fixture.Set.ClothSurface(1)!);
+        batchSlot.Prepare(fixture.Set.ClothSurface(1)!);
+        var batch = new WornMotionBatch(new TowardZeroScheduler());
+        var clean = fixture.Host.ComposeRestPose();
+        var pose = (Matrix4x4[])clean.Clone();
+        var identity = Matrix4x4.Identity;
+        var delta = 1f / 144;
+        var directSelection = new WornClothSelection(directSlot, 0, 1);
+        var batchSelection = new WornClothSelection(batchSlot, 0, 1);
+        bool solved = false;
+        for (int frame = 0; frame < 12; frame++)
+        {
+            pose[0].M43 = frame * .0003f;
+            batch.Add(batched, fixture.Host, pose, identity, delta, MotionLevel.Simulated, batchSelection);
+            int afterDirect;
+            int afterBatch;
+            try
+            {
+                FpRounding.SetTowardZero();
+                direct.Step(fixture.Host, pose, identity, delta, MotionLevel.Simulated, directSelection);
+                afterDirect = FpRounding.Get();
+                batch.Step();
+                afterBatch = FpRounding.Get();
+            }
+            finally
+            {
+                FpRounding.SetToNearest();
+            }
+            batch.Clear();
+            Assert.Equal(FpRounding.TowardZero, afterDirect);
+            Assert.Equal(FpRounding.TowardZero, afterBatch);
+            Assert.Equal(direct.ClothStatus, batched.ClothStatus);
+            Assert.True(direct.TryGetClothPresentation(0, 1, out var expected));
+            Assert.True(batched.TryGetClothPresentation(0, 1, out var actual));
+            Assert.True(MemoryMarshal.AsBytes(expected.Nodes).SequenceEqual(MemoryMarshal.AsBytes(actual.Nodes)));
+            solved |= direct.ClothStatus.Substeps > 0 && direct.ClothStatus.Solve.Status == ClothStepStatus.Accepted;
+        }
+        Assert.True(solved);
+    }
+
     private static void AssertBits(ReadOnlySpan<Matrix4x4> expected, ReadOnlySpan<Matrix4x4> actual)
     {
         Assert.Equal(expected.Length, actual.Length);

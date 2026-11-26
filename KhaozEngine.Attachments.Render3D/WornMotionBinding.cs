@@ -12,7 +12,7 @@ internal static class WornMotionBinding
 
     internal static WornMotion Create(object bindingIdentity, Skeleton skeleton, BoundAttachmentSet? hostBinding,
         IReadOnlyList<BoundAttachmentSet> worn, OutfitDraw[][]? draws, LoadedBodyColliders? body, string? bodyRigIdentity,
-        ChainSimulationOptions? options)
+        ChainSimulationOptions? options, BoundOutfit? outfit = null)
     {
         for (int index = 0; index < worn.Count; index++)
         {
@@ -58,7 +58,8 @@ internal static class WornMotionBinding
         }
 
         var rig = new ChainRig(anchorBones.Count, chains, links);
-        var wornMotion = new WornMotion(bindingIdentity, skeleton, parts, rig, anchorBones.ToArray(), colliders, options);
+        var cloth = WornClothBinding.Create(worn, parts, outfit, rig, colliders, bodySet?.Colliders.Count ?? 0);
+        var wornMotion = new WornMotion(bindingIdentity, skeleton, parts, rig, anchorBones.ToArray(), colliders, options, cloth);
         if (hostBinding is not null)
             wornMotion.InitializeRest(hostBinding.HostRestPose);
         return wornMotion;

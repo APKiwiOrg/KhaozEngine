@@ -15,6 +15,7 @@ internal sealed class ChainRestPlacement(ChainParticles particles, ChainSolveTie
     private readonly ChainSettings[] _shownSettings = new ChainSettings[tiers.ObstacleCount > colliderCount
         ? particles.Rig.Chains.Count : 0];
     private bool _fitValid;
+    private ChainExclusion _fitExclusion;
 
     internal ChainPresentationFrame Fit { get; } = new(particles.Rig);
 
@@ -32,9 +33,10 @@ internal sealed class ChainRestPlacement(ChainParticles particles, ChainSolveTie
     internal bool UpdateFit(ReadOnlySpan<Matrix4x4> anchors, ReadOnlySpan<ChainPose> poses,
         ReadOnlySpan<ChainPresentationAnchor> frame, ReadOnlySpan<ColliderCapsule> colliders,
         ReadOnlySpan<ChainSettings> settings, ReadOnlySpan<ChainPose> openingPoses = default,
-        ReadOnlySpan<Matrix4x4> openingFrames = default, ReadOnlySpan<ColliderCapsule> previousColliders = default)
+        ReadOnlySpan<Matrix4x4> openingFrames = default, ReadOnlySpan<ColliderCapsule> previousColliders = default,
+        ChainExclusion excluded = default)
     {
-        if (_fitValid && anchors.SequenceEqual(_fitAnchors) && colliders.SequenceEqual(_fitColliders))
+        if (_fitValid && _fitExclusion == excluded && anchors.SequenceEqual(_fitAnchors) && colliders.SequenceEqual(_fitColliders))
             return false;
 
         Fit.SetRest(frame);
@@ -42,9 +44,10 @@ internal sealed class ChainRestPlacement(ChainParticles particles, ChainSolveTie
         bool hasOpening = !openingFrames.IsEmpty;
         Place(anchors, poses, frame, colliders, hasOpening ? previousColliders : colliders, settings,
             hasOpening ? OpeningSettings(settings) : settings, Fit, hasOpening ? openingPoses : poses,
-            hasOpening ? openingFrames : Fit.Frames);
+            hasOpening ? openingFrames : Fit.Frames, excluded);
         anchors.CopyTo(_fitAnchors);
         colliders.CopyTo(_fitColliders);
+        _fitExclusion = excluded;
         _fitValid = true;
         return true;
     }
@@ -54,15 +57,15 @@ internal sealed class ChainRestPlacement(ChainParticles particles, ChainSolveTie
     internal void ProjectBlend(ReadOnlySpan<Matrix4x4> anchors, ReadOnlySpan<ChainPose> poses,
         ReadOnlySpan<ChainPresentationAnchor> frame, ReadOnlySpan<ColliderCapsule> colliders,
         ReadOnlySpan<ColliderCapsule> previousColliders, ReadOnlySpan<ChainSettings> settings,
-        ChainPresentationFrame shown, ReadOnlySpan<ChainPose> previousPoses) =>
+        ChainPresentationFrame shown, ReadOnlySpan<ChainPose> previousPoses, ChainExclusion excluded) =>
         Place(anchors, poses, frame, colliders, previousColliders, settings, OpeningSettings(settings),
-            shown, previousPoses, _openingFrames);
+            shown, previousPoses, _openingFrames, excluded);
 
     private void Place(ReadOnlySpan<Matrix4x4> anchors, ReadOnlySpan<ChainPose> poses,
         ReadOnlySpan<ChainPresentationAnchor> frame, ReadOnlySpan<ColliderCapsule> colliders,
         ReadOnlySpan<ColliderCapsule> previousColliders, ReadOnlySpan<ChainSettings> settings,
         ReadOnlySpan<ChainSettings> openingSettings, ChainPresentationFrame shown,
-        ReadOnlySpan<ChainPose> openingPoses, ReadOnlySpan<Matrix4x4> openingFrames)
+        ReadOnlySpan<ChainPose> openingPoses, ReadOnlySpan<Matrix4x4> openingFrames, ChainExclusion excluded)
     {
         var live = particles.ExchangePositions(_positions);
         try
@@ -75,11 +78,11 @@ internal sealed class ChainRestPlacement(ChainParticles particles, ChainSolveTie
             previousColliders.CopyTo(_openingObstacles);
             for (int i = 0; i < colliders.Length; i++)
                 particles.SetCapsuleGeometry(i, colliders[i], previousColliders[i]);
-            tiers.SeedOpeningRadii(particles.Rig, _openingObstacles, openingSettings);
+            tiers.SeedOpeningRadii(particles.Rig, _openingObstacles, openingSettings, excluded);
             tiers.Solve(particles, anchors, _obstacles, _openingObstacles, settings, Vector3.Zero, 0,
-                Vector3.Zero, Vector3.Zero, Quaternion.Identity);
+                Vector3.Zero, Vector3.Zero, Quaternion.Identity, excluded);
             frame.CopyTo(shown.Anchors);
-            shown.CaptureJoints(particles);
+            shown.CaptureJoints(particles, excluded);
         }
         finally
         {

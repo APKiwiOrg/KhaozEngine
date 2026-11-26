@@ -30,4 +30,7 @@ public sealed class AttachmentSubmissionArgumentException : ArgumentException
 
     /// <summary>The zero-based index of the repeated motion in a batch, when applicable.</summary>
     public int? EntryIndex { get; init; }
+
+    public int? WornIndex { get; init; }
+    public uint? PartId { get; init; }
 }

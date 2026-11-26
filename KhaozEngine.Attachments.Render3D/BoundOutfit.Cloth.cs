@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 
@@ -13,6 +14,16 @@ public sealed partial class BoundOutfit
         ThrowIfDisposed();
         CheckWornIndex(wornIndex);
         return _cloth?[wornIndex]?.GetValueOrDefault(partId);
+    }
+
+    /// <summary>Borrow the fitted cloth sample from a motion created by this outfit.</summary>
+    public bool TryGetClothPresentation(int wornIndex, WornMotion motion, uint partId, out WornClothPresentation presentation)
+    {
+        ThrowIfDisposed();
+        CheckWornIndex(wornIndex);
+        ArgumentNullException.ThrowIfNull(motion);
+        motion.RequireBinding(MotionIdentity);
+        return motion.TryGetClothPresentation(wornIndex, partId, out presentation);
     }
 
     /// <summary>Get the selected set's detailed contact hulls, including supports under a covered region.</summary>

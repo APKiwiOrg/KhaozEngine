@@ -67,7 +67,7 @@ public sealed partial class BoundOutfit : IDisposable
                 break;
             }
         return WornMotionBinding.Create(MotionIdentity, skeleton, hostBinding, _worn, _draws,
-            bodyColliders, _bodyRigIdentity, options);
+            bodyColliders, _bodyRigIdentity, options, this);
     }
 
     /// <summary>The number of body material parts, the region map's part count.</summary>

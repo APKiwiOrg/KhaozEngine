@@ -172,7 +172,6 @@ internal readonly struct ClothCapsuleSweep(ClothFacet first, ClothFacet last, Cl
     internal static float CurvatureOf(in ClothSupport opening, in ClothSupport closing)
     {
         float angle = ClothContactSweep.Angle(opening.Rotation, closing.Rotation);
-        float reach = MathF.Max(opening.LocalCapsule.Start.Length(), opening.LocalCapsule.End.Length());
-        return reach * angle * angle;
+        return opening.CurvedCapsuleReach(closing, angle);
     }
 }

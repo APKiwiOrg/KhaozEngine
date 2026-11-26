@@ -97,7 +97,7 @@ internal sealed class ChainBoundGroups
 
     internal void Follow(ChainParticles particles, ReadOnlySpan<Matrix4x4> anchors,
         ReadOnlySpan<ColliderCapsule> colliders, ReadOnlySpan<ColliderCapsule> previousColliders,
-        ReadOnlySpan<ChainSettings> settings, float seconds, ChainLinks links)
+        ReadOnlySpan<ChainSettings> settings, float seconds, ChainLinks links, ChainExclusion excluded)
     {
         if (_groups.Length == 0)
             return;
@@ -109,6 +109,7 @@ internal sealed class ChainBoundGroups
         var counts = ChainContactCounts.Active;
         foreach (var group in _groups)
         {
+            if (!excluded.Includes(group.Chains[0])) continue;
             // Chains within a group need separate indices. The next group reuses these rows.
             for (int row = 0; row < group.Chains.Length; row++)
             {
@@ -153,7 +154,7 @@ internal sealed class ChainBoundGroups
             ReapplyLimits(particles, chains, colliders, settings, depth, reuseBend);
         }
 
-        bool sheetActive = width is not null && sheet is not null && !ChainSheetContact.DisabledForTests;
+        bool sheetActive = width is not null && sheet is not null && !colliders.IsEmpty && !ChainSheetContact.DisabledForTests;
         if (sheetActive)
             SolveSheetPositions(sheet!, width!, particles, chains, colliders, settings, depth, reuseBend, nearSolids);
 

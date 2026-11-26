@@ -23,7 +23,13 @@ internal sealed class ChainPresentationFrame(ChainRig rig)
         source.Anchors.CopyTo(Anchors, 0);
     }
 
-    internal void CaptureJoints(ChainParticles particles)
+    internal void CopyJoints(ChainPresentationFrame source, Range joints)
+    {
+        source.Frames.AsSpan()[joints].CopyTo(Frames.AsSpan()[joints]);
+        source.Swings.AsSpan()[joints].CopyTo(Swings.AsSpan()[joints]);
+    }
+
+    internal void CaptureJoints(ChainParticles particles, ChainExclusion excluded = default)
     {
         var worlds = particles.JointWorlds;
         for (int chain = 0; chain < rig.Chains.Count; chain++)
@@ -31,6 +37,12 @@ internal sealed class ChainPresentationFrame(ChainRig rig)
             var definition = rig.Chains[chain];
             int first = rig.FirstJoint(chain);
             int end = first + definition.Joints.Count;
+            if (!excluded.Includes(chain))
+            {
+                rig.RestFromAnchor.Slice(first, end - first).CopyTo(Frames.AsSpan(first));
+                Swings.AsSpan(first, end - first).Fill(Quaternion.Identity);
+                continue;
+            }
             var inverse = Anchors[definition.Anchor].Inverse;
             var root = worlds[first] * inverse;
             // Inverse composition can round the offset, but the root stays pinned to its anchor.
@@ -38,7 +50,7 @@ internal sealed class ChainPresentationFrame(ChainRig rig)
             Frames[first] = root;
             for (int joint = first + 1; joint < end; joint++)
                 Frames[joint] = worlds[joint] * inverse;
+            particles.JointSwings.AsSpan(first, end - first).CopyTo(Swings.AsSpan(first));
         }
-        particles.JointSwings.CopyTo(Swings, 0);
     }
 }

@@ -7916,10 +7916,28 @@ checks the exact sidecar digest and excludes both cloth movement and chain fallb
 
 Load and bind the set normally. `bound.ClothSurface(partId)` gives the checked material rig, fitted
 nodes and source sampling data. `outfit.ClothSurface(wornIndex, partId)` incorporates the outfit's
-lift and filtering and exists only while the cloth draws a moving triangle. The current set and
-outfit submission calls select the chain fallback. See the
+lift and filtering and exists only while the cloth draws a moving triangle. Prewarm one
+`WornClothSlot` for that fitted surface at equip time. Pass a `WornClothSelection` to `Step` or
+`Add` for the one visible wearer with cloth. Use the usual swing or held level for the wearer's
+remaining parts and the rest of the crowd.
+
+```csharp
+var localCloth = new WornClothSlot();
+localCloth.Prepare(outfit.ClothSurface(wornIndex, partId)!);
+var selection = new WornClothSelection(localCloth, wornIndex, partId);
+motion.Step(skeleton, hostPalette, model, deltaSeconds, MotionLevel.Simulated, selection);
+
+if (outfit.TryGetClothPresentation(wornIndex, motion, partId, out var cloth))
+{
+    // Consume cloth.Nodes with cloth.RelativeModel, cloth.GarmentPalette and cloth.Surface.
+}
+```
+
+Borrow the CPU snapshot only until the wearer or slot changes. Keep the accepted nodes, garment
+palette and model together. Use `ClothStatus` to distinguish a handoff from a refused request.
+Standard set and outfit scene submissions use the chain fallback. See the
 [format 8 reference](../KhaozEngine.Attachments/README.md#format-8) and the
-[binding reference](../KhaozEngine.Attachments.Render3D/README.md).
+[wearer reservation contract](../KhaozEngine.Attachments.Render3D/README.md#one-local-cloth-reservation).
 
 ### Worn parts over lower layers
 

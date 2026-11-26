@@ -46,6 +46,16 @@ public readonly struct ClothSupport
 
     internal ColliderCapsule WorldCapsule =>
         new(ToWorld(LocalCapsule.Start), ToWorld(LocalCapsule.End), LocalCapsule.Radius);
+    internal ColliderCapsule CapsuleAt(in ClothSupport target, float time)
+    {
+        if (time == 0) return WorldCapsule;
+        if (time == 1) return target.WorldCapsule;
+        Quaternion rotation = Quaternion.Slerp(Rotation, target.Rotation, time);
+        Vector3 translation = Vector3.Lerp(Translation, target.Translation, time);
+        return new ColliderCapsule(Vector3.Transform(LocalCapsule.Start, rotation) + translation,
+            Vector3.Transform(LocalCapsule.End, rotation) + translation, LocalCapsule.Radius);
+    }
+
     internal Vector3 PlaneNormal => Vector3.Transform(LocalPlaneNormal, Rotation);
 
     internal bool Matches(in ClothSupport other) =>

@@ -22,6 +22,7 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
     internal int Checks { get; private set; }
     internal int VelocityContacts => _normalVelocity.Count;
     internal int VelocityChecks => _normalVelocity.Checks;
+    internal int SweepRefinements { get; private set; }
 
     internal void Begin()
     {
@@ -30,6 +31,7 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
         _normalVelocity.Begin();
         Candidates = 0;
         Checks = 0;
+        SweepRefinements = 0;
     }
 
     internal ClothStepStatus Project(Vector3[] opening, Vector3[] positions, in ClothSubstep step) =>
@@ -101,14 +103,16 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
         var lastAxis = new Axis(now);
         float extent = now.Radius + rig.Material.HalfThickness + ContactMargin;
         float reach = verify ? extent + VelocityTouchRoundoff : extent;
-        Vector3 min = Vector3.Min(Vector3.Min(before.Start, before.End), Vector3.Min(now.Start, now.End)) - new Vector3(reach);
-        Vector3 max = Vector3.Max(Vector3.Max(before.Start, before.End), Vector3.Max(now.Start, now.End)) + new Vector3(reach);
+        var supportBounds = new ClothCapsuleSweep(default, default, first, last).Bounds
+            .Expand(reach - now.Radius);
         ReadOnlySpan<ClothTriangle> faces = rig.Triangles;
         for (int i = 0; i < faces.Length; i++)
         {
             ClothTriangle face = faces[i];
             ref ContactLoad load = ref _loads[offset + i];
-            if (!Overlaps(face, opening, positions, min, max))
+            var previousFacet = new ClothFacet(face, opening);
+            var currentFacet = new ClothFacet(face, positions);
+            if (!ClothBounds.Enclose(previousFacet.Bounds, currentFacet.Bounds).Overlaps(supportBounds))
             {
                 load.Expire();
                 continue;
@@ -122,8 +126,26 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
             Offset openingResidual = firstTriangle.MaterialResidual(firstAxis, hit);
             float distance = (float)Math.Sqrt(hit.Residual.LengthSquared);
             bool crossed = Offset.Dot(openingResidual, hit.Residual) < 0;
-            // Follow the opening exterior when the same material witness crossed the axis.
-            // Verification refuses even a separated closing state reached through that axis.
+            // Keep the opening exterior even on a path whose two sampled ends are clear.
+            float required = rig.Material.HalfThickness - SolveTolerance;
+            if (distance >= now.Radius + required)
+            {
+                var pair = new ClothCapsuleSweep(previousFacet, currentFacet, first, last);
+                ClothStepStatus swept = ClothContactSweep.Check(pair, required, limits.MaxSweepRefinements,
+                    out int refinements, out Vector3 side);
+                SweepRefinements += refinements;
+                if (swept == ClothStepStatus.UnresolvedContact && !verify && side != Vector3.Zero)
+                {
+                    float target = ClothContactSweep.ClosingTarget(pair, side, rig.Material.HalfThickness + ContactMargin);
+                    float surface = currentFacet.MinProjection(side) - pair.Gap(1, side);
+                    if (!ProjectSweepPlane(face, positions, side, surface + target)) return swept;
+                    load.Expire();
+                    continue;
+                }
+                if (swept != ClothStepStatus.Accepted) return swept;
+                crossed = false;
+            }
+
             if (verify)
             {
                 if (crossed || distance == 0 || distance < now.Radius + rig.Material.HalfThickness - SolveTolerance)
@@ -238,14 +260,20 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
         return true;
     }
 
-    private static bool Overlaps(ClothTriangle face, Vector3[] first, Vector3[] last, Vector3 min, Vector3 max)
+    private bool ProjectSweepPlane(ClothTriangle face, Vector3[] positions, Vector3 normal, float minimum)
     {
-        Vector3 low = Vector3.Min(Vector3.Min(first[face.A], first[face.B]), first[face.C]);
-        low = Vector3.Min(low, Vector3.Min(Vector3.Min(last[face.A], last[face.B]), last[face.C]));
-        Vector3 high = Vector3.Max(Vector3.Max(first[face.A], first[face.B]), first[face.C]);
-        high = Vector3.Max(high, Vector3.Max(Vector3.Max(last[face.A], last[face.B]), last[face.C]));
-        return low.X <= max.X && low.Y <= max.Y && low.Z <= max.Z &&
-            high.X >= min.X && high.Y >= min.Y && high.Z >= min.Z;
+        return ProjectNode(face.A) && ProjectNode(face.B) && ProjectNode(face.C);
+
+        bool ProjectNode(int node)
+        {
+            float correction = minimum - Vector3.Dot(positions[node], normal);
+            if (correction <= 0) return true;
+            if (rig.InverseMasses[node] == 0) return false;
+            Vector3 change = correction * normal;
+            positions[node] += change;
+            _positionBias[node] += change;
+            return true;
+        }
     }
 
     private readonly record struct ContactPoint(ClothTriangle Face, Vector3 Weights, int Feature, Vector3 Normal,

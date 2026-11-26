@@ -642,7 +642,9 @@ support count, unique contact pairs, narrow-phase witnesses and total per-step m
 the closing world-space pins in rig order, matching opening and closing rigid support poses,
 step seconds and world gravity. `ClothSupport.Capsule` takes a capsule in support-local metres.
 `ClothSupport.Plane` uses the exterior half-space of a local plane. The support rotation participates
-in the surface-relative friction calculation.
+in surface-relative friction and in the swept capsule bounds. The capsule sweep checks the full
+triangle, including its edges, against the moving axis and radius. It certifies clearance over
+every interval or reports `SweepWork` when it exhausts `MaxSweepRefinements`.
 
 Read `Positions` after an accepted step. `ClothStepResult` reports refusals and attempted work.
 A refused step preserves the previous accepted position and velocity. Reset requires nondegenerate

@@ -7,6 +7,9 @@ namespace KhaozEngine.Attachments;
 public readonly record struct ClothWorkLimits(int Iterations, int MaxSupports, int MaxContactCandidates,
     int MaxContactChecks, float MaxNodeTravel = .025f, long MaxMaterialFactorProducts = 1_000_000)
 {
+    /// <summary>Maximum interior sweep samples for one narrow-phase attempt.</summary>
+    public int MaxSweepRefinements { get; init; } = ClothContactSweep.RefinementLimit;
+
     internal const int NormalVelocityCheckLimit = 16_384;
 
     /// <summary>Maximum normal impulse and complementarity evaluations per substep.</summary>
@@ -34,6 +37,7 @@ public enum ClothStepStatus
     NonfiniteState,
     CollapsedMaterial,
     NormalVelocityWork,
+    SweepWork,
 }
 
 /// <summary>Outcome and attempted work. Factor products bound the work across attempted factorizations.
@@ -46,6 +50,9 @@ public readonly record struct ClothStepResult(ClothStepStatus Status, int Iterat
 
     /// <summary>Attempted normal impulse and complementarity evaluations.</summary>
     public int NormalVelocityChecks { get; init; }
+
+    /// <summary>Interior sweep samples across all attempted contacts.</summary>
+    public int SweepRefinements { get; init; }
 }
 
 /// <summary>GPU-free fixed-step cloth state over a shared material rig.</summary>
@@ -68,7 +75,7 @@ public sealed class ClothSimulation
         ArgumentNullException.ThrowIfNull(rig);
         if (limits.Iterations <= 0 || limits.MaxSupports < 0 || limits.MaxContactCandidates < 0 ||
             limits.MaxContactChecks < 0 || limits.MaxNormalVelocityChecks is < 0 or > ClothWorkLimits.NormalVelocityCheckLimit ||
-            limits.MaxMaterialFactorProducts < 0 || !float.IsFinite(limits.MaxNodeTravel) || limits.MaxNodeTravel <= 0)
+            limits.MaxSweepRefinements is < 0 or > ClothContactSweep.RefinementLimit || limits.MaxMaterialFactorProducts < 0 || !float.IsFinite(limits.MaxNodeTravel) || limits.MaxNodeTravel <= 0)
             throw new ArgumentOutOfRangeException(nameof(limits));
 
         _rig = rig;
@@ -153,6 +160,7 @@ public sealed class ClothSimulation
         {
             NormalVelocityContacts = _contact.VelocityContacts,
             NormalVelocityChecks = _contact.VelocityChecks,
+            SweepRefinements = _contact.SweepRefinements,
         };
     }
 

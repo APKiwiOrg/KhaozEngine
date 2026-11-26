@@ -16,6 +16,10 @@
     <None Update="Fixtures/*.json" CopyToOutputDirectory="PreserveNewest" />
     <Compile Include="../test-shared/ChainSwingFixture.cs" Link="Shared/ChainSwingFixture.cs" />
     <Compile Include="../test-shared/SkinnedAttachmentGlbFixture.cs" Link="Shared/SkinnedAttachmentGlbFixture.cs" />
+    <Compile Include="../test-shared/HangingPanelFixture.cs" Link="Shared/HangingPanelFixture.cs" />
+    <Compile Include="../test-shared/PanelDrape.cs" Link="Shared/PanelDrape.cs" />
+    <Compile Include="../test-shared/PanelGeometry.cs" Link="Shared/PanelGeometry.cs" />
+    <Compile Include="../test-shared/HangingPanelCut.cs" Link="Shared/HangingPanelCut.cs" />
   </ItemGroup>
   <Import Project="../test-shared/AllocationMeasurement.props" />
 </Project>

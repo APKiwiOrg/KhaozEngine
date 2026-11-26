@@ -15,7 +15,7 @@ internal sealed class HangingPanelCut
 
     internal Vector3[] Rest { get; } = new Vector3[2 * VerticesPerSkin];
     internal PanelTriangle[] Faces { get; }
-    internal PanelMaterialEdge[] MaterialEdges { get; }
+    internal PanelMaterialTriangle[] MaterialTriangles { get; }
     internal PanelProbes Probes { get; }
 
     internal HangingPanelCut()
@@ -51,38 +51,28 @@ internal sealed class HangingPanelCut
             Close(Index(row + 1, Columns - 1), Index(row, Columns - 1));
         }
         Faces = faces.ToArray();
-        MaterialEdges = MapMaterialEdges();
+        MaterialTriangles = MapMaterialTriangles();
 
-        var upperSpan = new PanelMaterialPoint[31];
-        for (int i = 0; i < upperSpan.Length; i++)
-            upperSpan[i] = Center(i + 1);
+        var centerline = new PanelCenterlinePoint[Rows];
+        for (int row = 0; row < Rows; row++)
+            centerline[row] = new PanelCenterlinePoint(LengthAt(row), Center(row));
         Probes = new PanelProbes(Point(0, 0), Center(0), Point(0, Columns - 1),
-            Center(18), Center(48), Center(64), Index(36, CenterColumn), upperSpan);
+            Center(18), Center(48), Center(64), Index(36, CenterColumn), centerline);
 
         void Close(int first, int second) => AddQuad(faces, first, second, Outer(second), Outer(first), PanelFace.Rim);
     }
 
-    private PanelMaterialEdge[] MapMaterialEdges()
+    private PanelMaterialTriangle[] MapMaterialTriangles()
     {
-        var mapped = new HashSet<(int, int)>();
-        var material = new List<PanelMaterialEdge>();
+        var material = new List<PanelMaterialTriangle>();
         foreach (PanelTriangle face in Faces)
         {
             if (face.Face != PanelFace.Lining) continue;
-            Add(face.A, face.B);
-            Add(face.B, face.C);
-            Add(face.C, face.A);
+            material.Add(PanelMaterialTriangle.FromRest(Pair(face.A), Pair(face.B), Pair(face.C), Rest));
         }
         return material.ToArray();
 
-        void Add(int first, int second)
-        {
-            if (!mapped.Add((Math.Min(first, second), Math.Max(first, second)))) return;
-            var a = new PanelMaterialPoint(first, Outer(first));
-            var b = new PanelMaterialPoint(second, Outer(second));
-            float length = Vector3.Distance(a.Read(Rest, Matrix4x4.Identity), b.Read(Rest, Matrix4x4.Identity));
-            material.Add(new PanelMaterialEdge(a, b, length));
-        }
+        static PanelMaterialPoint Pair(int lining) => new(lining, Outer(lining));
     }
 
     internal Vector3[] Fit(in PanelDrape drape)

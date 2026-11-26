@@ -106,7 +106,7 @@ internal sealed class HangingPanelDrawRig : IDisposable
             // The middle, outboard generator is a fixed vertex in the hardware draw.
             Assert.InRange(Vector3.Distance(lip.Positions[SupportRingSize], pose.MarkerInModel), 0, .000001f);
         }
-        return new PresentedPanel(garment.Positions, garment.Faces, cut is null ? default : cut.MaterialEdges, cut?.Probes);
+        return new PresentedPanel(garment.Positions, garment.Faces, cut is null ? default : cut.MaterialTriangles, cut?.Probes);
     }
 
     private void SetPose(in HangingPanelPose pose)

@@ -58,7 +58,7 @@ public sealed class ClothBearingFixtureTests(ITestOutputHelper output)
 
         ClothObservation sample = HangingPanelFixture.Observe(pose, draw.Present(pose));
 
-        Assert.Equal(1, sample.SurfaceCrossings);
+        Assert.Equal(1, sample.AnalyticSupportCrossings);
         Assert.InRange(sample.MinimumSignedClearance, -.02001f, -.01999f);
     }
 
@@ -77,17 +77,20 @@ public sealed class ClothBearingFixtureTests(ITestOutputHelper output)
         Assert.InRange(contact.Clearance, -.05001f, -.04999f);
     }
 
-    [Fact]
-    public void The_observer_marks_a_triangle_wholly_inside_the_solid()
+    [Theory]
+    [InlineData(.047f)]
+    [InlineData(.0001f)]
+    public void The_observer_marks_a_triangle_wholly_inside_the_solid(float depth)
     {
         HangingPanelPose pose = HangingPanelFixture.PoseAt(0);
-        using var draw = new HangingPanelDrawRig(Triangle(pose.MarkerInModel, .01f, -.047f), PanelFace.Outer, welded: false);
+        using var draw = new HangingPanelDrawRig(Triangle(pose.MarkerInModel, .001f, -depth), PanelFace.Outer, welded: false);
 
         ClothObservation sample = HangingPanelFixture.Observe(pose, draw.Present(pose));
 
         Assert.Equal(1, sample.ContainedTriangles);
-        Assert.Equal(0, sample.SurfaceCrossings);
-        Assert.InRange(sample.MinimumSignedClearance, -.04701f, -.04699f);
+        Assert.Equal(0, sample.AnalyticSupportCrossings);
+        Assert.InRange(sample.MinimumSignedClearance, -depth - .00001f, -depth + .00001f);
+        Assert.False(sample.IsExterior);
     }
 
     [Fact]
@@ -99,11 +102,60 @@ public sealed class ClothBearingFixtureTests(ITestOutputHelper output)
         using var draw = new HangingPanelDrawRig(layers,
             [new PanelTriangle(0, 1, 2, PanelFace.Lining), new PanelTriangle(3, 5, 4, PanelFace.Outer)], welded: false);
         PresentedPanel submitted = draw.Present(pose);
-        PanelMaterialEdge[] edges = [new(new PanelMaterialPoint(0, 3), new PanelMaterialPoint(1, 4), 1)];
-        var observed = new PresentedPanel(submitted.Vertices, submitted.Faces, edges);
+        PanelMaterialTriangle triangle = ReferenceTriangle(1, 1);
+        var observed = new PresentedPanel(submitted.Vertices, submitted.Faces, new[] { triangle });
 
         Assert.InRange(Vector3.Distance(submitted.Vertices[0], submitted.Vertices[1]), 1.19999f, 1.20001f);
         Assert.InRange(HangingPanelFixture.MeasureStrain(observed, pose.Wearer), 0, .00001f);
+    }
+
+    [Fact]
+    public void The_observer_measures_principal_stretch_from_in_plane_shear()
+    {
+        const float width = .120f, height = .01328125f, shear = .06f;
+        HangingPanelPose pose = HangingPanelFixture.PoseAt(0);
+        Vector3[] layers = [
+            new(0, 0, 0), new(width, 0, 0), new(shear * height, height, 0),
+            new(0, 0, .002f), new(width, 0, .002f), new(shear * height, height, .002f),
+        ];
+        using var draw = new HangingPanelDrawRig(layers, PairedTriangle, welded: false);
+        PresentedPanel submitted = draw.Present(pose);
+        PanelMaterialTriangle triangle = ReferenceTriangle(width, height);
+        var observed = new PresentedPanel(submitted.Vertices, submitted.Faces, new[] { triangle });
+
+        float strain = HangingPanelFixture.MeasureStrain(observed, pose.Wearer);
+        Assert.InRange(strain, .03044f, .03046f);
+        output.WriteLine($"Sheared material triangle principal strain {strain:R}.");
+    }
+
+    [Fact]
+    public void The_observer_detects_a_bend_near_the_end_of_the_tangent_span()
+    {
+        HangingPanelPose pose = HangingPanelFixture.PoseAt(0);
+        var cut = new HangingPanelCut();
+        var drape = new PanelDrape(HangingPanelFixture.Seam, pose.Support.Translation, HangingPanelCut.FittedRadius);
+        Vector3[] fitted = cut.Fit(drape);
+        int lining = HangingPanelCut.Index(33, HangingPanelCut.CenterColumn);
+        fitted[lining] += .020f * Vector3.UnitZ;
+        fitted[HangingPanelCut.Outer(lining)] += .020f * Vector3.UnitZ;
+        using var draw = new HangingPanelDrawRig(fitted, cut.Faces, welded: false);
+
+        ClothObservation sample = HangingPanelFixture.Observe(pose, draw.Present(pose, cut));
+
+        float error = sample.Material!.Value.TangentError!.Value;
+        Assert.InRange(error, .018f, .022f);
+        Assert.True(error > HangingPanelFixture.TangentLimit);
+        output.WriteLine($"Planted centerline bend tangent error {error:R} m.");
+    }
+
+    private static readonly PanelTriangle[] PairedTriangle =
+        [new(0, 1, 2, PanelFace.Lining), new(3, 5, 4, PanelFace.Outer)];
+
+    private static PanelMaterialTriangle ReferenceTriangle(float width, float height)
+    {
+        Vector3[] rest = [Vector3.Zero, new(width, 0, 0), new(0, height, 0),
+            Vector3.Zero, new(width, 0, 0), new(0, height, 0)];
+        return PanelMaterialTriangle.FromRest(new(0, 3), new(1, 4), new(2, 5), rest);
     }
 
     [Fact]
@@ -152,9 +204,11 @@ public sealed class ClothBearingFixtureTests(ITestOutputHelper output)
                         Seconds = frame / (double)framesPerSecond,
                         pose.PhaseSeconds,
                         sample.MarkerGap,
+                        sample.IsLipLoaded,
+                        BearingWithinLimit = sample.IsLipLoaded ? (bool?)sample.HasBearing : null,
                         sample.IsExterior,
                         sample.MinimumSignedClearance,
-                        sample.SurfaceCrossings,
+                        sample.AnalyticSupportCrossings,
                         sample.ContainedTriangles,
                         sample.Lining,
                         sample.Outer,
@@ -163,6 +217,9 @@ public sealed class ClothBearingFixtureTests(ITestOutputHelper output)
                         sample.RecoveryCount,
                     }));
                 Assert.True(float.IsFinite(sample.MarkerGap) && float.IsFinite(sample.MinimumSignedClearance));
+                Assert.Equal(sample.IsLipLoaded, sample.Material!.Value.TangentError.HasValue);
+                if (!flat && !withdrawn)
+                    Assert.True(sample.IsLipLoaded);
                 Assert.InRange(sample.Material!.Value.SeamError, 0, HangingPanelFixture.SeamLimit);
             }
         }
@@ -182,11 +239,16 @@ public sealed class ClothBearingFixtureTests(ITestOutputHelper output)
         ClothObservation supported = HangingPanelFixture.Observe(raised, fitted.Present(raised, cut));
         MaterialObservation fittedMaterial = supported.Material!.Value;
         Assert.True(supported.IsExterior);
+        Assert.True(supported.IsLipLoaded);
         Assert.True(supported.HasBearing);
         Assert.InRange(fittedMaterial.HemAngleDegrees, 0, HangingPanelFixture.HemAngleLimit);
         Assert.InRange(fittedMaterial.LipPlumbError, 0, HangingPanelFixture.PlumbLimit);
+        HangingPanelPose flatLoaded = raised.WithFlatLip();
+        HangingPanelPose flatUnloaded = HangingPanelFixture.PoseAt(1).WithFlatLip();
+        Assert.True(HangingPanelFixture.Observe(flatLoaded, fitted.Present(flatLoaded, cut)).IsLipLoaded);
+        Assert.False(HangingPanelFixture.Observe(flatUnloaded, fitted.Present(flatUnloaded, cut)).IsLipLoaded);
         output.WriteLine($"Analytic supported cut: marker gap {supported.MarkerGap:R} m, "
-            + $"signed clearance {supported.MinimumSignedClearance:R} m, crossings {supported.SurfaceCrossings}, "
+            + $"signed clearance {supported.MinimumSignedClearance:R} m, analytic support crossings {supported.AnalyticSupportCrossings}, "
             + $"hem {fittedMaterial.HemAngleDegrees:R} degrees, lip plumb error {fittedMaterial.LipPlumbError:R} m.");
 
         HangingPanelPose withdrawn = raised.WithWithdrawal();
@@ -194,11 +256,12 @@ public sealed class ClothBearingFixtureTests(ITestOutputHelper output)
         ClothObservation released = HangingPanelFixture.Observe(withdrawn, free.Present(withdrawn, cut));
         MaterialObservation releasedMaterial = released.Material!.Value;
         Assert.True(released.IsExterior);
+        Assert.False(released.IsLipLoaded);
         Assert.True(released.HasReleasedMarker);
         Assert.InRange(releasedMaterial.HemAngleDegrees, 0, HangingPanelFixture.HemAngleLimit);
         Assert.InRange(releasedMaterial.BarePlumbError, 0, HangingPanelFixture.PlumbLimit);
         output.WriteLine($"Analytic released cut: marker gap {released.MarkerGap:R} m, "
-            + $"signed clearance {released.MinimumSignedClearance:R} m, crossings {released.SurfaceCrossings}, "
+            + $"signed clearance {released.MinimumSignedClearance:R} m, analytic support crossings {released.AnalyticSupportCrossings}, "
             + $"hem {releasedMaterial.HemAngleDegrees:R} degrees, bare plumb error {releasedMaterial.BarePlumbError:R} m.");
     }
 

@@ -33,13 +33,31 @@ internal sealed class WornClothBinding(BoundAttachmentSet set, int wornIndex, Bo
         Surface.CopyFallbackNodes(palette, model, nodes);
     }
 
-    internal void ValidatePose(WornMotion owner, Skeleton skeleton, ReadOnlySpan<Matrix4x4> host, in Matrix4x4 model)
+    internal void ValidatePose(WornMotion owner, Skeleton skeleton, ReadOnlySpan<Matrix4x4> host, in Matrix4x4 model,
+        bool fitted = true)
     {
         Span<Vector3> nodes = stackalloc Vector3[Surface.Rig.RestPositions.Length];
-        CopyFallback(owner, skeleton, host, model, nodes, fitted: true);
+        CopyFallback(owner, skeleton, host, model, nodes, fitted);
         Surface.CopyPins(host, model, nodes);
         foreach (var capsule in Capsules) _ = capsule.Pose(host, model);
         foreach (var hull in Hulls) _ = hull.Pose(host, model);
+    }
+
+    internal bool CanUsePreviousPose(WornMotion owner, Skeleton skeleton, ReadOnlySpan<Matrix4x4> host, in Matrix4x4 model)
+    {
+        try
+        {
+            ValidatePose(owner, skeleton, host, model, fitted: false);
+            return true;
+        }
+        catch (AttachmentBindingArgumentException)
+        {
+            return false;
+        }
+        catch (ClothSurfaceDataException)
+        {
+            return false;
+        }
     }
 
     internal static Dictionary<uint, WornClothBinding?>?[] Create(IReadOnlyList<BoundAttachmentSet> sets,

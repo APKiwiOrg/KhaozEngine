@@ -408,11 +408,14 @@ fallback reason and work through `ClothStatus`.
 The selected surface samples body capsules, lower-layer rigid equipment and their detailed hulls
 and the actual opening and closing segments of eligible lower chains. The selected part's cheap
 chains and their links are bypassed during live cloth. Cloth and lower chains use a common,
-world-aligned clock and origin with gravity in world space. A held lower part supplies its fitted
-segment poses. Omitting the request starts an outgoing blend. The next wearer can claim the slot
+world-aligned clock and origin with gravity in world space. A held lower part samples its fitted
+joint shape and articulated anchors at each tick, so the segment tip follows the rotation. Omitting the request starts an outgoing blend. The next wearer can claim the slot
 after it becomes free. Use `Release()` for a wearer leaving visibility and `Rebind` when the same
 wearer changes outfits. Matching mesh and sidecar hashes transfer material nodes across fitted
-bindings and caches, then rebind pins and clear physical contact history.
+bindings and caches, then rebind pins and clear physical contact history. The previous binding
+retains its own last accepted snapshot until the new support projection succeeds. A new claim
+whose preceding cheap pose had no valid cloth samples starts from the current fitted pose and
+opens a new history generation.
 
 `TryGetClothPresentation` on a set, outfit or motion borrows the last admissible CPU sample.
 Read it before the next step, reset, rebind or release. `Surface` identifies the fitted and visible

@@ -68,7 +68,7 @@ public readonly ref struct WornClothPresentation
     public WornMotion Motion { get; }
     public ulong DisplayRevision { get; }
     public ulong HistoryRevision { get; }
-    public bool IsCurrentPose => DisplayRevision == Motion.PoseRevision;
+    public bool IsCurrentPose => DisplayRevision == Motion.PoseRevision && HistoryRevision == Motion.HistoryRevision;
     public int WornIndex { get; }
     public uint PartId => Surface.PartId;
     public BoundClothSurface Surface { get; }

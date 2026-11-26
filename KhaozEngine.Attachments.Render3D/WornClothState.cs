@@ -10,6 +10,7 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
     private readonly ClothSimulation _solver = new(rig, ClothWorkLimits.LayeredContact);
     private readonly WornClothSupports _supports = new();
     private readonly Vector3[] _displayed = new Vector3[rig.RestPositions.Length];
+    private readonly Vector3[] _published = new Vector3[rig.RestPositions.Length];
     private readonly Vector3[] _target = new Vector3[rig.RestPositions.Length];
     private readonly Vector3[] _projected = new Vector3[rig.RestPositions.Length];
     private readonly Vector3[] _framePins = new Vector3[rig.Pins.Length];
@@ -17,6 +18,9 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
     private readonly Vector3[] _tickPins = new Vector3[rig.Pins.Length];
     private readonly Matrix4x4[] _displayedGarmentPalette = new Matrix4x4[SkinningMath.MaxBonesPerDraw];
     private ulong _displayRevision, _displayHistoryRevision;
+    private WornMotion? _publishedOwner;
+    private WornClothBinding? _publishedBinding;
+    private Vector3 _publishedOrigin;
 
     private bool _hasDisplay;
     private bool _fresh;
@@ -59,6 +63,7 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
 
     internal void Release()
     {
+        ClearPublication();
         Owner = null;
         Binding = null!;
         _hasDisplay = false;
@@ -74,16 +79,24 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
         _historyValid = false;
     }
 
-    internal bool TryPresent(int wornIndex, uint partId, out WornClothPresentation presentation)
+    internal bool TryPresent(WornMotion wearer, int wornIndex, uint partId, out WornClothPresentation presentation)
     {
-        if (_hasDisplay && !_rebound && Binding.WornIndex == wornIndex && Binding.Surface.PartId == partId)
+        if (ReferenceEquals(_publishedOwner, wearer) && _publishedBinding is { } binding &&
+            binding.WornIndex == wornIndex && binding.Surface.PartId == partId)
         {
-            presentation = new(Owner!, _displayRevision, _displayHistoryRevision, wornIndex, Binding.Surface, _displayed, _origin, _model,
-                _displayedGarmentPalette.AsSpan(0, Binding.Surface.JointCount));
+            presentation = new(wearer, _displayRevision, _displayHistoryRevision, wornIndex, binding.Surface,
+                _published, _publishedOrigin, _model, _displayedGarmentPalette.AsSpan(0, binding.Surface.JointCount));
             return true;
         }
         presentation = default;
         return false;
+    }
+
+    private void ClearPublication()
+    {
+        _publishedOwner?.ForgetClothSnapshot(this);
+        _publishedOwner = null;
+        _publishedBinding = null;
     }
 
     internal void Begin(ChainSimulation chains, Skeleton skeleton, ReadOnlySpan<Matrix4x4> previousHost,
@@ -95,13 +108,13 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
         ResetForDroppedTime = false;
         _sameKinematicPose = previousModel == model && previousHost.SequenceEqual(host);
         bool recoverFromRefusal = _hasDisplay && _solve.Status != ClothStepStatus.Accepted;
-        if (_rebound && _hasDisplay &&
+        bool rebindTeleport = _rebound && _hasDisplay &&
             ChainMath.DistanceSquared(_model.Translation, model.Translation + origin) >
-            (double)chains.Options.TeleportDistance * chains.Options.TeleportDistance)
-            _rebound = false;
+                (double)chains.Options.TeleportDistance * chains.Options.TeleportDistance;
+        if (rebindTeleport) _rebound = false;
         _solve = default;
         _projection = default;
-        _fresh = reset || _rebound;
+        _fresh = reset || _rebound || rebindTeleport;
         _chainFittedReset = reset;
         _switchFrame = _liveRequested != live;
         if (_switchFrame)
@@ -111,7 +124,11 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
         }
         _liveRequested = live;
         if (_historyValid && _origin != origin)
-            _supports.Rebase(_origin - origin);
+        {
+            Vector3 change = _origin - origin;
+            _supports.Rebase(change);
+            Shift(_priorPins, change);
+        }
         if (_hasDisplay && _origin != origin)
         {
             Vector3 change = _origin - origin;
@@ -120,8 +137,9 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
         }
         _origin = origin;
 
-        if (reset && !_rebound)
+        if ((reset || rebindTeleport) && !_rebound)
         {
+            ClearPublication();
             _hasDisplay = false;
             _settledCloth = false;
         }
@@ -135,11 +153,6 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
                 _supports.Begin(Binding, previousHost, previousModel, chains, fresh: true);
                 _historyValid = true;
                 _hasDisplay = _solver.CanSeed(_displayed);
-                _model = previousModel;
-                _model.Translation += origin;
-                _displayRevision = Owner!.PoseRevision - 1;
-                _displayHistoryRevision = Owner.HistoryRevision;
-                Binding.CopySkinPalette(skeleton, previousHost, _displayedGarmentPalette);
             }
             catch (ClothSurfaceDataException error) when (error.Reason == ClothSurfaceRefusal.FittedTriangle)
             {
@@ -160,6 +173,7 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
     {
         if (_sameKinematicPose) return;
         ResetForDroppedTime = true;
+        ClearPublication();
         _fresh = true;
         _hasDisplay = false;
         _settledCloth = false;
@@ -231,10 +245,8 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
         {
             _projected.CopyTo(_displayed, 0);
             _hasDisplay = true;
-            _model = absoluteModel;
-            _displayRevision = Owner!.PoseRevision;
-            _displayHistoryRevision = Owner.HistoryRevision;
-            Binding.CopySkinPalette(skeleton, host, _displayedGarmentPalette);
+            Publish(skeleton, host, absoluteModel);
+            _rebound = false;
             _supports.SaveDisplay();
             if (_fresh || _solve.Status != ClothStepStatus.Accepted)
             {
@@ -252,7 +264,8 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
         else
         {
             failure = WornClothFallback.TransferRefused;
-            if (_switchFrame && _liveRequested && !_settledCloth && _displayRevision != Owner!.PoseRevision)
+            if (!_rebound && _switchFrame && _liveRequested && !_settledCloth &&
+                !ReferenceEquals(_publishedOwner, Owner))
             {
                 _liveRequested = false;
                 _hasDisplay = false;
@@ -265,7 +278,8 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
         return Result(failure);
 
         WornClothStatus Result(WornClothFallback refusal) =>
-            new(_settledCloth ? WornClothTier.Cloth : cheap, refusal, Binding.Surface.PartId, _substeps, _solve, _projection)
+            new(_settledCloth && ReferenceEquals(_publishedOwner, Owner) ? WornClothTier.Cloth : cheap,
+                refusal, Binding.Surface.PartId, _substeps, _solve, _projection)
             {
                 IsBlending = _hasDisplay && (_settledCloth != _liveRequested || _elapsed < duration),
                 SolveWork = _solveWork,
@@ -276,12 +290,25 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
             };
     }
 
+    private void Publish(Skeleton skeleton, ReadOnlySpan<Matrix4x4> host, in Matrix4x4 absoluteModel)
+    {
+        Binding.CopySkinPalette(skeleton, host, _displayedGarmentPalette);
+        _displayed.CopyTo(_published, 0);
+        if (!ReferenceEquals(_publishedOwner, Owner))
+            _publishedOwner?.ForgetClothSnapshot(this);
+        _publishedOwner = Owner;
+        _publishedBinding = Binding;
+        _publishedOrigin = _origin;
+        _model = absoluteModel;
+        _displayRevision = Owner!.PoseRevision;
+        _displayHistoryRevision = Owner.HistoryRevision;
+    }
+
     private void FinishFrame()
     {
         _framePins.CopyTo(_priorPins, 0);
         _supports.End();
         _historyValid = true;
-        _rebound = false;
     }
 
     internal bool CanRelease => !_liveRequested && !_hasDisplay;

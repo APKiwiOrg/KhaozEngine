@@ -61,8 +61,7 @@ internal sealed class WornClothSupports
             int index = Rigid + i;
             if (particles is null)
             {
-                var held = Lower(chains.HeldSegment(lower.Segment), lower.Identity);
-                _tickClosing[index] = _priorFrame[index].Interpolate(held, fraction);
+                _tickClosing[index] = Lower(chains.HeldSegment(lower.Segment, fraction), lower.Identity);
             }
             else
             {

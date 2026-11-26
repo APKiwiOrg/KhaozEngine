@@ -111,6 +111,38 @@ public sealed class WornMotionBatchTests
     }
 
     [Fact]
+    public void A_valid_cloth_claim_after_an_unused_bad_host_bone_seeds_current_fit_in_a_batch()
+    {
+        using var rig = new OutfitRig();
+        var set = rig.Wear("prior-cloth-pose.json", SkinnedAttachmentBindingTests.ClothAsset(rig).Set);
+        const uint part = SkinnedAttachmentBindingTests.ClothPartId;
+        var surface = set.ClothSurface(part)!;
+        var first = set.CreateMotion(null);
+        var selected = set.CreateMotion(null);
+        var slot = new WornClothSlot();
+        slot.Prepare(surface);
+        var unusedKnee = (Matrix4x4[])rig.Palette.Clone();
+        unusedKnee[0].M43 = float.NaN;
+        selected.Step(rig.Skeleton, unusedKnee, rig.Model, 0, MotionLevel.Held);
+        ulong previousHistory = selected.HistoryRevision;
+        ulong firstRevision = first.PoseRevision;
+
+        var batch = new WornMotionBatch(new SingleThreadedJobScheduler());
+        batch.Add(first, rig.Skeleton, rig.Palette, rig.Model, FrameTime);
+        batch.Add(selected, rig.Skeleton, rig.Palette, rig.Model, FrameTime, MotionLevel.Held, new(slot, 0, part));
+        batch.Step();
+
+        Assert.True(first.PoseRevision > firstRevision);
+        Assert.True(selected.HistoryRevision > previousHistory);
+        Assert.Equal(0, selected.ClothStatus.Substeps);
+        Assert.True(selected.TryGetClothPresentation(0, part, out var shown));
+        Assert.True(shown.IsCurrentPose);
+        Assert.True(Matrix4x4.Invert(shown.RelativeModel, out var toModel));
+        for (int i = 0; i < shown.Nodes.Length; i++)
+            Assert.InRange(Vector3.Distance(surface.FittedNodes[i], Vector3.Transform(shown.Nodes[i], toModel)), 0, .0005f);
+    }
+
+    [Fact]
     public void Warm_local_cloth_and_compatible_slot_turnover_allocate_nothing()
     {
         using var rig = new OutfitRig();
@@ -129,9 +161,10 @@ public sealed class WornMotionBatchTests
         var selection = new WornClothSelection(slot, 0, part);
         wearer.Step(rig.Skeleton, rig.Palette, rig.Model, 0, MotionLevel.Held, selection);
         for (int i = 0; i < 8; i++) Frame();
-        long start = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 16; i++) Frame();
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - start);
+        AllocAssert.NoPerCallAllocation("warm cloth and compatible outfit turnover", () =>
+        {
+            for (int i = 0; i < 16; i++) Frame();
+        });
         Assert.True(wearer.TryGetClothPresentation(0, part, out _));
 
         void Frame()
@@ -141,6 +174,39 @@ public sealed class WornMotionBatchTests
             wearer.Step(rig.Skeleton, rig.Palette, rig.Model, 0, MotionLevel.Held, selection);
             wearer.Step(rig.Skeleton, rig.Palette, rig.Model, FrameTime, MotionLevel.Held, selection);
             ordinary.Step(rig.Skeleton, rig.Palette, rig.Model, FrameTime);
+        }
+    }
+
+    [Fact]
+    public void Warm_selected_cloth_allocates_nothing_on_a_dedicated_scheduler_worker()
+    {
+        using var rig = new OutfitRig();
+        var set = rig.Wear("worker-cloth.json", SkinnedAttachmentBindingTests.ClothAsset(rig).Set);
+        const uint part = SkinnedAttachmentBindingTests.ClothPartId;
+        var local = set.CreateMotion(null);
+        var ordinary = set.CreateMotion(null);
+        var slot = new WornClothSlot();
+        slot.Prepare(set.ClothSurface(part)!);
+        using var scheduler = new ClothWorkerAllocationScheduler();
+        var batch = new WornMotionBatch(scheduler);
+        var selection = new WornClothSelection(slot, 0, part);
+        for (int i = 0; i < 12; i++) Frame();
+        scheduler.StartCounting();
+        AllocAssert.NoPerCallAllocation("warm selected cloth worker", () =>
+        {
+            for (int i = 0; i < 16; i++) Frame();
+        });
+        Assert.True(scheduler.UsedDedicatedWorker);
+        Assert.Equal(0, scheduler.WorkerBytes);
+        Assert.True(local.ClothStatus.Substeps > 0);
+        Assert.True(local.TryGetClothPresentation(0, part, out _));
+
+        void Frame()
+        {
+            batch.Clear();
+            batch.Add(ordinary, rig.Skeleton, rig.Palette, rig.Model, FrameTime, MotionLevel.Held);
+            batch.Add(local, rig.Skeleton, rig.Palette, rig.Model, FrameTime, MotionLevel.Held, selection);
+            batch.Step();
         }
     }
 

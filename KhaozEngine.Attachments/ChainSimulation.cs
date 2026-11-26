@@ -109,6 +109,8 @@ public sealed class ChainSimulation
         }
         else if (level == MotionLevel.Held)
         {
+            // Retain the opening fitted shape for an exterior consumer of held tick geometry.
+            if (exterior is not null) _blend.LiveTarget.CopyFrom(_shown);
             Hold(anchorWorlds, colliders, deltaSeconds, excluded);
             if (exterior is not null)
             {
@@ -179,10 +181,11 @@ public sealed class ChainSimulation
         return segment.Pose(_shown.Frames, _previousAnchors[anchor].Matrix, Radius(segment.Chain));
     }
 
-    internal ColliderCapsule HeldSegment(in ChainSegment segment)
+    internal ColliderCapsule HeldSegment(in ChainSegment segment, float fraction)
     {
         int anchor = Rig.Chains[segment.Chain].Anchor;
-        return segment.Pose(_shown.Frames, _frameAnchors[anchor].Matrix, Radius(segment.Chain));
+        Matrix4x4 posed = _previousAnchors[anchor].Interpolate(_frameAnchors[anchor], fraction);
+        return segment.Pose(_blend.LiveTarget.Frames, _shown.Frames, posed, Radius(segment.Chain), fraction);
     }
 
     internal void SeedRange(int first, int count) => _particles.SeedRange(_previousAnchors, _shown.Frames, first, count);

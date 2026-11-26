@@ -165,6 +165,12 @@ public sealed class OutfitMotionDrawTests
         motion.Step(rig.Skeleton, rig.Palette, model, 0, MotionLevel.Held, selection);
         Assert.Equal(WornClothFallback.UnsupportedTransform, motion.ClothStatus.Fallback);
         Assert.False(motion.TryGetClothPresentation(0, ClothPartId, out _));
+
+        model.M11 = 2;
+        motion.Step(rig.Skeleton, rig.Palette, model, 1f / 120, MotionLevel.Held, selection);
+        Assert.Equal(0, motion.ClothStatus.Substeps);
+        Assert.True(motion.TryGetClothPresentation(0, ClothPartId, out var refitted));
+        AssertClose(expected, refitted.Nodes);
     }
 
     [Fact]
@@ -196,6 +202,80 @@ public sealed class OutfitMotionDrawTests
         Assert.True(motion.TryGetClothPresentation(0, ClothPartId, out var longGap));
         AssertClose(surface.FittedNodes, longGap.Nodes);
         Assert.True(longGap.HistoryRevision > history);
+    }
+
+    [Fact]
+    public void Crossing_the_rebase_threshold_keeps_opening_pins_in_the_same_frame_as_the_solver()
+    {
+        using var rig = new OutfitRig();
+        var set = rig.Wear("origin-crossing.json", ClothAsset(rig).Set);
+        var surface = set.ClothSurface(ClothPartId)!;
+        var options = new ChainSimulationOptions { HoldBlendSeconds = 0 };
+        var far = set.CreateMotion(null, options);
+        var near = set.CreateMotion(null, options);
+        var farSlot = new WornClothSlot();
+        var nearSlot = new WornClothSlot();
+        farSlot.Prepare(surface);
+        nearSlot.Prepare(surface);
+        var farSelection = new WornClothSelection(farSlot, 0, ClothPartId);
+        var nearSelection = new WornClothSelection(nearSlot, 0, ClothPartId);
+        const float first = 31.99f, second = 32.01f;
+        var nearEnd = Matrix4x4.CreateTranslation(second - first, 0, 0);
+        far.Step(rig.Skeleton, rig.Palette, Matrix4x4.CreateTranslation(first, 0, 0), 0, MotionLevel.Held, farSelection);
+        near.Step(rig.Skeleton, rig.Palette, Matrix4x4.Identity, 0, MotionLevel.Held, nearSelection);
+        far.Step(rig.Skeleton, rig.Palette, Matrix4x4.CreateTranslation(second, 0, 0), 1f / 60, MotionLevel.Held, farSelection);
+        near.Step(rig.Skeleton, rig.Palette, nearEnd, 1f / 60, MotionLevel.Held, nearSelection);
+
+        Assert.Equal(WornClothFallback.None, far.ClothStatus.Fallback);
+        Assert.Equal(2, far.ClothStatus.Substeps);
+        Assert.True(far.TryGetClothPresentation(0, ClothPartId, out var rebased));
+        Assert.True(near.TryGetClothPresentation(0, ClothPartId, out var control));
+        Assert.Equal(second, rebased.WorldOrigin.X);
+        for (int node = 0; node < rebased.Nodes.Length; node++)
+            Assert.InRange(Vector3.Distance(control.Nodes[node] - nearEnd.Translation, rebased.Nodes[node]), 0, .0005f);
+    }
+
+    [Fact]
+    public void A_refused_outfit_rebind_keeps_the_previous_surface_and_pose_identity()
+    {
+        using var rig = new OutfitRig();
+        var cloth = rig.Wear("refused-rebind-cloth.json", ClothAsset(rig).Set);
+        var corner = new Vector3(-.03f, .46f, -.03f);
+        var hull = ClothSupportHull.Create([corner, corner + .12f * Vector3.UnitX, corner + .12f * Vector3.UnitY,
+            corner + .12f * Vector3.UnitZ], [new(0, 2, 1), new(0, 1, 3), new(0, 3, 2), new(1, 2, 3)]);
+        var rigid = OutfitRig.Rigid(9, rig.Source.Mesh("rebind-overlap.glb", AttachmentTestSource.Glb()), "alpha") with
+        {
+            Joint = "knee",
+            ClothHulls = [new(1, hull, [0])],
+        };
+        var lower = rig.Wear("rebind-overlap.json", new AttachmentSetDefinition([rigid], AttachmentLayer.Garment, [],
+            [new("knee", corner, corner + .12f * Vector3.UnitX, .025f)]));
+        var body = OutfitLiftDrawTests.Body(rig);
+        using var original = rig.Cache.BindOutfit(body, [cloth]);
+        using var changed = rig.Cache.BindOutfit(body, [lower, cloth]);
+        var old = original.CreateMotion(null);
+        var next = changed.CreateMotion(null);
+        var slot = new WornClothSlot();
+        slot.Prepare(original.ClothSurface(0, ClothPartId)!);
+        old.Step(rig.Skeleton, rig.Palette, Matrix4x4.Identity, 0, MotionLevel.Held, new(slot, 0, ClothPartId));
+        Assert.True(old.TryGetClothPresentation(0, ClothPartId, out var before));
+        ulong revision = before.DisplayRevision;
+        var nodes = before.Nodes.ToArray();
+        var palette = before.GarmentPalette.ToArray();
+
+        Assert.True(slot.Rebind(next, 1, ClothPartId));
+        next.Step(rig.Skeleton, rig.Palette, Matrix4x4.Identity, 0, MotionLevel.Held, new(slot, 1, ClothPartId));
+        Assert.Equal(WornClothFallback.TransferRefused, next.ClothStatus.Fallback);
+        Assert.Equal(ClothStepStatus.UnresolvedContact, next.ClothStatus.Projection.Status);
+        Assert.False(next.TryGetClothPresentation(1, ClothPartId, out _));
+        Assert.True(old.TryGetClothPresentation(0, ClothPartId, out var retained));
+        Assert.Same(old, retained.Motion);
+        Assert.Same(original.ClothSurface(0, ClothPartId), retained.Surface);
+        Assert.Equal(revision, retained.DisplayRevision);
+        Assert.Equal(Matrix4x4.Identity, retained.Model);
+        Assert.Equal(nodes, retained.Nodes.ToArray());
+        Assert.Equal(palette, retained.GarmentPalette.ToArray());
+        Assert.False(retained.IsCurrentPose);
     }
 
     [Fact]
@@ -247,10 +327,12 @@ public sealed class OutfitMotionDrawTests
         Vector3 previousFree = first.Nodes[2];
 
         Assert.True(slot.Rebind(newWearer, 1, ClothPartId));
-        Assert.False(oldWearer.TryGetClothPresentation(0, ClothPartId, out _));
+        Assert.True(oldWearer.TryGetClothPresentation(0, ClothPartId, out var oldSample));
+        Assert.False(oldSample.IsCurrentPose);
         Assert.False(newWearer.TryGetClothPresentation(1, ClothPartId, out _));
         newWearer.Step(rig.Skeleton, rig.Palette, Matrix4x4.Identity, 0, MotionLevel.Held, new(slot, 1, ClothPartId));
         Assert.True(newWearer.TryGetClothPresentation(1, ClothPartId, out var rebound));
+        Assert.False(oldWearer.TryGetClothPresentation(0, ClothPartId, out _));
         Assert.Same(newSurface, rebound.Surface);
         Assert.Equal(previousFree, rebound.Nodes[2]);
         Assert.Equal(newSurface.FittedNodes[0], rebound.Nodes[0]);

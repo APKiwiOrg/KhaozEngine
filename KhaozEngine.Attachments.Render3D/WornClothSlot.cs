@@ -79,11 +79,14 @@ public sealed class WornClothSlot
             return false;
         }
 
-        owner.DetachCloth(this);
+        owner.DetachCloth(this, retainPresentation: true);
         _state.Rebind(motion, binding);
         motion.AttachCloth(this);
         return true;
     }
+
+    internal bool ModelFits(in Matrix4x4 model) => _state is { } state &&
+        ClothHullPose.TryCreate(model, out var pose) && MathF.Abs(pose.Scale - state.Scale) <= state.Scale * .00001f;
 
     internal WornClothFallback Admission(WornMotion wearer, WornClothBinding binding, in Matrix4x4 model,
         ChainSimulationOptions options)
@@ -92,9 +95,7 @@ public sealed class WornClothSlot
         if (!binding.HasCapacity) return WornClothFallback.SupportCapacity;
         if (!_state.Compatible(binding.Surface))
             return WornClothFallback.IncompatibleProfile;
-        if (!ClothHullPose.TryCreate(model, out var pose) ||
-            MathF.Abs(pose.Scale - _state.Scale) > _state.Scale * .00001f)
-            return WornClothFallback.UnsupportedTransform;
+        if (!ModelFits(model)) return WornClothFallback.UnsupportedTransform;
         if (options.MaxStepSeconds != ClothWorkLimits.LayeredStepSeconds || options.MaxStepsPerFrame > ClothWorkLimits.StepsPerFrameLimit)
             return WornClothFallback.UnsupportedClock;
         return Owner is not null && !ReferenceEquals(Owner, wearer)

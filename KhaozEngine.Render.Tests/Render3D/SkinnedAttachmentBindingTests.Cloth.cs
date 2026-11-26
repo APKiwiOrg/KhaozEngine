@@ -282,7 +282,7 @@ public sealed partial class SkinnedAttachmentBindingTests
         return new AttachmentSetDefinition([part], AttachmentLayer.Armour, []);
     }
 
-    internal static (AttachmentSetDefinition Set, byte[] Bytes) ClothAsset(OutfitRig rig, bool wrongMesh = false, bool collapsible = false, bool zeroOffsetSamples = false, bool sharedAnchor = false)
+    internal static (AttachmentSetDefinition Set, byte[] Bytes) ClothAsset(OutfitRig rig, bool wrongMesh = false, bool collapsible = false, bool zeroOffsetSamples = false, bool sharedAnchor = false, bool hipOnlyPins = false)
     {
         SkinnedAttachmentGlbFixture glb = SkinnedAttachmentGlbFixture.Chained();
         glb.SetIndexedMaterialParts([0, 1, 2], 3);
@@ -298,7 +298,7 @@ public sealed partial class SkinnedAttachmentBindingTests
             glb.SetPositions(primitive, positions);
             glb.SetLiftAttributes(primitive, [Vector3.UnitZ, Vector3.UnitZ, Vector3.UnitZ], [0, 0, 0]);
         }
-        glb.SetUniformSkinning(0, 3, new Vector4(3, 1, 0, 0), new Vector4(.75f, .25f, 0, 0));
+        glb.SetUniformSkinning(0, 3, new Vector4(3, 1, 0, 0), hipOnlyPins ? Vector4.UnitX : new Vector4(.75f, .25f, 0, 0));
         for (int primitive = 1; primitive < 4; primitive++)
             glb.SetUniformSkinning(primitive, 3, Vector4.Zero, Vector4.UnitX);
 

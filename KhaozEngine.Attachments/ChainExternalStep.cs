@@ -32,13 +32,20 @@ internal readonly record struct ChainSegment(ChainRig Rig, int Chain, int Index)
         return new(positions[start], positions[start + 1], radius);
     }
 
-    internal ColliderCapsule Pose(ReadOnlySpan<Matrix4x4> frames, in Matrix4x4 anchor, float radius)
+    internal ColliderCapsule Pose(ReadOnlySpan<Matrix4x4> frames, in Matrix4x4 anchor, float radius) =>
+        Pose(frames, frames, anchor, radius, 1);
+
+    internal ColliderCapsule Pose(ReadOnlySpan<Matrix4x4> previous, ReadOnlySpan<Matrix4x4> current,
+        in Matrix4x4 anchor, float radius, float fraction)
     {
         int joint = Rig.FirstJoint(Chain) + Index;
         int last = Rig.FirstJoint(Chain) + Rig.Chains[Chain].Joints.Count - 1;
-        Matrix4x4 start = frames[joint] * anchor;
+        Matrix4x4 start = SampleLocal(previous[joint], current[joint], fraction) * anchor;
         Vector3 end = joint == last ? Vector3.Transform(Rig.Chains[Chain].Tip, start) :
-            (frames[joint + 1] * anchor).Translation;
+            (SampleLocal(previous[joint + 1], current[joint + 1], fraction) * anchor).Translation;
         return new(start.Translation, end, radius);
     }
+
+    private static Matrix4x4 SampleLocal(in Matrix4x4 opening, in Matrix4x4 closing, float fraction) =>
+        fraction == 1 || opening == closing ? closing : new ChainPose(opening).Interpolate(new ChainPose(closing), fraction);
 }

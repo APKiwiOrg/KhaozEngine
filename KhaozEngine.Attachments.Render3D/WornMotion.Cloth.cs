@@ -14,6 +14,8 @@ public sealed partial class WornMotion
     private bool _hasLastHost;
     private Vector3 _origin, _preparedOrigin;
     private WornClothSlot? _activeCloth;
+    private WornClothState? _retainedCloth;
+    private bool _preparedPriorClothPose;
     private WornClothBinding? _preparedCloth;
     private WornClothFallback _preparedRefusal;
     private MotionLevel _lastLevel;
@@ -33,8 +35,10 @@ public sealed partial class WornMotion
     /// <see cref="PoseRevision"/> after a refused sweep.</remarks>
     public bool TryGetClothPresentation(int wornIndex, uint partId, out WornClothPresentation presentation)
     {
-        if (_activeCloth is { } slot)
-            return slot.State.TryPresent(wornIndex, partId, out presentation);
+        if (_activeCloth is { } slot && slot.State.TryPresent(this, wornIndex, partId, out presentation))
+            return true;
+        if (_retainedCloth is { } retained)
+            return retained.TryPresent(this, wornIndex, partId, out presentation);
         presentation = default;
         return false;
     }
@@ -58,14 +62,22 @@ public sealed partial class WornMotion
         HistoryRevision++;
     }
 
-    internal void DetachCloth(WornClothSlot slot)
+    internal void DetachCloth(WornClothSlot slot, bool retainPresentation = false)
     {
         if (!ReferenceEquals(slot, _activeCloth)) return;
         var part = slot.State.Binding.Part;
         _simulation.SeedRange(part.FirstChain, part.Binding.Chains.Length);
         _activeCloth = null;
         HistoryRevision++;
-        ClothStatus = Cheap(_lastLevel, WornClothFallback.None, null);
+        if (retainPresentation)
+            _retainedCloth = slot.State;
+        else
+            ClothStatus = Cheap(_lastLevel, WornClothFallback.None, null);
+    }
+
+    internal void ForgetClothSnapshot(WornClothState state)
+    {
+        if (ReferenceEquals(_retainedCloth, state)) _retainedCloth = null;
     }
 
     private Matrix4x4 PrepareClothFrame(Skeleton skeleton, ReadOnlySpan<Matrix4x4> palette, in Matrix4x4 model,
@@ -74,6 +86,7 @@ public sealed partial class WornMotion
         _preparedOrigin = _origin;
         _preparedCloth = null;
         _preparedRefusal = WornClothFallback.None;
+        _preparedPriorClothPose = _hasLastHost;
         if (selection is { } cloth)
         {
             ArgumentNullException.ThrowIfNull(cloth.Slot);
@@ -87,7 +100,13 @@ public sealed partial class WornMotion
 
         Matrix4x4 relative = Relative(model, _preparedOrigin);
         if (_preparedCloth is { HasCapacity: true } candidate)
+        {
             candidate.ValidatePose(this, skeleton, palette, relative);
+            if (_activeCloth is null && _hasLastHost && selection is { } claim &&
+                _preparedRefusal is WornClothFallback.None or WornClothFallback.SlotOccupied)
+                _preparedPriorClothPose = claim.Slot.ModelFits(_lastModel) &&
+                    candidate.CanUsePreviousPose(this, skeleton, _lastHost, Relative(_lastModel, _preparedOrigin));
+        }
         if (_activeCloth is { } active && !ReferenceEquals(active.State.Binding, _preparedCloth))
             active.State.Binding.ValidatePose(this, skeleton, palette, relative);
         return relative;
@@ -110,6 +129,7 @@ public sealed partial class WornMotion
         {
             requested.State.Acquire(this, binding);
             _activeCloth = requested;
+            if (!_preparedPriorClothPose && _hasLastHost) HistoryRevision++;
         }
         ClothStatus = Cheap(level, refusal, selection?.PartId);
         if (_activeCloth is not { } active) return null;
@@ -120,7 +140,7 @@ public sealed partial class WornMotion
             ClothStatus = ClothStatus with { Fallback = WornClothFallback.SlotOccupied };
         bool live = samePart && refusal == WornClothFallback.None;
         var previous = _hasLastHost ? Relative(_lastModel, _origin) : relative;
-        state.Begin(_simulation, _skeleton, _hasLastHost ? _lastHost : [], palette, previous, relative, _origin,
+        state.Begin(_simulation, _skeleton, _preparedPriorClothPose ? _lastHost : [], palette, previous, relative, _origin,
             _simulation.NeedsReset(relative, seconds), live);
         return state;
     }

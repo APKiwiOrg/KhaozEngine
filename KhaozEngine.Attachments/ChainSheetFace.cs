@@ -8,7 +8,6 @@ namespace KhaozEngine.Attachments;
 internal readonly struct ChainSheetFace
 {
     private const float FloatRoundingMargin = 1f / (1 << 19);
-    private const double DoubleMachineEpsilon = 2.2204460492503131e-16;
     private readonly Vector3 _min, _max;
     private readonly Offset _normal;
     private readonly double _low, _high;
@@ -26,7 +25,7 @@ internal readonly struct ChainSheetFace
         double condition = Triangle.ShapeCondition(out _normal);
         // Near collinearity amplifies roundoff in the exact query's barycentric tests.
         // Keep that query whenever its shape-dependent error could exceed the float padding.
-        _canSeparate = 128 * DoubleMachineEpsilon * condition * condition <= FloatRoundingMargin;
+        _canSeparate = condition <= ChainThinTriangleWitness.FastConditionLimit;
         // Project all three corners so even a poorly conditioned normal gives an enclosing interval.
         double first = Offset.Dot(_normal, new Offset(a));
         double second = Offset.Dot(_normal, new Offset(b));

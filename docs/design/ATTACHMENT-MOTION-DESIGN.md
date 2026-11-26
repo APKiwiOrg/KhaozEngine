@@ -331,8 +331,12 @@ sees only body and worn set capsules.
    float bounds include opening, uncorrected prediction and the reachable band. Uncertain bounds keep the
    candidate. For each accepted triangle pose, the solver bounds its vertices on the three coordinate axes
    and the face normal. A gap beyond the capsule radius, sheet thickness and touch margin on any axis
-   can skip the exact closing query. Collapsed or nearly collinear faces keep the exact query when
-   rounding in its barycentric weights can exceed the padding. Placement must also rule out a crossing,
+   can skip the closing query. Collapsed or nearly collinear faces keep the narrow-phase query.
+   For a thin face, signed volumes test the line intersection against all three edges before the
+   solver divides to obtain the contact weights. The test retains the rounding errors in the axis
+   offsets so a long axis preserves a small separation. It also verifies an axis endpoint's projection
+   onto the face. This keeps genuine piercings while letting a separated axis fall through to the
+   closest-edge calculation. Placement must also rule out a crossing,
    since a capsule can pass through the sheet and finish clear. If the opening and predicted capsule axes
    lie wholly on the same side of their respective faces, the sweep skips the exact opening query.
    Piercing and coplanar responses can still use that query.

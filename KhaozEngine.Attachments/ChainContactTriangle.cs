@@ -31,9 +31,26 @@ internal readonly struct ChainContactTriangle
 
     private Offset UnitNormal(out double twiceArea)
     {
-        var normal = Offset.Cross(_ab, _ac);
-        twiceArea = Math.Sqrt(normal.LengthSquared);
-        return twiceArea == 0 ? default : normal * (1 / twiceArea);
+        var area = AreaNormal(out double areaSquared, out _);
+        twiceArea = Math.Sqrt(areaSquared);
+        return twiceArea == 0 ? default : area * (1 / twiceArea);
+    }
+
+    private Offset AreaNormal(out double areaSquared, out bool thin)
+    {
+        var area = Offset.Cross(_ab, _ac);
+        areaSquared = area.LengthSquared;
+        // Twice the sum of the root edge squares also bounds the third edge square.
+        // Use this upper bound to share the cull's condition limit without constructing that edge here.
+        double edgeBound = 2 * (_ab.LengthSquared + _ac.LengthSquared);
+        const double condition = ChainThinTriangleWitness.FastConditionLimit;
+        thin = edgeBound * edgeBound > condition * condition * areaSquared;
+        if (thin)
+        {
+            area = new ChainThinTriangleWitness(_ab, _ac).AreaNormal();
+            areaSquared = area.LengthSquared;
+        }
+        return area;
     }
 
     internal int AxisSide(in Axis axis, Offset normal, double tolerance)
@@ -86,11 +103,18 @@ internal readonly struct ChainContactTriangle
 
     internal Contact Closest(in Axis axis, bool second, ref Diagonal diagonal, out Offset normal)
     {
-        var areaNormal = Offset.Cross(_ab, _ac);
-        double areaSquared = areaNormal.LengthSquared;
+        var areaNormal = AreaNormal(out double areaSquared, out bool thin);
         normal = areaSquared == 0 ? default : areaNormal * (1 / Math.Sqrt(areaSquared));
 
-        if (areaSquared > 0)
+        if (areaSquared > 0 && thin)
+        {
+            var witness = new ChainThinTriangleWitness(_ab, _ac);
+            if (!axis.IsPoint &&
+                witness.TryPierce(_root, axis, out var weights, out double along) &&
+                along is > 0 and < 1)
+                return new Contact(default, weights, along);
+        }
+        else if (areaSquared > 0)
         {
             double axisSlope = Offset.Dot(axis.Direction, normal);
             if (axisSlope != 0)
@@ -123,9 +147,9 @@ internal readonly struct ChainContactTriangle
 
         if (areaSquared > 0)
         {
-            TestAxisEnd(axis.Start, 0, normal, areaNormal, areaSquared, ref best);
+            TestAxisEnd(axis.Start, 0, normal, areaNormal, areaSquared, thin, ref best);
             if (!axis.IsPoint)
-                TestAxisEnd(axis.End, 1, normal, areaNormal, areaSquared, ref best);
+                TestAxisEnd(axis.End, 1, normal, areaNormal, areaSquared, thin, ref best);
         }
 
         return best;
@@ -157,8 +181,16 @@ internal readonly struct ChainContactTriangle
     }
 
     private void TestAxisEnd(Offset end, double along, Offset normal, Offset areaNormal, double areaSquared,
-        ref Contact best)
+        bool thin, ref Contact best)
     {
+        if (thin)
+        {
+            var witness = new ChainThinTriangleWitness(_ab, _ac);
+            if (witness.TryProject(_root, end, normal, out var projectedWeights, out double travel))
+                KeepCloser(ref best, new Contact(normal * travel, projectedWeights, along));
+            return;
+        }
+
         var fromRoot = end - _root;
         double height = Offset.Dot(fromRoot, normal);
         if (height * height >= best.Residual.LengthSquared)

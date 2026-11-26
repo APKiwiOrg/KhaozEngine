@@ -1,6 +1,6 @@
 # KhaozEngine.Attachments
 
-GPU-free attachment definitions, outfit resolution and chain simulation. Rigid parts attach to named joints.
+GPU-free attachment definitions, outfit resolution and chain and cloth simulation. Rigid parts attach to named joints.
 Skinned parts follow the host body's pose and can lift over lower layers or carry swinging chains. Reference
 this package explicitly from headless publishers or consumers. Its only engine dependency is the dependency-free
 Primitives package, which supplies `MalformedDataException`. It is not included in Foundation or Server.
@@ -624,6 +624,30 @@ The table lists the other identifiers and the locations supplied by direct model
 | `HeightUnitsOutsideRange` | a stored height over 25,000 units. | `CellKey`, `HeightUnits` |
 | `TrailingBytes` | bytes after the last part. | |
 | `PartIdsMismatch` | a loaded file whose part IDs differ from its set's. | `SourceName` (the footprint key), `PartId` (the lowest unmatched ID) |
+
+## Numerical cloth simulation
+
+`ClothRig.Create` takes an oriented triangular midsurface, material coordinates in metres (weft, warp),
+ordered pins and optional natural angles for interior hinges. It copies the pattern and derives node mass
+from tributary rest area. A hinge without an override uses its rest geometry. Keep the pattern's natural
+curvature separate from the fitted positions, so the material can relax when a support moves away.
+An empty pin span describes a free sheet. `ClothMaterial.NormalAirDrag` opts into still-air damping
+in kg/(m² s) and defaults to zero. Each incident triangle contributes drag along its normal,
+weighted by tributary rest area.
+
+Create a `ClothSimulation` per instance and configure its XPBD iterations, maximum node travel,
+support count, unique contact pairs, narrow-phase witnesses and total per-step material factor products with
+`ClothWorkLimits`. Each iteration uses one coupled skyline solve for the material constraints.
+`Reset` copies fitted positions and clears velocity. At each fixed tick, pass `ClothSubstep`
+the closing world-space pins in rig order, matching opening and closing rigid support poses,
+step seconds and world gravity. `ClothSupport.Capsule` takes a capsule in support-local metres.
+`ClothSupport.Plane` uses the exterior half-space of a local plane. The support rotation participates
+in the surface-relative friction calculation.
+
+Read `Positions` after an accepted step. `ClothStepResult` reports refusals and attempted work.
+A refused step preserves the previous accepted position and velocity. A caller that uses a fitted
+fallback can reset the instance from its fitted positions before resuming. This numerical API is
+separate from the attachment JSON, outfit draw and motion-level APIs.
 
 ## Chain simulation
 

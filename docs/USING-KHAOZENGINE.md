@@ -7860,6 +7860,11 @@ Review existing chained pieces after upgrading. Position corrections no longer f
 next step, so a piece tuned with stiff springs and tight limits may look calmer. Try reducing damping
 on a short tail or widening a cloak's bend limits while using `linkStretch` to keep its panels together.
 
+For a numerical cloth sheet, build a shared `ClothRig` from the material midsurface and drive each
+instance via `ClothSimulation` with fitted positions, posed seam pins and kinematic supports.
+The package guide covers the fixed-step, material and refusal contracts.
+[Attachments package guide](../KhaozEngine.Attachments/README.md#numerical-cloth-simulation)
+
 For multiple wearers, call `MotionLevels.Assign(wearerPositions, viewerPosition, simulateWithin, maxSimulated,
 scratch, levels)` before stepping. It assigns `Simulated` to the nearest wearers within the distance limit
 up to the count limit. The rest receive `Held` and blend toward the hang fitted against their posed colliders

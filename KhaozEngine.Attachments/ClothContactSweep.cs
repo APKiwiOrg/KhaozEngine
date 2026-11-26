@@ -61,12 +61,13 @@ internal static class ClothContactSweep
         // An inherited clearance deficit can be moved out as positioning bias.
         // Require the sweep to preserve at least the opening clearance.
         float threshold = MathF.Min(first.Distance, required);
-        Span<Window> windows = stackalloc Window[1 + RefinementLimit];
+        if (first.Normal == Vector3.Zero && first.Distance <= 0) return ClothStepStatus.UnresolvedContact;
+        Span<Window> windows = stackalloc Window[1 + 2 * RefinementLimit];
         windows[0] = new Window(0, 1, first, last);
         int count = 1;
-        while (count > 0)
+        for (int next = 0; next < count; next++)
         {
-            Window window = windows[--count];
+            Window window = windows[next];
             if (Certifies(pair, window, window.First.Normal, threshold) ||
                 Certifies(pair, window, window.Last.Normal, threshold))
                 continue;
@@ -76,8 +77,8 @@ internal static class ClothContactSweep
             ClothSweepSample middle = pair.Sample(time);
             if (!float.IsFinite(middle.Distance)) return ClothStepStatus.NonfiniteState;
             if (middle.Distance < threshold - ProjectionRoundoff) return ClothStepStatus.UnresolvedContact;
-            windows[count++] = new Window(time, window.End, middle, window.Last);
             windows[count++] = new Window(window.Start, time, window.First, middle);
+            windows[count++] = new Window(time, window.End, middle, window.Last);
         }
         return ClothStepStatus.Accepted;
     }

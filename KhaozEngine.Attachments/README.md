@@ -635,27 +635,49 @@ An empty pin span describes a free sheet. `ClothMaterial.NormalAirDrag` opts int
 in kg/(m² s) and defaults to zero. Each incident triangle contributes drag along its normal,
 weighted by tributary rest area.
 
-Create a `ClothSimulation` per instance and configure its XPBD iterations, maximum node travel,
-support count, unique contact pairs, narrow-phase witnesses and total per-step material factor products with
-`ClothWorkLimits`. Each iteration uses one coupled skyline solve for the material constraints.
-`Reset` copies fitted positions and clears velocity. At each fixed tick, pass `ClothSubstep`
-the closing world-space pins in rig order, matching opening and closing rigid support poses,
-step seconds and world gravity. `ClothSupport.Capsule` takes a capsule in support-local metres.
-`ClothSupport.Plane` uses the exterior half-space of a local plane. The support rotation participates
-in surface-relative friction and in the swept capsule bounds. The capsule sweep checks the full
-triangle, including its edges, against the moving axis and radius. It certifies clearance over
-every interval or reports `SweepWork` when it exhausts `MaxSweepRefinements`.
+Create a `ClothSimulation` per instance. Each iteration uses one coupled skyline solve for the
+material constraints. `Reset` copies fitted positions and clears velocity. At each fixed tick,
+pass `ClothSubstep` the closing pins in rig order, matching opening and closing support spans,
+step seconds and world gravity. Express positions and support poses in one world-aligned frame.
 
-Read `Positions` after an accepted step. `ClothStepResult` reports refusals and attempted work.
-A refused step preserves the previous accepted position and velocity. Reset requires nondegenerate
-fitted triangles. A step that collapses a material frame reports `CollapsedMaterial`. Positioning
-bias supplies neither physical velocity nor compressive friction load. The closing witness pass
-solves accumulated unilateral impulses relative to the moving supports. A compressive impulse
-requires the corresponding contact to remain seated. A separating contact has zero impulse.
-Impulse updates and residual checks share the `MaxNormalVelocityChecks` limit and are reported
-by `NormalVelocityChecks`. A caller that uses a fitted
-fallback can reset the instance from its fitted positions before resuming. This numerical API is
-separate from the attachment JSON, outfit draw and motion-level APIs.
+- `ClothSupport.Capsule` takes a capsule in support-local metres and a rigid pose.
+  `ClothSupport.LowerSegment` takes the solved world endpoints and radius of a kinematic lower chain
+  at each end of the step. The cloth leaves the lower chain's state as supplied.
+- `ClothSupportHull.Create` copies a closed, outward-wound convex solid in the owning joint's local
+  space. Pass it in a `ClothHullSupport` with the opening and closing transforms. Rigid and positive
+  uniform-scale transforms are supported. A qualified hull replaces rigid capsules with the same
+  source, part ID, layer and positive feature-group ID. Other capsules remain active.
+- `ClothSupport.Plane` uses the exterior half-space of a posed local plane.
+- `ClothWorkLimits.LayeredContact` selects the near profile, including self-contact between folds
+  that do not share a node or a one-edge rest neighbourhood. The frame driver submits up to eight
+  substeps of 1/120 s. The numerical solver caps each at 128 nodes, 256 faces, 64 active rigid or
+  body supports, 64 lower-chain segments, two hulls of up to 16 vertices each and four iterations.
+
+The contact search includes triangle interiors, edges and vertices. It checks swept positions
+and the angular path of a fitted support, then checks again after the material corrections.
+Support-point displacement includes rotation when deriving relative friction and normal speed.
+The normal impulse solve accumulates nonnegative multipliers. A compressive impulse requires
+the corresponding contact to remain seated. Impulse updates and residual checks share the
+`MaxNormalVelocityChecks` limit. Positioning bias supplies neither physical velocity nor
+compressive friction load.
+
+Read `Positions` after an accepted step. `ClothStepResult` reports the limiting status, an owning
+part ID where applicable and attempted work. The near profile caps broad-phase visits at 4,096
+and narrow-phase attempts at 512 per substep. Work includes rejected broad pairs,
+candidate rechecks and up to eight interior sweep refinements per narrow-phase attempt.
+`MaxMaterialFactorProducts` independently bounds work in the material solver.
+
+A refusal retains the last accepted positions and velocities. To supply a current outfit fit for
+recovery, pass it to `Advance` as `fittedFallback`. A separate bounded check verifies the pins,
+material frames and closing clearance. An unsupported hull transform reports
+`UnsupportedHullTransform` and checks its coarse group when fitted recovery is requested.
+`Recovered` means that the checked fit was published with cleared velocity. The original reason
+remains in `Status`, and `FallbackStatus` and `FallbackWork` describe the recovery attempt.
+
+`ProjectDisplay` re-pins a supplied display sample and projects it against the closing supports
+under a separate contact envelope. Its destination span changes only on success. Display
+projection leaves simulation history intact. The numerical API is separate from attachment JSON,
+outfit drawing and motion-level selection.
 
 ## Chain simulation
 

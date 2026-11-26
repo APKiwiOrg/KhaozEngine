@@ -7862,7 +7862,9 @@ on a short tail or widening a cloak's bend limits while using `linkStretch` to k
 
 For a numerical cloth sheet, build a shared `ClothRig` from the material midsurface and drive each
 instance via `ClothSimulation` with fitted positions, posed seam pins and kinematic supports.
-The package guide covers the fixed-step, material and refusal contracts.
+Use `ClothWorkLimits.LayeredContact` for near-tier limits and fold contact. Supply solved lower-chain
+capsules or a rigid convex hull for a tagged hardware group. The package guide covers the fixed-step,
+material and fitted recovery contracts.
 [Attachments package guide](../KhaozEngine.Attachments/README.md#numerical-cloth-simulation)
 
 For multiple wearers, call `MotionLevels.Assign(wearerPositions, viewerPosition, simulateWithin, maxSimulated,

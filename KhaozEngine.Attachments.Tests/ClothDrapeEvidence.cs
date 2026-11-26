@@ -16,11 +16,13 @@ public sealed class ClothDrapeEvidence
     internal const int LastReleased = 5 * Cycle;
     internal const float StepSeconds = 1f / 120;
     internal static readonly Vector3 Gravity = new(0, -9.81f, 0);
-    private readonly Lazy<List<DrapeSample>> _samples = new(Measure);
+    private readonly Lazy<List<DrapeSample>> _samples = new(() => Measure(layered: false));
+    private readonly Lazy<List<DrapeSample>> _layered = new(() => Measure(layered: true));
 
     internal IReadOnlyList<DrapeSample> Samples => _samples.Value;
+    internal IReadOnlyList<DrapeSample> LayeredSamples => _layered.Value;
 
-    private static List<DrapeSample> Measure()
+    private static List<DrapeSample> Measure(bool layered)
     {
         var fixture = new ClothDrapeFixture();
         var samples = new List<DrapeSample>();
@@ -30,11 +32,14 @@ public sealed class ClothDrapeEvidence
         foreach (bool flat in new[] { false, true })
         {
             FlatLipReentry? reentry = flat ? new FlatLipReentry(IsFlatLipEligible) : null;
-            var limits = new ClothWorkLimits(4, 24, 256, 4096, MaxMaterialFactorProducts: 1_675_728);
+            ClothWorkLimits limits = layered
+                ? ClothWorkLimits.LayeredContact
+                : new ClothWorkLimits(4, 24, 256, 4096, MaxMaterialFactorProducts: 1_675_728);
             var simulation = new ClothSimulation(fixture.Rig, limits);
             simulation.Reset(fixture.Fitted);
             HangingPanelPose opening = At(0, flat);
             int recoveries = 0, checks = 0, candidates = 0, velocityContacts = 0;
+            int refinements = 0, velocityChecks = 0, selfChecks = 0;
             long factorProducts = 0;
             ClothStepStatus status = ClothStepStatus.Accepted;
             for (int tick = 0; tick <= LastReleased * 2; tick++)
@@ -54,6 +59,9 @@ public sealed class ClothDrapeEvidence
                     checks = Math.Max(checks, step.ContactChecks);
                     candidates = Math.Max(candidates, step.ContactCandidates);
                     velocityContacts = Math.Max(velocityContacts, step.NormalVelocityContacts);
+                    refinements = Math.Max(refinements, step.SweepRefinements);
+                    velocityChecks = Math.Max(velocityChecks, step.NormalVelocityChecks);
+                    selfChecks = Math.Max(selfChecks, step.SelfContactChecks);
                     factorProducts = Math.Max(factorProducts, step.MaterialFactorProducts);
                 }
                 opening = pose;
@@ -66,13 +74,15 @@ public sealed class ClothDrapeEvidence
                     FlatLipBearingDecision? bearing = withdrawn ? null :
                         reentry?.Observe(time, geometry.IsLipLoaded, geometry.MarkerGap, lipClearance);
                     samples.Add(new DrapeSample(flat, withdrawn, tick, tick / 2, time, pose.PhaseSeconds,
-                        geometry, bearing, status, checks, candidates, velocityContacts, factorProducts));
+                        geometry, bearing, status, checks, candidates, velocityContacts, factorProducts,
+                        refinements, velocityChecks, selfChecks));
                 }
             }
         }
 
         string? tracePath = Environment.GetEnvironmentVariable("KE_CLOTH_DRAPE_TRACE");
-        using StreamWriter? trace = string.IsNullOrEmpty(tracePath) ? null : File.CreateText(tracePath);
+        using StreamWriter? trace = string.IsNullOrEmpty(tracePath) ? null :
+            File.CreateText(layered ? tracePath + ".layered" : tracePath);
         foreach (DrapeSample sample in samples)
             trace?.WriteLine(JsonSerializer.Serialize(sample));
 
@@ -96,7 +106,8 @@ public sealed class ClothDrapeEvidence
 
     internal sealed record DrapeSample(bool Flat, bool Withdrawn, int Tick, int Frame, double DrivenSeconds,
         double PhaseSeconds, ClothObservation Geometry, FlatLipBearingDecision? Bearing, ClothStepStatus Status,
-        int PeakContactChecks, int PeakContactCandidates, int PeakNormalVelocityContacts, long PeakMaterialFactorProducts)
+        int PeakContactChecks, int PeakContactCandidates, int PeakNormalVelocityContacts, long PeakMaterialFactorProducts,
+        int PeakSweepRefinements, int PeakNormalVelocityChecks, int PeakSelfContactChecks)
     {
         public bool PresentationSample => Tick % 2 == 0;
         public float RawBearingExcess => MathF.Max(0, Geometry.MarkerGap - HangingPanelFixture.BearingLimit);

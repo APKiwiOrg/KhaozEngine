@@ -603,12 +603,15 @@ The [coverage claim check reference](../../KhaozEngine.Attachments/README.md#cov
 ## Room for cloth
 
 - A part's movement kind is data, `motion.kind`. Cloth adds a kind and its settings in a later format.
-- Colliders, the body collider file, region tags, layers and fitting do not change when cloth arrives.
+- Existing capsule, region and layer data remains useful for cloth. At the numerical seam,
+  a rigid lower part may supply a detailed convex hull for its tagged capsule group.
 - `WornMotion` is the one place that turns a movement kind into what a draw needs. Chains give joint matrices for the
   garment palette. Cloth will give a per wearer deformed mesh, which the same draw overloads substitute for the
   part's shared mesh.
-- The kinds share the fixed step loop, collider posing and the reset and hold rules, and a cloth solver reuses the
-  particles, the velocity rule, distance constraints, the width bound's strain limit and segment capsule contact.
+- The cloth solver couples material constraints over a triangular midsurface. It reuses closest-feature
+  capsule geometry and checks swept contacts against posed supports and non-neighbouring folds.
+  The bounded contact search either certifies the candidate surface or preserves the prior state and
+  checks a supplied fitted fallback. See the [numerical cloth reference](../../KhaozEngine.Attachments/README.md#numerical-cloth-simulation).
 
 Live reshape ([#1869](https://github.com/APKiwiOrg/KhaozEngine/issues/1869)) is untouched. Chains bind per fitted
 body, like everything else in a piece.

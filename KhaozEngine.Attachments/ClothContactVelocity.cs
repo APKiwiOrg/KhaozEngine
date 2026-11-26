@@ -15,24 +15,30 @@ internal sealed class ClothContactVelocity(int capacity, int maxChecks = ClothWo
 
     internal int Count { get; private set; }
     internal int Checks { get; private set; }
+    internal uint? PartId { get; private set; }
     internal void Begin()
     {
         Array.Clear(_multipliers, 0, Count);
         Count = 0;
         Checks = 0;
+        PartId = null;
     }
 
     internal ClothStepStatus Add(ClothTriangle face, Vector3 weights, Vector3 normal, float supportSpeed,
-        float[] inverseMasses)
+        float[] inverseMasses, uint? partId = null) =>
+        Add(face, weights, default, Vector3.Zero, normal, supportSpeed, inverseMasses, partId);
+
+    internal ClothStepStatus Add(ClothTriangle face, Vector3 weights, ClothTriangle opposing, Vector3 opposingWeights,
+        Vector3 normal, float supportSpeed, float[] inverseMasses, uint? partId = null)
     {
-        var mass = new Vector3(inverseMasses[face.A], inverseMasses[face.B], inverseMasses[face.C]);
-        Vector3 share = weights * mass;
-        float inverseMass = Vector3.Dot(weights, share);
+        var first = new Influence(face, weights, inverseMasses);
+        var second = new Influence(opposing, -opposingWeights, inverseMasses);
+        float inverseMass = first.InverseMass + second.InverseMass;
         if (inverseMass == 0) return ClothStepStatus.Accepted;
-        if (!float.IsFinite(supportSpeed)) return ClothStepStatus.NonfiniteState;
+        if (!float.IsFinite(supportSpeed) || !float.IsFinite(inverseMass)) return ClothStepStatus.NonfiniteState;
         if (Count == _witnesses.Length) return ClothStepStatus.ContactCapacity;
 
-        _witnesses[Count++] = new Witness(face, weights, share, inverseMass, normal, supportSpeed);
+        _witnesses[Count++] = new Witness(first, second, inverseMass, normal, supportSpeed, partId);
         return ClothStepStatus.Accepted;
     }
 
@@ -43,8 +49,9 @@ internal sealed class ClothContactVelocity(int capacity, int maxChecks = ClothWo
         {
             for (int i = 0; i < Count; i++)
             {
-                if (!CountCheck()) return ClothStepStatus.NormalVelocityWork;
                 ref readonly Witness witness = ref _witnesses[i];
+                PartId = witness.PartId;
+                if (!CountCheck()) return ClothStepStatus.NormalVelocityWork;
                 float speed = witness.RelativeSpeed(velocities);
                 float next = MathF.Max(0, _multipliers[i] - speed / witness.InverseMass);
                 if (!float.IsFinite(next)) return ClothStepStatus.NonfiniteState;
@@ -56,13 +63,21 @@ internal sealed class ClothContactVelocity(int capacity, int maxChecks = ClothWo
             }
 
             bool converged = true;
+            uint? failedPart = null;
             for (int i = 0; i < Count; i++)
             {
+                ref readonly Witness witness = ref _witnesses[i];
+                PartId = witness.PartId;
                 if (!CountCheck()) return ClothStepStatus.NormalVelocityWork;
-                float speed = _witnesses[i].RelativeSpeed(velocities);
+                float speed = witness.RelativeSpeed(velocities);
                 if (!float.IsFinite(speed)) return ClothStepStatus.NonfiniteState;
-                converged &= speed >= -SpeedRoundoff && (_multipliers[i] == 0 || speed <= SpeedRoundoff);
+                if (speed < -SpeedRoundoff || (_multipliers[i] > 0 && speed > SpeedRoundoff))
+                {
+                    converged = false;
+                    failedPart = witness.PartId;
+                }
             }
+            PartId = failedPart;
             if (converged) return ClothStepStatus.Accepted;
         }
         return ClothStepStatus.UnresolvedContact;
@@ -75,11 +90,26 @@ internal sealed class ClothContactVelocity(int capacity, int maxChecks = ClothWo
         return true;
     }
 
-    private readonly record struct Witness(ClothTriangle Face, Vector3 Weights, Vector3 Share, float InverseMass,
-        Vector3 Normal, float SupportSpeed)
+    private readonly record struct Witness(Influence First, Influence Second, float InverseMass,
+        Vector3 Normal, float SupportSpeed, uint? PartId)
     {
         internal float RelativeSpeed(Vector3[] velocities) =>
-            Vector3.Dot(Face.Blend(velocities, Weights), Normal) - SupportSpeed;
+            Vector3.Dot(First.Speed(velocities) + Second.Speed(velocities), Normal) - SupportSpeed;
+
+        internal void Apply(Vector3[] velocities, Vector3 change)
+        {
+            First.Apply(velocities, change);
+            Second.Apply(velocities, change);
+        }
+    }
+
+    private readonly record struct Influence(ClothTriangle Face, Vector3 Weights, Vector3 Share)
+    {
+        internal Influence(ClothTriangle face, Vector3 weights, float[] inverseMasses)
+            : this(face, weights, weights * new Vector3(inverseMasses[face.A], inverseMasses[face.B], inverseMasses[face.C])) { }
+
+        internal float InverseMass => Vector3.Dot(Weights, Share);
+        internal Vector3 Speed(Vector3[] velocities) => Face.Blend(velocities, Weights);
 
         internal void Apply(Vector3[] velocities, Vector3 change)
         {

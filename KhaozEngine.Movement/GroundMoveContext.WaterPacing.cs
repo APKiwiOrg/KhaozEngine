@@ -17,20 +17,23 @@ public sealed partial class GroundMoveContext
         out float landSpeedScale)
     {
         landSpeedScale = 1f;
-        if (tuning.Controller == MovementControllerKind.Legacy)
-        {
-            float feetY = body.Position.Y - tuning.CapsuleHalfHeight;
-            var medium = Medium?.Invoke(body.Position.X, body.Position.Z, feetY) ?? MovementMedium.Dry;
-            return (medium, CharacterMovement.ResolveSwimming(body.Swimming, medium, feetY, tuning), feetY);
-        }
         ValidateTuning(tuning);
-        _origin = Physics!.Origin;
+        _origin = Physics?.Origin ?? Vector3.Zero;
         if (!float.IsFinite(_origin.X) || !float.IsFinite(_origin.Y) || !float.IsFinite(_origin.Z))
             throw new InvalidOperationException("The physics origin must be finite.");
         _stepping = true;
         try
         {
             EnsureOrigin();
+            Vector3 position = body.Position - _origin;
+            if (tuning.Controller == MovementControllerKind.Legacy)
+            {
+                // StepTowards computes feet height after rebasing the centre. Taking the difference in
+                // world coordinates can round a landing to the other side of the swim-entry threshold.
+                float feetY = position.Y - tuning.CapsuleHalfHeight;
+                var medium = _localMedium?.Invoke(position.X, position.Z, feetY) ?? MovementMedium.Dry;
+                return (medium, CharacterMovement.ResolveSwimming(body.Swimming, medium, feetY, tuning), feetY);
+            }
             CaptureContactFrame();
             var binding = _binding!;
             var scope = binding.CreateOrdinaryScope(_contactFrame);
@@ -38,7 +41,7 @@ public sealed partial class GroundMoveContext
                 throw new InvalidOperationException("The contact pacing water lease is unresolved.");
             using (queries)
             {
-                var local = body with { Position = body.Position - _origin };
+                var local = body with { Position = position };
                 var point = binding.SampleWaterForPacing(new(local, _contactFrame, null), queries!, out bool swimming, out landSpeedScale);
                 EnsureOrigin();
                 if (point.Availability != MovementAvailability.Known)

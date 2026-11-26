@@ -26,6 +26,32 @@ public class MoveToRangeSwimTests
     private static readonly GroundMoveContext Flat = new((_, _) => 0f);
     private static readonly GroundMoveContext Deep = new((_, _) => -2f, medium: (_, _, feetY) => new MovementMedium(0f, feetY < 0f));
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void GroundLandingAtSwimEntryUsesTheRebasedMovementFrame(bool routed)
+    {
+        // #1281. At this origin the absolute centre rounds down. Subtracting the capsule height before the
+        // rebase would lose the small difference that puts the landing exactly at swim entry.
+        const float groundY = 100_000f, dt = 0.1f;
+        MoveTuning tuning = Tuning with { CapsuleHalfHeight = 0.9f, SwimEnterDepthFraction = 0.5f,
+            SwimExitDepthFraction = 0.4f };
+        using var world = new BepuPhysicsWorld();
+        world.Rebase(new(0, groundY, 0));
+        var body = new MoveState { Position = new(0, groundY + tuning.CapsuleHalfHeight, 0), Grounded = true };
+        float surfaceY = body.Position.Y;
+        using var context = new GroundMoveContext((_, _) => groundY, physics: world,
+            medium: (x, _, feet) => new MovementMedium(surfaceY, x > 0.05f && feet < surfaceY));
+        ReachTarget target = ReachTarget.Point(body.Position + 0.3f * Vector3.UnitX);
+        RangeSteering steering = routed
+            ? Mover(RouteApproachOptions.Default).Tick(body, tuning, target, 0, false, dt, context)
+            : new DirectMoveToRange(new(15, 0.1f, 45, 0.1f)).Tick(body, tuning, target, 0, false, false, dt, context);
+
+        Assert.Equal(RangeMoveStatus.Following, steering.Status);
+        MoveState landed = NpcGroundMovement.Step(body, steering, false, dt, tuning, context);
+        Assert.False(NpcGroundMovement.Hold(landed, dt, tuning, context).Swimming);
+    }
+
     [Fact]
     public void SwimmingBodyStaysSuspendedWithoutSwimPermission()
     {

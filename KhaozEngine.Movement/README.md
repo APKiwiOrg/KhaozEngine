@@ -1224,7 +1224,8 @@ step the guard refuses falls back to the active waypoint. A caller can also turn
 `ConsumePassedCollinearWaypoints` in its own `PathFollowConfig` without the option.
 
 Ground-only steering checks the water at the predicted landing, including the near-field shortcut and final
-stop. A wading body holds on shore if taking the step would make it swim on the next tick.
+stop. The depth check uses the same physics origin as the movement step, so a wading body holds on shore
+even when the swim-entry threshold falls between two representable world heights.
 `SteerWhileSwimming` steers a swimming body along an aquatic profile, from `PhysicsNavBake.BuildProfile` with
 `GroundProfileOptions.Aquatic` or a baked `NavBakeProfile` with `Aquatic`. The `GroundNavigation` constructor throws
 `ArgumentException` naming `options` when the profile is not aquatic. The planner constructor trusts its caller.

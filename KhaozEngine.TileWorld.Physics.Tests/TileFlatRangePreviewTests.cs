@@ -72,7 +72,7 @@ public class TileFlatRangePreviewTests(ITestOutputHelper output)
         Assert.True(predicted.Position.X > body.Position.X);
         if (rim) Assert.Equal(5f, predicted.Position.X);
         var target = ReachTarget.Point(predicted.Position);
-        static bool Admit(in MoveState from, in MoveState to, in MoveTuning tuning) => to.Grounded && !to.Swimming;
+        static bool Admit(in MoveState from, in MoveState to, in MoveTuning tuning, GroundMoveContext context) => to.Grounded && !to.Swimming;
         Vector2 expected = ArrivalReference.Stop(body, tuning, target, 0, false, 0.1f, scene.Context,
             Vector2.UnitX, predicted, Admit, out int count);
         using var work = new ArrivalPreviewDiagnostics();

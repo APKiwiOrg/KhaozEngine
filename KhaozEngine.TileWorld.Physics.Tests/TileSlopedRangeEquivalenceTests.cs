@@ -101,11 +101,11 @@ public class TileSlopedRangeEquivalenceTests(ITestOutputHelper output)
             float range = random.NextSingle() * 0.05f;
             var trials = new List<MoveState>();
             int observed = 0;
-            bool Observe(in MoveState from, in MoveState to, in MoveTuning shape)
+            bool Observe(in MoveState from, in MoveState to, in MoveTuning shape, GroundMoveContext context)
             {
                 Assert.True(observed < trials.Count);
                 Same(trials[observed++], to);
-                return Admit(from, to, shape);
+                return Admit(from, to, shape, context);
             }
             Vector2 original = ArrivalReference.Stop(body, tuning, target, range, true, dt, scene.Context,
                 command, predicted, Admit, out int count, trials.Add);
@@ -161,7 +161,7 @@ public class TileSlopedRangeEquivalenceTests(ITestOutputHelper output)
         Assert.Equal(scenario == "clear" ? count : 0, work.CertifiedTrials);
     }
 
-    static bool Admit(in MoveState from, in MoveState to, in MoveTuning tuning) => to.Grounded && !to.Swimming;
+    static bool Admit(in MoveState from, in MoveState to, in MoveTuning tuning, GroundMoveContext context) => to.Grounded && !to.Swimming;
     static void Same<T>(T expected, T actual) =>
         LocomotionStateBits.AssertEqual(expected, actual, LocomotionStateBits.Policy.IncludeContinuityHandle);
 }

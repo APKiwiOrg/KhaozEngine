@@ -91,5 +91,5 @@ public class TileDryTracePointProofTests
             actual.Step(body, command, false, 0.1f, tuning), LocomotionStateBits.Policy.IncludeContinuityHandle);
     }
 
-    static bool Admit(in MoveState from, in MoveState to, in MoveTuning tuning) => to.Grounded && !to.Swimming;
+    static bool Admit(in MoveState from, in MoveState to, in MoveTuning tuning, GroundMoveContext context) => to.Grounded && !to.Swimming;
 }

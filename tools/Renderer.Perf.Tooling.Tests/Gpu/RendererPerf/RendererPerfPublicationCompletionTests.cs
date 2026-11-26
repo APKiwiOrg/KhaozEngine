@@ -26,6 +26,43 @@ public sealed class RendererPerfPublicationCompletionTests
         }
         finally { if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true); }
     }
+    // #1547: Release the held ticks only after the initial partial JSON and Markdown exist.
+    [Theory]
+    [InlineData(5000, false)]
+    [InlineData(599000, true)]
+    public void Failed_measurement_includes_partial_write_in_elapsed_and_cost(long writeTicks, bool deadlineReached)
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "renderer-failed-partial-" + Guid.NewGuid().ToString("N"));
+        var input = RendererPerfProtocolTests.CompleteReport();
+        const string original = "measurement failed";
+        input = input with { Publication = input.Publication with
+        {
+            ElapsedMilliseconds = RendererPerfDriver.Value(1000, "ms", "held unit clock"),
+            OriginalFailure = original
+        } };
+        string stem = Path.Combine(directory, input.Manifest.UnitId);
+        var clock = new RendererPerfClock(() => File.Exists(stem + ".partial.md") ? 1000 + writeTicks : 1000, 1000);
+        try
+        {
+            var publication = new RendererPerfEntrypoint.EvidencePublication(directory);
+            var report = publication.Publish(input, clock, 600000);
+            Assert.Equal(RendererPerfPublicationState.Failed, report.Publication.State);
+            Assert.False(report.Publication.FinalUnitPublished);
+            Assert.False(File.Exists(stem + ".json"));
+            Assert.Equal(original, report.Publication.OriginalFailure);
+            if (deadlineReached) Assert.Single(report.Publication.Errors);
+            else Assert.Empty(report.Publication.Errors);
+            Assert.Equal(1000 + writeTicks, report.Publication.ElapsedMilliseconds.Value);
+            Assert.Equal((1000 + writeTicks) / 60000d * (double)input.Manifest.Budget.RatePerMinute,
+                report.Publication.EstimatedCostUsd.Value!.Value, 12);
+            var persisted = RendererPerfReportJson.Parse(File.ReadAllBytes(stem + ".partial.json"));
+            Assert.Equal(report.Publication.OriginalFailure, persisted.Publication.OriginalFailure);
+            Assert.Equal(report.Publication.Errors.AsEnumerable(), persisted.Publication.Errors.AsEnumerable());
+            Assert.Equal(report.Publication.ElapsedMilliseconds, persisted.Publication.ElapsedMilliseconds);
+            Assert.Equal(report.Publication.EstimatedCostUsd, persisted.Publication.EstimatedCostUsd);
+        }
+        finally { if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true); }
+    }
     [Fact]
     public void Successful_final_write_is_in_returned_and_persisted_elapsed_and_cost()
     {

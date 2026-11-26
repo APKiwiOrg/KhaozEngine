@@ -130,7 +130,14 @@ internal sealed partial class RendererPerfPublicationWriter : IRendererPerfUnitP
             // Initial partial is unconditional recovery evidence, including when the original budget expired.
             var partial = Failure(Update(report), report.Publication.OriginalFailure ?? "Final publication pending.", null);
             write(partial, false);
-            if (report.Publication.OriginalFailure is not null) return new(partial, []);
+            if (priorOriginal is not null)
+            {
+                budget.Check("renderer.publication.partial.after");
+                partial = Update(partial);
+                RecordPartialAccounting(partial, budget);
+                budget.Check("renderer.publication.partial.return");
+                return new(partial, []);
+            }
             if (failed || _account is null) throw new InvalidOperationException("Incomplete collection or missing admitted publication account.");
             budget.Check("renderer.publication.final.before");
             report = Update(report);
@@ -165,8 +172,12 @@ internal sealed partial class RendererPerfPublicationWriter : IRendererPerfUnitP
             }
             try { write(report, false); }
             catch (Exception recovery) { RendererPerfFailures.Add(failures, "renderer.publication.recovery", recovery); report = Project(report, failures.ToImmutable()); }
-            try { report = Update(report); }
-            catch (Exception clock) { RendererPerfFailures.Add(failures, "renderer.publication.recovery", clock); report = Project(report, failures.ToImmutable()); }
+            // For a failed measurement, keep the accounting snapshot written by bounded recovery.
+            if (priorOriginal is null)
+            {
+                try { report = Update(report); }
+                catch (Exception clock) { RendererPerfFailures.Add(failures, "renderer.publication.recovery", clock); report = Project(report, failures.ToImmutable()); }
+            }
             return new(report, failures.ToImmutable());
         }
         RendererPerfReport Update(RendererPerfReport value, long? instant = null)

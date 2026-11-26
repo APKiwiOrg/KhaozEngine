@@ -620,7 +620,7 @@ unattempted or incomplete compiler evidence cannot promote.
 
 Headless capture, accounting and file tests establish implementation behavior only. Primary native
 correspondence, real compiler payloads, unchanged-deadline acceptance, billed cost and the original
-consumer acceptance remain separate owner-approved gates. #1547 remains open for those proofs.
+consumer acceptance remain separate owner-approved gates.
 
 ## Raw artifact and strict reader
 
@@ -704,8 +704,11 @@ The unchanged 16,777,216-byte completion reserve includes four option tables req
 R=786432+4096*T, refusing A below 786432. D3D11 reserves 1,048,576 bytes. Each native reader receives
 the exact frozen request, with one outstanding reservation and checked actual-byte commits. Native
 reports are retained through refusal. No cap increase, frame pruning or native-field truncation is
-an admission remedy. Live verification precedes completion sampling and the accounting stamp.
-Cancellation, deadline and write failures preserve partial evidence and ordered original exceptions.
+an admission remedy. Live verification precedes completion sampling and the final accounting stamp.
+For a failed measurement, elapsed time and estimated cost include the initial partial JSON and Markdown
+write. Within budget, the writer atomically replaces the partial JSON with those values.
+Cancellation, deadline and write failures use bounded recovery and preserve partial evidence and
+ordered original exceptions.
 
 - `raw.format` must be `metric-vectors/2`. Shared metric descriptors retain name, unit, source,
   status and reason. A layout lists descriptor indices in order. Expand every referenced positive-zero
@@ -843,9 +846,8 @@ Promotion eligibility requires directory verification, the original valid assess
 and no newly detected drift or invalid partition. Optional unsupported counters and incomplete work
 models do not become measurements and do not independently invalidate sound frame timing.
 Failed, refused or partial publication keeps original failure and cleanup errors. It cannot supply
-promotable evidence or numerical comparison deltas. The existing partial-write accounting gap
-[#1547](https://github.com/APKiwiOrg/KhaozEngine/issues/1547) remains a proof limit. Offline analysis
-does not infer native cost or certify final sidecar availability from JSON alone.
+promotable evidence or numerical comparison deltas. Native cost and final sidecar availability
+require their own evidence beyond JSON decoding.
 
 ## Work models and reference gaps
 
@@ -973,10 +975,10 @@ remain visible with their reasons. Only available excess distributions enter the
 ranking. Investigation suggestions are leads, not established causes. If none is available, the
 summary says so and requests matched reference evidence.
 
-Three iterations establish within-job repeatability only. The summary retains that limit, the
-partial-write accounting proof limit in [#1547](https://github.com/APKiwiOrg/KhaozEngine/issues/1547),
-and the separate boundaries for optimization, consumer fit, Windows Vulkan and release. Successful
-publication does not close any of those boundaries.
+Three iterations establish within-job repeatability only. The summary records that scope and the
+separate gates for optimization, consumer fit, Windows Vulkan and release. The published campaigns
+establish final accounting for their completed runs. Separate headless tests cover failed partial-write
+accounting. [#1547](https://github.com/APKiwiOrg/KhaozEngine/issues/1547)
 
 Output is UTF-8 without a BOM, with LF line endings, invariant numbers, ordinal ordering and sorted
 JSON object keys. No publication time or input/output directory path enters the summary. Reversing

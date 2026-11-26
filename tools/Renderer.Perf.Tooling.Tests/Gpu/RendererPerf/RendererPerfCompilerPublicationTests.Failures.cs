@@ -50,6 +50,79 @@ public sealed partial class RendererPerfCompilerPublicationTests
             outcome.Report.Publication.FailureText.Complete, outcome.Report.Publication.FailureText.RequiredUtf8Bytes);
         System.IO.Directory.Delete(directory, true);
     }
+    // #1547: The typed unit must count the real partial write even when its workload failed first.
+    [Theory]
+    [InlineData(5000, false)]
+    [InlineData(600000, true)]
+    public void Failed_unit_includes_partial_write_in_elapsed_and_cost(long writeTicks, bool deadlineReached)
+    {
+        using var fixture = new RendererPerfColdLifecycleFixture();
+        string directory = Path.Combine(Path.GetTempPath(), "renderer-failed-unit-partial-" + Guid.NewGuid().ToString("N"));
+        string stem = Path.Combine(directory, fixture.Template.Manifest.UnitId);
+        var original = new InvalidOperationException("measurement failed");
+        fixture.Boundary = stage => { if (stage == "frame") throw original; };
+        var clock = new RendererPerfClock(() => File.Exists(stem + ".partial.md") ? fixture.Now + writeTicks : fixture.Now, 1000);
+        try
+        {
+            var outcome = fixture.Run(RendererPerfPublicationWriter.Files(directory), clock);
+            Assert.False(outcome.Certified);
+            Assert.NotNull(outcome.Report);
+            Assert.Same(original, outcome.Failures[0].Error);
+            Assert.Same(original, outcome.Report.Publication.OriginalFailureException);
+            Assert.Equal(RendererPerfPublicationState.Failed, outcome.Report.Publication.State);
+            Assert.False(outcome.Report.Publication.FinalUnitPublished);
+            if (deadlineReached)
+            {
+                Assert.Equal(2, outcome.Failures.Length);
+                var timeout = Assert.IsType<RendererPerfUnitBudgetTimeoutException>(outcome.Failures[1].Error);
+                Assert.Equal(RendererPerfUnitBudgetRefusal.DeadlineReached, timeout.Reason);
+            }
+            else Assert.Single(outcome.Failures);
+            Assert.False(File.Exists(stem + ".json"));
+            Assert.Equal(writeTicks, outcome.Report.Publication.ElapsedMilliseconds.Value);
+            Assert.Equal(writeTicks / 60000d * (double)fixture.Template.Manifest.Budget.RatePerMinute,
+                outcome.Report.Publication.EstimatedCostUsd.Value!.Value, 12);
+            var persisted = RendererPerfReportJson.Parse(File.ReadAllBytes(stem + ".partial.json"));
+            Assert.Equal("measurement failed", persisted.Publication.OriginalFailure);
+            Assert.Equal(outcome.Report.Publication.Errors.AsEnumerable(), persisted.Publication.Errors.AsEnumerable());
+            Assert.Equal(outcome.Report.Publication.ElapsedMilliseconds, persisted.Publication.ElapsedMilliseconds);
+            Assert.Equal(outcome.Report.Publication.EstimatedCostUsd, persisted.Publication.EstimatedCostUsd);
+        }
+        finally { if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true); }
+    }
+    // #1547: Keep a complete accounting snapshot when deadline recovery cannot replace the partial.
+    [Fact]
+    public void Failed_partial_keeps_coherent_accounting_when_the_update_and_recovery_fail()
+    {
+        using var fixture = new RendererPerfCompilerPublicationFixture();
+        var input = fixture.Report with { Publication = fixture.Report.Publication with { OriginalFailure = "measurement failed" } };
+        string stem = Path.Combine(fixture.Directory, input.Manifest.UnitId);
+        string temporary = stem + ".partial.json.tmp";
+        bool expired = false;
+        var budget = fixture.Budget with
+        {
+            Clock = new(() => expired ? fixture.Budget.Deadline
+                : File.Exists(stem + ".partial.md") ? fixture.Now + 5000 : fixture.Now, fixture.Budget.Clock.Frequency),
+            Boundary = stage =>
+            {
+                if (expired || !File.Exists(stem + ".partial.md")) return;
+                if (stage is not ("renderer.publication.slot.after" or "renderer.publication.rename.before")) return;
+                expired = true;
+                if (File.Exists(temporary)) File.Delete(temporary);
+                Directory.CreateDirectory(temporary);
+            }
+        };
+        var result = RendererPerfPublicationWriter.Files(fixture.Directory).Publish(input, fixture.Inventory, budget);
+        Assert.True(expired);
+        Assert.Equal(2, result.Failures.Length);
+        var timeout = Assert.IsType<RendererPerfUnitBudgetTimeoutException>(result.Failures[0].Error);
+        Assert.Equal(RendererPerfUnitBudgetRefusal.DeadlineReached, timeout.Reason);
+        Assert.Equal("renderer.publication.recovery", result.Failures[1].Stage);
+        var persisted = RendererPerfReportJson.Parse(File.ReadAllBytes(stem + ".partial.json"));
+        Assert.Equal("measurement failed", persisted.Publication.OriginalFailure);
+        Assert.Equal(0d, persisted.Publication.ElapsedMilliseconds.Value);
+        Assert.Equal(0d, persisted.Publication.EstimatedCostUsd.Value);
+    }
     [Fact]
     public void Previously_omitted_original_text_keeps_exact_required_bytes()
     {

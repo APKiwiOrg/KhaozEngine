@@ -35,6 +35,12 @@ internal sealed class RendererPerfPublicationFiles(string directory)
         Atomic(stem + ".md", Encoding.UTF8.GetBytes(markdown), final && report.Publication.FinalUnitPublished ? _budget : null);
     }
 
+    internal void RecordPartialAccounting(RendererPerfReport report, RendererPerfUnitBudget budget)
+    {
+        budget.Check("renderer.publication.partial.accounting.before");
+        Atomic(Path.Combine(directory, report.Manifest.UnitId + ".partial.json"), RendererPerfReportJson.Serialize(report), budget);
+    }
+
     internal void RecordCompletion(RendererPerfReport report)
     {
         if (_finalPath is null || _slots.Length != 2) throw new InvalidOperationException("No final payload was published.");

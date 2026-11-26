@@ -386,8 +386,9 @@ native acceptance or authorize another pilot.
 
 The existing driver owns every conditioned, warm and measured frame, three-frame completion,
 readback, drift check and publication deadline. Publication elapsed time and estimated cost include
-work-model generation, sidecar serialization and hashing inside the publication clock interval,
-including failed measurements. The absolute deadline and two-stage final accounting stamp still apply.
+work-model generation, sidecar serialization and hashing inside the publication clock interval.
+For failed measurements, returned and retained accounting also includes the initial partial JSON
+and Markdown write. Publication keeps the absolute deadline and the two-stage final accounting stamp.
 Host telemetry uses `nvidia-smi` outside frame
 brackets at a fixed interval of 64 session-info boundaries. Unsupported fields retain their reasons.
 Runtime identity retains the effective `KE_`, `DOTNET_`, `COMPlus_` and `VK_` environment, excluding

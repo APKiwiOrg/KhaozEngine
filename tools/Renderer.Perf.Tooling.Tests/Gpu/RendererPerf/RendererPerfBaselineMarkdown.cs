@@ -102,7 +102,7 @@ internal static class RendererPerfBaselineMarkdown
             .Append("- Linux Vulkan and Windows D3D11 are separate series. No cross-backend deltas are implied.\n")
             .Append("- Missing references remain ModelIncomplete. Unsupported compiler counters remain unavailable. Logical payload is not exact off-chip traffic.\n")
             .Append("- Actual billed minutes are supplied by the operator. Elapsed-time estimates and native accounting remain distinct in provenance.\n")
-            .Append("- [#1547](https://github.com/APKiwiOrg/KhaozEngine/issues/1547) remains the partial-write accounting proof limit. Successful publication does not close it.\n")
+            .Append("- Completed reports establish final accounting for their own runs. Separate headless tests cover failed partial-write accounting. [#1547](https://github.com/APKiwiOrg/KhaozEngine/issues/1547)\n")
             .Append("- Optimization, vendor profiling, Windows Vulkan, consumer assets and equipment fit, adoption and release require separate work and approval.\n")
             .Append("- Original registered files in the linked workflow run remain the reproduction authority. Verification ends when its retained handles close.\n");
         return text.ToString();

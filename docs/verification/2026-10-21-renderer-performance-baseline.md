@@ -1095,9 +1095,9 @@ remain unavailable where the backend supplies none. Process observations do not 
 Metal still supplies no primary native compiler artifact, physical registers, spills, achieved
 occupancy or residency through this diagnostics path.
 
-The failed-report [partial-write accounting gap #1547](https://github.com/APKiwiOrg/KhaozEngine/issues/1547)
-remains open. A failed measurement's partial write can occur after its elapsed/cost snapshot.
-Successful completed publications do not prove failed-final recovery or close that limit.
+The completed units establish final publication accounting for those runs. Separate held-clock
+tests cover elapsed time, estimated cost and deadline handling after the initial write of a failed
+measurement's partial report. [#1547](https://github.com/APKiwiOrg/KhaozEngine/issues/1547)
 
 The full WARP schedule remains uncertified after round 9's timeout. Its separate all-controls pass
 was the owner-accepted Windows preparation gate. The software lit-frame slowdown in

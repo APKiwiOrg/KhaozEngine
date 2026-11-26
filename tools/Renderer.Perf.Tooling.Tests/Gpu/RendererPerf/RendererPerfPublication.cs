@@ -27,9 +27,15 @@ internal sealed partial class RendererPerfPublicationWriter(Action<RendererPerfR
             partial = Failure(UpdateElapsed(report), report.Publication.OriginalFailure ?? "Final publication pending.", null);
             // Retain raw evidence before checking a deadline that may already have expired.
             write(partial, false);
-            CheckDeadline();
+            long partialAt = clock.Now();
+            CheckDeadline(partialAt);
             if (report.Publication.OriginalFailure is not null)
+            {
+                partial = UpdateElapsed(partial, partialAt);
+                RecordPartialAccounting(partial, new(clock, publicationStart, deadline, default));
+                CheckDeadline();
                 return partial;
+            }
             RendererPerfReport completed = report with
             {
                 Publication = report.Publication with
@@ -68,9 +74,9 @@ internal sealed partial class RendererPerfPublicationWriter(Action<RendererPerfR
             return failed;
         }
 
-        void CheckDeadline()
+        void CheckDeadline(long? instant = null)
         {
-            if (clock.Now() >= deadline) throw new TimeoutException("UnitTimeout during publication.");
+            if ((instant ?? clock.Now()) >= deadline) throw new TimeoutException("UnitTimeout during publication.");
         }
         RendererPerfReport UpdateElapsed(RendererPerfReport value, long? completedAt = null)
         {
@@ -86,6 +92,12 @@ internal sealed partial class RendererPerfPublicationWriter(Action<RendererPerfR
                 }
             };
         }
+    }
+
+    void RecordPartialAccounting(RendererPerfReport report, RendererPerfUnitBudget budget)
+    {
+        if (_files is not null) _files.RecordPartialAccounting(report, budget);
+        else write(report, false);
     }
 
     static RendererPerfReport Failure(RendererPerfReport report, string original, string? error) => report with

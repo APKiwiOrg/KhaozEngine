@@ -441,9 +441,7 @@ public sealed class SqlServerContentAuthoringStoreConformanceTests : ContentAuth
 
     /// <inheritdoc />
     [CatalogSqlServerTheory]
-    [InlineData(true)]
-    [InlineData(false)]
-    [InlineData(null)]
+    [MemberData(nameof(FamilyImportOrders), MemberType = typeof(ContentAuthoringStoreConformance))]
     public override Task ACarriedFamilyIdAdvancesItsOwnBlockCursor(bool? importFirst)
         => base.ACarriedFamilyIdAdvancesItsOwnBlockCursor(importFirst);
 

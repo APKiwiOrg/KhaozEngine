@@ -7,11 +7,10 @@ namespace KhaozEngine.Tests.Catalog;
 
 public abstract partial class ContentAuthoringStoreConformance
 {
+    /// <summary>Import first, add first, or add in the next publication.</summary>
+    public static TheoryData<bool?> FamilyImportOrders => new() { true, false, null };
+
     /// <summary>A direct import protects its slot from same-draft and later family allocations.</summary>
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    [InlineData(null)]
     public virtual async Task ACarriedFamilyIdAdvancesItsOwnBlockCursor(bool? importFirst)
     {
         // Issue #1552. The type mark already covers this block, but its cursor can still issue the carried id.

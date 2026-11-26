@@ -21,7 +21,7 @@ public sealed partial class SqlServerContentAuthoringStore
                     """
                     UPDATE dbo.catalog_family_block
                     SET next_free_id = @carried + 1, updated_at_utc = @now
-                    WHERE family_id = @family AND block_ordinal = @ordinal
+                    WHERE family_id = @family AND block_ordinal = @blockOrdinal
                       AND base_id <= 2147483647 - block_size
                       AND base_id <= @carried AND @carried < CAST(base_id AS bigint) + block_size
                       AND next_free_id <= @carried
@@ -30,7 +30,7 @@ public sealed partial class SqlServerContentAuthoringStore
                 BindTime(update, "@now", _clock());
                 BindInt(update, "@carried", carriedId);
                 BindBigInt(update, "@family", familyId);
-                BindInt(update, "@ordinal", blockOrdinal);
+                BindInt(update, "@blockOrdinal", blockOrdinal);
                 BindInt(update, "@type", type.Value);
                 await update.ExecuteNonQueryAsync(token).ConfigureAwait(false);
             },
@@ -51,7 +51,7 @@ public sealed partial class SqlServerContentAuthoringStore
             SELECT @next = b.next_free_id, @top = b.base_id + b.block_size, @type = f.type_id
             FROM dbo.catalog_family_block AS b WITH (UPDLOCK)
             JOIN dbo.catalog_family AS f ON f.family_id = b.family_id
-            WHERE b.family_id = @family AND b.block_ordinal = @ordinal;
+            WHERE b.family_id = @family AND b.block_ordinal = @blockOrdinal;
 
             IF @next < @top
             BEGIN
@@ -68,12 +68,12 @@ public sealed partial class SqlServerContentAuthoringStore
                 UPDATE dbo.catalog_family_block
                 SET next_free_id = @next, updated_at_utc = @now
                 OUTPUT @issued
-                WHERE family_id = @family AND block_ordinal = @ordinal;
+                WHERE family_id = @family AND block_ordinal = @blockOrdinal;
             END;
             """);
         BindTime(take, "@now", _clock());
         BindBigInt(take, "@family", familyId);
-        BindInt(take, "@ordinal", blockOrdinal);
+        BindInt(take, "@blockOrdinal", blockOrdinal);
         return await take.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) as int?;
     }
 }

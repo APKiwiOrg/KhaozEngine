@@ -29,6 +29,12 @@ public sealed class InMemoryContentAuthoringStoreConformanceTests : ContentAutho
         => base.BundleImportExcludesRivalDraftIntents(failureStep);
 
     /// <inheritdoc />
+    [Theory]
+    [MemberData(nameof(FamilyImportOrders), MemberType = typeof(ContentAuthoringStoreConformance))]
+    public override Task ACarriedFamilyIdAdvancesItsOwnBlockCursor(bool? importFirst)
+        => base.ACarriedFamilyIdAdvancesItsOwnBlockCursor(importFirst);
+
+    /// <inheritdoc />
     protected override IContentAuthoringStore NewStore()
         => new InMemoryContentAuthoringStore(Registry, NewPack(), ReadTheClock);
 

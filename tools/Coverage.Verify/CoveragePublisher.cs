@@ -88,6 +88,7 @@ internal static class CoveragePublisher
             catch (Exception error) when (Handled(error))
             {
                 var failures = Rollback();
+                if (error is CoverageBuildValidationException && failures.Count == 0) throw;
                 throw new CoverageBuildValidationException(CoverageBuildValidationRefusal.OutputIo, "Output publication refused.", error)
                 { RollbackFailures = failures };
             }
@@ -157,8 +158,11 @@ internal static class CoveragePublisher
         /// untouched and refuses.</summary>
         void Reuse(CoverageArtifactPart part)
         {
-            if (!CoveragePublicationJournal.Matches(CoveragePublicationJournal.State(part.DestinationPath), part.ByteLength, part.Sha256))
-                throw new CoverageBuildValidationException(CoverageBuildValidationRefusal.OutputIo, "An existing part differs from its descriptor.");
+            var state = CoveragePublicationJournal.State(part.DestinationPath);
+            if (state is not { Length: >= 0 }) throw new IOException("The existing part is no longer a regular file.");
+            if (!CoveragePublicationJournal.Matches(state, part.ByteLength, part.Sha256))
+                throw new CoverageBuildValidationException(CoverageBuildValidationRefusal.OutputPartMismatch, "An existing part differs from its descriptor.")
+                { PartPath = Path.GetFullPath(part.DestinationPath) };
             parts.Add((part, false));
         }
 

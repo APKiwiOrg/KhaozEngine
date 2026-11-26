@@ -152,7 +152,8 @@ public sealed class CoverageArtifactPublicationTests
         File.WriteAllText(planted, "planted");
         var before = set.Snapshot();
         var error = Assert.Throws<CoverageBuildValidationException>(() => set.Publish(other));
-        Assert.Equal(CoverageBuildValidationRefusal.OutputIo, error.Reason);
+        Assert.Equal(CoverageBuildValidationRefusal.OutputPartMismatch, error.Reason);
+        Assert.Equal(Path.GetFullPath(planted), error.PartPath);
         Assert.Equal(before, set.Snapshot());
 
         // Publishing a new generation leaves the older complete generation readable by its own root.

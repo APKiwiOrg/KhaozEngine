@@ -433,9 +433,9 @@ Publication then runs in this order:
 
 1. Parts are copied beside their final names, flushed, checked against their descriptors and moved in
    without replacing anything. Parts are immutable and content addressed. An existing part with the same
-   name is reused only when its bytes match. Otherwise publication refuses with `OutputIo` and leaves it
-   untouched, on this run and on every later one, until the damaged
-   `<root-file-name>.parts/<payload-sha256>` directory is deleted.
+   name is reused only when its bytes match. If the length or hash differs, publication leaves the part
+   untouched and exits 1. Standard error gives `OutputPartMismatch` followed by the absolute path of the
+   damaged part. Restore that part from a verified copy, or remove it and rerun the publisher to recreate it.
    Missing generation directories are created beneath the existing output parent.
 2. Each mutable output is copied to a sibling `<name>.<transaction>.tmp` and checked.
 3. A journal `<commit-root>.coverage-journal` is written beside the commit root with owner-only
@@ -452,8 +452,8 @@ Publication then runs in this order:
 A handled failure before the commit point attempts every restore in reverse order, removes only files
 this transaction created and keeps every pre-existing byte. One failed restore never skips the rest. A
 restored output gets back its old Unix mode. Hard links to a replaced or restored output are not
-preserved, because replacement and restore both rename another file into place. The refusal is
-`OutputIo`. Its inner exception is the original failure and `RollbackFailures` lists every rollback step
+preserved, because replacement and restore both rename another file into place. An I/O or rollback failure
+reports `OutputIo`. Its inner exception is the original failure and `RollbackFailures` lists every rollback step
 that also failed. When anything could not be undone, the journal, markers and remaining backups stay. A
 cleanup failure after the commit point also keeps them and reports `OutputIo`.
 
@@ -507,8 +507,9 @@ refuse with `OutputAlias` and exit 1. Malformed input or resumed evidence also l
 For parsed work, exit 0 writes `outcome: "accepted"` and zero blocking findings, replacing stale
 refusal diagnostics. Exit 1 writes `outcome: "refused"`. Accepted artifacts and diagnostics publish
 in one transaction. A refusal publishes only diagnostics and preserves existing table and evidence bytes.
-If the report cannot be published, the run exits 1 with `OutputIo` and the previous report normally stays
-exactly as it was, or absent. When a restore fails, or cleanup fails after the commit point, the recovery
+If report publication fails, the run exits 1 and the previous report normally stays exactly as it was,
+or absent. A conflicting part reports `OutputPartMismatch` and its path. A write failure reports
+`OutputIo`. When a restore fails, or cleanup fails after the commit point, the recovery
 files stay and readers refuse the report as `OutputRecoveryRequired` until the next run recovers. A failed
 accepted transaction carried the report already, so no second report
 replaces the previous one. The report is collected in full before any output is staged. Collection

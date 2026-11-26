@@ -194,7 +194,7 @@ public sealed class CoverageBuildDataException : MalformedDataException
 public enum CoverageBuildValidationRefusal
 {
     ProvenanceMismatch, RepresentativeMismatch, CandidateConstruction, StateInventoryMismatch, OutputIo, OutputAlias,
-    ArtifactContentMismatch, OutputRecoveryRequired,
+    ArtifactContentMismatch, OutputRecoveryRequired, OutputPartMismatch,
 }
 
 public sealed class CoverageBuildValidationException : InvalidOperationException
@@ -204,6 +204,8 @@ public sealed class CoverageBuildValidationException : InvalidOperationException
     public string? SampleId { get; init; }
     public int? GroupIndex { get; init; }
     public CoverageFailure? Failure { get; init; }
+    /// <summary>The absolute path of the conflicting part for <see cref="CoverageBuildValidationRefusal.OutputPartMismatch"/>.</summary>
+    public string? PartPath { get; init; }
     /// <summary>On <see cref="CoverageBuildValidationRefusal.OutputIo"/>, every rollback step that also failed, in the
     /// order attempted. The original failure is the inner exception. Empty when rollback completed.</summary>
     public IReadOnlyList<Exception> RollbackFailures { get => rollbackFailures; init => rollbackFailures = ImmutableArray.CreateRange(value.ToArray()); }

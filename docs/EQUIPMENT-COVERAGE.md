@@ -224,7 +224,8 @@ A report larger than the 64 MiB artifact limit becomes a `khaozengine.coverage-d
 with hashed parts, read whole through the strict artifact reader. The report names both producer
 assembly hashes and, in `resumedEvidenceSha256`, the hash of the exact evidence root that resume read. It
 does not prove freshness for two identical invocations. When the report cannot be published, the run
-exits 1 with `OutputIo` and the report on disk is normally the previous one. After a failed restore or a
+exits 1 and the report on disk is normally the previous one. A conflicting part reports
+`OutputPartMismatch` with its path. A write failure reports `OutputIo`. After a failed restore or a
 cleanup failure past the commit point, readers refuse it as `OutputRecoveryRequired` until the next run
 recovers. Acceptance gates, exit codes and refused-run table/evidence preservation stay
 unchanged within one tool build. Evidence binds the producing tool and Render3D hashes, so another build

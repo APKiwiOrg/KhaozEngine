@@ -64,7 +64,7 @@ public static class Program
             if (!TryCollect(run, args[0], exit, seams, stderr)) return 2;
             // A refusal replaces only diagnostics, so the accepted table and evidence are protected like inputs.
             try { Publish([], null, (diagnostic, args[0], exit), [.. run.ProtectedInputs, .. run.AcceptedOutputs], limits, seams.PublicationFault); }
-            catch (CoverageBuildValidationException error) { stderr.WriteLine(error.Reason); return 1; }
+            catch (CoverageBuildValidationException error) { WriteValidationFailure(stderr, error); return 1; }
             return exit;
         }
         // The session outlives every pose read, staging and publication of this run, then removes its scratch.
@@ -159,12 +159,20 @@ public static class Program
             return 1;
         }
         catch (CoverageToolStateException error) { diagnostic.Refuse(error.Reason.ToString()); stderr.WriteLine(error.Reason); return 1; }
-        catch (CoverageBuildValidationException error) { diagnostic.Refuse(error.Reason.ToString()); stderr.WriteLine(error.Reason); return 1; }
+        catch (CoverageBuildValidationException error)
+        {
+            diagnostic.Refuse(error.Reason.ToString());
+            WriteValidationFailure(stderr, error);
+            return 1;
+        }
         catch (CoverageBuildDataException error) { stderr.WriteLine($"{error.Reason} {error.Path}"); return 2; }
         catch (MalformedDataException error) { stderr.WriteLine(error.GetType().Name); return 2; }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         { stderr.WriteLine(error.GetType().Name); return 2; }
     }
+
+    static void WriteValidationFailure(TextWriter stderr, CoverageBuildValidationException error) =>
+        stderr.WriteLine(error.PartPath == null ? error.Reason.ToString() : $"{error.Reason} {error.PartPath}");
 
     /// <summary>Numerical work, then staging, resume admission, report collection and one publication, all while the
     /// session is alive.</summary>

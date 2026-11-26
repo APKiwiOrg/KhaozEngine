@@ -94,7 +94,12 @@ public sealed class CoveragePackedProcessTests : IDisposable
                 // Diagnostics are never resumed. A damaged existing part name is never reused or overwritten, and a
                 // missing one is written again from the complete new report.
                 Assert.Equal(defect == "missing" ? 0 : 1, Run(args, 4096, 4096, error));
-                if (defect != "missing") Assert.Equal(before, Snapshot(files.Folder));
+                if (defect != "missing")
+                {
+                    // #1827: the CLI identifies the damaged output part so it can be repaired.
+                    Assert.Equal($"OutputPartMismatch {Path.GetFullPath(part)}", error.ToString().TrimEnd());
+                    Assert.Equal(before, Snapshot(files.Folder));
+                }
             }
             if (defect != "missing" || root == files.EvidencePath) File.WriteAllBytes(part, original);
             using (var read = CoverageArtifactReader.Open(root, Scratch)) Assert.Equal(CoverageArtifactSet.HashFile(root), read.RootSha256);

@@ -210,7 +210,9 @@ public sealed class CoverageDiagnosticsProcessTests
         byte[]? evidence = existing ? File.ReadAllBytes(files.EvidencePath) : null;
         string directory = Path.Combine(files.Folder, "directory");
         Directory.CreateDirectory(directory);
-        Assert.Equal(1, (await Execute(files, "build", path: directory)).ExitCode);
+        var failure = await Execute(files, "build", path: directory);
+        Assert.Equal(1, failure.ExitCode);
+        Assert.Equal(nameof(CoverageBuildValidationRefusal.OutputIo), failure.Error.TrimEnd());
         if (existing)
         {
             Assert.Equal(table, File.ReadAllBytes(files.TablePath));

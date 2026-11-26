@@ -44,7 +44,7 @@ public class ArrivalRangeCrossingTests(ITestOutputHelper output)
         Assert.InRange(work.CertifiedTrials, 1, 32);
     }
 
-    internal static bool Admit(in MoveState from, in MoveState to, in MoveTuning tuning)
+    internal static bool Admit(in MoveState from, in MoveState to, in MoveTuning tuning, GroundMoveContext context)
         => to.Grounded && !to.Swimming && MovementBody.IsFinite(to.Position);
 
     [Theory]

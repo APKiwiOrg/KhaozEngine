@@ -6,6 +6,10 @@ namespace KhaozEngine.Movement;
 
 public sealed partial class GroundMoveContext
 {
+    // The current step may still be grounded when its landed feet would start the next step swimming.
+    internal bool CanLandWithoutSwimming(in MoveState landed, in MoveTuning tuning) =>
+        HasDryRangePreview(landed, tuning) || !SampleWaterForPacing(landed, tuning).Swimming;
+
     internal (MovementMedium Medium, bool Swimming, float FeetY) SampleWaterForPacing(in MoveState body, in MoveTuning tuning)
         => SampleWaterForPacing(body, tuning, out _);
 

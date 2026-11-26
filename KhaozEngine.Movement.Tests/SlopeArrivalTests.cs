@@ -87,6 +87,36 @@ public class SlopeArrivalTests
             target, range));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Issue1281_GroundRouteWadesOnlyWhileItsLandingStaysBelowSwimDepth(bool deep)
+    {
+        const float grade = 0.2f, dt = 0.1f, range = 0.05f;
+        MoveTuning tuning = MoveToRangeTests.Tuning;
+        float entryDepth = 2f * tuning.CapsuleHalfHeight * tuning.SwimEnterDepthFraction;
+        // The deep shore crosses swim entry between the start and the first point in reach of the target.
+        float waterY = deep ? entryDepth - grade * 0.20f : 0f;
+        using BepuPhysicsWorld world = SlopeWorld(grade);
+        using var context = new GroundMoveContext((_, _) => -10f, physics: world,
+            medium: (_, _, feetY) => new MovementMedium(waterY, feetY < waterY));
+        using PhysicsNavBake bake = PhysicsNavBake.Capture(context, Options, _ => 0u);
+        var mover = new MoveToRange(bake.BuildProfile(tuning, default));
+        var body = new MoveState
+        {
+            Position = Surface(grade, Row, Row) + Vector3.UnitY * tuning.CapsuleHalfHeight,
+            Grounded = true,
+        };
+        body = NpcGroundMovement.Hold(body, dt, tuning, context);
+        ReachTarget target = ReachTarget.Point(Surface(grade, Row, 0.5f) + Vector3.UnitY * tuning.CapsuleHalfHeight);
+
+        RangeSteering steering = mover.Tick(body, tuning, target, range, true, dt, context);
+        Assert.Equal(RangeMoveStatus.Following, steering.Status);
+        MoveState landed = NpcGroundMovement.Step(body, steering, true, dt, tuning, context);
+        Assert.False(NpcGroundMovement.Hold(landed, dt, tuning, context).Swimming);
+        Assert.Equal(!deep, ReachGeometry.Within(MoveToRangeTests.Shape(landed, tuning), target, range));
+    }
+
     [Fact]
     public void Issue1265_LegacyProbeRefusesAParallelFloorWithinTheSameMesh()
     {

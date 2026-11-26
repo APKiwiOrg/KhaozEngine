@@ -28,11 +28,11 @@ public class ArrivalRefusalParityTests
         var target = ReachTarget.Point(new(0.4f, tuning.CapsuleHalfHeight, 0));
         var trials = new List<MoveState>();
         int observed = 0;
-        bool Observe(in MoveState from, in MoveState to, in MoveTuning shape)
+        bool Observe(in MoveState from, in MoveState to, in MoveTuning shape, GroundMoveContext context)
         {
             Assert.True(observed < trials.Count);
             ArrivalRangeEquivalenceTests.Same(trials[observed++], to);
-            return ArrivalRangeCrossingTests.Admit(from, to, shape);
+            return ArrivalRangeCrossingTests.Admit(from, to, shape, context);
         }
         Vector2 expected = ArrivalReference.Stop(body, tuning, target, 0.1f, false, 0.1f, scene.Context,
             Vector2.UnitX, predicted, ArrivalRangeCrossingTests.Admit, out int count, trials.Add);

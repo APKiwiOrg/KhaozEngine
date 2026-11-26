@@ -1189,12 +1189,13 @@ scope and convex `MovementBoundary` bounds. Supplying `clampXz` does not disable
 because neither Contact steps nor their exact arrival trials read that Legacy-only clamp. A swept region
 that reaches the boundary still uses the exact solver. A supplied water field must also opt into `IMovementDryTracePointProof`
 and certify successful dry point classification throughout this particular enclosure. Without that separate
-operation-level guarantee, both drivers retain full previews and the direct driver's ordinary pacing point read.
+operation-level guarantee, both drivers retain full previews and ground-only steps check the water at the landing.
 The point guarantee never replaces trace operations. This also corrects the certified flat path released in
 23.4.0, which could previously skip a refused contained trace. Only grounded bodies without swimming, commitments, buffered jumps or
 carried climb signals use certified trials. Steep or missing support and queries outside the captured slope
 region retain the live solver. A conservative roundoff enclosure must fit the unchanged coverage skin,
-otherwise the live solver retains each trial's precision refusal. The direct driver's dry pacing reads share that certificate. If a producer revokes the
+otherwise the live solver retains each trial's precision refusal. Both ground-only drivers can use that certificate
+for the landing water check. If a producer revokes the
 read, the proof closes and the remaining candidates use the exact solver from the current float bracket.
 The search never restarts its earlier decisions. Every other
 case resolves each copied state through the exact live solver. Both drivers retain identical command bits,
@@ -1222,6 +1223,8 @@ hop, waypoint 0 and the final waypoint are never carried past, so every mandator
 step the guard refuses falls back to the active waypoint. A caller can also turn on
 `ConsumePassedCollinearWaypoints` in its own `PathFollowConfig` without the option.
 
+Ground-only steering checks the water at the predicted landing, including the near-field shortcut and final
+stop. A wading body holds on shore if taking the step would make it swim on the next tick.
 `SteerWhileSwimming` steers a swimming body along an aquatic profile, from `PhysicsNavBake.BuildProfile` with
 `GroundProfileOptions.Aquatic` or a baked `NavBakeProfile` with `Aquatic`. The `GroundNavigation` constructor throws
 `ArgumentException` naming `options` when the profile is not aquatic. The planner constructor trusts its caller.

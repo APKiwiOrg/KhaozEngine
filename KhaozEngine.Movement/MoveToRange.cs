@@ -184,7 +184,7 @@ public sealed partial class MoveToRange
             if (command == Vector2.Zero) return Counted(body, Hold(RangeMoveStatus.Following));
         }
         MoveState predicted = context.Step(body, command, run, dt, tuning);
-        if (!AllowsStep(body, predicted, tuning))
+        if (!AllowsStep(body, predicted, tuning, context))
         {
             FallBackToRawRoute<TPlanning>();
             return Counted(body, Hold(RangeMoveStatus.Following));

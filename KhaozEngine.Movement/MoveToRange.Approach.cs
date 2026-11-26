@@ -14,15 +14,18 @@ public sealed partial class MoveToRange
         if (command == Vector2.Zero) return false;
         MoveState predicted = context.Step(body, command, run, dt, tuning);
         // The actual shape at the core's predicted support height must intersect this tick's segment.
-        if (!AllowsStep(body, predicted, tuning) || !ReachGeometry.Within(Body(predicted, tuning), target, range))
+        if (!AllowsStep(body, predicted, tuning, context) || !ReachGeometry.Within(Body(predicted, tuning), target, range))
             return false;
         command = StopAtRange(body, tuning, target, range, run, dt, context, command, predicted, _admits);
         MoveState accepted = context.Step(body, command, run, dt, tuning);
-        return AllowsStep(body, accepted, tuning);
+        return AllowsStep(body, accepted, tuning, context);
     }
 
-    // A swimming prediction is admitted only under SteerWhileSwimming. An airborne prediction never is.
-    private bool AllowsStep(in MoveState body, in MoveState predicted, in MoveTuning tuning)
-        => ((predicted.Grounded && !predicted.Swimming) || (_options.SteerWhileSwimming && predicted.Swimming)) &&
-            MovementBody.IsFinite(predicted.Position) && _allowsSegment(Feet(body, tuning), Feet(predicted, tuning));
+    private bool AllowsStep(in MoveState body, in MoveState predicted, in MoveTuning tuning, GroundMoveContext context)
+    {
+        bool canSteer = predicted.Swimming ? _options.SteerWhileSwimming : predicted.Grounded;
+        if (!canSteer || !MovementBody.IsFinite(predicted.Position) ||
+            !_allowsSegment(Feet(body, tuning), Feet(predicted, tuning))) return false;
+        return _options.SteerWhileSwimming || context.Medium is null || context.CanLandWithoutSwimming(predicted, tuning);
+    }
 }

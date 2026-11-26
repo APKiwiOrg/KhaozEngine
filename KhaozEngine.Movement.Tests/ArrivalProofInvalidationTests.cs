@@ -24,15 +24,15 @@ public class ArrivalProofInvalidationTests
         var target = ReachTarget.Point(body.Position + new Vector3(0.4f, 0, 0));
         MoveState predicted = expectedScene.Context.Step(body, Vector2.UnitX, false, 0.1f, tuning);
         int expectedAdmissions = 0, actualAdmissions = 0;
-        bool ExpectedAdmits(in MoveState from, in MoveState to, in MoveTuning shape)
+        bool ExpectedAdmits(in MoveState from, in MoveState to, in MoveTuning shape, GroundMoveContext context)
         {
             if (++expectedAdmissions == 1) expectedField.Revoke();
-            return ArrivalRangeCrossingTests.Admit(from, to, shape);
+            return ArrivalRangeCrossingTests.Admit(from, to, shape, context);
         }
-        bool ActualAdmits(in MoveState from, in MoveState to, in MoveTuning shape)
+        bool ActualAdmits(in MoveState from, in MoveState to, in MoveTuning shape, GroundMoveContext context)
         {
             if (++actualAdmissions == 1) actualField.Revoke();
-            return ArrivalRangeCrossingTests.Admit(from, to, shape);
+            return ArrivalRangeCrossingTests.Admit(from, to, shape, context);
         }
         Vector2 expected = ArrivalReference.Stop(body, tuning, target, 0.1f, false, 0.1f,
             expectedScene.Context, Vector2.UnitX, predicted, ExpectedAdmits, out int count);

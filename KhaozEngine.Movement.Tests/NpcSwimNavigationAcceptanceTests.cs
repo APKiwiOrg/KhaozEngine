@@ -126,11 +126,13 @@ public class NpcSwimNavigationAcceptanceTests
         Assert.True(outHeld + inHeld <= 4, $"Held {outHeld} ticks out and {inHeld} ticks back.");
         Assert.True(outTicks + inTicks < 300, $"The round trip took {outTicks} and {inTicks} ticks.");
 
-        // Without SteerWhileSwimming the duck stalls once it starts swimming at the shore.
+        // #1281. A ground-only driver on the same aquatic route must hold on the wading side.
         (RangeMoveStatus stalled, MoveState stuck, _, int stalledHeld) = Drive(new MoveToRange(aquatic), wading, deep, context);
-        Assert.Equal(RangeMoveStatus.Suspended, stalled);
-        Assert.True(stuck.Swimming);
-        Assert.True(stalledHeld > 100, $"Only {stalledHeld} ticks held without the option.");
+        Assert.Equal(RangeMoveStatus.Following, stalled);
+        Assert.Equal(0, stalledHeld);
+        Assert.True(stuck.Grounded);
+        Assert.False(stuck.Swimming);
+        Assert.True(stuck.Position.X > wading.Position.X);
     }
 
     // Steps the body towards the target for up to 600 ticks. Returns the last status, the body, the ticks taken and

@@ -75,10 +75,10 @@ public class ArrivalRangeEquivalenceTests(ITestOutputHelper output)
             StepAdmission admits = sample % 8 == 0 ? RejectMiddle : ArrivalRangeCrossingTests.Admit;
             var expectedTrials = new List<MoveState>();
             var actualTrials = new List<MoveState>();
-            bool ObserveActual(in MoveState from, in MoveState to, in MoveTuning shape)
+            bool ObserveActual(in MoveState from, in MoveState to, in MoveTuning shape, GroundMoveContext context)
             {
                 actualTrials.Add(to);
-                return admits(from, to, shape);
+                return admits(from, to, shape, context);
             }
             Vector2 expected = ArrivalReference.Stop(body, tuning, target, range, run, dt, scene.Context,
                 command, predicted, admits, out int count, expectedTrials.Add);
@@ -128,7 +128,7 @@ public class ArrivalRangeEquivalenceTests(ITestOutputHelper output)
         MoveState predicted = scene.Context.Step(body, Vector2.UnitX, false, 0.1f, tuning);
         Assert.True(predicted.ClimbRate > 0);
         var target = ReachTarget.Point(predicted.Position);
-        static bool Admit(in MoveState from, in MoveState to, in MoveTuning tuning) => to.Grounded && to.ClimbRate > 0;
+        static bool Admit(in MoveState from, in MoveState to, in MoveTuning tuning, GroundMoveContext context) => to.Grounded && to.ClimbRate > 0;
         Vector2 expected = ArrivalReference.Stop(body, tuning, target, 0.1f, false, 0.1f, scene.Context,
             Vector2.UnitX, predicted, Admit, out int count);
         using var work = new ArrivalPreviewDiagnostics();
@@ -139,8 +139,8 @@ public class ArrivalRangeEquivalenceTests(ITestOutputHelper output)
         Assert.Equal(1, work.CertifiedTrials);
     }
 
-    static bool RejectMiddle(in MoveState from, in MoveState to, in MoveTuning tuning)
-        => ArrivalRangeCrossingTests.Admit(from, to, tuning) &&
+    static bool RejectMiddle(in MoveState from, in MoveState to, in MoveTuning tuning, GroundMoveContext context)
+        => ArrivalRangeCrossingTests.Admit(from, to, tuning, context) &&
             (Vector3.DistanceSquared(from.Position, to.Position) < 0.0004f || to.Position.X >= from.Position.X);
 
     static FlatArrivalScene Scene(string scenario) => scenario switch

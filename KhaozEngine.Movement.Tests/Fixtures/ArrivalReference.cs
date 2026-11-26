@@ -22,7 +22,7 @@ internal static class ArrivalReference
             previews++;
             MoveState candidate = context.Step(body, command * fraction, run, dt, tuning);
             observe?.Invoke(candidate);
-            if (admits(body, candidate, tuning) && ReachGeometry.Within(RangeApproachCore.Body(candidate, tuning), target, range))
+            if (admits(body, candidate, tuning, context) && ReachGeometry.Within(RangeApproachCore.Body(candidate, tuning), target, range))
                 high = fraction;
             else
                 low = fraction;

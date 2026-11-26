@@ -28,7 +28,7 @@ public sealed partial class MoveToRange
         Vector2 carried = BoundedDirection(path.Waypoints[index].Position - position, bound);
         if (carried == Vector2.Zero) return false;
         MoveState predicted = context.Step(body, carried, run, dt, tuning);
-        if (!AllowsStep(body, predicted, tuning)) return false;
+        if (!AllowsStep(body, predicted, tuning, context)) return false;
         command = carried;
         return true;
     }

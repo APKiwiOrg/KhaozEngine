@@ -19,7 +19,8 @@ public sealed record RouteApproachOptions
     /// its float line. A settled swimmer follows the route at swim pace, so a swim tick never overshoots a waypoint,
     /// and a step is admitted when its prediction swims or stands grounded. Airborne and committed bodies stay
     /// suspended as before. The <see cref="GroundNavigation"/> constructor refuses it for a profile that is not
-    /// <see cref="GroundNavigation.Aquatic"/>. <see cref="DirectMoveToRange"/> never steers swimmers. Default false.</summary>
+    /// <see cref="GroundNavigation.Aquatic"/>. With the default false, a ground step must land where the next tick can
+    /// still stand or wade. <see cref="DirectMoveToRange"/> also follows that rule.</summary>
     public bool SteerWhileSwimming { get; init; }
 
     /// <summary>Straightens each planned route, so a body walks straight across open ground instead of along the

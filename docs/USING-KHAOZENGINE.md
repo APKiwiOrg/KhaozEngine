@@ -10767,7 +10767,8 @@ public readonly record struct PlayerPathInput
 }
 ```
 
-Every option is opt-in, and the constructors without options keep today's behaviour. `CarryThroughStraightRuns`
+By default, ground steering checks the predicted landing and holds short of a step that would start swimming
+on the next tick. This applies to both waypoints and the final approach. `CarryThroughStraightRuns`
 keeps full pace along a straight route run. It aims past a collinear pass-through waypoint closer than one tick of
 travel and has the follower consume the waypoints it passed (`PathFollowConfig.ConsumePassedCollinearWaypoints`), while
 every corner, reversal, layer change, hop, waypoint 0 and final waypoint is still landed on. `SteerWhileSwimming`

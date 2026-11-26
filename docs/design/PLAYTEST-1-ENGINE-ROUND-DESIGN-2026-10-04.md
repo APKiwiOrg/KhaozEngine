@@ -150,8 +150,8 @@ engine's `FootPlant` inspection.
 
 ### D9. Riders
 
-- #1269 joins. It is verified, about 20 lines in `DirectMoveToRange.AllowsStep`, and repeats the drop round's fix:
-  judge the predicted end state with `CharacterMovement.ResolveSwimming` at the landed feet before admitting it.
+- Direct and routed ground steering check the water at the predicted landing. A step can finish grounded even
+  when its landed feet would start the next tick swimming. See #1269 and #1281.
 - #1270 stays out. It is a lead whose cause is untraced, and #1253 needed a fixture, eight rulings and a deferral
   before its cause was known. It needs its own investigation round, ideally before Grimhollow P6.
 - [#1272](https://github.com/APKiwiOrg/KhaozEngine/issues/1272) joins (added after the owner's second playtest): an

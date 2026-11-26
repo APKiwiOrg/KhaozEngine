@@ -5,7 +5,7 @@ using KhaozEngine.Locomotion;
 namespace KhaozEngine.Movement;
 
 /// <summary>Decides whether a resolved candidate step may be taken by a range approach driver.</summary>
-internal delegate bool StepAdmission(in MoveState from, in MoveState to, in MoveTuning tuning);
+internal delegate bool StepAdmission(in MoveState from, in MoveState to, in MoveTuning tuning, GroundMoveContext context);
 
 /// <summary>The target shape, range and capsule geometry whose change resets a range approach driver.
 /// Target translation is not part of the key.</summary>
@@ -101,7 +101,7 @@ internal static class RangeApproachCore
                 ArrivalPreviewDiagnostics.FullStep();
                 candidate = context.Step(body, command * fraction, run, dt, tuning);
             }
-            if (admits(body, candidate, tuning) && ReachGeometry.Within(Body(candidate, tuning), target, range))
+            if (admits(body, candidate, tuning, context) && ReachGeometry.Within(Body(candidate, tuning), target, range))
                 high = fraction;
             else
                 low = fraction;

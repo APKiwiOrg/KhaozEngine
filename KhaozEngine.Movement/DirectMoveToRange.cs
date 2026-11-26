@@ -22,10 +22,8 @@ namespace KhaozEngine.Movement;
 /// on an aquatic profile.</para></summary>
 public sealed partial class DirectMoveToRange
 {
-    private readonly StepAdmission _admits;
     private readonly DirectApproachOptions _options;
     private readonly RangeProgressRing _progress;
-    private GroundMoveContext? _stepContext;
     private RangeShapeKey _shape;
     private bool _keyed;
     private bool _targetMoves;
@@ -35,7 +33,6 @@ public sealed partial class DirectMoveToRange
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _progress = new RangeProgressRing(options.StallWindowTicks, options.ApproachWindowTicks);
-        _admits = AllowsStep;
     }
 
     /// <summary>Returns bounded requested input without writing the supplied state or stepping the world.
@@ -48,7 +45,6 @@ public sealed partial class DirectMoveToRange
     {
         ArgumentNullException.ThrowIfNull(context);
         context.ValidateTuning(tuning);
-        _stepContext = context;
         ValidateBody(body);
         if (!float.IsFinite(dt) || dt <= 0f) throw new ArgumentOutOfRangeException(nameof(dt));
         MovementBody shape = Body(body, tuning);
@@ -69,8 +65,8 @@ public sealed partial class DirectMoveToRange
         if (command != Vector2.Zero)
         {
             MoveState predicted = context.Step(body, command, run, dt, tuning);
-            command = AllowsStep(body, predicted, tuning) || AllowsDrop(body, predicted, tuning, dt, context)
-                ? StopAtRange(body, tuning, target, range, run, dt, context, command, predicted, _admits)
+            command = AdmitsGroundStep(body, predicted, tuning, context) || AllowsDrop(body, predicted, tuning, dt, context)
+                ? StopAtRange(body, tuning, target, range, run, dt, context, command, predicted, AdmitsGroundStep)
                 : Vector2.Zero;
         }
 
@@ -109,12 +105,7 @@ public sealed partial class DirectMoveToRange
 
     private static RangeSteering Hold(RangeMoveStatus status) => new(Vector2.Zero, status);
 
-    // A step decides swimming from its starting feet, so a grounded step down a sloped shore can land past the
-    // swim-enter line. The landed feet make the next step's swim decision, and a step it would swim from is refused.
-    private bool AllowsStep(in MoveState body, in MoveState predicted, in MoveTuning tuning)
-    {
-        if (!predicted.Grounded || predicted.Swimming || !MovementBody.IsFinite(predicted.Position)) return false;
-        return _stepContext!.HasDryRangePreview(predicted, tuning) ||
-            !_stepContext.SampleWaterForPacing(predicted, tuning).Swimming;
-    }
+    private static bool AdmitsGroundStep(in MoveState _, in MoveState predicted, in MoveTuning tuning, GroundMoveContext context)
+        => predicted.Grounded && !predicted.Swimming && MovementBody.IsFinite(predicted.Position) &&
+            context.CanLandWithoutSwimming(predicted, tuning);
 }

@@ -12,9 +12,10 @@ public sealed class LoadedAttachmentSet
     readonly string _definitionSha256;
     readonly IReadOnlyList<AttachmentPartResources> _resources;
     readonly LiftFootprint? _footprint;
+    readonly CheckedClothSurface?[]? _cloth;
 
     internal LoadedAttachmentSet(AttachmentSetCache owner, string key, AttachmentSetDefinition definition,
-        string definitionSha256, AttachmentPartResources[] resources, LiftFootprint? footprint)
+        string definitionSha256, AttachmentPartResources[] resources, LiftFootprint? footprint, CheckedClothSurface?[]? cloth)
     {
         _owner = owner;
         _key = key;
@@ -22,6 +23,7 @@ public sealed class LoadedAttachmentSet
         _definitionSha256 = definitionSha256;
         _resources = System.Array.AsReadOnly(resources);
         _footprint = footprint;
+        _cloth = cloth;
     }
 
     public AttachmentSetDefinition Definition
@@ -53,6 +55,6 @@ public sealed class LoadedAttachmentSet
         _owner.ThrowIfDisposed();
         System.ArgumentNullException.ThrowIfNull(hostMesh);
         return new BoundAttachmentSet(_owner, _key, _definition, _resources,
-            new AttachmentSetBinding(_definition, map, hostMesh, _resources, _owner), _footprint);
+            new AttachmentSetBinding(_definition, map, hostMesh, _resources, _owner, _cloth), _footprint);
     }
 }

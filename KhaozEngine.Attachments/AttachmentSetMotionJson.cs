@@ -33,7 +33,7 @@ internal static class AttachmentSetMotionJson
             new AttachmentSetDataException(AttachmentSetJson.StrictReason(fault), message) { JsonPath = jsonPath, PropertyName = property, ColliderIndex = index };
     }
 
-    internal static PartMotionDefinition? ReadMotion(JsonElement part, uint partId, int partIndex, bool linkStretchFormat)
+    internal static PartMotionDefinition? ReadMotion(JsonElement part, uint partId, int partIndex, bool linkStretchFormat, bool clothFormat = false)
     {
         if (!part.TryGetProperty("motion", out JsonElement motion)) return null;
         string path = AttachmentSetMotion.MotionPath(partIndex);
@@ -50,10 +50,45 @@ internal static class AttachmentSetMotionJson
             throw new AttachmentSetDataException(AttachmentSetRefusal.JsonStringRequired, $"{path}.kind: expected a string.")
             { JsonPath = path + ".kind", PropertyName = "kind", PartId = partId, PartIndex = partIndex };
         string kind = kindValue.GetString()!;
+        if (kind == "cloth" && clothFormat)
+        {
+            StrictAttachmentJson.Members(motion, path, Refuse, "kind", "surface", "fallback");
+            JsonElement surface = StrictAttachmentJson.Required(motion, "surface", path, Refuse);
+            string surfacePath = path + ".surface";
+            StrictAttachmentJson.Members(surface, surfacePath, Refuse, "key", "sha256");
+            string key = StrictAttachmentJson.Text(StrictAttachmentJson.Required(surface, "key", surfacePath, Refuse), surfacePath + ".key", Refuse);
+            string hash = StrictAttachmentJson.Text(StrictAttachmentJson.Required(surface, "sha256", surfacePath, Refuse), surfacePath + ".sha256", Refuse);
+            JsonElement fallback = StrictAttachmentJson.Required(motion, "fallback", path, Refuse);
+            return new ClothMotionDefinition(new ClothSurfaceRef(key, hash), ReadFallback(fallback, partId, partIndex));
+        }
         if (kind != "chains")
             throw new AttachmentSetDataException(AttachmentSetRefusal.MotionKindUnsupported, $"{path}: unsupported motion kind '{kind}'.")
             { JsonPath = path + ".kind", PartId = partId, PartIndex = partIndex, Kind = kind };
 
+        return ReadChains(motion, path, partId, partIndex, linkStretchFormat);
+
+        Exception Refuse(StrictAttachmentJson.Fault fault, string jsonPath, string message, string? property) =>
+            new AttachmentSetDataException(AttachmentSetJson.StrictReason(fault), message)
+            { JsonPath = jsonPath, PropertyName = property, PartId = partId, PartIndex = partIndex };
+    }
+
+    static ChainMotionDefinition ReadFallback(JsonElement fallback, uint partId, int partIndex)
+    {
+        string path = AttachmentSetMotion.MotionPath(partIndex) + ".fallback";
+        StrictAttachmentJson.Members(fallback, path, Refuse, "kind", "chains", "links", "linkStretch");
+        string kind = StrictAttachmentJson.Text(StrictAttachmentJson.Required(fallback, "kind", path, Refuse), path + ".kind", Refuse);
+        if (kind != "chains")
+            throw new AttachmentSetDataException(AttachmentSetRefusal.MotionKindUnsupported, "Cloth fallback requires chain motion.")
+            { JsonPath = path + ".kind", PartId = partId, PartIndex = partIndex, Kind = kind };
+        return ReadChains(fallback, path, partId, partIndex, linkStretchFormat: true);
+
+        Exception Refuse(StrictAttachmentJson.Fault fault, string jsonPath, string message, string? property) =>
+            new AttachmentSetDataException(AttachmentSetJson.StrictReason(fault), message)
+            { JsonPath = jsonPath, PropertyName = property, PartId = partId, PartIndex = partIndex };
+    }
+
+    static ChainMotionDefinition ReadChains(JsonElement motion, string path, uint partId, int partIndex, bool linkStretchFormat)
+    {
         StrictAttachmentJson.Members(motion, path, Refuse,
             linkStretchFormat ? ["kind", "chains", "links", "linkStretch"] : ["kind", "chains", "links"]);
         JsonElement chains = StrictAttachmentJson.ArrayValue(
@@ -62,9 +97,9 @@ internal static class AttachmentSetMotionJson
         AttachmentSetMotion.CheckChainCount(count, partId, partIndex);
         var definitions = new ChainDefinition[count];
         for (int chainIndex = 0; chainIndex < count; chainIndex++)
-            definitions[chainIndex] = ReadChain(chains[chainIndex], partId, partIndex, chainIndex);
+            definitions[chainIndex] = ReadChain(chains[chainIndex], path, partId, partIndex, chainIndex);
         ChainLink[] links = motion.TryGetProperty("links", out JsonElement linksValue)
-            ? ReadLinks(StrictAttachmentJson.ArrayValue(linksValue, path + ".links", Refuse), partId, partIndex) : [];
+            ? ReadLinks(StrictAttachmentJson.ArrayValue(linksValue, path + ".links", Refuse), path, partId, partIndex) : [];
         float? linkStretch = motion.TryGetProperty("linkStretch", out JsonElement stretchValue)
             ? ReadLinkStretch(stretchValue) : null;
         return new ChainMotionDefinition(definitions, links) { LinkStretch = linkStretch };
@@ -83,9 +118,9 @@ internal static class AttachmentSetMotionJson
             { JsonPath = jsonPath, PropertyName = property, PartId = partId, PartIndex = partIndex };
     }
 
-    static ChainDefinition ReadChain(JsonElement chain, uint partId, int partIndex, int chainIndex)
+    static ChainDefinition ReadChain(JsonElement chain, string motionPath, uint partId, int partIndex, int chainIndex)
     {
-        string path = AttachmentSetMotion.MotionPath(partIndex) + $".chains[{chainIndex}]";
+        string path = motionPath + $".chains[{chainIndex}]";
         StrictAttachmentJson.Members(chain, path, Refuse,
             "joints", "tip", "stiffness", "damping", "gravity", "trail", "angleLimit", "radius");
         JsonElement joints = StrictAttachmentJson.ArrayValue(
@@ -130,7 +165,7 @@ internal static class AttachmentSetMotionJson
         }
     }
 
-    static ChainLink[] ReadLinks(JsonElement links, uint partId, int partIndex)
+    static ChainLink[] ReadLinks(JsonElement links, string motionPath, uint partId, int partIndex)
     {
         int count = links.GetArrayLength();
         AttachmentSetMotion.CheckLinkCount(count, partId, partIndex);
@@ -142,7 +177,7 @@ internal static class AttachmentSetMotionJson
                 || !ReadIndex(pair[0], out int first) || !ReadIndex(pair[1], out int second))
                 throw new AttachmentSetDataException(AttachmentSetRefusal.ChainLinkInvalid, "A chain link must be a pair of integer chain indices.")
                 {
-                    JsonPath = AttachmentSetMotion.MotionPath(partIndex) + $".links[{linkIndex}]",
+                    JsonPath = motionPath + $".links[{linkIndex}]",
                     PartId = partId, PartIndex = partIndex, LinkIndex = linkIndex,
                 };
             result[linkIndex] = new ChainLink(first, second);
@@ -171,7 +206,7 @@ internal static class AttachmentSetMotionJson
         || set.Parts.Any(part => part is SkinnedAttachmentPartDefinition { Motion: not null });
 
     internal static bool HasLinkStretch(AttachmentSetDefinition set) =>
-        set.Parts.Any(part => part is SkinnedAttachmentPartDefinition { Motion: ChainMotionDefinition { LinkStretch: not null } });
+        set.Parts.Any(part => part is SkinnedAttachmentPartDefinition skin && PartMotionFallback.Chains(skin.Motion)?.LinkStretch is not null);
 
     internal static void WriteColliders(Utf8JsonWriter writer, IReadOnlyList<ColliderDefinition> colliders)
     {
@@ -183,8 +218,23 @@ internal static class AttachmentSetMotionJson
 
     internal static void WriteMotion(Utf8JsonWriter writer, PartMotionDefinition? motion)
     {
-        if (motion is not ChainMotionDefinition chains) return;
-        writer.WriteStartObject("motion");
+        if (motion is ClothMotionDefinition cloth)
+        {
+            writer.WriteStartObject("motion");
+            writer.WriteString("kind", "cloth");
+            writer.WriteStartObject("surface");
+            writer.WriteString("key", cloth.Surface.Key);
+            writer.WriteString("sha256", cloth.Surface.Sha256);
+            writer.WriteEndObject();
+            WriteChains(writer, "fallback", cloth.Fallback);
+            writer.WriteEndObject();
+        }
+        else if (PartMotionFallback.Chains(motion) is { } chains) WriteChains(writer, "motion", chains);
+    }
+
+    static void WriteChains(Utf8JsonWriter writer, string property, ChainMotionDefinition chains)
+    {
+        writer.WriteStartObject(property);
         writer.WriteString("kind", "chains");
         writer.WriteStartArray("chains");
         foreach (ChainDefinition chain in chains.Chains) WriteChain(writer, chain);

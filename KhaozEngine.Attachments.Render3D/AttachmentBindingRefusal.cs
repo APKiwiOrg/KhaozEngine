@@ -118,4 +118,6 @@ public enum AttachmentBindingRefusal
     /// <summary>A footprint for this body has a part with a different triangle count from its mesh.
     /// Identifies the set's cache key, worn index, part ID and both triangle counts.</summary>
     FootprintTriangleCountMismatch,
+    /// <summary>The rigid joint has no usable rest frame for its cloth support hull.</summary>
+    ClothHullBindInvalid,
 }

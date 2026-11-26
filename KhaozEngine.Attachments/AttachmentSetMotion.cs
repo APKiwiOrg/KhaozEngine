@@ -18,7 +18,7 @@ internal static class AttachmentSetMotion
         uint partId = skinned.Id;
         if (!layered)
             throw PartRefusal(AttachmentSetRefusal.MotionWithoutLayer, partId, partIndex, "motion requires a set with a layer.", "");
-        if (motion is not ChainMotionDefinition chains)
+        if (PartMotionFallback.Chains(motion) is not { } chains)
             throw new AttachmentSetArgumentException(AttachmentSetRefusal.MotionKindUnsupported, $"Attachment part {partId}: unsupported motion kind.", "parts")
             { PartId = partId, PartIndex = partIndex, ActualType = motion.GetType(), JsonPath = MotionPath(partIndex) + ".kind" };
 
@@ -37,7 +37,18 @@ internal static class AttachmentSetMotion
                 throw PartRefusal(AttachmentSetRefusal.LinkStretchWithoutLinks, partId, partIndex,
                     "linkStretch requires at least one link.", ".linkStretch", settingName: "linkStretch");
         }
-        return skinned with { Motion = chains with { Chains = owned.MoveToImmutable(), Links = links } };
+        ChainMotionDefinition fallback = chains with { Chains = owned.MoveToImmutable(), Links = links };
+        if (motion is ClothMotionDefinition cloth)
+        {
+            if (AttachmentAssetKey.Error(cloth.Surface.Key) is not null)
+                throw PartRefusal(AttachmentSetRefusal.ClothSurfaceKeyInvalid, partId, partIndex,
+                    "the cloth surface needs a relative asset key.", ".surface.key");
+            if (!AttachmentSetDefinition.ValidHash(cloth.Surface.Sha256))
+                throw PartRefusal(AttachmentSetRefusal.ClothSurfaceHashInvalid, partId, partIndex,
+                    "the cloth surface needs a lowercase SHA-256.", ".surface.sha256");
+            return skinned with { Motion = cloth with { Fallback = fallback } };
+        }
+        return skinned with { Motion = fallback };
     }
 
     static ChainDefinition OwnChain(ChainDefinition? chain, HashSet<string> jointNames, uint partId, int partIndex, int chainIndex)

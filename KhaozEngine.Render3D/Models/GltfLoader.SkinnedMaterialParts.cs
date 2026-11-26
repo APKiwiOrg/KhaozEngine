@@ -31,6 +31,19 @@ namespace KhaozEngine.Render3D
             return TranslateModelErrors(identity, () => BuildSkinnedParts(LoadModel(glb, identity), identity, assetDirectory: null));
         }
 
+        internal static (SkinnedGltfMesh[] Materials, CoverageSourceTopology Source) LoadSkinnedSource(
+            ReadOnlyMemory<byte> glb, string identity, string sha256)
+        {
+            return TranslateModelErrors(identity, () =>
+            {
+                var collector = new CoverageImportCollector();
+                var decoded = DecodeSkinned(LoadModel(glb, identity), identity, splitByMaterial: true, collector);
+                var materials = new SkinnedGltfMesh[decoded.Count];
+                for (int i = 0; i < materials.Length; i++) materials[i] = decoded[i].Mesh;
+                return (materials, collector.Build(identity, sha256, materials));
+            });
+        }
+
         /// <summary>The geometry of each skinned material part, in the same order and with the same geometry as
         /// <see cref="LoadSkinnedPartsWithMaterials(ReadOnlyMemory{byte}, string)"/>, without decoding any material
         /// map. The attachment outfit layer reads a custom scene's mesh this way when it binds an outfit.</summary>

@@ -31,6 +31,9 @@ public static class AttachmentSetJson
     /// <summary>The format of a worn set that references a measured lift footprint file.</summary>
     public const int FootprintFormatVersion = 7;
 
+    /// <summary>The format of a worn set with cloth or detailed cloth supports.</summary>
+    public const int ClothFormatVersion = 8;
+
     /// <summary>Read and validate an attachment set from UTF-8 JSON.</summary>
     public static AttachmentSetDefinition Parse(ReadOnlyMemory<byte> utf8, string sourceName)
     {
@@ -43,12 +46,13 @@ public static class AttachmentSetJson
             JsonElement version = Required(root, "formatVersion", "root", "$");
             if (version.ValueKind != JsonValueKind.Number || !version.TryGetInt32(out int number)
                 || number is not (RigidOnlyFormatVersion or CurrentFormatVersion or RegionsFormatVersion
-                    or MotionFormatVersion or LiftFormatVersion or LinkStretchFormatVersion or FootprintFormatVersion))
+                    or MotionFormatVersion or LiftFormatVersion or LinkStretchFormatVersion or FootprintFormatVersion or ClothFormatVersion))
                 throw new AttachmentSetDataException(AttachmentSetRefusal.FormatVersionUnsupported, "root: unsupported formatVersion.")
                 {
                     JsonPath = "$.formatVersion",
                     FormatVersion = version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out int declaredVersion) ? declaredVersion : null,
                 };
+            bool clothFormat = number >= ClothFormatVersion;
             bool footprintFormat = number >= FootprintFormatVersion;
             bool linkStretchFormat = number >= LinkStretchFormatVersion;
             bool liftFormat = number >= LiftFormatVersion;
@@ -79,7 +83,8 @@ public static class AttachmentSetJson
                     Members(item, context, jsonPath, "id", "mesh", "joint", "local");
                 else
                 {
-                    if (liftFormat) Members(item, context, jsonPath, "id", "kind", "mesh", "joint", "local", "region", "regions", "motion", "lift");
+                    if (clothFormat) Members(item, context, jsonPath, "id", "kind", "mesh", "joint", "local", "region", "regions", "motion", "lift", "clothHulls");
+                    else if (liftFormat) Members(item, context, jsonPath, "id", "kind", "mesh", "joint", "local", "region", "regions", "motion", "lift");
                     else if (motionFormat) Members(item, context, jsonPath, "id", "kind", "mesh", "joint", "local", "region", "regions", "motion");
                     else if (tagged) Members(item, context, jsonPath, "id", "kind", "mesh", "joint", "local", "region", "regions");
                     else Members(item, context, jsonPath, "id", "kind", "mesh", "joint", "local");
@@ -97,7 +102,8 @@ public static class AttachmentSetJson
                         else if (motionFormat) Members(item, context, jsonPath, "id", "kind", "mesh", "regions", "motion");
                         else Members(item, context, jsonPath, tagged ? ["id", "kind", "mesh", "regions"] : ["id", "kind", "mesh"]);
                     }
-                    else if (tagged) Members(item, context, jsonPath, "id", "kind", "mesh", "joint", "local", "region");
+                    else if (tagged) Members(item, context, jsonPath, clothFormat
+                        ? ["id", "kind", "mesh", "joint", "local", "region", "clothHulls"] : ["id", "kind", "mesh", "joint", "local", "region"]);
                 }
                 JsonElement idValue = Required(item, "id", context, jsonPath);
                 if (idValue.ValueKind != JsonValueKind.Number || !idValue.TryGetUInt32(out uint id))
@@ -112,7 +118,7 @@ public static class AttachmentSetJson
                     parts.Add(new SkinnedAttachmentPartDefinition(id, new(key, hash))
                     {
                         Regions = tagged ? ReadRuns(item, id, jsonPath) : [],
-                        Motion = motionFormat ? AttachmentSetMotionJson.ReadMotion(item, id, partIndex, linkStretchFormat) : null,
+                        Motion = motionFormat ? AttachmentSetMotionJson.ReadMotion(item, id, partIndex, linkStretchFormat, clothFormat) : null,
                         Lift = liftFormat ? AttachmentSetLiftJson.ReadLift(item, id, partIndex) : null,
                     });
                     continue;
@@ -143,7 +149,7 @@ public static class AttachmentSetJson
                     RequireRegionTag(item, "region", id, jsonPath);
                     region = Text(item, "region", context, jsonPath);
                 }
-                parts.Add(new RigidAttachmentPartDefinition(id, new(key, hash), joint, matrix) { Region = region });
+                parts.Add(new RigidAttachmentPartDefinition(id, new(key, hash), joint, matrix) { Region = region, ClothHulls = clothFormat ? ClothHullGroupJson.Read(item, id, partIndex) : [] });
             }
             if (motionFormat && layer is null)
             {
@@ -181,6 +187,8 @@ public static class AttachmentSetJson
         bool rigidOnly = !tagged && definition.Parts.All(part => part is RigidAttachmentPartDefinition);
         int format = rigidOnly ? RigidOnlyFormatVersion
             : !tagged ? CurrentFormatVersion
+            : definition.Parts.Any(part => part is SkinnedAttachmentPartDefinition { Motion: ClothMotionDefinition }
+                or RigidAttachmentPartDefinition { ClothHulls.IsDefaultOrEmpty: false }) ? ClothFormatVersion
             : definition.Footprint is not null ? FootprintFormatVersion
             : AttachmentSetMotionJson.HasLinkStretch(definition) ? LinkStretchFormatVersion
             : AttachmentSetLiftJson.HasAdditions(definition) ? LiftFormatVersion
@@ -220,6 +228,7 @@ public static class AttachmentSetJson
                         writer.WriteNumberValue(value == 0 ? 0f : value);
                     writer.WriteEndArray();
                     if (tagged) writer.WriteString("region", rigid.Region);
+                    ClothHullGroupJson.Write(writer, rigid.ClothHulls);
                 }
                 else if (tagged && part is SkinnedAttachmentPartDefinition skinned)
                 {

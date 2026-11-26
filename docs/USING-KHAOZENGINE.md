@@ -7473,7 +7473,8 @@ parts in format 2 contain only `id`, `kind` and `mesh`. Format 3 adds a
 [worn layer and covered body regions](#regions-layers-and-outfits). Format 4 adds
 [skinned part motion and worn set colliders](#hanging-parts-that-swing). Format 5 adds regional standoff
 and skinned part lift, format 6 adds [chain link stretch](#hanging-parts-that-swing), and format 7 adds
-[lift footprints](#worn-parts-over-lower-layers). Unknown or duplicate members are refused.
+[lift footprints](#worn-parts-over-lower-layers). Format 8 adds [optional cloth surfaces](#checked-cloth-surfaces)
+and detailed rigid supports. Unknown or duplicate members are refused.
 The writer uses the lowest format that expresses the set, preserving canonical bytes and semantic hashes for
 existing sets. Reference this package explicitly from headless publishers.
 
@@ -7903,7 +7904,23 @@ bounds. Custom `IAttachmentScene` leases use their own culling policy and must a
 See the [renderer reference](../KhaozEngine.Attachments.Render3D/README.md#hanging-chains-and-wearer-motion)
 for binding, resets and culling details.
 
-#### Worn parts over lower layers
+#### Checked cloth surfaces
+
+An offline fitter can pair a fitted skinned GLB with a version 1 cloth sidecar. Build the material
+pattern, fixed seam samples, moving vertex embeddings and fallback node samples in
+`ClothSurfaceFile`. Check them with `ClothSurfaceBinding.Check`, write `ClothSurfaceJson.Write(file)`,
+and use the exact bytes' SHA-256 in the `ClothSurfaceRef` of a `ClothMotionDefinition`. Include the
+ordinary chain recipe in that definition. Format 8 uses the same part ID, GLB materials, lift and
+region runs. Permanent coverage excludes both cloth movement and chain fallback movement.
+
+Load and bind the set normally. `bound.ClothSurface(partId)` gives the checked material rig, fitted
+nodes and source sampling data. `outfit.ClothSurface(wornIndex, partId)` incorporates the outfit's
+lift and filtering and exists only while the cloth draws a moving triangle. The current set and
+outfit submission calls select the chain fallback. See the
+[format 8 reference](../KhaozEngine.Attachments/README.md#format-8) and the
+[binding reference](../KhaozEngine.Attachments.Render3D/README.md).
+
+### Worn parts over lower layers
 
 Fit each part to the bare body. Give an upper skinned part `Lift = new PartLiftDefinition(clearanceMetres)`
 to raise it over visible, strictly lower layers when the outfit binds. Measured footprints let a strap clear

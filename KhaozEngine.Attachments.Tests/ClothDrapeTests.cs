@@ -11,8 +11,15 @@ namespace KhaozEngine.Tests.Attachments;
 
 public sealed class ClothDrapeTests(ITestOutputHelper output, ClothDrapeEvidence evidence) : IClassFixture<ClothDrapeEvidence>
 {
-    internal static readonly ClothMaterial Woven = new(.48f, 1800, 1200, 180, .0005f, .015f,
-        HangingPanelFixture.HalfThickness, .38f, .25f, NormalAirDrag: .8162874f);
+    internal static readonly ClothMaterial Woven = ClothMaterial.HeavyWoven with { HalfThickness = HangingPanelFixture.HalfThickness };
+
+    [Fact]
+    public void Heavy_woven_matches_the_qualified_recipe_and_allows_authored_thickness()
+    {
+        var qualified = new ClothMaterial(.48f, 1800, 1200, 180, .0005f, .015f, .00075f, .38f, .25f, NormalAirDrag: .8162874f);
+        Assert.Equal(qualified, ClothMaterial.HeavyWoven);
+        Assert.Equal(qualified with { HalfThickness = .001f }, ClothMaterial.HeavyWoven with { HalfThickness = .001f });
+    }
 
     [Fact]
     public void Loaded_lip_supports_the_free_panel_through_breath()

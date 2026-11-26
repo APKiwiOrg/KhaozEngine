@@ -206,4 +206,8 @@ public enum AttachmentSetRefusal
 
     /// <summary>Refuses a missing or mismatched lift footprint asset, identifying its key and the expected and actual hashes.</summary>
     FootprintReferenceMissingOrHashMismatch,
+    ClothSurfaceKeyInvalid,
+    ClothSurfaceHashInvalid,
+    ClothSurfaceReferenceMissingOrHashMismatch,
+    ClothHullGroupInvalid,
 }

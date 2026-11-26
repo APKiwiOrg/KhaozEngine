@@ -31,7 +31,7 @@ identity. The [outfit resolver](#outfit-coverage) checks those names against the
 
 ## Attachment set JSON
 
-`AttachmentSetJson.Parse(utf8, sourceName)` accepts formats 1 through 7. Format 1 contains only rigid parts
+`AttachmentSetJson.Parse(utf8, sourceName)` accepts formats 1 through 8. Format 1 contains only rigid parts
 and has no `kind` member:
 
 ```json
@@ -207,6 +207,44 @@ Pass `new LiftFootprintRef(key, sha256)` as the last argument to
 the same asset dictionary as the mesh hashes for `ValidateReferences`. `AttachmentSetJson.FootprintFormatVersion`
 is 7. Publish format 7 after every reader supports it.
 
+### Format 8
+
+Format 8 adds `"motion": {"kind":"cloth","surface":{"key":"sets/coat.kecs","sha256":"..."},"fallback":{...}}`
+to a skinned part. The fallback is a complete chain motion object, including `"kind":"chains"` and
+optional links and stretch. The cloth motion retains the fitted GLB and the same part ID, layer,
+regions, lift and material slots. Use a distinct relative asset key and the lowercase SHA-256 of the
+exact sidecar bytes. Include the sidecar in the asset dictionary passed to `ValidateReferences`.
+Ordinary set and outfit draw calls run the chain fallback.
+
+The version 1 UTF-8 sidecar starts with the exact GLB's `meshSha256`, expanded `sourceVertices` and
+`sourceTriangles` counts, then the ten fields of `ClothMaterial` in constructor order. Each `nodes`
+tuple holds its intrinsic rest XYZ followed by weft and warp coordinates in metres. `triangles` lists
+material node triples in oriented winding. `hinges` entries hold the two ordered interior edge nodes
+and natural bend in radians. Keep the intrinsic geometry and natural folds independent of bends
+introduced by lower layers.
+
+The `pins` array pairs each pinned node with a fixed GLB source sample. The `fallback` array gives one
+source sample per material node in node order. A sample is `[mesh, primitive, vertex]` or
+`[mesh, primitive, triangle, weightA, weightB, weightC, offset]`. The last value is the signed
+distance along the triangle's oriented normal, zero for pins. The `render` array lists
+`[mesh, primitive, vertex, materialTriangle, weightA, weightB, weightC, offset]` in ascending GLB
+source order. Outer fabric, lining and rim can share one material node with distinct signed offsets.
+Source mesh, primitive and vertex ordinals come from the GLB before regrouping by material.
+
+Create a `ClothSurfaceFile`, call `ClothSurfaceJson.Write` and hash its result for the set's
+`ClothSurfaceRef`. `ClothSurfaceJson.Parse` and the writer both validate intrinsic data with
+`ClothRig`. The first profile admits 128 material nodes, 256 material triangles, 4,096 expanded GLB
+vertices and up to 8,192 GLB triangles. The fitted checker permits 0.5 mm of authored round-trip
+error. `AttachmentGlb.SwingingVertices(glb, sourceName, motion, surface)` supplies the union of
+cloth and fallback chain influences in raw mesh, primitive and vertex order for coverage proof.
+Any triangle with a moving vertex is excluded from permanent coverage. A vertex weighted to a
+fallback chain joint needs an embedding. Vertices outside the embedding follow the host skin.
+
+A layered rigid part can supply `clothHulls`. Each entry has a positive `group`, one or more
+`capsules` identified by their zero-based indices in canonical set collider order,
+`vertices` in body rest-model metres and closed outward-winding `faces`. Each capsule belongs to at most one group
+and uses the owning part's host joint. Other capsules keep their existing behaviour.
+
 ### Canonical set bytes
 
 The example hash is a placeholder. Hash the exact self-contained GLB bytes. `local` contains 16
@@ -218,11 +256,11 @@ every format's root members before the version is read, and against the declared
 document with a `layer` and no `formatVersion` is therefore refused as `JsonPropertyMissing` for the version,
 not as `JsonPropertyUnknown` for the layer, because the version decides what every other member means.
 
-`Write(definition)` emits the lowest format that expresses the definition. A footprint reference requires
+`Write(definition)` emits the lowest format that expresses the definition. Cloth motion or hull groups require format 8. A footprint reference requires at least
 format 7, `linkStretch` requires at least format 6, standoff or lift requires at least format 5, and motion
 or colliders require at least format 4. A layered set without those additions writes format 3, even when all
 its parts are rigid. A set without a layer writes format 1 if all its parts are rigid, even after parsing
-format 2, and format 2 if it contains skinned parts. Existing canonical format 1 to 6 bytes and semantic hashes
+format 2, and format 2 if it contains skinned parts. Existing canonical format 1 to 7 bytes and semantic hashes
 stay unchanged.
 
 Property order is `id, mesh, joint, local` in format 1 and `id, kind, mesh` followed by rigid `joint, local` in
@@ -234,6 +272,8 @@ radius`. Chain and joint order are preserved. Links put the lower index first an
 Format 5 writes nonempty `standoff` after `covers` and any `colliders`, with entries in ordinal region name order.
 A skinned part writes `lift` after `regions` and any `motion`. Format 6 writes `linkStretch` after `links`.
 Format 7 writes `footprint` after any `colliders` and `standoff`, before `parts`, with `key` then `sha256`.
+Format 8 writes a cloth motion's `kind`, `surface` and `fallback` in that order. Rigid hull groups
+follow the part's region, sorted by group, and their capsule indices are ascending.
 
 Signed zero is normalized without changing other float values. The writer emits canonical UTF-8 with no trailing
 newline. Its SHA-256 is `SemanticSha256`. Source whitespace, part, collider and standoff listing order, and link
@@ -635,6 +675,10 @@ An empty pin span describes a free sheet. `ClothMaterial.NormalAirDrag` opts int
 in kg/(m² s) and defaults to zero. Each incident triangle contributes drag along its normal,
 weighted by tributary rest area.
 
+`ClothMaterial.HeavyWoven` is an artist starting point from the synthetic hanging-panel qualification.
+Use `with { HalfThickness = thicknessMetres }` to match the authored garment. Values remain explicit
+in the written sidecar. Measured textile properties vary with the material and weave.
+
 Create a `ClothSimulation` per instance. Each iteration uses one coupled skyline solve for the
 material constraints. `Reset` copies fitted positions and clears velocity. At each fixed tick,
 pass `ClothSubstep` the closing pins in rig order, matching opening and closing support spans,
@@ -843,6 +887,9 @@ Every JSON refusal also carries `SourceName`. Direct constructor and reference c
 | `RegionNameEmpty`, `RegionNameMalformedUtf16` | a blank or malformed covered or part region name. | `RegionName`, with `CoverIndex` or `PartId` and `RunIndex` |
 | `RegionTriangleCountOverflow` | a skinned part whose runs add up past Int32. | `PartId`, `RunIndex`, `RegionName`, `ActualTriangleCount` |
 | `MotionKindUnsupported` | a motion kind the reader cannot represent. | `PartId`, `PartIndex`, and `Kind` from JSON or `ActualType` from the constructor |
+| `ClothSurfaceKeyInvalid`, `ClothSurfaceHashInvalid` | the cloth companion's path or lowercase digest is invalid or the key conflicts with another asset. | `PartId` and available path or reference identifiers |
+| `ClothSurfaceReferenceMissingOrHashMismatch` | the cloth companion is absent from the asset map or its digest differs. | `PartId`, `MeshKey`, `ExpectedHash`, `ActualHash` |
+| `ClothHullGroupInvalid` | a hull or its canonical capsule membership is invalid or ambiguous. | `PartId`, `PartIndex`, `JsonPath` and `ColliderIndex` when a capsule is involved |
 | `ChainsEmpty`, `TooManyChains` | a motion with fewer than 1 or more than 32 chains. | `PartId`, `PartIndex`, `ActualCount`, `ExpectedCount` |
 | `ChainJointsEmpty`, `TooManyChainJoints` | a chain with fewer than 1 or more than 16 joints. | `PartId`, `PartIndex`, `ChainIndex`, `ActualCount`, `ExpectedCount` |
 | `ChainJointNameEmpty`, `ChainJointNameMalformedUtf16`, `ChainJointDuplicate` | a blank, malformed or repeated joint name in a part's chains. | `PartId`, `PartIndex`, `ChainIndex`, `JointIndex`, `JointName` when available |

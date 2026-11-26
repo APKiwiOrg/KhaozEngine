@@ -99,8 +99,12 @@ public sealed partial class AttachmentSetCache
 
         var pending = new List<(int Worn, int Slot, ViewKey Key)>();
         var draws = new OutfitDraw[sets.Length][];
+        Dictionary<uint, BoundClothSurface>?[]? cloth = null;
         for (int index = 0; index < sets.Length; index++)
-            draws[index] = PlanWorn(sets[index], tagged[index], coverage, lift, index, pending);
+        {
+            draws[index] = PlanWorn(sets[index], tagged[index], coverage, lift, index, pending, out var fitted);
+            if (fitted is not null) (cloth ??= new Dictionary<uint, BoundClothSurface>?[sets.Length])[index] = fitted;
+        }
         int wornViews = pending.Count;
         var bodyMeshes = new SkinnedMeshHandle[body.Parts.Count];
         var bodyVisible = new bool[bodyMeshes.Length];
@@ -137,7 +141,7 @@ public sealed partial class AttachmentSetCache
             }
             throw;
         }
-        return new BoundOutfit(this, views, sets, draws, bodyMeshes, bodyVisible, used, body, footprintApplied);
+        return new BoundOutfit(this, views, sets, draws, bodyMeshes, bodyVisible, used, body, footprintApplied, cloth);
     }
 
     // The index lists of every skinned part that carries region runs, read when an outfit is bound so a cache that
@@ -185,8 +189,10 @@ public sealed partial class AttachmentSetCache
     // Walks the set's draws in BoundAttachmentSet's order, one per material group of every part, and keeps those the
     // outfit leaves visible. A partly covered or lifted material group gets its view once every check has passed.
     OutfitDraw[] PlanWorn(BoundAttachmentSet set, ReadOnlyMemory<uint>[]?[] tagged, OutfitCoverage coverage,
-        OutfitLift? lift, int wornIndex, List<(int Worn, int Slot, ViewKey Key)> pending)
+        OutfitLift? lift, int wornIndex, List<(int Worn, int Slot, ViewKey Key)> pending,
+        out Dictionary<uint, BoundClothSurface>? cloth)
     {
+        cloth = null;
         var kept = new List<OutfitDraw>();
         RegionSet hidden = coverage.HiddenFor(wornIndex);
         int draw = 0;
@@ -203,11 +209,15 @@ public sealed partial class AttachmentSetCache
             }
             IReadOnlyList<RegionRun> runs = coverage.SkinnedPartRegions(wornIndex, partId);
             IReadOnlyList<ReadOnlyMemory<Vector3>>? lifted = lift?.LiftedPositions(wornIndex, partId);
+            BoundClothSurface? surface = set.PartCloth(part);
+            uint[]?[]? clothVisibility = null;
             var cursor = new RunCursor();
             for (int material = 0; material < resources.SkinnedHandles.Count; material++, draw++)
             {
                 SkinnedMeshHandle source = resources.SkinnedHandles[material];
                 uint[]? visible = runs.Count == 0 ? null : Visible(tagged[part]![material].Span, runs, ref cursor, hidden);
+                if (surface is not null && visible is not null)
+                    (clothVisibility ??= new uint[]?[resources.SkinnedHandles.Count])[material] = visible;
                 if (visible is { Length: 0 }) continue;
                 if (lifted is not null)
                     pending.Add((wornIndex, kept.Count, DisplacedViewKey(set, wornIndex, partId, source,
@@ -216,6 +226,8 @@ public sealed partial class AttachmentSetCache
                     pending.Add((wornIndex, kept.Count, new ViewKey(source, visible)));
                 kept.Add(new OutfitDraw(draw, part, true, default, source));
             }
+            if (surface?.FitOutfit(lifted, clothVisibility) is { } fitted)
+                (cloth ??= []).Add(partId, fitted);
         }
         return kept.ToArray();
     }

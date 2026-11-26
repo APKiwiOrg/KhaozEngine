@@ -51,6 +51,8 @@ public sealed partial class AttachmentSetCache : IDisposable
 
         LiftFootprint? footprint = ReadFootprint(definition);
         var pending = new List<PendingMesh>();
+        var clothRequests = ClothRequests(definition);
+        CheckedClothSurface?[]? cloth = clothRequests is null ? null : new CheckedClothSurface?[definition.Parts.Count];
         Dictionary<AttachmentMeshRef, uint>? liftRequests = UncachedLiftRequests(definition);
         Dictionary<MeshIdentity, LiftBasis>? stagedLift = null;
         foreach (AttachmentMeshRef mesh in definition.Meshes)
@@ -59,14 +61,17 @@ public sealed partial class AttachmentSetCache : IDisposable
             _meshes.TryGetValue(meshIdentity, out CachedMesh? existing);
             uint liftPartId = 0;
             bool needsLiftBasis = liftRequests?.TryGetValue(mesh, out liftPartId) == true;
-            if (existing is not null && !needsLiftBasis) continue;
+            List<ClothRequest>? requests = clothRequests?.GetValueOrDefault(mesh);
+            if (existing is not null && !needsLiftBasis && requests is null) continue;
             uint id = needsLiftBasis ? liftPartId : definition.Parts.First(part => part.Mesh == mesh).Id;
             string context = $"{key}: attachment part {id}, mesh '{mesh.Key}'";
             byte[] bytes = existing?.Bytes ?? ReadVerified(mesh, context);
+            if (requests is not null)
+                foreach (ClothRequest request in requests) cloth![request.Index] = ReadClothSurface(request, bytes);
             if (needsLiftBasis)
                 (stagedLift ??= []).Add(meshIdentity, AttachmentGlb.LiftBasis(bytes, context));
             if (existing is null)
-                pending.Add(Decode(meshIdentity, bytes, context, skinnedValidated: needsLiftBasis));
+                pending.Add(Decode(meshIdentity, bytes, context, skinnedValidated: needsLiftBasis || requests is not null));
         }
 
         var staged = new Dictionary<MeshIdentity, CachedMesh>();
@@ -81,11 +86,11 @@ public sealed partial class AttachmentSetCache : IDisposable
                 MeshIdentity mesh = requested[part.Mesh];
                 CachedMesh upload = _meshes.TryGetValue(mesh, out CachedMesh? existing) ? existing : staged[mesh];
                 resources[i] = upload.Resources;
-                if (part is SkinnedAttachmentPartDefinition { Motion: ChainMotionDefinition motion }
+                if (part is SkinnedAttachmentPartDefinition skinnedPart && PartMotionFallback.Chains(skinnedPart.Motion) is { } motion
                     && upload.Lease is SkinnedAttachmentUpload skinned)
                     skinned.GrowChainBounds(motion, upload.Resources);
             }
-            var loaded = new LoadedAttachmentSet(this, key, definition, expectedSha256, resources, footprint);
+            var loaded = new LoadedAttachmentSet(this, key, definition, expectedSha256, resources, footprint, cloth);
             foreach (KeyValuePair<MeshIdentity, CachedMesh> mesh in staged) _meshes.Add(mesh.Key, mesh.Value);
             _definitions.Add(identity, new CachedDefinition(definitionBytes, loaded));
             if (stagedLift is not null)

@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Security.Cryptography;
 using System.Text.Json;
 
 namespace KhaozEngine.Attachments;
@@ -19,13 +21,30 @@ public static partial class AttachmentGlb
         return flags;
     }
 
+    /// <summary>Return the union of cloth and fallback movement in flattened GLB primitive order.</summary>
+    public static bool[] SwingingVertices(ReadOnlyMemory<byte> glb, string sourceName, ClothMotionDefinition motion, ClothSurfaceFile surface)
+    {
+        ArgumentNullException.ThrowIfNull(motion);
+        ArgumentNullException.ThrowIfNull(surface);
+        surface.CreateRig(sourceName);
+        if (Convert.ToHexStringLower(SHA256.HashData(glb.Span)) != surface.MeshSha256)
+            throw new ClothSurfaceDataException(ClothSurfaceRefusal.MeshDigest, sourceName, "The cloth sidecar tags different GLB bytes.");
+        string[] joints = PartMotionFallback.Chains(motion)!.Chains.SelectMany(chain => chain.Joints).ToArray();
+        bool[] flags = [];
+        Validate(glb, sourceName, container => flags = ReadSkinned(container, joints, surface, sourceName));
+        return flags;
+    }
+
     sealed class SwingingVertexCollector
     {
         readonly bool[] swingingJoints;
         readonly List<bool> flags = [];
+        readonly ClothSurfaceFile? cloth;
+        int mesh, primitive, vertex, nextEmbedding;
 
-        internal SwingingVertexCollector(JsonElement root, JsonElement skin, IReadOnlyCollection<string> chainJoints)
+        internal SwingingVertexCollector(JsonElement root, JsonElement skin, IReadOnlyCollection<string> chainJoints, ClothSurfaceFile? cloth)
         {
+            this.cloth = cloth;
             var names = new HashSet<string>(chainJoints, StringComparer.Ordinal);
             JsonElement nodes = root.GetProperty("nodes");
             JsonElement joints = skin.GetProperty("joints");
@@ -38,17 +57,31 @@ public static partial class AttachmentGlb
             }
         }
 
+        internal void StartPrimitive(int meshIndex, int primitiveIndex) =>
+            (mesh, primitive, vertex) = (meshIndex, primitiveIndex, 0);
+
         internal void Add(ReadOnlySpan<float> joints, ReadOnlySpan<float> weights)
         {
-            for (int lane = 0; lane < weights.Length; lane++)
-                if (weights[lane] > 0 && swingingJoints[(int)joints[lane]])
-                {
-                    flags.Add(true);
-                    return;
-                }
-            flags.Add(false);
+            bool moving = cloth is not null && nextEmbedding < cloth.Render.Length
+                && cloth.Render[nextEmbedding].Vertex == new ClothSourceVertex(mesh, primitive, vertex);
+            if (moving) nextEmbedding++;
+            vertex++;
+            for (int lane = 0; !moving && lane < weights.Length; lane++)
+                moving = weights[lane] > 0 && swingingJoints[(int)joints[lane]];
+            flags.Add(moving);
         }
 
-        internal bool[] ToArray() => flags.ToArray();
+        internal bool[] ToArray(string? sourceName)
+        {
+            if (cloth is not null)
+            {
+                if (flags.Count != cloth.SourceVertexCount)
+                    throw new ClothSurfaceDataException(ClothSurfaceRefusal.Count, sourceName!, "The cloth source vertex count differs from the GLB.");
+                if (nextEmbedding != cloth.Render.Length)
+                    throw new ClothSurfaceDataException(ClothSurfaceRefusal.RenderEmbedding, sourceName!, "A cloth embedding names a missing GLB source vertex.")
+                    { ElementIndex = nextEmbedding };
+            }
+            return flags.ToArray();
+        }
     }
 }

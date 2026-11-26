@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Numerics;
 using KhaozEngine.Render3D;
 
@@ -16,9 +17,10 @@ public sealed class AttachmentSetBinding
     readonly IReadOnlyList<CoverageConfigurationPart> _configurationParts;
     readonly Matrix4x4[]? _hostInverseBind;
     readonly Matrix4x4[]? _hostRestPose;
+    readonly BoundClothSurface?[]? _cloth;
 
     public AttachmentSetBinding(AttachmentSetDefinition definition, ContractJointMap map)
-        : this(definition, map, null, null, null, null) { }
+        : this(definition, map, null, null, null, null, null) { }
 
     public AttachmentSetBinding(AttachmentSetDefinition definition, ContractJointMap map,
         SkinnedGltfMesh hostMesh, IReadOnlyDictionary<AttachmentMeshRef, SkinnedGltfMesh> skinnedMeshes)
@@ -27,12 +29,12 @@ public sealed class AttachmentSetBinding
     { }
 
     internal AttachmentSetBinding(AttachmentSetDefinition definition, ContractJointMap map,
-        SkinnedGltfMesh hostMesh, IReadOnlyList<AttachmentPartResources> resources, AttachmentSetCache cache)
-        : this(definition, map, hostMesh, null, resources, cache) { }
+        SkinnedGltfMesh hostMesh, IReadOnlyList<AttachmentPartResources> resources, AttachmentSetCache cache, CheckedClothSurface?[]? cloth)
+        : this(definition, map, hostMesh, null, resources, cache, cloth) { }
 
     AttachmentSetBinding(AttachmentSetDefinition definition, ContractJointMap map, SkinnedGltfMesh? hostMesh,
         IReadOnlyDictionary<AttachmentMeshRef, SkinnedGltfMesh>? skinnedMeshes,
-        IReadOnlyList<AttachmentPartResources>? resources, AttachmentSetCache? cache)
+        IReadOnlyList<AttachmentPartResources>? resources, AttachmentSetCache? cache, CheckedClothSurface?[]? cloth = null)
     {
         ArgumentNullException.ThrowIfNull(definition);
         ArgumentNullException.ThrowIfNull(map);
@@ -48,6 +50,9 @@ public sealed class AttachmentSetBinding
         else SkinnedAttachmentBinding.ValidateHost(map, hostMesh);
         _hostInverseBind = hostMesh?.InverseBind.AsSpan().ToArray();
         _hostRestPose = hostMesh?.RestPose.AsSpan().ToArray();
+        _cloth = cloth is null ? null : new BoundClothSurface?[cloth.Length];
+        ImmutableArray<BoundClothHull>.Builder? hulls = null;
+        Matrix4x4[]? hullRest = _hostRestPose;
         var configurationParts = new CoverageConfigurationPart[definition.Parts.Count];
         _parts = new ResolvedPart[definition.Parts.Count];
         Dictionary<AttachmentMeshRef, IReadOnlyList<GarmentChainJoint>>? pendingChainJoints = null;
@@ -60,9 +65,11 @@ public sealed class AttachmentSetBinding
                 SkinnedAttachmentBinding skin = resources is null
                     ? SkinnedAttachmentBinding.FromMesh(skinned, map, hostMesh!, skinnedMeshes!)
                     : SkinnedAttachmentBinding.FromResources(skinned, map, hostMesh!, resources[i],
-                        skinned.Motion is ChainMotionDefinition
+                        PartMotionFallback.Chains(skinned.Motion) is not null
                             ? cache!.ReadChainJoints(skinned.Mesh, ref pendingChainJoints)
                             : []);
+                if (cloth?[i] is { } checkedCloth)
+                    _cloth![i] = skin.BindCloth(checkedCloth, _hostRestPose!);
                 _parts[i] = new ResolvedPart(skinned.Id, string.Empty, -1, Matrix4x4.Identity, skin);
                 configurationParts[i] = new(skinned.Id, string.Empty, Matrix4x4.Identity, Matrix4x4.Identity);
                 continue;
@@ -74,7 +81,8 @@ public sealed class AttachmentSetBinding
                 int bone = map.Bone(part.Joint);
                 Matrix4x4 alignment = map.BodyAlignment(node);
                 configurationParts[i] = new(part.Id, part.Joint, part.Local, alignment);
-                _parts[i] = new ResolvedPart(part.Id, part.Joint, bone, part.Local * alignment);
+                Matrix4x4 local = part.Local * alignment;
+                _parts[i] = new ResolvedPart(part.Id, part.Joint, bone, local);
             }
             catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or ArgumentException)
             {
@@ -82,7 +90,16 @@ public sealed class AttachmentSetBinding
                     $"Attachment part {part.Id}: joint '{part.Joint}' cannot bind to the contract skin.", error)
                 { PartId = part.Id, JointName = part.Joint };
             }
+
+            if (part.ClothHulls.IsDefaultOrEmpty) continue;
+            hullRest ??= map.Skeleton.ComposeRestPose();
+            int hostBone = _parts[i].Bone;
+            Matrix4x4 inverseRest = BoundClothHull.InverseRestFrame(part, hostBone, hullRest[hostBone]);
+            foreach (ClothHullGroup group in part.ClothHulls.AsSpan())
+                (hulls ??= ImmutableArray.CreateBuilder<BoundClothHull>()).Add(
+                    new BoundClothHull(part.Id, definition.Layer!.Value, hostBone, inverseRest, group));
         }
+        ClothHulls = hulls?.ToImmutable() ?? [];
         _worlds = new Matrix4x4[_parts.Length];
         _configurationParts = Array.AsReadOnly(configurationParts);
         // No mesh revision enters the shared chain cache until every part has bound.
@@ -95,6 +112,10 @@ public sealed class AttachmentSetBinding
     internal ReadOnlySpan<Matrix4x4> HostInverseBind => _hostInverseBind;
     internal ReadOnlySpan<Matrix4x4> HostRestPose => _hostRestPose;
     internal AttachmentChainBinding? Motion(int part) => _parts[part].Skin?.Motion;
+    internal ImmutableArray<BoundClothHull> ClothHulls { get; }
+    internal BoundClothSurface? Cloth(int part) => _cloth?[part];
+    internal BoundClothSurface? ClothById(uint partId) => _partIndices.TryGetValue(partId, out int part) ? Cloth(part) : null;
+
 
     public Skeleton Skeleton { get; }
     public int PartCount => _parts.Length;

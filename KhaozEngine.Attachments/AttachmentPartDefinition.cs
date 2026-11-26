@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using System.Numerics;
 
@@ -17,6 +18,9 @@ public sealed record RigidAttachmentPartDefinition(uint Id, AttachmentMeshRef Me
 {
     /// <summary>The body region the part sits on. Required in a set with a layer and absent from a set without one.</summary>
     public string? Region { get; init; }
+
+    /// <summary>Optional detailed cloth support and the matching cheap capsules.</summary>
+    public ImmutableArray<ClothHullGroup> ClothHulls { get; init; } = [];
 }
 
 public sealed record SkinnedAttachmentPartDefinition(uint Id, AttachmentMeshRef Mesh) : AttachmentPartDefinition(Id, Mesh)

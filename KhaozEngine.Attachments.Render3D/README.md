@@ -89,6 +89,29 @@ file or wrong digest uses the mesh read's `InvalidDataException` path. Malformed
 part IDs propagate `LiftFootprintDataException` with `SourceName` set to the footprint key. See the
 [footprint refusal table](../KhaozEngine.Attachments/README.md#lift-footprint-refusals).
 
+For format 8, `Get` reads exact sidecar bytes through the asset source and checks the hash, material
+rig, source ordinals and fitted round-trip before uploading new meshes. `ClothSurfaceBinding.Check`
+runs the same source checks for an offline fitter and reports the maximum pin and render errors in
+metres. A `ClothSurfaceDataException` carries the source key, part ID when known, reason and
+offending element when the refusal identifies one.
+
+After a successful host bind, `BoundAttachmentSet.ClothSurface(partId)` exposes the immutable rig,
+fitted nodes in host-rest model space and material-indexed vertex embeddings. `BoundOutfit.ClothSurface`
+also takes a worn index and applies its lift and visible indices. It returns null when no triangle
+with an embedded vertex survives. Materials retain the full fitted vertices for the material slot,
+since a view can filter indices without renumbering vertices. The fitted offset uses the triangle's
+normalized first edge, the normal crossed with that edge, and the oriented normal. This preserves
+both authored and outfit offsets in the reconstruction.
+
+`CopyPins` samples the fixed seam in rig pin order from the current host palette and model transform.
+`CopyFallbackNodes` takes the garment palette, including its fallback joints, and samples every
+material node. Both return positions under the supplied model transform and publish their outputs only after every sample validates. `ClothHulls` exposes each
+part's rigid hull in body rest-model space and the indices of the corresponding cheap set capsules.
+Compose the hull with the rigid draw's movement from its bind frame. The static part-local transform
+cancels, including non-unit scale. Its contact identity uses the caller's source ID, full
+part ID, feature group and layer. Ordinary bind, draw and outline APIs continue to use the existing
+chain recipe.
+
 GLB preflight propagates `AttachmentGlbContainerDataException`, `AttachmentAccessorDataException`,
 `AttachmentHierarchyDataException`, `AttachmentRigidGeometryDataException` and
 `AttachmentSkinnedGeometryDataException` from `Get`, including their `Reason`, `SourceName` and identifiers.

@@ -53,3 +53,20 @@ public sealed record ChainDefinition(IReadOnlyList<string> Joints, Vector3 Tip, 
         return hash.ToHashCode();
     }
 }
+
+/// <summary>The checked cloth surface and the chain recipe used for ordinary motion.</summary>
+public sealed record ClothMotionDefinition(ClothSurfaceRef Surface, ChainMotionDefinition Fallback) : PartMotionDefinition;
+
+/// <summary>The cache-relative asset key and lowercase SHA-256 of the exact sidecar bytes.</summary>
+public readonly record struct ClothSurfaceRef(string Key, string Sha256);
+
+/// <summary>Gets the canonical chain recipe regardless of the authored motion kind.</summary>
+public static class PartMotionFallback
+{
+    public static ChainMotionDefinition? Chains(PartMotionDefinition? motion) => motion switch
+    {
+        ChainMotionDefinition chains => chains,
+        ClothMotionDefinition cloth => cloth.Fallback,
+        _ => null,
+    };
+}

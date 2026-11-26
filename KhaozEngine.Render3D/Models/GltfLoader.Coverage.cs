@@ -84,12 +84,11 @@ public static partial class GltfLoader
             skin = candidate;
         }
 
-        internal int AddSkinned(Mesh mesh, MeshPrimitive primitive, int slice, int sliceVertex, IList<Vector3> sourcePositions, IList<Vector4> joints, IList<Vector4> weights)
+        internal int AddSkinned(Mesh mesh, MeshPrimitive primitive, int ordinal, int slice, int sliceVertex, IList<Vector3> sourcePositions, IList<Vector4> joints, IList<Vector4> weights)
         {
             int start = positions.Count;
             Material(primitive, slice);
             occurrences.TryAdd((mesh.LogicalIndex, -1), new(mesh.LogicalIndex, -1, Matrix4x4.Identity));
-            int ordinal = mesh.Primitives.ToList().IndexOf(primitive);
             for (int i = 0; i < sourcePositions.Count; i++)
             {
                 positions.Add(sourcePositions[i]);
@@ -99,9 +98,9 @@ public static partial class GltfLoader
             return start;
         }
 
-        internal void AddTriangle(Mesh mesh, MeshPrimitive primitive, int triangle, int slice, int start, int a, int b, int c)
+        internal void AddTriangle(Mesh mesh, int primitive, int triangle, int slice, int start, int a, int b, int c)
         {
-            triangles.Add(new(mesh.LogicalIndex, mesh.Primitives.ToList().IndexOf(primitive), triangle, -1, slice, start + a, start + b, start + c));
+            triangles.Add(new(mesh.LogicalIndex, primitive, triangle, -1, slice, start + a, start + b, start + c));
         }
 
         internal void AddRigid(Mesh mesh, MeshPrimitive primitive, int node, int slice, int triangle, int a, int b, int c,

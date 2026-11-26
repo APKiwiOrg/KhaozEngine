@@ -1,9 +1,11 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Numerics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using KhaozEngine.Attachments;
 using Xunit;
 
@@ -11,6 +13,115 @@ namespace KhaozEngine.Tests.Attachments;
 
 public class JsonTests
 {
+    [Fact]
+    public void Cloth_format_embeds_the_existing_fallback_and_round_trips()
+    {
+        string legacy = AttachmentFixtures.MotionSetJson();
+        string cloth = legacy.Replace("\"formatVersion\":4", "\"formatVersion\":8", StringComparison.Ordinal)
+            .Replace("\"motion\":{", "\"motion\":{\"kind\":\"cloth\",\"surface\":{\"key\":\"coat.kecs\",\"sha256\":\"" + new string('a', 64)
+                + "\"},\"fallback\":{", StringComparison.Ordinal).Replace("]]}}]}", "]]}}}]}", StringComparison.Ordinal);
+        AttachmentSetDefinition set = Parse(cloth);
+        Assert.Equal(cloth, Encoding.UTF8.GetString(AttachmentSetJson.Write(set)));
+        var part = Assert.IsType<SkinnedAttachmentPartDefinition>(Assert.Single(set.Parts));
+        var motion = Assert.IsType<ClothMotionDefinition>(part.Motion);
+        Assert.Equal(new ClothSurfaceRef("coat.kecs", new string('a', 64)), motion.Surface);
+        Assert.Equal(AttachmentFixtures.Motion(), motion.Fallback);
+        Assert.Equal(legacy, Encoding.UTF8.GetString(AttachmentSetJson.Write(Parse(legacy))));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Hull_groups_reference_distinct_canonical_capsules_with_full_part_ids(bool ambiguous)
+    {
+        var rigid = AttachmentFixtures.TaggedRigid() with { Id = uint.MaxValue };
+        var hull = ClothSupportHull.Create([Vector3.Zero, Vector3.UnitX, Vector3.UnitY, Vector3.UnitZ],
+            [new(0, 2, 1), new(0, 1, 3), new(0, 3, 2), new(1, 2, 3)]);
+        rigid = rigid with { ClothHulls = ambiguous ? [new(1, hull, [0]), new(2, hull, [0])] : [new(1, hull, [0])] };
+        var capsule = new ColliderDefinition(rigid.Joint, Vector3.Zero, Vector3.UnitX, .1f);
+        AttachmentSetDefinition Build() => new([rigid], AttachmentLayer.Armour, [], [capsule]);
+        if (ambiguous)
+        {
+            var error = Assert.Throws<AttachmentSetArgumentException>(() => Build());
+            Assert.Equal(AttachmentSetRefusal.ClothHullGroupInvalid, error.Reason);
+            Assert.Equal(uint.MaxValue, error.PartId);
+            Assert.Equal(0, error.ColliderIndex);
+            return;
+        }
+
+        byte[] written = AttachmentSetJson.Write(Build());
+        AttachmentSetDefinition parsed = AttachmentSetJson.Parse(written, "plate.json");
+        Assert.Equal(written, AttachmentSetJson.Write(parsed));
+        var group = Assert.Single(Assert.IsType<RigidAttachmentPartDefinition>(Assert.Single(parsed.Parts)).ClothHulls);
+        Assert.Equal(capsule, parsed.Colliders[Assert.Single(group.CapsuleIndices)]);
+        Assert.Equal(Vector3.UnitZ, group.Hull.Vertices[3]);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Cloth_surface_writer_preserves_topology_and_refuses_a_degenerate_material_face(bool degenerate)
+    {
+        string sha = new('a', 64);
+        string json = "{\"formatVersion\":1,\"meshSha256\":\"" + sha + "\",\"sourceVertices\":3,\"sourceTriangles\":1,\"material\":[1,3,4,5,1,0,0.01,0,0,0],"
+            + "\"nodes\":[[0,0,0,0,0],[1,0,0,1,0],[0,1,0,0," + (degenerate ? 0 : 1) + "]],"
+            + "\"triangles\":[[0,1,2]],\"hinges\":[],\"pins\":[[0,[0,0,0]]],"
+            + "\"render\":[[0,0,1,0,0,1,0,0.01]],\"fallback\":[[0,0,0],[0,0,1],[0,0,2]]}";
+        byte[] bytes = Encoding.UTF8.GetBytes(json);
+        if (degenerate)
+        {
+            var refusal = Assert.Throws<ClothSurfaceDataException>(() => ClothSurfaceJson.Parse(bytes, "coat.kecs"));
+            Assert.Equal(ClothSurfaceRefusal.Topology, refusal.Reason);
+            Assert.Equal("coat.kecs", refusal.SourceName);
+            Assert.Equal(0, refusal.ElementIndex);
+            return;
+        }
+        ClothSurfaceFile file = ClothSurfaceJson.Parse(bytes, "coat.kecs");
+        Assert.Equal(sha, file.MeshSha256);
+        Assert.Equal(new ClothTriangle(0, 1, 2), Assert.Single(file.Triangles));
+        Assert.Equal(bytes, ClothSurfaceJson.Write(file));
+    }
+
+    [Theory]
+    [InlineData("winding", ClothSurfaceRefusal.Topology, 1)]
+    [InlineData("unpinned island", ClothSurfaceRefusal.Topology, 3)]
+    [InlineData("material", ClothSurfaceRefusal.Material, null)]
+    [InlineData("weights", ClothSurfaceRefusal.RenderEmbedding, 0)]
+    public void Cloth_sidecar_refuses_bad_authored_elements_with_their_source(string fault, ClothSurfaceRefusal reason, int? index)
+    {
+        var file = new ClothSurfaceFile(new string('a', 64), 3, 1, new(1, 3, 4, 5, 1, 0, .01f, 0, 0),
+            [Vector3.Zero, Vector3.UnitX, Vector3.UnitY], [Vector2.Zero, Vector2.UnitX, Vector2.UnitY],
+            [new(0, 1, 2)], [], [new(0, new(0, 0, 0))],
+            [new(new(0, 0, 1), 0, Vector3.UnitY, 0)], [new(0, 0, 0), new(0, 0, 1), new(0, 0, 2)]);
+        var json = JsonNode.Parse(ClothSurfaceJson.Write(file))!.AsObject();
+        switch (fault)
+        {
+            case "winding":
+                AddNode(new JsonArray(0, -1, 0, 0, -1));
+                json["triangles"]!.AsArray().Add(new JsonArray(0, 1, 3));
+                break;
+            case "unpinned island":
+                AddNode(new JsonArray(2, 0, 0, 2, 0));
+                AddNode(new JsonArray(3, 0, 0, 3, 0));
+                AddNode(new JsonArray(2, 1, 0, 2, 1));
+                json["triangles"]!.AsArray().Add(new JsonArray(3, 4, 5));
+                break;
+            case "material": json["material"]![0] = -1; break;
+            case "weights": json["render"]![0]![5] = .5f; break;
+        }
+        var error = Assert.Throws<ClothSurfaceDataException>(() =>
+            ClothSurfaceJson.Parse(Encoding.UTF8.GetBytes(json.ToJsonString()), "sidecar.kecs"));
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal("sidecar.kecs", error.SourceName);
+        Assert.Equal(index, error.ElementIndex);
+
+        void AddNode(JsonArray node)
+        {
+            json["nodes"]!.AsArray().Add(node);
+            json["fallback"]!.AsArray().Add(new JsonArray(0, 0, 0));
+        }
+    }
+
     [Theory]
     [InlineData("stone-body.v1.json", "878eb4752608bcc51aa5d8447d76782ae21323c08bd0c974cff8a1e12fd1c8ea")]
     [InlineData("stone-helmet.v1.json", "66d0bd8d083cb5b8cbebb968f96d8920980778ce7558e7b0e46229db00b3d9df")]
@@ -513,7 +624,7 @@ public class JsonTests
             "unknown-mesh" => V2(skinned.Replace("\"key\":", "\"extra\":0,\"key\":", StringComparison.Ordinal)),
             "duplicate-id-across-kinds" => V2(rigid + "," + skinned.Replace("\"id\":2", "\"id\":1", StringComparison.Ordinal)),
             "missing-mesh" => V2("{\"id\":1,\"kind\":\"skinned\"}"),
-            "unsupported-version" => V2(skinned).Replace("\"formatVersion\":2", "\"formatVersion\":8", StringComparison.Ordinal),
+            "unsupported-version" => V2(skinned).Replace("\"formatVersion\":2", "\"formatVersion\":9", StringComparison.Ordinal),
             "zero-id" => V2(skinned.Replace("\"id\":2", "\"id\":0", StringComparison.Ordinal)),
             "conflicting-hashes" => V2(rigid + "," + skinned.Replace(AttachmentFixtures.Hash, new string('b', 64), StringComparison.Ordinal)),
             _ => throw new ArgumentException(name),

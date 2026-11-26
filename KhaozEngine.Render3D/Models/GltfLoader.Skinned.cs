@@ -83,8 +83,9 @@ namespace KhaozEngine.Render3D
             string identity = $"glTF asset '{path}'";
 
             foreach (var mesh in root.LogicalMeshes)
-                foreach (var prim in mesh.Primitives)
+                for (int primitiveIndex = 0; primitiveIndex < mesh.Primitives.Count; primitiveIndex++)
                 {
+                    MeshPrimitive prim = mesh.Primitives[primitiveIndex];
                     var position = prim.GetVertexAccessor("POSITION");
                     var joints = prim.GetVertexAccessor("JOINTS_0");
                     var weights = prim.GetVertexAccessor("WEIGHTS_0");
@@ -111,7 +112,7 @@ namespace KhaozEngine.Render3D
                         // The first skin supplies the inverse binds and rest pose for every mesh.
                         skin ??= root.LogicalNodes.FirstOrDefault(n => n.Mesh == mesh && n.Skin != null)?.Skin
                                  ?? root.LogicalSkins.FirstOrDefault();
-                        sourceStart = coverage?.AddSkinned(mesh, prim, partIndex, baseIndex, positions, jointIndices, jointWeights) ?? 0;
+                        sourceStart = coverage?.AddSkinned(mesh, prim, primitiveIndex, partIndex, baseIndex, positions, jointIndices, jointWeights) ?? 0;
                         AppendSkinnedVertices(group, prim, positions, jointIndices, jointWeights);
                     }
                     group.VertexCount = checked(baseIndex + vertexCount);
@@ -122,7 +123,7 @@ namespace KhaozEngine.Render3D
                         group.Indices.Add(MeshIndexValidation.Rebase(a, vertexCount, baseIndex, path, partIndex: partIndex, diagnosticIdentity: identity));
                         group.Indices.Add(MeshIndexValidation.Rebase(b, vertexCount, baseIndex, path, partIndex: partIndex, diagnosticIdentity: identity));
                         group.Indices.Add(MeshIndexValidation.Rebase(c, vertexCount, baseIndex, path, partIndex: partIndex, diagnosticIdentity: identity));
-                        coverage?.AddTriangle(mesh, prim, sourceTriangle++, partIndex, sourceStart, a, b, c);
+                        coverage?.AddTriangle(mesh, primitiveIndex, sourceTriangle++, partIndex, sourceStart, a, b, c);
                     }
                 }
 

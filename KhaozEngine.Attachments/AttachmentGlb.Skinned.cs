@@ -11,7 +11,7 @@ public static partial class AttachmentGlb
     public static void ValidateSkinnedEmbedded(ReadOnlyMemory<byte> glb, string sourceName) =>
         Validate(glb, sourceName, container => ReadSkinned(container, chainJoints: null));
 
-    static bool[] ReadSkinned(Container container, IReadOnlyCollection<string>? chainJoints)
+    static bool[] ReadSkinned(Container container, IReadOnlyCollection<string>? chainJoints, ClothSurfaceFile? cloth = null, string? sourceName = null)
     {
         JsonElement root = container.Root;
         JsonElement buffers = AttachmentGlbAccessors.Required(root, "buffers", "skinned buffer");
@@ -31,7 +31,7 @@ public static partial class AttachmentGlb
 
         var accessors = new AttachmentGlbAccessors(root, container.Binary);
         int jointCount = ValidateSkin(root, skins[0], accessors);
-        var swinging = chainJoints is null ? null : new SwingingVertexCollector(root, skins[0], chainJoints);
+        var swinging = chainJoints is null ? null : new SwingingVertexCollector(root, skins[0], chainJoints, cloth);
         int nodeIndex = 0;
         foreach (JsonElement node in Array(root, "nodes"))
         {
@@ -67,11 +67,12 @@ public static partial class AttachmentGlb
             foreach (JsonElement primitive in Array(mesh, "primitives"))
             {
                 int index = primitiveIndex++;
+                swinging?.StartPrimitive(meshOrdinal - 1, index);
                 ValidatePrimitive(primitive, context + $" primitive {index}", accessors, jointCount,
                     $"$.meshes[{meshOrdinal - 1}].primitives[{index}]", swinging);
             }
         }
-        return swinging?.ToArray() ?? [];
+        return swinging?.ToArray(sourceName) ?? [];
     }
 
     internal static int ValidateSkin(JsonElement root, JsonElement skin, AttachmentGlbAccessors accessors, int maxJoints = MaxSkinnedJoints)

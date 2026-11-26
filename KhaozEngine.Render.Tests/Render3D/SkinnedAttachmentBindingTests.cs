@@ -13,7 +13,7 @@ using static KhaozEngine.Tests.Render3D.RigidAttachmentTestRig;
 namespace KhaozEngine.Tests.Render3D;
 
 [Collection("AllocSensitive")]
-public sealed class SkinnedAttachmentBindingTests
+public sealed partial class SkinnedAttachmentBindingTests
 {
     static readonly AttachmentMeshRef GarmentRef = new("parts/garment.glb", new string('b', 64));
 

@@ -9,7 +9,12 @@ namespace KhaozEngine.Attachments;
 /// and half-thickness in metres. Friction coefficients are dimensionless. Optional still-air drag is in kg/(m² s).</remarks>
 public readonly record struct ClothMaterial(float Density, float WarpStiffness, float WeftStiffness,
     float ShearStiffness, float BendModulus, float DampingSeconds, float HalfThickness,
-    float StaticFriction, float KineticFriction, float NormalAirDrag = 0);
+    float StaticFriction, float KineticFriction, float NormalAirDrag = 0)
+{
+    /// <summary>An authoring starting point from the synthetic hanging panel qualification.</summary>
+    public static ClothMaterial HeavyWoven => new(.48f, 1800, 1200, 180, .0005f, .015f,
+        .00075f, .38f, .25f, NormalAirDrag: .8162874f);
+}
 
 /// <summary>Three node indices in material winding order.</summary>
 public readonly record struct ClothTriangle(int A, int B, int C)

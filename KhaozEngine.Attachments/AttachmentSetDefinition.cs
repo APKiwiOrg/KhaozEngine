@@ -99,11 +99,24 @@ public sealed class AttachmentSetDefinition
             part = AttachmentSetMotion.Part(part, layer is not null, partIndex);
             owned[partIndex] = AttachmentSetRegions.Part(part, layer is not null, nameof(parts));
         }
-        Array.Sort(owned, (left, right) => left.Id.CompareTo(right.Id));
         Layer = layer;
         Covers = Array.AsReadOnly(coveredRegions);
         Colliders = AttachmentSetMotion.Colliders(colliders, layer is not null);
+        AttachmentSetClothHulls.Validate(owned, layer, Colliders);
+        Array.Sort(owned, (left, right) => left.Id.CompareTo(right.Id));
         AttachmentSetFootprint.CheckDefinition(footprint, layer, meshes);
+        var clothSurfaces = new Dictionary<string, ClothSurfaceRef>(StringComparer.Ordinal);
+        foreach (AttachmentPartDefinition part in owned)
+        {
+            if (part is not SkinnedAttachmentPartDefinition { Motion: ClothMotionDefinition cloth }) continue;
+            ClothSurfaceRef surface = cloth.Surface;
+            if (meshes.ContainsKey(surface.Key) || surface.Key == footprint?.Key
+                || clothSurfaces.TryGetValue(surface.Key, out ClothSurfaceRef previous) && previous != surface)
+                throw new AttachmentSetArgumentException(AttachmentSetRefusal.ClothSurfaceKeyInvalid,
+                    $"Attachment part {part.Id}: the cloth surface key conflicts with another asset.", nameof(parts))
+                { PartId = part.Id, MeshKey = surface.Key };
+            clothSurfaces[surface.Key] = surface;
+        }
         Footprint = footprint;
         Parts = Array.AsReadOnly(owned);
         Meshes = Array.AsReadOnly(meshes.Values.OrderBy(mesh => mesh.Key, StringComparer.Ordinal).ToArray());
@@ -154,6 +167,11 @@ public sealed class AttachmentSetDefinition
             if (!knownAssets.TryGetValue(part.Mesh.Key, out string? actual) || actual != part.Mesh.Sha256)
                 throw new AttachmentSetDataException(AttachmentSetRefusal.MeshReferenceMissingOrHashMismatch, $"Attachment part {part.Id}: mesh '{part.Mesh.Key}' is missing or its SHA-256 differs.")
                 { PartId = part.Id, MeshKey = part.Mesh.Key, ExpectedHash = part.Mesh.Sha256, ActualHash = actual };
+            if (part is SkinnedAttachmentPartDefinition { Motion: ClothMotionDefinition cloth }
+                && (!knownAssets.TryGetValue(cloth.Surface.Key, out string? surfaceHash) || surfaceHash != cloth.Surface.Sha256))
+                throw new AttachmentSetDataException(AttachmentSetRefusal.ClothSurfaceReferenceMissingOrHashMismatch,
+                    $"Attachment part {part.Id}: cloth surface '{cloth.Surface.Key}' is missing or its SHA-256 differs.")
+                { PartId = part.Id, MeshKey = cloth.Surface.Key, ExpectedHash = cloth.Surface.Sha256, ActualHash = surfaceHash };
         }
         AttachmentSetFootprint.CheckReference(Footprint, knownAssets);
     }

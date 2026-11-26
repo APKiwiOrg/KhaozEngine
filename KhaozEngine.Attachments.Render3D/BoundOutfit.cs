@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.ExceptionServices;
 using KhaozEngine.Render3D;
@@ -29,7 +30,8 @@ public sealed partial class BoundOutfit : IDisposable
     bool _disposed;
 
     internal BoundOutfit(AttachmentSetCache owner, OutfitViewCache views, BoundAttachmentSet[] worn, OutfitDraw[][] draws,
-        SkinnedMeshHandle[] body, bool[] bodyVisible, ViewKey[] used, LoadedBodyRegions bodyRegions, bool[]? footprintApplied)
+        SkinnedMeshHandle[] body, bool[] bodyVisible, ViewKey[] used, LoadedBodyRegions bodyRegions, bool[]? footprintApplied,
+        Dictionary<uint, BoundClothSurface>?[]? cloth)
     {
         _owner = owner;
         _views = views;
@@ -39,6 +41,7 @@ public sealed partial class BoundOutfit : IDisposable
         _bodyVisible = bodyVisible;
         _used = used;
         _footprintApplied = footprintApplied;
+        _cloth = cloth;
         _bodyRigIdentity = bodyRegions.Map.RigIdentity;
         _hostSkeleton = bodyRegions.HostSkeleton;
     }

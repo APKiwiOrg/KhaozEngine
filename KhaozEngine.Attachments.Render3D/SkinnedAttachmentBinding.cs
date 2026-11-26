@@ -23,7 +23,7 @@ internal sealed class SkinnedAttachmentBinding
             { PartId = part.Id, MeshKey = part.Mesh.Key, JointCount = names.Count, InverseBindCount = inverseBind.Count, RestCount = restCount };
         _partId = part.Id;
         _hostBones = new int[names.Count];
-        if (part.Motion is ChainMotionDefinition motion)
+        if (PartMotionFallback.Chains(part.Motion) is { } motion)
         {
             Motion = new AttachmentChainBinding(part, motion, map, hostMesh.InverseBind, names, joints, inverseBind);
             foreach (BoundAttachmentChain chain in Motion.Chains)
@@ -54,6 +54,14 @@ internal sealed class SkinnedAttachmentBinding
 
     internal int JointCount => _hostBones.Length;
 
+    internal BoundClothSurface BindCloth(CheckedClothSurface cloth, ReadOnlySpan<Matrix4x4> hostRest)
+    {
+        Span<Matrix4x4> rest = stackalloc Matrix4x4[JointCount];
+        CopyPalette(hostRest, rest);
+        return cloth.Fit(_hostBones, hostRest.Length, rest);
+    }
+
+
     internal static void ValidateHost(ContractJointMap map, SkinnedGltfMesh hostMesh)
     {
         if (!ReferenceEquals(hostMesh.Skeleton, map.Skeleton))
@@ -83,7 +91,7 @@ internal sealed class SkinnedAttachmentBinding
             { PartId = part.Id, MeshKey = part.Mesh.Key };
         CheckCount(skeleton.BoneCount, part);
         var names = new string[skeleton.BoneCount];
-        var joints = part.Motion is ChainMotionDefinition ? new GarmentChainJoint[names.Length] : [];
+        var joints = PartMotionFallback.Chains(part.Motion) is not null ? new GarmentChainJoint[names.Length] : [];
         for (int bone = 0; bone < names.Length; bone++)
         {
             int node = skeleton.JointToNode[bone];

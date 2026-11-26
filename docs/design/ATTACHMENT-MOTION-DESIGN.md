@@ -482,8 +482,8 @@ from format 5 onward.
 }
 ```
 
-`motion.kind` is data, and `chains` is the one kind. An unknown kind refuses with a typed reason, so a reader that
-predates cloth refuses a cloth piece instead of drawing it wrong.
+`motion.kind` selects the authored motion. Format 8 adds `cloth` alongside `chains`, with a checked
+surface and an embedded chain recipe for normal drawing. Earlier formats and unknown kinds have typed refusals.
 
 Format 6 is format 5 with one optional member, `linkStretch` in a part's chain motion, beside `links`:
 
@@ -594,20 +594,23 @@ then swing away and show a hole. A claim may therefore rest only on triangles th
 only what the fixed part of a piece covers, such as a cloak's collar.
 
 The fitting tool derives a per-vertex mask from the same skinned GLB it imports and the part's chain joint names.
-Both use flattened mesh, primitive and vertex order so each flag describes the position at the same index. A piece
+For a cloth part it includes every embedded moving vertex. Both use flattened mesh, primitive and vertex order
+so each flag describes the position at the same index. A piece
 with motion passes one mesh per definition part in any order and sets `CoverageClaimMesh.PartId` on each mesh.
 The check verifies that each part is represented exactly once, so a reordered mesh keeps its own swing evidence.
 A missing or empty mask for a part with motion refuses with `SwingMaskMissing`, including its part ID and mesh key.
 The [coverage claim check reference](../../KhaozEngine.Attachments/README.md#coverage-claim-check) describes the API.
 
-## Room for cloth
+## Cloth asset and fitted binding
 
-- A part's movement kind is data, `motion.kind`. Cloth adds a kind and its settings in a later format.
-- Existing capsule, region and layer data remains useful for cloth. At the numerical seam,
-  a rigid lower part may supply a detailed convex hull for its tagged capsule group.
-- `WornMotion` is the one place that turns a movement kind into what a draw needs. Chains give joint matrices for the
-  garment palette. Cloth will give a per wearer deformed mesh, which the same draw overloads substitute for the
-  part's shared mesh.
+- [Format 8](../../KhaozEngine.Attachments/README.md#format-8) names the optional midsurface and carries its
+  chain fallback. Pin and embedding ordinals use source mesh, primitive and vertex identity. The material grouping
+  traversal maps them into the final draws without welding their UVs or materials.
+- Hull groups on a rigid lower part map detailed support geometry to canonical fallback capsule indices. Contact
+  support identity uses the source, part, feature group and layer.
+- The set stores intrinsic topology and compiles the fitted visible shape for each outfit, including outfit lift
+  and fixed-host pin samples. Ordinary draws use the existing chain palette. Runtime cloth selection and
+  predeformed submission are separate surfaces of the wearer and renderer contracts.
 - The cloth solver couples material constraints over a triangular midsurface. It reuses closest-feature
   capsule geometry and checks swept contacts against posed supports and non-neighbouring folds.
   The bounded contact search either certifies the candidate surface or preserves the prior state and

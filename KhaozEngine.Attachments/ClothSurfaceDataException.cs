@@ -25,6 +25,8 @@ public enum ClothSurfaceRefusal
     UnembeddedFallbackVertex,
     FallbackHierarchy,
     SourceGeometry,
+    MaterialEmbedding,
+    MaterialRenderOrder,
 }
 
 /// <summary>A cloth sidecar or fitted binding refusal with its source and offending authored element.</summary>

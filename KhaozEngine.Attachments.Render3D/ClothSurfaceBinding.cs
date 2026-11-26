@@ -85,12 +85,16 @@ internal sealed class CheckedClothSurface
         var moving = FallbackInfluences(fallback, materials[0].Skeleton!);
         var embedded = new bool[moving.Length];
         _render = new ResolvedClothVertex[file.Render.Length];
+        ReadOnlySpan<ClothRenderEmbedding> intrinsic = file.MaterialRender.AsSpan();
+        int material = 0;
         for (int i = 0; i < _render.Length; i++)
         {
             ClothRenderEmbedding entry = file.Render[i];
             if (!sourceVertices.TryGetValue(entry.Vertex, out int vertex))
                 throw Refuse(ClothSurfaceRefusal.RenderEmbedding, "$.render", "The embedding names a missing source vertex.", i);
-            _render[i] = new(vertex, entry);
+            ClothRenderEmbedding materialEntry = material < intrinsic.Length && intrinsic[material].Vertex == entry.Vertex
+                ? intrinsic[material++] : entry;
+            _render[i] = new(vertex, entry, materialEntry);
             embedded[vertex] = true;
         }
 
@@ -229,7 +233,7 @@ internal sealed class CheckedClothSurface
         new(this, _source, _materials, _pins, _fallback, _render, hostBones, hostBoneCount, garmentRestPose, lifted, visible);
 }
 
-internal readonly record struct ResolvedClothVertex(int Source, ClothRenderEmbedding Embedding);
+internal readonly record struct ResolvedClothVertex(int Source, ClothRenderEmbedding Embedding, ClothRenderEmbedding Material);
 
 internal readonly record struct ResolvedClothPoint(int A, int B, int C, Vector3 Weights, float Offset, bool IsTriangle)
 {

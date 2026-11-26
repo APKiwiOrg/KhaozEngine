@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Immutable;
 using System.IO;
 using System.Numerics;
 using System.Text.Json;
@@ -16,7 +17,7 @@ public static partial class ClothSurfaceJson
         using (var writer = new Utf8JsonWriter(stream))
         {
             writer.WriteStartObject();
-            writer.WriteNumber("formatVersion", FormatVersion);
+            writer.WriteNumber("formatVersion", file.MaterialRender.IsDefault ? FormatVersion : MaterialFormatVersion);
             writer.WriteString("meshSha256", file.MeshSha256);
             writer.WriteNumber("sourceVertices", file.SourceVertexCount);
             writer.WriteNumber("sourceTriangles", file.SourceTriangleCount);
@@ -60,19 +61,12 @@ public static partial class ClothSurfaceJson
             }
             writer.WriteEndArray();
 
-            writer.WriteStartArray("render");
-            foreach (ClothRenderEmbedding e in file.Render)
-            {
-                writer.WriteStartArray();
-                Index(e.Vertex.Mesh); Index(e.Vertex.Primitive); Index(e.Vertex.Vertex); Index(e.Triangle);
-                Vector(e.Barycentric); Number(e.SignedOffset);
-                writer.WriteEndArray();
-            }
-            writer.WriteEndArray();
+            Embeddings("render", file.Render);
 
             writer.WriteStartArray("fallback");
             foreach (ClothSourcePoint point in file.Fallback) Point(point);
             writer.WriteEndArray();
+            if (!file.MaterialRender.IsDefault) Embeddings("materialRender", file.MaterialRender);
             writer.WriteEndObject();
 
             void Number(float value) => writer.WriteNumberValue(value == 0 ? 0 : value);
@@ -92,6 +86,19 @@ public static partial class ClothSurfaceJson
                 if (point.Barycentric is { } weights)
                 {
                     Vector(weights); Number(point.SignedOffset);
+                }
+                writer.WriteEndArray();
+            }
+
+            void Embeddings(string name, ImmutableArray<ClothRenderEmbedding> entries)
+            {
+                writer.WriteStartArray(name);
+                foreach (ClothRenderEmbedding entry in entries)
+                {
+                    writer.WriteStartArray();
+                    Index(entry.Vertex.Mesh); Index(entry.Vertex.Primitive); Index(entry.Vertex.Vertex); Index(entry.Triangle);
+                    Vector(entry.Barycentric); Number(entry.SignedOffset);
+                    writer.WriteEndArray();
                 }
                 writer.WriteEndArray();
             }

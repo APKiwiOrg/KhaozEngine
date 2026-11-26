@@ -9,6 +9,7 @@ namespace KhaozEngine.Attachments;
 public static partial class ClothSurfaceJson
 {
     public const int FormatVersion = 1;
+    public const int MaterialFormatVersion = 2;
 
     public static ClothSurfaceFile Parse(ReadOnlyMemory<byte> utf8, string sourceName)
     {
@@ -38,10 +39,16 @@ public static partial class ClothSurfaceJson
         internal ClothSurfaceFile Read()
         {
             StrictAttachmentJson.Members(root, "$", Refuse, "formatVersion", "meshSha256", "sourceVertices", "sourceTriangles",
-                "material", "nodes", "triangles", "hinges", "pins", "render", "fallback");
-            if (Index(Member("formatVersion"), "$.formatVersion") != FormatVersion)
+                "material", "nodes", "triangles", "hinges", "pins", "render", "fallback", "materialRender");
+            int version = Index(Member("formatVersion"), "$.formatVersion");
+            if (version is not (FormatVersion or MaterialFormatVersion))
                 throw new ClothSurfaceDataException(ClothSurfaceRefusal.Version, sourceName, "Unsupported cloth surface format.")
                 { PartId = partId, JsonPath = "$.formatVersion" };
+            bool hasMaterialMap = root.TryGetProperty("materialRender", out _);
+            if (version == FormatVersion && hasMaterialMap)
+                throw Refuse(StrictAttachmentJson.Fault.UnknownProperty, "$.materialRender", "Material overrides require cloth surface format 2.");
+            if (version == MaterialFormatVersion && !hasMaterialMap)
+                throw Refuse(StrictAttachmentJson.Fault.MissingProperty, "$.materialRender", "Cloth surface format 2 requires the material overrides array.");
             string mesh = StrictAttachmentJson.Text(Member("meshSha256"), "$.meshSha256", Refuse);
             int sourceVertices = Index(Member("sourceVertices"), "$.sourceVertices");
             int sourceTriangles = Index(Member("sourceTriangles"), "$.sourceTriangles");
@@ -61,10 +68,13 @@ public static partial class ClothSurfaceJson
                     new ClothRestHinge(Index(r[0], p), Index(r[1], p), Number(r, 2, p))),
                 Rows("pins", ClothSurfaceFile.NodeLimit, 2, (r, p) =>
                     new ClothPinSource(Index(r[0], p), Point(r[1], p))),
-                Rows("render", ClothSurfaceFile.SourceVertexLimit, 8, (r, p) =>
-                    new ClothRenderEmbedding(new ClothSourceVertex(Index(r[0], p), Index(r[1], p), Index(r[2], p)),
-                        Index(r[3], p), Vector(r, 4, p), Number(r, 7, p))),
-                Rows("fallback", ClothSurfaceFile.NodeLimit, null, Point));
+                Rows("render", ClothSurfaceFile.SourceVertexLimit, 8, Embedding),
+                Rows("fallback", ClothSurfaceFile.NodeLimit, null, Point))
+            {
+                MaterialRender = version == MaterialFormatVersion
+                    ? Rows("materialRender", ClothSurfaceFile.SourceVertexLimit, 8, Embedding)
+                    : default,
+            };
         }
 
         ClothMaterial Material()
@@ -88,6 +98,10 @@ public static partial class ClothSurfaceJson
 
         ClothTriangle Triangle(JsonElement row, string path) =>
             new(Index(row[0], path), Index(row[1], path), Index(row[2], path));
+
+        ClothRenderEmbedding Embedding(JsonElement row, string path) =>
+            new(new(Index(row[0], path), Index(row[1], path), Index(row[2], path)),
+                Index(row[3], path), Vector(row, 4, path), Number(row, 7, path));
 
         Vector3 Vector(JsonElement row, int first, string path) =>
             new(Number(row, first, path), Number(row, first + 1, path), Number(row, first + 2, path));
@@ -125,6 +139,7 @@ public static partial class ClothSurfaceJson
 
         Exception Refuse(StrictAttachmentJson.Fault fault, string path, string message, string? property = null)
         {
+            if (path == "$" && property == "materialRender") path = "$.materialRender";
             int open = path.LastIndexOf('[');
             int? index = open >= 0 && int.TryParse(path.AsSpan(open + 1, path.Length - open - 2), out int parsed) ? parsed : null;
             return new ClothSurfaceDataException(ClothSurfaceRefusal.Json, sourceName, message)

@@ -231,6 +231,14 @@ distance along the triangle's oriented normal, zero for pins. The `render` array
 source order. Outer fabric, lining and rim can share one material node with distinct signed offsets.
 Source mesh, primitive and vertex ordinals come from the GLB before regrouping by material.
 
+Version 2 adds the `materialRender` array with the same tuple shape and source order as `render`.
+Each override names a vertex already in `render` and supplies its intrinsic triangle, weights and
+signed distance in metres. Omit a row when the intrinsic and fitted attachments coincide. An
+empty array opts into intrinsic reconstruction with the existing rows. The fitted registration
+still checks `render` against the original GLB and supplies the cheap presentation. Positive
+intrinsic offsets follow the oriented material normal, with negative offsets on the opposite skin.
+Leave `ClothSurfaceFile.MaterialRender` at its default to write the canonical version 1 sidecar.
+
 Create a `ClothSurfaceFile`, call `ClothSurfaceJson.Write` and hash its result for the set's
 `ClothSurfaceRef`. `ClothSurfaceJson.Parse` and the writer both validate intrinsic data with
 `ClothRig`. The first profile admits 128 material nodes, 256 material triangles, 4,096 expanded GLB

@@ -7906,13 +7906,31 @@ for binding, resets and culling details.
 
 #### Checked cloth surfaces
 
-An offline fitter can pair a fitted skinned GLB with a version 1 cloth sidecar. Build the material
+An offline fitter can pair a fitted skinned GLB with a cloth sidecar. Build the material
 pattern, fixed seam samples, moving vertex embeddings and fallback node samples in
 `ClothSurfaceFile`. Check them with `ClothSurfaceBinding.Check`, write `ClothSurfaceJson.Write(file)`,
 and use the exact bytes' SHA-256 in the `ClothSurfaceRef` of a `ClothMotionDefinition`. Include the
 ordinary chain recipe in that definition. Format 8 uses the same part ID, GLB materials, lift and
 region runs. For permanent coverage, `AttachmentGlb.SwingingVertices(glb, sourceName, motion, surfaceBytes)`
 checks the exact sidecar digest and excludes both cloth movement and chain fallback movement.
+
+To author version 2, use the independently laid-out cut to locate moving vertices on the material
+triangles. Supply only the rows that differ from the existing fitted registration. For example,
+the fitted vertex with source ordinal `(0, 1, 24)` lies on a different triangle in the pattern and
+the lining has an intrinsic offset of 0.75 mm along the oriented normal.
+
+```csharp
+ClothSurfaceFile mapped = file with
+{
+    MaterialRender =
+    [
+        new(new ClothSourceVertex(0, 1, 24), 12, new Vector3(0.25f, 0.5f, 0.25f), 0.00075f),
+    ],
+};
+ClothSurfaceBinding.Check(glbBytes, mapped, fallback, sidecarKey, partId);
+byte[] sidecarBytes = ClothSurfaceJson.Write(mapped);
+var surfaceRef = new ClothSurfaceRef(sidecarKey, Convert.ToHexStringLower(SHA256.HashData(sidecarBytes)));
+```
 
 Load and bind the set normally. `bound.ClothSurface(partId)` gives the checked material rig, fitted
 nodes and source sampling data. `outfit.ClothSurface(wornIndex, partId)` incorporates the outfit's

@@ -23,6 +23,10 @@ public sealed record ClothSurfaceFile(string MeshSha256, int SourceVertexCount, 
     ImmutableArray<ClothRestHinge> Hinges, ImmutableArray<ClothPinSource> Pins,
     ImmutableArray<ClothRenderEmbedding> Render, ImmutableArray<ClothSourcePoint> Fallback)
 {
+    /// <summary>Intrinsic overrides for fitted render vertices, sorted by GLB source ordinal.
+    /// The default array preserves the fitted-only format. An initialized array opts into material reconstruction.</summary>
+    public ImmutableArray<ClothRenderEmbedding> MaterialRender { get; init; }
+
     public const int NodeLimit = 128;
     public const int TriangleLimit = 256;
     public const int SourceVertexLimit = 4096;
@@ -62,11 +66,27 @@ public sealed record ClothSurfaceFile(string MeshSha256, int SourceVertexCount, 
         for (int i = 0; i < Render.Length; i++)
         {
             ClothRenderEmbedding entry = Render[i];
-            if (entry.Vertex.Mesh < 0 || entry.Vertex.Primitive < 0 || entry.Vertex.Vertex < 0
-                || (uint)entry.Triangle >= Triangles.Length || !ValidWeights(entry.Barycentric) || !float.IsFinite(entry.SignedOffset))
+            if (entry.Vertex.Mesh < 0 || entry.Vertex.Primitive < 0 || entry.Vertex.Vertex < 0 || !ValidEmbedding(entry))
                 throw Refuse(ClothSurfaceRefusal.RenderEmbedding, "$.render", "A render embedding needs a source vertex, material triangle and finite weights and offset.", i);
             if (i > 0 && Compare(Render[i - 1].Vertex, entry.Vertex) >= 0)
                 throw Refuse(ClothSurfaceRefusal.RenderOrder, "$.render", "Render vertices need distinct ascending source ordinals.", i);
+        }
+
+        if (!MaterialRender.IsDefault)
+        {
+            const string path = "$.materialRender";
+            CheckCount(MaterialRender.Length, 0, Render.Length, path);
+            int fitted = 0;
+            for (int i = 0; i < MaterialRender.Length; i++)
+            {
+                ClothRenderEmbedding entry = MaterialRender[i];
+                if (i > 0 && Compare(MaterialRender[i - 1].Vertex, entry.Vertex) >= 0)
+                    throw Refuse(ClothSurfaceRefusal.MaterialRenderOrder, path, "Material overrides need distinct ascending source ordinals.", i);
+                while (fitted < Render.Length && Compare(Render[fitted].Vertex, entry.Vertex) < 0) fitted++;
+                if (fitted == Render.Length || Render[fitted].Vertex != entry.Vertex || !ValidEmbedding(entry))
+                    throw Refuse(ClothSurfaceRefusal.MaterialEmbedding, path,
+                        "A material override needs a fitted render vertex, material triangle and finite weights and offset.", i);
+            }
         }
 
         try { return ClothRig.Create(RestPositions.AsSpan(), MaterialCoordinates.AsSpan(), Triangles.AsSpan(), pins, Hinges.AsSpan(), Material); }
@@ -103,6 +123,9 @@ public sealed record ClothSurfaceFile(string MeshSha256, int SourceVertexCount, 
             Exception? inner = null) => new(reason, sourceName, message, inner)
             { PartId = partId, ElementIndex = index, JsonPath = index is int i ? $"{path}[{i}]" : path };
     }
+
+    bool ValidEmbedding(ClothRenderEmbedding entry) =>
+        (uint)entry.Triangle < Triangles.Length && ValidWeights(entry.Barycentric) && float.IsFinite(entry.SignedOffset);
 
     static bool ValidWeights(Vector3 w) => w.X >= 0 && w.Y >= 0 && w.Z >= 0
         && MathF.Abs(w.X + w.Y + w.Z - 1) <= .00001f;

@@ -16,15 +16,19 @@ namespace KhaozEngine.Attachments.Render3D;
 public readonly record struct BoundClothEmbedding(int VertexIndex, int Triangle, Vector3 Barycentric, float SignedOffset,
     Vector3 FittedOffset);
 
+/// <summary>An intrinsic pattern attachment for one moving vertex in a skinned material draw.</summary>
+public readonly record struct BoundClothMaterialEmbedding(int VertexIndex, int Triangle, Vector3 Barycentric, float SignedOffset);
+
 /// <summary>The garment's fitted vertices and selected triangle indices in one material slot.</summary>
 public sealed class BoundClothMaterial
 {
     readonly bool[] _moving;
 
     internal BoundClothMaterial(ImmutableArray<SkinnedVertex> vertices, ImmutableArray<uint> visibleIndices,
-        ImmutableArray<BoundClothEmbedding> embeddings)
+        ImmutableArray<BoundClothEmbedding> embeddings, ImmutableArray<BoundClothMaterialEmbedding> materialEmbeddings)
     {
         (Vertices, VisibleIndices, Embeddings) = (vertices, visibleIndices, embeddings);
+        MaterialEmbeddings = materialEmbeddings;
         _moving = new bool[Vertices.Length];
         foreach (BoundClothEmbedding embedding in embeddings) _moving[embedding.VertexIndex] = true;
     }
@@ -39,6 +43,9 @@ public sealed class BoundClothMaterial
     public ImmutableArray<SkinnedVertex> Vertices { get; }
     public ImmutableArray<uint> VisibleIndices { get; }
     public ImmutableArray<BoundClothEmbedding> Embeddings { get; }
+
+    /// <summary>The full intrinsic mapping for this view, in fitted embedding order. Default for version 1.</summary>
+    public ImmutableArray<BoundClothMaterialEmbedding> MaterialEmbeddings { get; }
 }
 
 /// <summary>The checked cloth rig and posed sampling data for one fitted part in a set or outfit.</summary>
@@ -91,7 +98,12 @@ public sealed class BoundClothSurface
                 throw asset.Refuse(ClothSurfaceRefusal.FittedTriangle, "$.triangles", "The fitted triangle has no finite frame.", triangle);
 
         var embeddings = new List<BoundClothEmbedding>[materials.Length];
-        for (int i = 0; i < materials.Length; i++) embeddings[i] = [];
+        var intrinsic = HasMaterialMapping ? new List<BoundClothMaterialEmbedding>[materials.Length] : null;
+        for (int i = 0; i < materials.Length; i++)
+        {
+            embeddings[i] = [];
+            if (intrinsic is not null) intrinsic[i] = [];
+        }
         foreach (ResolvedClothVertex vertex in render)
         {
             CoverageSourceVertex mapping = source.Vertices[vertex.Source];
@@ -101,6 +113,9 @@ public sealed class BoundClothSurface
             Vector3 fittedOffset = frames[entry.Triangle].Coordinates(posed[vertex.Source] - barycentric);
             embeddings[mapping.MaterialSlice].Add(new(mapping.SliceVertex, entry.Triangle, entry.Barycentric,
                 entry.SignedOffset, fittedOffset));
+            ClothRenderEmbedding material = vertex.Material;
+            intrinsic?[mapping.MaterialSlice].Add(new(mapping.SliceVertex, material.Triangle, material.Barycentric,
+                material.SignedOffset));
         }
 
         var fitted = ImmutableArray.CreateBuilder<BoundClothMaterial>(materials.Length);
@@ -111,7 +126,8 @@ public sealed class BoundClothSurface
                 for (int i = 0; i < vertices.Length; i++) vertices[i].Position = lifted[material].Span[i];
             uint[] visibleIndices = visible?[material] ?? materials[material].Indices32;
             var view = new BoundClothMaterial(ImmutableArray.Create(vertices), ImmutableArray.Create(visibleIndices),
-                ImmutableArray.CreateRange(embeddings[material]));
+                ImmutableArray.CreateRange(embeddings[material]),
+                intrinsic is null ? default : ImmutableArray.CreateRange(intrinsic[material]));
             HasVisibleMotion |= view.HasMovingVertices(visibleIndices);
             fitted.Add(view);
         }
@@ -126,6 +142,7 @@ public sealed class BoundClothSurface
     internal int JointCount => _inverseBind.Length;
     public ClothRig Rig => _checked.Rig;
     public ClothSurfaceFile Description => _checked.File;
+    public bool HasMaterialMapping => !Description.MaterialRender.IsDefault;
     public ClothRoundTrip RoundTrip => _checked.RoundTrip;
     public ReadOnlySpan<Vector3> FittedNodes => _fittedNodes;
     public ImmutableArray<BoundClothMaterial> Materials { get; }

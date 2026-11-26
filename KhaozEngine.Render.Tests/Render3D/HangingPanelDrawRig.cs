@@ -50,14 +50,15 @@ internal sealed partial class HangingPanelDrawRig : IDisposable
         return (rig.Map.Bone("hip"), rig.Map.Bone("knee"), body, regions);
     }
 
-    internal HangingPanelDrawRig(HangingPanelCut cut, in HangingPanelPose bindPose, ClothDrapeFixture? cloth = null)
+    internal HangingPanelDrawRig(HangingPanelCut cut, in HangingPanelPose bindPose, ClothDrapeFixture? cloth = null,
+        bool matchGuideLift = false)
     {
         (chestBone, supportBone, host, bodyRegions) = CreateHost();
         supportFromBind = Matrix4x4.CreateTranslation(-bindPose.Support.Translation);
         BoundAttachmentSet support = WearSupport(bindPose.Support.Translation);
         var drape = new PanelDrape(HangingPanelFixture.Seam, HangingPanelFixture.PoseAt(0).Support.Translation,
             HangingPanelCut.FittedRadius);
-        (BoundAttachmentSet garmentSet, GarmentMeshDigest, GarmentDefinitionDigest) = WearPanel(cut, drape, cloth);
+        (BoundAttachmentSet garmentSet, GarmentMeshDigest, GarmentDefinitionDigest) = WearPanel(cut, drape, cloth, matchGuideLift);
         outfit = rig.Cache.BindOutfit(bodyRegions, [support, garmentSet]);
         garmentIndex = 1;
         motion = outfit.CreateMotion(null, new ChainSimulationOptions
@@ -80,7 +81,7 @@ internal sealed partial class HangingPanelDrawRig : IDisposable
         else
         {
             garment.VerifyRestPositions(cut.Fit(drape), allowTrailing: true);
-            InitializeCloth(cloth, cut, garmentSet.ClothSurface(1)!.Materials[0]);
+            InitializeCloth(cloth, cut, garmentSet.ClothSurface(1)!, matchGuideLift);
         }
         hardware = new DrawPanel(rig.Scene, Write(0, bindPose.Wearer));
     }
@@ -139,12 +140,12 @@ internal sealed partial class HangingPanelDrawRig : IDisposable
         return draws[0];
     }
 
-    private (BoundAttachmentSet Set, string MeshDigest, string DefinitionDigest) WearPanel(HangingPanelCut cut, PanelDrape drape, ClothDrapeFixture? cloth)
+    private (BoundAttachmentSet Set, string MeshDigest, string DefinitionDigest) WearPanel(HangingPanelCut cut, PanelDrape drape, ClothDrapeFixture? cloth, bool matchGuideLift)
     {
         SkinnedAttachmentGlbFixture glb = HostGlb(HostJointCount + HangingPanelCut.Columns * JointsPerGuide);
         ChainMotionDefinition chainMotion = WriteGuides(glb, drape);
         if (cloth is not null)
-            return WearClothPanel(glb, cut, drape, chainMotion, cloth);
+            return WearClothPanel(glb, cut, drape, chainMotion, cloth, matchGuideLift);
 
         Vector3[] sourcePositions = cut.Fit(drape);
         var liftDirections = new Vector3[sourcePositions.Length];

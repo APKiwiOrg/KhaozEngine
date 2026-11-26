@@ -28,15 +28,18 @@ internal sealed partial class HangingPanelDrawRig
     internal bool CurrentClothPose { get; private set; }
     internal Vector3 MarkedFittedOffset { get; private set; }
     internal Vector3 MarkedBareOffset { get; private set; }
+    internal ClothRoundTrip StaticRegistration { get; private set; }
+    internal float MaxGuideLiftError { get; private set; }
 
-    private void InitializeCloth(ClothDrapeFixture fixture, HangingPanelCut cut, BoundClothMaterial bare)
+    private void InitializeCloth(ClothDrapeFixture fixture, HangingPanelCut cut, BoundClothSurface bare, bool matchGuideLift)
     {
         var surface = outfit.ClothSurface(garmentIndex, 1)!;
         clothCut = cut;
         frozenFixture = fixture;
-        bareCloth = bare;
+        bareCloth = bare.Materials[0];
+        StaticRegistration = surface.RoundTrip;
         fittedCloth = surface.Materials[0];
-        foreach (var entry in bare.Embeddings)
+        foreach (var entry in bareCloth.Embeddings)
             if (entry.VertexIndex == cut.Probes.MarkedPatch) MarkedBareOffset = entry.FittedOffset;
         foreach (var entry in surface.Materials[0].Embeddings)
             if (entry.VertexIndex == cut.Probes.MarkedPatch) MarkedFittedOffset = entry.FittedOffset;
@@ -50,7 +53,15 @@ internal sealed partial class HangingPanelDrawRig
         composedCloth = new Matrix4x4[host.Skeleton!.BoneCount + HangingPanelCut.Columns * JointsPerGuide];
         Assert.Equal(fixture.Fitted.Length, surface.FittedNodes.Length);
         for (int i = 0; i < fixture.Fitted.Length; i++)
+        {
             Assert.InRange(Vector3.Distance(fixture.Fitted[i], surface.FittedNodes[i]), 0, .00001f);
+            if (!matchGuideLift) continue;
+            Vector3 lift = i < fixture.Rig.Pins.Length ? Vector3.Zero :
+                LiftClearance * Vector3.UnitZ;
+            float error = Vector3.Distance(lift, surface.FittedNodes[i] - bare.FittedNodes[i]);
+            MaxGuideLiftError = MathF.Max(MaxGuideLiftError, error);
+        }
+        Assert.InRange(MaxGuideLiftError, 0, .000001f);
     }
 
     internal PresentedPanel PresentCloth(in HangingPanelPose pose, float elapsed, bool batch)
@@ -174,18 +185,24 @@ internal sealed partial class HangingPanelDrawRig
     }
 
     private (BoundAttachmentSet Set, string MeshDigest, string DefinitionDigest) WearClothPanel(SkinnedAttachmentGlbFixture glb,
-        HangingPanelCut cut, in PanelDrape drape, ChainMotionDefinition fallback, ClothDrapeFixture fixture)
+        HangingPanelCut cut, in PanelDrape drape, ChainMotionDefinition fallback, ClothDrapeFixture fixture,
+        bool matchGuideLift)
     {
         Vector3[] dense = cut.Fit(drape);
         var rigged = fixture.Rig;
         int pinCount = rigged.Pins.Length;
         var positions = new Vector3[dense.Length + fixture.Fitted.Length - pinCount];
         dense.CopyTo(positions, 0);
-        fixture.Fitted.AsSpan(pinCount).CopyTo(positions.AsSpan(dense.Length));
+        var encodedNodes = (Vector3[])fixture.Fitted.Clone();
+        if (matchGuideLift)
+            for (int node = pinCount; node < encodedNodes.Length; node++)
+                encodedNodes[node] -= LiftClearance * Vector3.UnitZ;
+        encodedNodes.AsSpan(pinCount).CopyTo(positions.AsSpan(dense.Length));
         var liftDirections = new Vector3[positions.Length];
         var liftBearings = new float[positions.Length];
         Array.Fill(liftDirections, Vector3.UnitZ);
         Array.Fill(liftBearings, LowerStandoff + LiftClearance);
+        if (matchGuideLift) liftBearings.AsSpan(dense.Length).Fill(LowerStandoff);
         glb.SetUniformSkinning(0, positions.Length, Vector4.Zero, Vector4.UnitX);
         var render = new List<ClothRenderEmbedding>();
         for (int vertex = 0; vertex < dense.Length; vertex++)
@@ -195,8 +212,10 @@ internal sealed partial class HangingPanelDrawRig
             if (row == 0) continue;
             positions[vertex] -= LiftClearance * Vector3.UnitZ;
             liftBearings[vertex] = LowerStandoff;
-            (int preferred, _) = fixture.DenseBinding(source);
-            var (triangle, weights, signed) = AttachSource(fixture.Fitted, rigged.Triangles, positions[vertex], preferred);
+            (int preferred, Vector3 intrinsicWeights) = fixture.DenseBinding(source);
+            var (triangle, weights, signed) = matchGuideLift
+                ? AttachMaterialSite(encodedNodes, rigged.Triangles, positions[vertex], preferred, intrinsicWeights)
+                : AttachSource(encodedNodes, rigged.Triangles, positions[vertex], preferred);
             render.Add(new(new(0, 0, vertex), triangle, weights, signed));
             WeightGuide(vertex, row, source % HangingPanelCut.Columns);
         }
@@ -218,7 +237,7 @@ internal sealed partial class HangingPanelDrawRig
             render.Add(new(new(0, 0, vertex), triangle, weights, 0));
             int guide = (int)MathF.Round((node % ClothDrapeFixture.Columns) *
                 ((HangingPanelCut.Columns - 1f) / (ClothDrapeFixture.Columns - 1)));
-            WeightGuide(vertex, ClothDrapeFixture.DenseRow(node), guide);
+            WeightGuide(vertex, fixture.DenseRow(node), guide);
         }
         glb.SetPositions(0, positions);
         glb.SetLiftAttributes(0, liftDirections, liftBearings);
@@ -250,6 +269,15 @@ internal sealed partial class HangingPanelDrawRig
             glb.SetElement(joints, vertex, GuideBone(col, upper), GuideBone(col, lower), 0, 0);
             glb.SetElement(weights, vertex, 1 - amount, amount, 0, 0);
         }
+    }
+
+    private static (int Triangle, Vector3 Weights, float Signed) AttachMaterialSite(ReadOnlySpan<Vector3> fitted,
+        ReadOnlySpan<ClothTriangle> triangles, Vector3 point, int triangle, Vector3 weights)
+    {
+        ClothTriangle face = triangles[triangle];
+        Assert.True(ClothFittedFrame.TryCreate(face, fitted, out var basis));
+        float signed = Vector3.Dot(point - face.Blend(fitted, weights), basis.Normal);
+        return (triangle, weights, signed);
     }
 
     private static (int Triangle, Vector3 Weights, float Signed) AttachSource(ReadOnlySpan<Vector3> fitted,

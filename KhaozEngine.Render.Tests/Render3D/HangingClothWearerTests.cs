@@ -12,14 +12,24 @@ namespace KhaozEngine.Tests.Render3D;
 
 public sealed class HangingClothWearerTests
 {
+    private static readonly int[] GeometrySelectedRows = [0, 3, 7, 8, 14, 21, 28, 35, 36, 43, 50, 57, 64];
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void Frozen_original_cut_meets_all_detailed_display_limits(bool flat)
+    public void Frozen_original_cut_meets_all_detailed_display_limits(bool flat) => Measure(flat, geometrySelected: false);
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Geometry_selected_proxy_meets_the_same_original_cut_limits(bool flat) => Measure(flat, geometrySelected: true);
+
+    private static void Measure(bool flat, bool geometrySelected)
     {
         var neutral = At(0, flat);
         var cut = new HangingPanelCut();
-        using var wearer = new HangingPanelDrawRig(cut, neutral, new ClothDrapeFixture());
+        var proxy = new ClothDrapeFixture(geometrySelected ? GeometrySelectedRows : null);
+        using var wearer = new HangingPanelDrawRig(cut, neutral, proxy, matchGuideLift: geometrySelected);
         using (var original = new HangingPanelDrawRig(cut, neutral))
             wearer.VerifyOriginalFallback(original, neutral);
         var gate = flat ? new FlatLipReentry(IsFlatLipEligible) : null;
@@ -64,6 +74,8 @@ public sealed class HangingClothWearerTests
             trace?.WriteLine(JsonSerializer.Serialize(new
             {
                 time, phase = pose.PhaseSeconds, geometry, bearing, status, proxyWitness, proxyBearing, withoutLift,
+                proxyRows = geometrySelected ? GeometrySelectedRows : null,
+                staticRegistration = wearer.StaticRegistration, maxGuideLiftError = wearer.MaxGuideLiftError,
                 closest, markedFittedOffset = Components(wearer.MarkedFittedOffset), markedBareOffset = Components(wearer.MarkedBareOffset),
             }));
             Require(wearer.CurrentClothPose, "current display revision", (float)status.Projection.Status);
@@ -84,7 +96,8 @@ public sealed class HangingClothWearerTests
                 return;
             }
             Require(flat || geometry.IsLipLoaded, "loaded lip", geometry.MarkerGap);
-            Require(proxyBearing?.Acceptable ?? proxyWitness.HasBearing, "intrinsic bearing", proxyWitness.MarkerGap);
+            if (!geometrySelected)
+                Require(proxyBearing?.Acceptable ?? proxyWitness.HasBearing, "intrinsic bearing", proxyWitness.MarkerGap);
             Require(bearing?.Acceptable ?? geometry.HasBearing, "bearing", geometry.MarkerGap);
             Require(material.TensileStrain <= HangingPanelFixture.StrainLimit, "strain", material.TensileStrain);
             MaterialObservation intrinsicMaterial = proxyWitness.Material.Value;

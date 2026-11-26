@@ -8,38 +8,42 @@ namespace KhaozEngine.Tests.Attachments;
 internal sealed class ClothDrapeFixture
 {
     internal const int Columns = 9;
-    private static readonly int[] Rows = [0, 5, 8, 16, 21, 27, 32, 37, 43, 48, 53, 59, 64];
+    private static readonly int[] FrozenRows = [0, 5, 8, 16, 21, 27, 32, 37, 43, 48, 53, 59, 64];
     private static readonly float[] Across = [-.24f, -.18f, -.12f, -.06f, 0, .06f, .12f, .18f, .24f];
     private static readonly Vector3 HalfAxis = HangingPanelFixture.LipHalfSpan * Vector3.UnitX;
+    private readonly int[] _rows;
     private readonly HangingPanelCut _cut = new();
     private readonly VertexEmbedding[] _embedding = new VertexEmbedding[HangingPanelCut.VerticesPerSkin];
     private readonly Vector3[] _surface = new Vector3[2 * HangingPanelCut.VerticesPerSkin];
-    private readonly Vector3[] _normals = new Vector3[Rows.Length * Columns];
+    private readonly Vector3[] _normals;
     private readonly Vector3 _fittedSeamNormal;
 
     internal ClothRig Rig { get; }
-    internal Vector3[] Fitted { get; } = new Vector3[Rows.Length * Columns];
+    internal Vector3[] Fitted { get; }
 
-    internal ClothDrapeFixture()
+    internal ClothDrapeFixture(int[]? proxyRows = null)
     {
+        _rows = proxyRows ?? FrozenRows;
+        Fitted = new Vector3[_rows.Length * Columns];
+        _normals = new Vector3[Fitted.Length];
         HangingPanelPose neutral = HangingPanelFixture.PoseAt(0);
         var initial = new PanelDrape(HangingPanelFixture.Seam, neutral.Support.Translation, HangingPanelCut.FittedRadius);
         Vector3[] source = _cut.Fit(initial);
         _fittedSeamNormal = Vector3.Normalize(source[HangingPanelCut.Outer(0)] - source[0]);
         var rest = new Vector3[Fitted.Length];
         var coordinates = new Vector2[rest.Length];
-        var faces = new ClothTriangle[(Rows.Length - 1) * (Columns - 1) * 2];
+        var faces = new ClothTriangle[(_rows.Length - 1) * (Columns - 1) * 2];
         int[] pins = new int[Columns];
-        for (int row = 0; row < Rows.Length; row++)
+        for (int row = 0; row < _rows.Length; row++)
         for (int column = 0; column < Columns; column++)
         {
             int node = row * Columns + column;
             float x = Across[column];
-            rest[node] = CutPoint(_cut.Rest, Rows[row], x);
-            Fitted[node] = CutPoint(source, Rows[row], x);
-            coordinates[node] = new Vector2(x, HangingPanelCut.LengthAt(Rows[row]));
+            rest[node] = CutPoint(_cut.Rest, _rows[row], x);
+            Fitted[node] = CutPoint(source, _rows[row], x);
+            coordinates[node] = new Vector2(x, HangingPanelCut.LengthAt(_rows[row]));
             if (row == 0) pins[column] = node;
-            if (row + 1 == Rows.Length || column + 1 == Columns) continue;
+            if (row + 1 == _rows.Length || column + 1 == Columns) continue;
             int cell = 2 * (row * (Columns - 1) + column);
             faces[cell] = new ClothTriangle(node, node + 1, node + Columns + 1);
             faces[cell + 1] = new ClothTriangle(node, node + Columns + 1, node + Columns);
@@ -60,7 +64,7 @@ internal sealed class ClothDrapeFixture
         return (Rig.Triangles.IndexOf(embedding.Face), embedding.Weights);
     }
 
-    internal static int DenseRow(int node) => Rows[node / Columns];
+    internal int DenseRow(int node) => _rows[node / Columns];
 
     internal void PosePins(in HangingPanelPose pose, Span<Vector3> target)
     {
@@ -115,13 +119,13 @@ internal sealed class ClothDrapeFixture
         Vector3 Midpoint(int i) => (source[i] + source[HangingPanelCut.Outer(i)]) * .5f;
     }
 
-    private static VertexEmbedding Embed(int denseRow, float x, ClothTriangle[] faces)
+    private VertexEmbedding Embed(int denseRow, float x, ClothTriangle[] faces)
     {
         int row = 0, col = 0;
-        while (row + 1 < Rows.Length - 1 && Rows[row + 1] < denseRow) row++;
+        while (row + 1 < _rows.Length - 1 && _rows[row + 1] < denseRow) row++;
         while (col + 1 < Columns - 1 && Across[col + 1] < x) col++;
         float u = (x - Across[col]) / (Across[col + 1] - Across[col]);
-        float v = (float)(denseRow - Rows[row]) / (Rows[row + 1] - Rows[row]);
+        float v = (float)(denseRow - _rows[row]) / (_rows[row + 1] - _rows[row]);
         int cell = 2 * (row * (Columns - 1) + col);
         return u >= v ? new VertexEmbedding(faces[cell], new Vector3(1 - u, u - v, v)) :
             new VertexEmbedding(faces[cell + 1], new Vector3(1 - v, u, v - u));

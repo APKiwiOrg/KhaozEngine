@@ -29,6 +29,55 @@ public sealed class ClothNumericsTests
             Assert.InRange(Vector3.Distance(touched[i], simulation.Positions[i]), 0, .000001f);
     }
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void Loading_contact_removes_inward_velocity_relative_to_the_support(bool capsule, bool moving)
+    {
+        const float margin = .00025f, openingGap = .00025f;
+        const float radius = .025f, rise = .0004f;
+        float height = Material.HalfThickness + margin + openingGap + (capsule ? radius : 0);
+        Vector3[] rest = [new(0, height, 0), new(.1f, height, 0), new(0, height, .1f)];
+        var simulation = new ClothSimulation(MakeTriangle(rest), new ClothWorkLimits(4, 1, 12, 64));
+        simulation.Reset(rest);
+        float carried = moving ? rise : 0;
+        ClothSupport first = Support(Vector3.Zero), last = Support(carried * Vector3.UnitY);
+
+        Assert.Equal(ClothStepStatus.Accepted,
+            simulation.Advance(new ClothSubstep([], [first], [last], StepSeconds, -9.81f * Vector3.UnitY)).Status);
+        Vector3 bearingPoint = simulation.Positions[0];
+        Assert.InRange(bearingPoint.Y, height - openingGap + carried - .00001f, height - openingGap + carried + .00001f);
+        Assert.Equal(ClothStepStatus.Accepted,
+            simulation.Advance(new ClothSubstep([], [], [], StepSeconds, Vector3.Zero)).Status);
+
+        Assert.InRange(simulation.Positions[0].Y - bearingPoint.Y, carried - .00001f, carried + .00001f);
+
+        ClothSupport Support(Vector3 translation) => capsule
+            ? ClothSupport.Capsule(new ColliderCapsule(Vector3.Zero, Vector3.Zero, radius), Quaternion.Identity, translation)
+            : ClothSupport.Plane(Vector3.UnitY, Quaternion.Identity, translation);
+    }
+
+    [Fact]
+    public void Touching_contact_preserves_outward_normal_velocity()
+    {
+        const float travel = .000125f;
+        float height = Material.HalfThickness + .00025f - travel;
+        Vector3[] rest = [new(0, height, 0), new(.01f, height, 0), new(0, height, .01f)];
+        var simulation = new ClothSimulation(MakeTriangle(rest), new ClothWorkLimits(4, 1, 12, 64));
+        simulation.Reset(rest);
+        ClothSupport floor = ClothSupport.Plane(Vector3.UnitY, Quaternion.Identity, Vector3.Zero);
+        Vector3 acceleration = (travel / (StepSeconds * StepSeconds)) * Vector3.UnitY;
+
+        Assert.Equal(ClothStepStatus.Accepted,
+            simulation.Advance(new ClothSubstep([], [floor], [floor], StepSeconds, acceleration)).Status);
+        Assert.Equal(ClothStepStatus.Accepted,
+            simulation.Advance(new ClothSubstep([], [], [], StepSeconds, Vector3.Zero)).Status);
+
+        Assert.InRange(simulation.Positions[0].Y - height, 2 * travel - .000001f, 2 * travel + .000001f);
+    }
+
     [Fact]
     public void Reset_rejects_a_collapsed_material_frame_without_replacing_the_fit()
     {
@@ -48,13 +97,14 @@ public sealed class ClothNumericsTests
     {
         Vector3[] rest = [Vector3.Zero, .01f * Vector3.UnitX, .01f * Vector3.UnitY];
         Vector3[] collapsed = [Vector3.Zero, .01f * Vector3.UnitX, .02f * Vector3.UnitX];
-        ClothRig rig = MakeTriangle(rest, [0, 1, 2]);
+        ClothRig rig = MakeTriangle(rest, [0, 2]);
         var simulation = new ClothSimulation(rig, new ClothWorkLimits(4, 0, 0, 0));
         simulation.Reset(rest);
 
-        ClothStepResult step = simulation.Advance(new ClothSubstep(collapsed, [], [], StepSeconds, Vector3.Zero));
+        ClothStepResult step = simulation.Advance(new ClothSubstep([collapsed[0], collapsed[2]], [], [], StepSeconds, Vector3.Zero));
 
         Assert.Equal(ClothStepStatus.CollapsedMaterial, step.Status);
+        Assert.Equal(0, step.MaterialFactorProducts);
         Assert.Equal(rest, simulation.Positions.ToArray());
     }
 
@@ -89,13 +139,13 @@ public sealed class ClothNumericsTests
         var step = new ClothSubstep([], [first], [last], StepSeconds, Vector3.Zero);
 
         contact.Begin();
-        Assert.Equal(ClothStepStatus.Accepted, contact.Project(opening, working, step, verify: false));
+        Assert.Equal(ClothStepStatus.Accepted, contact.Project(opening, working, step));
         Assert.InRange(working[0].X, envelope - .000001f, envelope + .000001f);
         Vector3[] edgeOnly = working.AsSpan().ToArray();
 
         newEdge.Begin();
-        Assert.Equal(ClothStepStatus.Accepted, newEdge.Project(opening, edgeOnly, step, verify: false));
-        Assert.Equal(ClothStepStatus.Accepted, contact.Project(opening, working, step, verify: false));
+        Assert.Equal(ClothStepStatus.Accepted, newEdge.Project(opening, edgeOnly, step));
+        Assert.Equal(ClothStepStatus.Accepted, contact.Project(opening, working, step));
 
         for (int i = 0; i < working.Length; i++)
             Assert.InRange(Vector3.Distance(edgeOnly[i], working[i]), 0, .000001f);

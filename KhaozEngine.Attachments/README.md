@@ -647,7 +647,9 @@ in the surface-relative friction calculation.
 Read `Positions` after an accepted step. `ClothStepResult` reports refusals and attempted work.
 A refused step preserves the previous accepted position and velocity. Reset requires nondegenerate
 fitted triangles. A step that collapses a material frame reports `CollapsedMaterial`. Positioning
-bias supplies neither physical velocity nor compressive friction load. A caller that uses a fitted
+bias supplies neither physical velocity nor compressive friction load. The closing witness pass
+removes approaching normal velocity relative to each active moving support. It rechecks those
+witnesses under the same unique-pair limit before publishing positions and velocities. A caller that uses a fitted
 fallback can reset the instance from its fitted positions before resuming. This numerical API is
 separate from the attachment JSON, outfit draw and motion-level APIs.
 

@@ -33,7 +33,7 @@ public sealed class ClothDrapeEvidence
             var simulation = new ClothSimulation(fixture.Rig, limits);
             simulation.Reset(fixture.Fitted);
             HangingPanelPose opening = At(0, flat);
-            int recoveries = 0, checks = 0, candidates = 0;
+            int recoveries = 0, checks = 0, candidates = 0, velocityContacts = 0;
             long factorProducts = 0;
             ClothStepStatus status = ClothStepStatus.Accepted;
             for (int tick = 0; tick <= LastReleased * 2; tick++)
@@ -52,6 +52,7 @@ public sealed class ClothDrapeEvidence
                     recoveries += step.Status == ClothStepStatus.Accepted ? 0 : 1;
                     checks = Math.Max(checks, step.ContactChecks);
                     candidates = Math.Max(candidates, step.ContactCandidates);
+                    velocityContacts = Math.Max(velocityContacts, step.NormalVelocityContacts);
                     factorProducts = Math.Max(factorProducts, step.MaterialFactorProducts);
                 }
                 opening = pose;
@@ -61,7 +62,7 @@ public sealed class ClothDrapeEvidence
                     PresentedPanel panel = fixture.Present(simulation.Positions, pose, recoveries);
                     ClothObservation geometry = HangingPanelFixture.Observe(pose, panel);
                     samples.Add(new DrapeSample(flat, withdrawn, tick / 2, pose.PhaseSeconds,
-                        geometry, status, checks, candidates, factorProducts));
+                        geometry, status, checks, candidates, velocityContacts, factorProducts));
                 }
             }
         }
@@ -82,5 +83,5 @@ public sealed class ClothDrapeEvidence
 
     internal sealed record DrapeSample(bool Flat, bool Withdrawn, int Frame, double PhaseSeconds,
         ClothObservation Geometry, ClothStepStatus Status, int PeakContactChecks, int PeakContactCandidates,
-        long PeakMaterialFactorProducts);
+        int PeakNormalVelocityContacts, long PeakMaterialFactorProducts);
 }

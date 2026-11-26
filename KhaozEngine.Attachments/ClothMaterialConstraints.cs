@@ -21,8 +21,9 @@ internal sealed class ClothMaterialConstraints(ClothRig rig, ClothWorkLimits lim
         return true;
     }
 
-    internal ClothStepStatus Project(Vector3[] positions, Vector3[] opening, float seconds)
+    internal ClothStepStatus Project(Vector3[] positions, Vector3[] opening, float seconds, out bool factorAttempted)
     {
+        factorAttempted = false;
         float inverseStepSquared = 1 / (seconds * seconds);
         float damping = rig.Material.DampingSeconds / seconds;
         _system.Begin(damping);
@@ -35,6 +36,7 @@ internal sealed class ClothMaterialConstraints(ClothRig rig, ClothWorkLimits lim
             _rows[firstHinge + i] = rig.Hinges[i].Add(_system, positions, opening, inverseStepSquared,
                 damping, _multipliers[firstHinge + i]);
 
+        factorAttempted = true;
         if (!_system.Solve()) return ClothStepStatus.NonfiniteState;
         for (int i = 0; i < _rows.Length; i++)
             _multipliers[i] += _rows[i].UpdateMultiplier(_system, damping);

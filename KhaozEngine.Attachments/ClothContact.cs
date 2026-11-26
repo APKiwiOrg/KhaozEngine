@@ -10,51 +10,72 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
 {
     private const float ContactMargin = .00025f;
     private const float SolveTolerance = .00025f;
+    private const float VelocityTouchRoundoff = .000001f;
     private readonly ContactLoad[] _loads = new ContactLoad[checked(limits.MaxSupports *
         Math.Max(rig.Triangles.Length, rig.RestPositions.Length))];
 
+    private readonly ClothContactVelocity _normalVelocity = new(limits.MaxContactCandidates);
     private readonly Vector3[] _positionBias = new Vector3[rig.RestPositions.Length];
 
     internal ReadOnlySpan<Vector3> PositionBias => _positionBias;
     internal int Candidates { get; private set; }
     internal int Checks { get; private set; }
+    internal int VelocityContacts => _normalVelocity.Count;
 
     internal void Begin()
     {
         Array.Clear(_loads);
         Array.Clear(_positionBias);
+        _normalVelocity.Begin();
         Candidates = 0;
         Checks = 0;
     }
 
-    internal ClothStepStatus Project(Vector3[] opening, Vector3[] positions, in ClothSubstep step, bool verify)
+    internal ClothStepStatus Project(Vector3[] opening, Vector3[] positions, in ClothSubstep step) =>
+        Visit(opening, positions, step, verify: false);
+
+    internal ClothStepStatus Complete(Vector3[] opening, Vector3[] positions, Vector3[] velocities, in ClothSubstep step)
+    {
+        ClothStepStatus status = Visit(opening, positions, step, verify: true);
+        return status == ClothStepStatus.Accepted ? _normalVelocity.ProjectAndCheck(velocities) : status;
+    }
+
+    private ClothStepStatus Visit(Vector3[] opening, Vector3[] positions, in ClothSubstep step, bool verify)
     {
         for (int i = 0; i < step.ClosingSupports.Length; i++)
         {
             ClothSupport first = step.OpeningSupports[i], last = step.ClosingSupports[i];
             int offset = i * Math.Max(rig.Triangles.Length, positions.Length);
             ClothStepStatus status = last.IsPlane
-                ? ProjectPlane(opening, positions, first, last, offset, verify)
-                : ProjectCapsule(opening, positions, first, last, offset, verify);
+                ? ProjectPlane(opening, positions, first, last, step.Seconds, offset, verify)
+                : ProjectCapsule(opening, positions, first, last, step.Seconds, offset, verify);
             if (status != ClothStepStatus.Accepted) return status;
         }
         return ClothStepStatus.Accepted;
     }
 
     private ClothStepStatus ProjectPlane(Vector3[] opening, Vector3[] positions, in ClothSupport first,
-        in ClothSupport last, int offset, bool verify)
+        in ClothSupport last, float seconds, int offset, bool verify)
     {
         Vector3 normal = last.PlaneNormal;
         for (int i = 0; i < positions.Length; i++)
         {
             if (!CountCheck()) return ClothStepStatus.ContactWork;
             float distance = Vector3.Dot(positions[i] - last.Translation, normal);
+            var node = new ClothTriangle(i, i, i);
+            ref ContactLoad load = ref _loads[offset + i];
             if (verify)
             {
                 if (distance < rig.Material.HalfThickness - SolveTolerance) return ClothStepStatus.UnresolvedContact;
+                if (distance <= rig.Material.HalfThickness + ContactMargin + VelocityTouchRoundoff)
+                {
+                    if (!CountCandidate(ref load)) return ClothStepStatus.ContactCapacity;
+                    ClothStepStatus status = AddVelocityWitness(node, Vector3.UnitX, normal,
+                        positions[i] - distance * normal, first, last, seconds);
+                    if (status != ClothStepStatus.Accepted) return status;
+                }
                 continue;
             }
-            ref ContactLoad load = ref _loads[offset + i];
             if (distance >= rig.Material.HalfThickness + ContactMargin)
             {
                 load.Expire();
@@ -63,7 +84,7 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
             if (!CountCandidate(ref load)) return ClothStepStatus.ContactCapacity;
             Vector3 supportPoint = positions[i] - distance * normal;
             float openingDistance = Vector3.Dot(opening[i] - first.Translation, first.PlaneNormal);
-            var contact = new ContactPoint(new ClothTriangle(i, i, i), Vector3.UnitX, 1, normal, openingDistance,
+            var contact = new ContactPoint(node, Vector3.UnitX, 1, normal, openingDistance,
                 distance, supportPoint);
             if (!ProjectPoint(opening, positions, first, last, contact, ref load))
                 return ClothStepStatus.UnresolvedContact;
@@ -72,14 +93,15 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
     }
 
     private ClothStepStatus ProjectCapsule(Vector3[] opening, Vector3[] positions, in ClothSupport first,
-        in ClothSupport last, int offset, bool verify)
+        in ClothSupport last, float seconds, int offset, bool verify)
     {
         ColliderCapsule before = first.WorldCapsule, now = last.WorldCapsule;
         var firstAxis = new Axis(before);
         var lastAxis = new Axis(now);
         float extent = now.Radius + rig.Material.HalfThickness + ContactMargin;
-        Vector3 min = Vector3.Min(Vector3.Min(before.Start, before.End), Vector3.Min(now.Start, now.End)) - new Vector3(extent);
-        Vector3 max = Vector3.Max(Vector3.Max(before.Start, before.End), Vector3.Max(now.Start, now.End)) + new Vector3(extent);
+        float reach = verify ? extent + VelocityTouchRoundoff : extent;
+        Vector3 min = Vector3.Min(Vector3.Min(before.Start, before.End), Vector3.Min(now.Start, now.End)) - new Vector3(reach);
+        Vector3 max = Vector3.Max(Vector3.Max(before.Start, before.End), Vector3.Max(now.Start, now.End)) + new Vector3(reach);
         ReadOnlySpan<ClothTriangle> faces = rig.Triangles;
         for (int i = 0; i < faces.Length; i++)
         {
@@ -103,8 +125,15 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
             // Verification refuses even a separated closing state reached through that axis.
             if (verify)
             {
-                if (crossed || distance < now.Radius + rig.Material.HalfThickness - SolveTolerance)
+                if (crossed || distance == 0 || distance < now.Radius + rig.Material.HalfThickness - SolveTolerance)
                     return ClothStepStatus.UnresolvedContact;
+                if (distance <= reach)
+                {
+                    Vector3 direction = (hit.Residual * (1d / distance)).ToVector3();
+                    ClothStepStatus status = AddVelocityWitness(face, hit.Weights.ToVector3(), direction,
+                        CapsulePoint(now, hit.Fraction, direction), first, last, seconds);
+                    if (status != ClothStepStatus.Accepted) return status;
+                }
                 continue;
             }
 
@@ -122,8 +151,7 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
             }
             else normal = (hit.Residual * (1d / distance)).ToVector3();
 
-            Vector3 supportPoint = (float)hit.Fraction.StartWeight * now.Start + (float)hit.Fraction.EndWeight * now.End +
-                now.Radius * normal;
+            Vector3 supportPoint = CapsulePoint(now, hit.Fraction, normal);
             Vector3 weights = hit.Weights.ToVector3();
             int triangleFeature = (weights.X > 0 ? 1 : 0) | (weights.Y > 0 ? 2 : 0) | (weights.Z > 0 ? 4 : 0);
             int axisFeature = hit.Fraction.EndWeight == 0 ? 1 : hit.Fraction.StartWeight == 0 ? 2 : 3;
@@ -135,6 +163,16 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
         }
         return ClothStepStatus.Accepted;
     }
+
+    private ClothStepStatus AddVelocityWitness(ClothTriangle face, Vector3 weights, Vector3 normal, Vector3 supportPoint,
+        in ClothSupport first, in ClothSupport last, float seconds)
+    {
+        float supportSpeed = Vector3.Dot(last.SurfaceDisplacement(first, supportPoint), normal) / seconds;
+        return _normalVelocity.Add(face, weights, normal, supportSpeed, rig.InverseMasses);
+    }
+
+    private static Vector3 CapsulePoint(in ColliderCapsule capsule, AxisFraction fraction, Vector3 normal) =>
+        (float)fraction.StartWeight * capsule.Start + (float)fraction.EndWeight * capsule.End + capsule.Radius * normal;
 
     private bool ProjectPoint(Vector3[] opening, Vector3[] positions, in ClothSupport first, in ClothSupport last,
         in ContactPoint contact, ref ContactLoad load)

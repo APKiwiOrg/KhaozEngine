@@ -32,7 +32,11 @@ public enum ClothStepStatus
 /// <summary>Outcome and attempted work. Factor products bound the work across attempted factorizations.
 /// A refusal leaves the previous accepted positions available.</summary>
 public readonly record struct ClothStepResult(ClothStepStatus Status, int Iterations, int ContactCandidates,
-    int ContactChecks, long MaterialFactorProducts);
+    int ContactChecks, long MaterialFactorProducts)
+{
+    /// <summary>Active free witnesses collected by the closing contact check.</summary>
+    public int NormalVelocityContacts { get; init; }
+}
 
 /// <summary>GPU-free fixed-step cloth state over a shared material rig.</summary>
 public sealed class ClothSimulation
@@ -42,7 +46,8 @@ public sealed class ClothSimulation
     private readonly ClothMaterialConstraints _material;
     private readonly ClothContact _contact;
     private readonly ClothAirDrag? _airDrag;
-    private readonly Vector3[] _velocities;
+    private Vector3[] _velocities;
+    private Vector3[] _workingVelocities;
     private Vector3[] _accepted;
     private Vector3[] _working;
     private float _stepSeconds;
@@ -63,6 +68,7 @@ public sealed class ClothSimulation
             _airDrag = new ClothAirDrag(rig);
         int nodes = rig.RestPositions.Length;
         _velocities = new Vector3[nodes];
+        _workingVelocities = new Vector3[nodes];
         _accepted = new Vector3[nodes];
         _working = new Vector3[nodes];
     }
@@ -106,32 +112,44 @@ public sealed class ClothSimulation
         for (int i = 0; i < _rig.Pins.Length; i++)
             _working[_rig.Pins[i]] = step.Pins[i];
 
-        int iterations = 0;
+        int iterations = 0, factorizations = 0;
         ClothStepStatus status = CheckTravel();
         while (status == ClothStepStatus.Accepted && iterations < _limits.Iterations)
         {
             iterations++;
-            status = _material.Project(_working, _accepted, step.Seconds);
+            status = _material.Project(_working, _accepted, step.Seconds, out bool factorAttempted);
+            if (factorAttempted) factorizations++;
             if (status != ClothStepStatus.Accepted) break;
             status = CheckTravel();
             if (status == ClothStepStatus.Accepted)
-                status = _contact.Project(_accepted, _working, step, verify: false);
+                status = _contact.Project(_accepted, _working, step);
         }
         if (status == ClothStepStatus.Accepted)
             status = CheckTravel();
         if (status == ClothStepStatus.Accepted && !_material.HasMaterialFrames(_working))
             status = ClothStepStatus.CollapsedMaterial;
         if (status == ClothStepStatus.Accepted)
-            status = _contact.Project(_accepted, _working, step, verify: true);
+            status = ReconstructVelocities(step.Seconds);
+        if (status == ClothStepStatus.Accepted)
+            status = _contact.Complete(_accepted, _working, _workingVelocities, step);
         if (status == ClothStepStatus.Accepted)
         {
-            ReadOnlySpan<Vector3> positioningBias = _contact.PositionBias;
-            for (int i = 0; i < _working.Length; i++)
-                _velocities[i] = (_working[i] - _accepted[i] - positioningBias[i]) / step.Seconds;
+            (_velocities, _workingVelocities) = (_workingVelocities, _velocities);
             (_accepted, _working) = (_working, _accepted);
         }
         return new ClothStepResult(status, iterations, _contact.Candidates, _contact.Checks,
-            iterations * _material.FactorProducts);
+            factorizations * _material.FactorProducts) { NormalVelocityContacts = _contact.VelocityContacts };
+    }
+
+    private ClothStepStatus ReconstructVelocities(float seconds)
+    {
+        ReadOnlySpan<Vector3> positioningBias = _contact.PositionBias;
+        for (int i = 0; i < _working.Length; i++)
+        {
+            _workingVelocities[i] = (_working[i] - _accepted[i] - positioningBias[i]) / seconds;
+            if (!ChainMath.IsFinite(_workingVelocities[i])) return ClothStepStatus.NonfiniteState;
+        }
+        return ClothStepStatus.Accepted;
     }
 
     private ClothStepStatus CheckTravel()

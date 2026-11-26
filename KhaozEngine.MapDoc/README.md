@@ -80,6 +80,12 @@ Records, spaces, corner owners and material uses are carried by the named patch 
 `OwnerChanges` reports changed corner owners only for patches present in the result. Removed patches
 remain in `Patches` for publication, with no owner-change entries.
 
+Use `MapDocumentTerrainEdits.Prepare(document, assets, edit)` to capture the resolved poses of any placements
+reseated by the edit. Pass its effects to MapDoc.Physics residency and navigation invalidation to include the
+old and new geometry of those placements. `Describe()` includes `reseatedPlacements` only when a resolved pose
+changed. Each row contains the placement ID, its previous pose and its new pose, with pose components in X, Y, Z,
+yaw and scale order.
+
 The terrain API, new in 20.30.0, uses `MapTerrainEdits.Prepare(surfaces, edit)` to return a detached candidate,
 its exact `MapNativeWriteSet` and effects without mutating the input. `MapSetCornerHeights`, `MapSmoothCorners`,
 `MapSetCells` and `MapSetPresence` use patch-local coordinates (presence takes slot-cell indices).

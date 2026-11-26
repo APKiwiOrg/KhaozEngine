@@ -10,7 +10,7 @@ namespace KhaozEngine.MapDoc.Editing;
 /// runs. <see cref="MapTerrainEdits.Prepare"/> remains the low-level surface operation, which neither validates the
 /// document nor reports what the surfaces support. This joins its surface candidate to a detached document copy,
 /// refreshes attachment descriptors, re-seats Y-null resolver-2 placements, names the water bodies the edit touches,
-/// validates the complete candidate and finalizes it, so the result carries its dependent foliage effects.</summary>
+/// validates and finalizes the candidate, and reports dependent foliage and placement changes.</summary>
 public static class MapDocumentTerrainEdits
 {
     public static MapPrefabEditResult Prepare(MapDocument document, MapAssetClosure assets, MapTerrainEdit edit)
@@ -21,7 +21,8 @@ public static class MapDocumentTerrainEdits
         MapDocumentEditFinalizer.Preflight(document, assets);
         MapDocument candidate = MapPrefabEditPreparation.Copy(document);
         var (writes, effects, _) = Apply(candidate, assets, edit);
-        return MapDocumentEditFinalizer.Finalize(document, new(candidate, writes, Name(candidate, effects)), assets);
+        var prepared = MapDocumentEditFinalizer.Finalize(document, new(candidate, writes, Name(candidate, effects)), assets);
+        return MapTerrainPlacementChanges.Include(document, prepared, assets);
     }
 
     /// <summary>Applies the terrain transaction to a detached <paramref name="candidate"/> in place and returns its write

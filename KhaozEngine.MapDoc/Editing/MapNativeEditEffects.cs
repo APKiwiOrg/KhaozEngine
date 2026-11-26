@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using KhaozEngine.MapDoc.Foliage;
+using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Surfaces;
 
 namespace KhaozEngine.MapDoc.Editing;
@@ -81,6 +82,9 @@ public sealed record MapNativeEditEffects(MapBox3? OldBounds, MapBox3? NewBounds
     public IReadOnlyList<string> LightIds { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> MarkerIds { get; init; } = Array.Empty<string>();
 
+    // Physics sizes these resolved poses against the same closure as the built world.
+    internal IReadOnlyList<MapReseatedPlacement> ReseatedPlacements { get; init; } = [];
+
     /// <summary>The effective marker name changes of the edit, empty when no name changes.</summary>
     public IReadOnlyList<MapMarkerNameChange> MarkerNameChanges { get; init; } = Array.Empty<MapMarkerNameChange>();
 
@@ -95,7 +99,8 @@ public sealed record MapNativeEditEffects(MapBox3? OldBounds, MapBox3? NewBounds
     /// follows <c>dependencyIds</c> only when <see cref="WaterBodyIds"/> is not empty, and <c>markerNameChanges</c>
     /// follows <c>markerIds</c> only when <see cref="MarkerNameChanges"/> is not empty, and <c>foliageChunks</c> and then
     /// <c>foliageLayers</c> follow them only when each is not empty. Spatial bounds follow the reported
-    /// bounds only when they differ, preserving descriptions whose extents already agree.</summary>
+    /// bounds only when they differ. <c>reseatedPlacements</c> follows <c>childIds</c> when a terrain edit moves
+    /// placements and records each ID and its old and new poses in X, Y, Z, yaw and scale order.</summary>
     public string Describe()
     {
         using var output = new MemoryStream();
@@ -122,6 +127,7 @@ public sealed record MapNativeEditEffects(MapBox3? OldBounds, MapBox3? NewBounds
             if (WaterBodyIds.Count != 0) WriteIds(writer, "waterBodyIds", WaterBodyIds);
             if (InstanceIds.Count != 0) WriteIds(writer, "instanceIds", InstanceIds);
             if (ChildIds.Count != 0) WriteIds(writer, "childIds", ChildIds);
+            if (ReseatedPlacements.Count != 0) WriteReseatedPlacements(writer);
             if (RoofIds.Count != 0) WriteIds(writer, "roofIds", RoofIds);
             if (LightIds.Count != 0) WriteIds(writer, "lightIds", LightIds);
             if (MarkerIds.Count != 0) WriteIds(writer, "markerIds", MarkerIds);
@@ -172,6 +178,31 @@ public sealed record MapNativeEditEffects(MapBox3? OldBounds, MapBox3? NewBounds
 
     static MapBox3? Spatial(MapBox3? reported, MapBox3? geometry) =>
         reported is { } bounds ? geometry is { } spatial ? bounds.Union(spatial) : bounds : geometry;
+
+    void WriteReseatedPlacements(Utf8JsonWriter writer)
+    {
+        writer.WriteStartArray("reseatedPlacements");
+        foreach (var placement in ReseatedPlacements.OrderBy(p => p.PlacementId, StringComparer.Ordinal))
+        {
+            writer.WriteStartArray();
+            writer.WriteStringValue(placement.PlacementId);
+            WritePose(placement.Before);
+            WritePose(placement.After);
+            writer.WriteEndArray();
+        }
+        writer.WriteEndArray();
+
+        void WritePose(MapEffectiveTransform pose)
+        {
+            writer.WriteStartArray();
+            writer.WriteNumberValue(pose.X);
+            writer.WriteNumberValue(pose.Y);
+            writer.WriteNumberValue(pose.Z);
+            writer.WriteNumberValue(pose.YawRadians);
+            writer.WriteNumberValue(pose.Scale);
+            writer.WriteEndArray();
+        }
+    }
 
     static void WriteBounds(Utf8JsonWriter writer, string name, MapBox3? bounds)
     {

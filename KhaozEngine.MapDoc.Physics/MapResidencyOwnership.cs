@@ -168,9 +168,9 @@ public static class MapResidencyOwnership
     /// <para>Owners are the statics whose bounds meet the old or new edit bounds, plus the chunks of every listed patch:
     /// its own surface chunks and the chunks of every wall strip the world records in it. Storage tiles are those the
     /// old and new edit bounds reach, under the membership rule of <see cref="Build"/>, plus the membership of those
-    /// patch chunks. An owner listed only because its bounds meet an edit box does not widen the tiles. A terrain edit
-    /// reports whole-patch extents, so its terrain geometry lies inside the edit bounds, but a placement it reseats
-    /// through surface support is not widened yet (KhaozEngine#1348).</para>
+    /// patch chunks. A document-aware terrain edit also names the placements it reseats and includes tiles reached
+    /// by their old and new collider and interaction envelope bounds. A static whose only relation to the edit is
+    /// meeting an edit box does not widen the tiles.</para>
     /// <para><see cref="MapNativeInvalidation.Unbounded"/> is a full reset: discard all prior derived state for this
     /// world and rebuild from the post-edit world. Every static and water body is an owner, and every storage tile the
     /// post-edit world's bounds reach is listed, together with the tiles of any edit bounds, listed patches and water
@@ -178,12 +178,17 @@ public static class MapResidencyOwnership
     /// <para>Throws <see cref="MapDocumentException"/> when the grids do not align with the world or an edit box has a
     /// coordinate beyond <see cref="MapWorldBuilder.MaxCoordinateMetres"/>, and naming the tile count, before listing
     /// them, when one extent reaches more than <see cref="MaxStorageTiles"/> storage tiles.</para></summary>
-    public static MapAffectedSet Affected(MapBuiltWorld world, MapWorldGrids grids, MapNativeEditEffects effects)
+    public static MapAffectedSet Affected(MapBuiltWorld world, MapWorldGrids grids, MapNativeEditEffects effects) =>
+        Affected(world, grids, effects, out _);
+
+    internal static MapAffectedSet Affected(MapBuiltWorld world, MapWorldGrids grids, MapNativeEditEffects effects,
+        out IReadOnlyList<MapTerrainPlacementBounds> placementBounds)
     {
         ArgumentNullException.ThrowIfNull(world);
         ArgumentNullException.ThrowIfNull(grids);
         ArgumentNullException.ThrowIfNull(effects);
         grids.Validate(world);
+        placementBounds = [];
         if ((effects.Invalidates & Spatial) == 0)
             return new(Array.Empty<string>(), Array.Empty<MapTileCoord>(), Array.Empty<MapNavTileCoord>());
 
@@ -195,6 +200,12 @@ public static class MapResidencyOwnership
         bool unbounded = (effects.Invalidates & MapNativeInvalidation.Unbounded) != 0;
         foreach (MapBox3 box in edited) tiles.UnionWith(StorageTiles(box, grids, "An edit box"));
         if (unbounded) tiles.UnionWith(StorageTiles(world.Bounds, grids, "The world"));
+        else placementBounds = MapTerrainPlacementBounds.Of(world, effects);
+        foreach (var placement in placementBounds)
+        {
+            owners.Add(placement.PlacementId);
+            tiles.UnionWith(StorageTiles(placement.Bounds, grids, $"Placement '{placement.PlacementId}'", placement.PlacementId));
+        }
         foreach (MapStaticDescriptor descriptor in world.Statics)
         {
             bool patchChunk = descriptor.Kind == MapStaticKind.TerrainChunk &&
@@ -222,8 +233,7 @@ public static class MapResidencyOwnership
     }
 
     /// <summary>Consequences across both snapshots, including removed owner IDs and their old membership. Unknown
-    /// geometry keeps Unbounded's reset semantics. Changed support-bound placement extents belong in the effects
-    /// emitted by preparation, rather than being inferred from an edited terrain patch.</summary>
+    /// geometry keeps Unbounded's reset semantics.</summary>
     public static MapAffectedSet Affected(MapBuiltWorld before, MapBuiltWorld after, MapWorldGrids grids, MapNativeEditEffects effects)
     {
         ArgumentNullException.ThrowIfNull(before);

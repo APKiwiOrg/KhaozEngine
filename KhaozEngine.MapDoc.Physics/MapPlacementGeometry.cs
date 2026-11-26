@@ -125,6 +125,14 @@ public static class MapPlacementShapes
         return geometry.Collider is { } collider ? MapShapeBounds.Of(collider, geometry.WorldPose).Union(envelope) : envelope;
     }
 
+    internal static (MapBox3? Collider, MapBox3 Envelope) BoundsAt(MapResolvedPlacement placement, MapAssetShapes shapes,
+        MapEffectiveTransform precise)
+    {
+        using var preparation = MapSceneAdmission.Current?.BeginPreparation();
+        var geometry = Build(placement, shapes, precise);
+        return (geometry.ColliderBounds, geometry.Envelope.Bounds);
+    }
+
     static MapPlacementGeometry Build(MapResolvedPlacement placement, MapAssetShapes shapes, MapEffectiveTransform? precise = null)
     {
         using var preparation = MapSceneAdmission.Current?.BeginPreparation();

@@ -251,7 +251,8 @@ public static partial class MapNavTiling
     /// navigation or water medium. <paramref name="world"/> is the world built after the edit, as for
     /// <see cref="MapResidencyOwnership.Affected(MapBuiltWorld, MapWorldGrids, MapNativeEditEffects)"/>, whose navigation tiles this widens by the seam margin: every tile
     /// whose capture bounds meet, on X and Z, <see cref="MapNativeEditEffects.OldSpatialBounds"/> or
-    /// <see cref="MapNativeEditEffects.NewSpatialBounds"/> or the bounds of a chunk of a listed patch. For a
+    /// <see cref="MapNativeEditEffects.NewSpatialBounds"/>, the bounds of a chunk of a listed patch, or either
+    /// extent of a placement the terrain edit reseated. For a
     /// resolver-1 terrain edit it also widens each edit box by the footprint of every sculpt tile position the box meets,
     /// taken arithmetically from <see cref="TerrainSculpt.TileSize"/> and <see cref="MapBuiltWorld.LegacySculptCellSize"/>
     /// whether or not that tile exists, so a sculpt tile the edit added or removed lists every tile whose geometry
@@ -292,12 +293,17 @@ public static partial class MapNavTiling
                     every[index++] = new MapNavTileCoord((int)x, (int)z);
             return every;
         }
-        MapAffectedSet affected = MapResidencyOwnership.Affected(world, grids, effects);
+        MapAffectedSet affected = MapResidencyOwnership.Affected(world, grids, effects, out var placementBounds);
         if (!navigates) return Array.Empty<MapNavTileCoord>();
 
         MapBox3[] edited = new[] { effects.OldSpatialBounds, effects.NewSpatialBounds }.Where(b => b.HasValue).Select(b => b!.Value).ToArray();
         var widen = new List<(double MinX, double MinZ, double MaxX, double MaxZ)>();
         foreach (MapBox3 box in edited) widen.Add((box.MinX, box.MinZ, box.MaxX, box.MaxZ));
+        foreach (var placement in placementBounds)
+        {
+            var box = placement.Bounds;
+            widen.Add((box.MinX, box.MinZ, box.MaxX, box.MaxZ));
+        }
         string[] prefixes = MapResidencyOwnership.PatchChunkPrefixes(world, effects.Patches);
         foreach (MapStaticDescriptor descriptor in world.Statics)
             if (descriptor.Kind == MapStaticKind.TerrainChunk &&

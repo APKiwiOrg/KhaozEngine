@@ -463,7 +463,11 @@ Each static belongs to every storage tile its world bounds reach, minimum inclus
 with no extent belongs to the tile holding its minimum. A placement is keyed by its origin's tile, as
 `MapSpatialIndex` stores it, and a terrain chunk by the tile holding its minimum corner. `Affected` takes the world
 built after the edit and names the owners and tiles the edit invalidates from its old and new bounds and the chunks of
-every listed patch, including the chunks of the wall strips recorded in it.
+every listed patch, including the chunks of the wall strips recorded in it. Effects from
+`MapDocumentTerrainEdits.Prepare` also name placements whose resolved support pose changed. Each placement
+contributes tiles reached by either pose's collider or interaction envelope, including selection-only placements.
+Registration rounding can change the collider's horizontal extent even when only its height moves. Placements
+that merely overlap the edit still do not widen it.
 
 `Affected(before, after, grids, effects)` also retains removed owner IDs and their old memberships.
 
@@ -474,8 +478,7 @@ world use `ValueOutsideRange`, or `ValueNonfinite` for a nonfinite endpoint, wit
 catchable as `ArgumentException`, with `ValueNonfinite` or `BoundsInvalid`, axis `FieldPath` and the submitted
 `MinimumNumber` and `MaximumNumber` endpoints.
 The matching `AffectedTiles(before, after, grids, options, effects)` retains old capture tiles, including tiles
-that leave the post-edit partition. Preparation must widen effects with the old and new extents of leaves reseated
-by a support edit. The 150 m leaf counterexample at a 64 m seam proves why patch-only bounds miss neighbor tiles.
+that leave the post-edit partition. It applies the navigation seam margin to both extents of each reseated placement.
 
 `MapNativeInvalidation.Unbounded` is a full reset: discard all prior derived state for this world and rebuild from
 the post-edit world. `Affected` then lists every static as an owner and every storage tile the post-edit world's
@@ -662,4 +665,3 @@ separate spatial values fall back to their reported bounds.
 | Editor placement edits reporting old and new placement bounds with Physics, Nav and Residency | R3 | Done, see Editor tooling |
 | GUI native editing: `MapEditorScene`, hosted by Showcase, binds no closure or placement bounds provider yet | R3 follow-up, [#1349](https://github.com/APKiwiOrg/KhaozEngine/issues/1349) | Wiring it needs the provider reachable from that host, in this package or a shared adapter, since Showcase does not reference ke-mapedit |
 | Import-time acceptance of changed targets, distances, occlusion and stances | R11 and G2 | Named differentials at import |
-| Terrain edits that reseat support-bound placements without widening their tiles | #1348 | `Affected` widens terrain edits by patch extents only |

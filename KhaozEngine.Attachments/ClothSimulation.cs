@@ -5,7 +5,13 @@ namespace KhaozEngine.Attachments;
 
 /// <summary>Bounds for one cloth substep, including all narrow-phase witness evaluations.</summary>
 public readonly record struct ClothWorkLimits(int Iterations, int MaxSupports, int MaxContactCandidates,
-    int MaxContactChecks, float MaxNodeTravel = .025f, long MaxMaterialFactorProducts = 1_000_000);
+    int MaxContactChecks, float MaxNodeTravel = .025f, long MaxMaterialFactorProducts = 1_000_000)
+{
+    internal const int NormalVelocityCheckLimit = 16_384;
+
+    /// <summary>Maximum normal impulse and complementarity evaluations per substep.</summary>
+    public int MaxNormalVelocityChecks { get; init; } = NormalVelocityCheckLimit;
+}
 
 /// <summary>Closing seam pins, matching support poses and a fixed world-space time step.</summary>
 public readonly ref struct ClothSubstep(ReadOnlySpan<Vector3> pins, ReadOnlySpan<ClothSupport> openingSupports,
@@ -27,6 +33,7 @@ public enum ClothStepStatus
     UnresolvedContact,
     NonfiniteState,
     CollapsedMaterial,
+    NormalVelocityWork,
 }
 
 /// <summary>Outcome and attempted work. Factor products bound the work across attempted factorizations.
@@ -36,6 +43,9 @@ public readonly record struct ClothStepResult(ClothStepStatus Status, int Iterat
 {
     /// <summary>Active free witnesses collected by the closing contact check.</summary>
     public int NormalVelocityContacts { get; init; }
+
+    /// <summary>Attempted normal impulse and complementarity evaluations.</summary>
+    public int NormalVelocityChecks { get; init; }
 }
 
 /// <summary>GPU-free fixed-step cloth state over a shared material rig.</summary>
@@ -57,7 +67,8 @@ public sealed class ClothSimulation
     {
         ArgumentNullException.ThrowIfNull(rig);
         if (limits.Iterations <= 0 || limits.MaxSupports < 0 || limits.MaxContactCandidates < 0 ||
-            limits.MaxContactChecks < 0 || limits.MaxMaterialFactorProducts < 0 || !float.IsFinite(limits.MaxNodeTravel) || limits.MaxNodeTravel <= 0)
+            limits.MaxContactChecks < 0 || limits.MaxNormalVelocityChecks is < 0 or > ClothWorkLimits.NormalVelocityCheckLimit ||
+            limits.MaxMaterialFactorProducts < 0 || !float.IsFinite(limits.MaxNodeTravel) || limits.MaxNodeTravel <= 0)
             throw new ArgumentOutOfRangeException(nameof(limits));
 
         _rig = rig;
@@ -138,7 +149,11 @@ public sealed class ClothSimulation
             (_accepted, _working) = (_working, _accepted);
         }
         return new ClothStepResult(status, iterations, _contact.Candidates, _contact.Checks,
-            factorizations * _material.FactorProducts) { NormalVelocityContacts = _contact.VelocityContacts };
+            factorizations * _material.FactorProducts)
+        {
+            NormalVelocityContacts = _contact.VelocityContacts,
+            NormalVelocityChecks = _contact.VelocityChecks,
+        };
     }
 
     private ClothStepStatus ReconstructVelocities(float seconds)

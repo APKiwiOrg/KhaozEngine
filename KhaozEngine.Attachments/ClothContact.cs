@@ -14,13 +14,14 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
     private readonly ContactLoad[] _loads = new ContactLoad[checked(limits.MaxSupports *
         Math.Max(rig.Triangles.Length, rig.RestPositions.Length))];
 
-    private readonly ClothContactVelocity _normalVelocity = new(limits.MaxContactCandidates);
+    private readonly ClothContactVelocity _normalVelocity = new(limits.MaxContactCandidates, limits.MaxNormalVelocityChecks);
     private readonly Vector3[] _positionBias = new Vector3[rig.RestPositions.Length];
 
     internal ReadOnlySpan<Vector3> PositionBias => _positionBias;
     internal int Candidates { get; private set; }
     internal int Checks { get; private set; }
     internal int VelocityContacts => _normalVelocity.Count;
+    internal int VelocityChecks => _normalVelocity.Checks;
 
     internal void Begin()
     {

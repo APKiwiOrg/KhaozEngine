@@ -644,7 +644,9 @@ step seconds and world gravity. Express positions and support poses in one world
   `ClothSupport.LowerSegment` takes the solved world endpoints and radius of a kinematic lower chain
   at each end of the step. The cloth leaves the lower chain's state as supplied.
 - `ClothSupportHull.Create` copies a closed, outward-wound convex solid in the owning joint's local
-  space. Pass it in a `ClothHullSupport` with the opening and closing transforms. Rigid and positive
+  space. Authoring refusals carry a `ClothSupportHullRefusal` and applicable face or vertex indices
+  on `ClothSupportHullException`. Pass a valid hull in a `ClothHullSupport` with opening and closing
+  transforms. Rigid and positive
   uniform-scale transforms are supported. A qualified hull replaces rigid capsules with the same
   source, part ID, layer and positive feature-group ID. Other capsules remain active.
 - `ClothSupport.Plane` uses the exterior half-space of a posed local plane.
@@ -664,7 +666,8 @@ compressive friction load.
 Read `Positions` after an accepted step. `ClothStepResult` reports the limiting status, an owning
 part ID where applicable and attempted work. The near profile caps broad-phase visits at 4,096
 and narrow-phase attempts at 512 per substep. Work includes rejected broad pairs,
-candidate rechecks and up to eight interior sweep refinements per narrow-phase attempt.
+candidate rechecks and up to eight interior sweep refinements per narrow-phase attempt. The spatial
+tree can reuse a support's candidate indices while verified node coverage still contains the surface.
 `MaxMaterialFactorProducts` independently bounds work in the material solver.
 
 A refusal retains the last accepted positions and velocities. To supply a current outfit fit for

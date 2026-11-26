@@ -15,6 +15,38 @@ public readonly record struct ClothSupportIdentity(int SourceId, uint PartId, in
 public readonly record struct ClothHullSupport(ClothSupportIdentity Identity, ClothSupportHull Hull,
     Matrix4x4 Opening, Matrix4x4 Closing);
 
+public enum ClothSupportHullRefusal
+{
+    FaceCount,
+    InvalidVertex,
+    DuplicateVertex,
+    InvalidFaceVertex,
+    DegenerateFace,
+    InvalidWinding,
+    Nonconvex,
+    RepeatedDirectedEdge,
+    UnusedVertex,
+    UnpairedEdge,
+}
+
+/// <summary>A malformed convex hull and the indices involved in the refusal.</summary>
+public sealed class ClothSupportHullException : ArgumentException
+{
+    internal ClothSupportHullException(ClothSupportHullRefusal reason, string message, string parameter,
+        int? faceIndex = null, int? vertexIndex = null, int? otherVertexIndex = null) : base(message, parameter)
+    {
+        Reason = reason;
+        FaceIndex = faceIndex;
+        VertexIndex = vertexIndex;
+        OtherVertexIndex = otherVertexIndex;
+    }
+
+    public ClothSupportHullRefusal Reason { get; }
+    public int? FaceIndex { get; }
+    public int? VertexIndex { get; }
+    public int? OtherVertexIndex { get; }
+}
+
 /// <summary>An immutable triangulated convex solid in joint-local metres.</summary>
 public sealed class ClothSupportHull
 {
@@ -39,8 +71,9 @@ public sealed class ClothSupportHull
     {
         if (vertices.Length is < 4 or > VertexLimit)
             throw new ArgumentOutOfRangeException(nameof(vertices));
-        if (faces.Length != 2 * vertices.Length - 4)
-            throw new ArgumentException("A closed hull needs two triangles per vertex minus four.", nameof(faces));
+        if (faces.Length is < 4 or > 2 * VertexLimit - 4)
+            throw new ClothSupportHullException(ClothSupportHullRefusal.FaceCount,
+                "A hull needs between four and twenty-eight faces.", nameof(faces));
 
         float radius = 0;
         Vector3 center = Vector3.Zero;
@@ -48,53 +81,82 @@ public sealed class ClothSupportHull
         {
             Vector3 vertex = vertices[i];
             float length = vertex.Length();
-            if (!float.IsFinite(length) || vertices[..i].Contains(vertex))
-                throw new ArgumentException("Hull vertices must be finite and distinct.", nameof(vertices));
+            if (!float.IsFinite(length))
+                throw new ClothSupportHullException(ClothSupportHullRefusal.InvalidVertex,
+                    "Hull vertices require a finite distance from the joint origin.", nameof(vertices), vertexIndex: i);
+            int duplicate = vertices[..i].IndexOf(vertex);
+            if (duplicate >= 0)
+                throw new ClothSupportHullException(ClothSupportHullRefusal.DuplicateVertex,
+                    "Hull vertex positions must be distinct.", nameof(vertices), vertexIndex: i, otherVertexIndex: duplicate);
             radius = MathF.Max(radius, length);
             center += vertex / vertices.Length;
         }
 
-        Span<sbyte> directedEdges = stackalloc sbyte[VertexLimit * VertexLimit];
+        Span<byte> directedEdges = stackalloc byte[VertexLimit * VertexLimit];
         Span<bool> used = stackalloc bool[VertexLimit];
         directedEdges.Clear();
         used.Clear();
-        foreach (ClothTriangle face in faces)
+        for (int index = 0; index < faces.Length; index++)
         {
-            if ((uint)face.A >= vertices.Length || (uint)face.B >= vertices.Length || (uint)face.C >= vertices.Length)
-                throw new ArgumentException("Hull faces must index existing vertices.", nameof(faces));
+            ClothTriangle face = faces[index];
+            CheckVertex(face.A, vertices.Length, index);
+            CheckVertex(face.B, vertices.Length, index);
+            CheckVertex(face.C, vertices.Length, index);
             Vector3 a = vertices[face.A], b = vertices[face.B], c = vertices[face.C];
             Vector3 area = Vector3.Cross(b - a, c - a);
             float magnitude = area.Length();
             if (magnitude <= 0 || !float.IsFinite(magnitude))
-                throw new ArgumentException("Hull faces must have finite positive area.", nameof(faces));
+                throw new ClothSupportHullException(ClothSupportHullRefusal.DegenerateFace,
+                    "Hull faces must have finite positive area.", nameof(faces), index);
             Vector3 normal = area / magnitude;
             float tolerance = .000001f * MathF.Max((b - a).Length(), (c - a).Length());
             if (Vector3.Dot(center - a, normal) >= -tolerance)
-                throw new ArgumentException("Hull faces must wind outwards from the interior.", nameof(faces));
-            foreach (Vector3 vertex in vertices)
-                if (Vector3.Dot(vertex - a, normal) > tolerance)
-                    throw new ArgumentException("Hull faces must enclose a convex solid.", nameof(faces));
-            AddEdge(face.A, face.B, directedEdges, used);
-            AddEdge(face.B, face.C, directedEdges, used);
-            AddEdge(face.C, face.A, directedEdges, used);
+                throw new ClothSupportHullException(ClothSupportHullRefusal.InvalidWinding,
+                    "Hull faces must wind outwards from the interior.", nameof(faces), index);
+            for (int vertex = 0; vertex < vertices.Length; vertex++)
+                if (Vector3.Dot(vertices[vertex] - a, normal) > tolerance)
+                    throw new ClothSupportHullException(ClothSupportHullRefusal.Nonconvex,
+                        "A hull vertex lies outside a face plane.", nameof(faces), index, vertex);
+            AddEdge(face.A, face.B, index, directedEdges, used);
+            AddEdge(face.B, face.C, index, directedEdges, used);
+            AddEdge(face.C, face.A, index, directedEdges, used);
         }
 
         for (int a = 0; a < vertices.Length; a++)
         {
-            if (!used[a]) throw new ArgumentException("Each hull vertex must belong to a face.", nameof(vertices));
+            if (!used[a])
+                throw new ClothSupportHullException(ClothSupportHullRefusal.UnusedVertex,
+                    "Each hull vertex must belong to a face.", nameof(vertices), vertexIndex: a);
             for (int b = 0; b < a; b++)
-                if (directedEdges[a * VertexLimit + b] != directedEdges[b * VertexLimit + a])
-                    throw new ArgumentException("Each hull edge needs two opposed incident faces.", nameof(faces));
+            {
+                int forward = directedEdges[a * VertexLimit + b], reverse = directedEdges[b * VertexLimit + a];
+                if (forward > 0 && reverse == 0) throw Unpaired(forward - 1, a, b);
+                if (reverse > 0 && forward == 0) throw Unpaired(reverse - 1, b, a);
+            }
         }
+        if (faces.Length != 2 * vertices.Length - 4)
+            throw new ClothSupportHullException(ClothSupportHullRefusal.FaceCount,
+                "A closed convex hull needs two triangles per vertex minus four.", nameof(faces));
         return new ClothSupportHull(vertices, faces, radius);
     }
 
-    private static void AddEdge(int from, int to, Span<sbyte> directions, Span<bool> used)
+    private static void CheckVertex(int vertex, int count, int face)
+    {
+        if ((uint)vertex >= count)
+            throw new ClothSupportHullException(ClothSupportHullRefusal.InvalidFaceVertex,
+                "A hull face references an unknown vertex.", "faces", face, vertex);
+    }
+
+    private static ClothSupportHullException Unpaired(int face, int from, int to) =>
+        new(ClothSupportHullRefusal.UnpairedEdge, "A hull edge needs an opposed incident face.", "faces", face, from, to);
+
+    private static void AddEdge(int from, int to, int face, Span<byte> directions, Span<bool> used)
     {
         int slot = from * VertexLimit + to;
         if (directions[slot] != 0)
-            throw new ArgumentException("A hull edge is repeated in the same direction.", "faces");
-        directions[slot] = 1;
+            throw new ClothSupportHullException(ClothSupportHullRefusal.RepeatedDirectedEdge,
+                "A hull edge is repeated in the same direction.", "faces", face, from, to);
+        directions[slot] = (byte)(face + 1);
         used[from] = true;
     }
 }

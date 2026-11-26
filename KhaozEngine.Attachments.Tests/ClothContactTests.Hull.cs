@@ -7,8 +7,10 @@ namespace KhaozEngine.Tests.Attachments;
 
 public sealed partial class ClothContactTests
 {
-    [Fact]
-    public void A_rotating_hull_corner_clears_the_independently_tessellated_hardware()
+    [Theory]
+    [InlineData(1f)]
+    [InlineData(1.015f)]
+    public void A_rotating_hull_corner_clears_the_independently_tessellated_hardware(float closingScale)
     {
         const float angle = MathF.PI / 6, plane = .0254f;
         Vector3 center = .024f * Vector3.UnitX;
@@ -33,7 +35,8 @@ public sealed partial class ClothContactTests
                 Assert.True(float.Lerp(rest[node].X, simulation.Positions[node].X, time) - Material.HalfThickness >= visible);
         }
 
-        static Matrix4x4 Pose(float t) => Matrix4x4.CreateRotationZ(float.Lerp(-angle, angle, t));
+        Matrix4x4 Pose(float t) => Matrix4x4.CreateScale(float.Lerp(1, closingScale, t)) *
+            Matrix4x4.CreateRotationZ(float.Lerp(-angle, angle, t));
 
         float MaxVisibleX(float t)
         {
@@ -74,16 +77,19 @@ public sealed partial class ClothContactTests
         Assert.True(simulation.Positions[1].X >= Material.HalfThickness + .001f);
     }
 
-    [Fact]
-    public void A_nonuniform_hull_uses_only_a_checked_fitted_fallback()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_nonuniform_hull_uses_only_a_checked_fitted_fallback(bool openingTransform)
     {
         Vector3[] rest = [Vector3.Zero, .06f * Vector3.UnitY, .06f * Vector3.UnitZ];
         Vector3[] fitted = Array.ConvertAll(rest, position => position + .008f * Vector3.UnitX);
         var simulation = new ClothSimulation(Triangle(rest), ClothWorkLimits.LayeredContact);
         simulation.Reset(rest);
         ClothSupport[] capsules = [Ball(new Vector3(-.002f, 0, 0), Identity)];
+        Matrix4x4 unsupported = Matrix4x4.CreateScale(1, 2, 1);
         var hull = new ClothHullSupport(Identity, Box(-.005f * Vector3.UnitX, new Vector3(.004f)),
-            Matrix4x4.Identity, Matrix4x4.CreateScale(1, 2, 1));
+            openingTransform ? unsupported : Matrix4x4.Identity, openingTransform ? Matrix4x4.Identity : unsupported);
         var input = new ClothSubstep([], capsules, capsules, Seconds, Vector3.Zero, [hull]);
 
         ClothStepResult invalidFit = simulation.Advance(input, rest);
@@ -91,6 +97,7 @@ public sealed partial class ClothContactTests
         Assert.Equal(ClothStepStatus.UnsupportedHullTransform, invalidFit.Status);
         Assert.Equal(Identity.PartId, invalidFit.PartId);
         Assert.Equal(ClothStepStatus.UnresolvedContact, invalidFit.FallbackStatus);
+        Assert.Equal(Identity.PartId, invalidFit.FallbackPartId);
         Assert.Equal(rest, simulation.Positions.ToArray());
 
         ClothStepResult recovered = simulation.Advance(input, fitted);
@@ -99,6 +106,49 @@ public sealed partial class ClothContactTests
         Assert.Equal(Identity.PartId, recovered.PartId);
         Assert.Equal(ClothStepStatus.Accepted, recovered.FallbackStatus);
         Assert.Equal(fitted, simulation.Positions.ToArray());
+    }
+
+    [Fact]
+    public void Hull_authoring_reports_the_offending_vertex_face_and_edge()
+    {
+        ClothSupportHull good = Box(Vector3.Zero, Vector3.One);
+        Assert.Equal(8, good.Vertices.Length);
+        Assert.Equal(12, good.Faces.Length);
+
+        Vector3[] badVertex = good.Vertices.ToArray();
+        badVertex[2] = new Vector3(float.NaN, 1, 1);
+        Reject(badVertex, good.Faces, ClothSupportHullRefusal.InvalidVertex, null, 2);
+
+        var faceIndex = good.Faces.ToArray();
+        faceIndex[0] = new ClothTriangle(8, 2, 1);
+        Reject(good.Vertices, faceIndex, ClothSupportHullRefusal.InvalidFaceVertex, 0, 8);
+
+        var inward = good.Faces.ToArray();
+        inward[0] = new ClothTriangle(0, 1, 2);
+        Reject(good.Vertices, inward, ClothSupportHullRefusal.InvalidWinding, 0, null);
+
+        Vector3[] nonconvex = good.Vertices.ToArray();
+        nonconvex[0].Z = -.25f;
+        Reject(nonconvex, good.Faces, ClothSupportHullRefusal.Nonconvex, 0, 3);
+
+        var repeated = good.Faces.ToArray();
+        repeated[1] = repeated[0];
+        Reject(good.Vertices, repeated, ClothSupportHullRefusal.RepeatedDirectedEdge, 1, 0, 2);
+
+        Reject(good.Vertices, good.Faces[1..], ClothSupportHullRefusal.UnpairedEdge, 7, 0, 1);
+
+        static void Reject(ReadOnlySpan<Vector3> vertices, ReadOnlySpan<ClothTriangle> faces,
+            ClothSupportHullRefusal reason, int? face, int? vertex, int? otherVertex = null)
+        {
+            Vector3[] vertexData = vertices.ToArray();
+            ClothTriangle[] faceData = faces.ToArray();
+            ClothSupportHullException failure = Assert.Throws<ClothSupportHullException>(
+                () => ClothSupportHull.Create(vertexData, faceData));
+            Assert.Equal(reason, failure.Reason);
+            Assert.Equal(face, failure.FaceIndex);
+            Assert.Equal(vertex, failure.VertexIndex);
+            Assert.Equal(otherVertex, failure.OtherVertexIndex);
+        }
     }
 
     private static readonly ClothSupportIdentity Identity = new(7, uint.MaxValue - 1, 1, AttachmentLayer.Armour);

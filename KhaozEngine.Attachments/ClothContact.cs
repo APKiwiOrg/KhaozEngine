@@ -97,7 +97,7 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
             int offset = i * Math.Max(rig.Triangles.Length, positions.Length);
             ClothStepStatus status = last.IsPlane
                 ? ProjectPlane(opening, positions, first, last, step.Seconds, offset, verify, collectVelocity)
-                : ProjectCapsule(opening, positions, first, last, step.Seconds, offset, verify, collectVelocity);
+                : ProjectCapsule(opening, positions, first, last, step.Seconds, offset, verify, collectVelocity, step.HeldPaths);
             if (status != ClothStepStatus.Accepted) return status;
         }
         int hullOffset = limits.MaxSupports * Math.Max(rig.Triangles.Length, positions.Length);
@@ -167,15 +167,15 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
     }
 
     private ClothStepStatus ProjectCapsule(Vector3[] opening, Vector3[] positions, in ClothSupport first,
-        in ClothSupport last, float seconds, int offset, bool verify, bool collectVelocity)
+        in ClothSupport last, float seconds, int offset, bool verify, bool collectVelocity, in ClothHeldPaths paths)
     {
         ColliderCapsule before = first.WorldCapsule, now = last.WorldCapsule;
         var firstAxis = new Axis(before);
         var lastAxis = new Axis(now);
         float extent = now.Radius + rig.Material.HalfThickness + ContactMargin;
         float reach = extent + VelocityTouchRoundoff;
-        var supportBounds = new ClothCapsuleSweep(default, default, first, last).Bounds
-            .Expand(reach - now.Radius);
+        var trajectory = new ClothCapsuleSweep(first, last, paths);
+        var supportBounds = trajectory.Bounds.Expand(reach - now.Radius);
         ClothSelfBroadPhase? broadPhase = _self?.BroadPhase;
         ReadOnlySpan<ClothTriangle> faces = rig.Triangles;
         int support = offset / Math.Max(faces.Length, positions.Length);
@@ -213,7 +213,7 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
             float required = MathF.Max(.0000001f, rig.Material.HalfThickness - SolveTolerance);
             if (distance >= now.Radius + required)
             {
-                var pair = new ClothCapsuleSweep(previousFacet, currentFacet, first, last);
+                var pair = trajectory.WithFacets(previousFacet, currentFacet);
                 ClothStepStatus swept = _workspace.CheckSweep(pair, required, out ClothSweepImpact impact);
                 if (swept == ClothStepStatus.UnresolvedContact && !verify && impact.OpeningNormal != Vector3.Zero)
                 {
@@ -232,7 +232,8 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
                 if (collectVelocity && distance <= reach)
                 {
                     Vector3 direction = (hit.Residual * (1d / distance)).ToVector3();
-                    Vector3 motion = last.CapsuleClosingDerivative(first, CapsulePoint(now, hit.Fraction, direction), hit.Fraction, direction);
+                    Vector3 motion = last.CapsuleClosingDerivative(first, CapsulePoint(now, hit.Fraction, direction),
+                        hit.Fraction, direction, paths);
                     ClothStepStatus status = AddVelocityWitness(face, hit.Weights.ToVector3(), direction, motion, seconds);
                     if (status != ClothStepStatus.Accepted) return status;
                 }

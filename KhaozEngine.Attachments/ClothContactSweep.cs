@@ -136,10 +136,16 @@ internal static class ClothContactSweep
     }
 }
 
-internal readonly struct ClothCapsuleSweep(ClothFacet first, ClothFacet last, ClothSupport opening, ClothSupport closing)
-    : IClothSweepPair
+internal readonly struct ClothCapsuleSweep(ClothFacet first, ClothFacet last, ClothSupport opening, ClothSupport closing,
+    ClothHeldPaths paths, float curvature) : IClothSweepPair
 {
-    public float Curvature { get; } = CurvatureOf(opening, closing);
+    internal ClothCapsuleSweep(ClothSupport opening, ClothSupport closing, ClothHeldPaths paths)
+        : this(default, default, opening, closing, paths, CurvatureOf(opening, closing, paths)) { }
+
+    public float Curvature { get; } = curvature;
+
+    internal ClothCapsuleSweep WithFacets(in ClothFacet before, in ClothFacet after) =>
+        new(before, after, opening, closing, paths, Curvature);
 
     internal ClothBounds Bounds
     {
@@ -154,7 +160,7 @@ internal readonly struct ClothCapsuleSweep(ClothFacet first, ClothFacet last, Cl
 
     public ClothSweepSample Sample(float time)
     {
-        ColliderCapsule capsule = opening.CapsuleAt(closing, time);
+        ColliderCapsule capsule = opening.CapsuleAt(closing, time, paths);
         var axis = new Axis(capsule);
         ChainContactTriangle.Contact hit = first.At(last, time).Triangle.Closest(axis, out _);
         double distance = Math.Sqrt(hit.Residual.LengthSquared);
@@ -164,14 +170,14 @@ internal readonly struct ClothCapsuleSweep(ClothFacet first, ClothFacet last, Cl
 
     public float Gap(float time, Vector3 normal)
     {
-        ColliderCapsule capsule = opening.CapsuleAt(closing, time);
+        ColliderCapsule capsule = opening.CapsuleAt(closing, time, paths);
         float support = MathF.Max(Vector3.Dot(capsule.Start, normal), Vector3.Dot(capsule.End, normal)) + capsule.Radius;
         return first.At(last, time).MinProjection(normal) - support;
     }
 
-    internal static float CurvatureOf(in ClothSupport opening, in ClothSupport closing)
+    private static float CurvatureOf(in ClothSupport opening, in ClothSupport closing, in ClothHeldPaths paths)
     {
         float angle = ClothContactSweep.Angle(opening.Rotation, closing.Rotation);
-        return opening.CurvedCapsuleReach(closing, angle);
+        return opening.CurvedCapsuleReach(closing, angle, paths);
     }
 }

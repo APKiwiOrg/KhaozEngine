@@ -12,6 +12,10 @@ internal sealed class WornClothSupports
     private readonly ClothSupport[] _displayed = new ClothSupport[Capacity];
     private ClothSupport[] _tickOpening = new ClothSupport[Capacity];
     private ClothSupport[] _tickClosing = new ClothSupport[Capacity];
+    private readonly ClothHeldEdge[] _framePath = new ClothHeldEdge[ClothWorkLimits.LowerSegmentLimit];
+    private readonly ClothHeldEdge[] _displayedPath = new ClothHeldEdge[ClothWorkLimits.LowerSegmentLimit];
+    private ClothHeldEdge[] _tickOpeningPath = new ClothHeldEdge[ClothWorkLimits.LowerSegmentLimit];
+    private ClothHeldEdge[] _tickClosingPath = new ClothHeldEdge[ClothWorkLimits.LowerSegmentLimit];
 
     private readonly ChainPose[] _frameHulls = new ChainPose[ClothWorkLimits.HullLimit];
     private readonly ChainPose[] _priorFrameHulls = new ChainPose[ClothWorkLimits.HullLimit];
@@ -27,6 +31,18 @@ internal sealed class WornClothSupports
     private static ClothSupport Lower(in ColliderCapsule segment, ClothSupportIdentity identity) =>
         ClothSupport.LowerSegment(segment with { Radius = MathF.Max(1e-10f, segment.Radius) }, identity);
 
+    private ClothSupport ShownLower(ChainSimulation chains, in WornClothSegment lower, int index) => chains.IsHeld
+        ? Held(chains.ShownHeldSegment(lower.Segment), lower, index, _framePath)
+        : Lower(chains.ShownSegment(lower.Segment), lower.Identity);
+
+    private static ClothSupport Held(in HeldChainSegment held, in WornClothSegment lower, int index, ClothHeldEdge[] path)
+    {
+        ClothHeldEdge edge = ClothHeldEdge.From(held);
+        path[index] = edge;
+        int upstream = lower.Segment.Index;
+        return ClothSupport.HeldLowerSegment(held, edge, lower.Identity, index - upstream, upstream);
+    }
+
     internal void Begin(WornClothBinding binding, ReadOnlySpan<Matrix4x4> host, in Matrix4x4 model,
         ChainSimulation chains, bool fresh)
     {
@@ -38,7 +54,7 @@ internal sealed class WornClothSupports
         for (int i = 0; i < binding.Segments.Length; i++)
         {
             var lower = binding.Segments[i];
-            _frame[Rigid + i] = Lower(chains.ShownSegment(lower.Segment), lower.Identity);
+            _frame[Rigid + i] = ShownLower(chains, lower, i);
         }
 
         if (fresh)
@@ -53,7 +69,7 @@ internal sealed class WornClothSupports
         ReadOnlySpan<Vector3> pins)
     {
         for (int i = 0; i < Rigid; i++)
-            _tickClosing[i] = _priorFrame[i].Interpolate(_frame[i], fraction);
+            _tickClosing[i] = _priorFrame[i].InterpolateRigid(_frame[i], fraction);
         for (int i = 0; i < _binding.Segments.Length; i++)
         {
             var lower = _binding.Segments[i];
@@ -61,7 +77,7 @@ internal sealed class WornClothSupports
             int index = Rigid + i;
             if (particles is null)
             {
-                _tickClosing[index] = Lower(chains.HeldSegment(lower.Segment, fraction), lower.Identity);
+                _tickClosing[index] = Held(chains.HeldSegment(lower.Segment, fraction), lower, i, _tickClosingPath);
             }
             else
             {
@@ -78,23 +94,28 @@ internal sealed class WornClothSupports
             _tickHulls[i] = pose;
         }
         return new(pins, _tickOpening.AsSpan(0, Count), _tickClosing.AsSpan(0, Count),
-            chains.Options.MaxStepSeconds, chains.Options.Gravity, _hulls.AsSpan(0, Hulls));
+            chains.Options.MaxStepSeconds, chains.Options.Gravity, _hulls.AsSpan(0, Hulls),
+            new ClothHeldPaths(_tickOpeningPath, _tickClosingPath));
     }
 
     internal void ResetTickToDisplay()
     {
-        _displayed.AsSpan(0, Count).CopyTo(_tickOpening);
+        CopySupports(_displayed, _displayedPath, _tickOpening, _tickOpeningPath);
         _displayedHulls.AsSpan(0, Hulls).CopyTo(_tickHulls);
     }
 
-    internal void EndTick() => (_tickOpening, _tickClosing) = (_tickClosing, _tickOpening);
+    internal void EndTick()
+    {
+        (_tickOpening, _tickClosing) = (_tickClosing, _tickOpening);
+        (_tickOpeningPath, _tickClosingPath) = (_tickClosingPath, _tickOpeningPath);
+    }
 
     internal ClothSubstep Display(ChainSimulation chains, ReadOnlySpan<Vector3> pins, bool fresh)
     {
         for (int i = 0; i < _binding.Segments.Length; i++)
         {
             var lower = _binding.Segments[i];
-            _frame[Rigid + i] = Lower(chains.ShownSegment(lower.Segment), lower.Identity);
+            _frame[Rigid + i] = ShownLower(chains, lower, i);
         }
         for (int i = 0; i < Hulls; i++)
         {
@@ -104,7 +125,8 @@ internal sealed class WornClothSupports
         }
         ReadOnlySpan<ClothSupport> opening = fresh ? _frame : _displayed;
         return new(pins, opening[..Count], _frame.AsSpan(0, Count),
-            chains.Options.MaxStepSeconds, chains.Options.Gravity, _hulls.AsSpan(0, Hulls));
+            chains.Options.MaxStepSeconds, chains.Options.Gravity, _hulls.AsSpan(0, Hulls),
+            new ClothHeldPaths(fresh ? _framePath : _displayedPath, _framePath));
     }
 
     internal bool IsStationary
@@ -112,7 +134,7 @@ internal sealed class WornClothSupports
         get
         {
             for (int i = 0; i < Count; i++)
-                if (!_frame[i].SamePose(_displayed[i])) return false;
+                if (!_frame[i].SamePose(_displayed[i], new ClothHeldPaths(_framePath, _displayedPath))) return false;
             for (int i = 0; i < Hulls; i++)
                 if (_frameHulls[i].Matrix != _displayedHulls[i]) return false;
             return true;
@@ -121,14 +143,21 @@ internal sealed class WornClothSupports
 
     internal void SaveDisplay()
     {
-        _frame.AsSpan(0, Count).CopyTo(_displayed);
+        CopySupports(_frame, _framePath, _displayed, _displayedPath);
         for (int i = 0; i < Hulls; i++) _displayedHulls[i] = _frameHulls[i].Matrix;
     }
 
     internal void End()
     {
-        _frame.AsSpan(0, Count).CopyTo(_priorFrame);
+        _frame.AsSpan(0, Rigid).CopyTo(_priorFrame);
         _frameHulls.AsSpan(0, Hulls).CopyTo(_priorFrameHulls);
+    }
+
+    private void CopySupports(ClothSupport[] source, ClothHeldEdge[] sourcePath, ClothSupport[] destination,
+        ClothHeldEdge[] destinationPath)
+    {
+        source.AsSpan(0, Count).CopyTo(destination);
+        sourcePath.AsSpan(0, _binding.Segments.Length).CopyTo(destinationPath);
     }
 
     internal void Rebase(Vector3 change)

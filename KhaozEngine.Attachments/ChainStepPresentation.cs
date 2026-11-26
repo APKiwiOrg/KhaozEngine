@@ -14,6 +14,14 @@ internal sealed class ChainStepPresentation(ChainRig rig, ChainPresentationHiera
         _current.CopyFrom(shown);
     }
 
+    internal void BeginHeld(ChainPresentationFrame shown) => _previous.CopyFrom(shown);
+
+    internal void SampleHeld(ChainPresentationFrame closing, ReadOnlySpan<ChainPose> anchors,
+        ReadOnlySpan<ChainPresentationAnchor> frame, float fraction) =>
+        hierarchy.Interpolate(_previous, closing, _current, anchors, frame, fraction);
+
+    internal ReadOnlySpan<Matrix4x4> HeldFrames => _current.Frames;
+
     internal void SeedJoints(ChainPresentationFrame source, Range joints)
     {
         _previous.CopyJoints(source, joints);

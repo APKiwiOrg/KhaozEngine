@@ -143,6 +143,46 @@ public sealed class WornMotionBatchTests
     }
 
     [Fact]
+    public void An_invalid_old_rigid_hull_basis_reseeds_before_the_batch_advances()
+    {
+        using var rig = new OutfitRig();
+        const uint part = SkinnedAttachmentBindingTests.ClothPartId;
+        var cloth = rig.Wear("basis-coat.json", SkinnedAttachmentBindingTests.ClothAsset(rig).Set);
+        var origin = new Vector3(0, .5f, .3f);
+        var hull = ClothSupportHull.Create([origin, origin + .1f * Vector3.UnitX, origin + .1f * Vector3.UnitY,
+            origin + .1f * Vector3.UnitZ], [new(0, 2, 1), new(0, 1, 3), new(0, 3, 2), new(1, 2, 3)]);
+        var hardware = OutfitRig.Rigid(9, rig.Source.Mesh("basis-hull.glb", AttachmentTestSource.Glb()), "alpha") with
+        {
+            Joint = "knee",
+            ClothHulls = [new(1, hull, [0])],
+        };
+        var lower = rig.Wear("basis-hull.json", new AttachmentSetDefinition([hardware], AttachmentLayer.Garment, [],
+            [new("knee", origin, origin + .1f * Vector3.UnitY, .03f)]));
+        using var outfit = rig.Cache.BindOutfit(OutfitLiftDrawTests.Body(rig), [lower, cloth]);
+        var first = cloth.CreateMotion(null);
+        var selected = outfit.CreateMotion(null);
+        var slot = new WornClothSlot();
+        slot.Prepare(outfit.ClothSurface(1, part)!);
+        var cheap = (Matrix4x4[])rig.Palette.Clone();
+        // Invertible for chain capsules, but too short for the rigid draw's Gram-Schmidt basis.
+        cheap[0].M11 = 1e-7f;
+        selected.Step(rig.Skeleton, cheap, rig.Model, 0, MotionLevel.Held);
+        ulong firstRevision = first.PoseRevision;
+        ulong priorHistory = selected.HistoryRevision;
+
+        var batch = new WornMotionBatch(new SingleThreadedJobScheduler());
+        batch.Add(first, rig.Skeleton, rig.Palette, rig.Model, FrameTime);
+        batch.Add(selected, rig.Skeleton, rig.Palette, rig.Model, FrameTime, MotionLevel.Held, new(slot, 1, part));
+        batch.Step();
+
+        Assert.True(first.PoseRevision > firstRevision);
+        Assert.True(selected.HistoryRevision > priorHistory);
+        Assert.Equal(0, selected.ClothStatus.Substeps);
+        Assert.True(selected.TryGetClothPresentation(1, part, out var shown));
+        Assert.True(shown.IsCurrentPose);
+    }
+
+    [Fact]
     public void Warm_local_cloth_and_compatible_slot_turnover_allocate_nothing()
     {
         using var rig = new OutfitRig();

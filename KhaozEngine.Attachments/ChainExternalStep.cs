@@ -33,19 +33,29 @@ internal readonly record struct ChainSegment(ChainRig Rig, int Chain, int Index)
     }
 
     internal ColliderCapsule Pose(ReadOnlySpan<Matrix4x4> frames, in Matrix4x4 anchor, float radius) =>
-        Pose(frames, frames, anchor, radius, 1);
+        Pose(frames, anchor, radius, out _);
 
-    internal ColliderCapsule Pose(ReadOnlySpan<Matrix4x4> previous, ReadOnlySpan<Matrix4x4> current,
-        in Matrix4x4 anchor, float radius, float fraction)
+    internal HeldChainSegment PoseHeld(ReadOnlySpan<Matrix4x4> frames, in ChainPose anchor, float radius)
+    {
+        ColliderCapsule capsule = Pose(frames, anchor.Matrix, MathF.Max(1e-10f, radius), out Matrix4x4 start);
+        Vector3 root = Vector3.Transform(frames[Rig.FirstJoint(Chain)].Translation, anchor.Matrix);
+        return new HeldChainSegment(capsule, ChainPose.ReadRotation(start), anchor, root);
+    }
+
+    private ColliderCapsule Pose(ReadOnlySpan<Matrix4x4> frames, in Matrix4x4 anchor, float radius, out Matrix4x4 start)
     {
         int joint = Rig.FirstJoint(Chain) + Index;
         int last = Rig.FirstJoint(Chain) + Rig.Chains[Chain].Joints.Count - 1;
-        Matrix4x4 start = SampleLocal(previous[joint], current[joint], fraction) * anchor;
+        start = frames[joint] * anchor;
         Vector3 end = joint == last ? Vector3.Transform(Rig.Chains[Chain].Tip, start) :
-            (SampleLocal(previous[joint + 1], current[joint + 1], fraction) * anchor).Translation;
+            (frames[joint + 1] * anchor).Translation;
         return new(start.Translation, end, radius);
     }
+}
 
-    private static Matrix4x4 SampleLocal(in Matrix4x4 opening, in Matrix4x4 closing, float fraction) =>
-        fraction == 1 || opening == closing ? closing : new ChainPose(opening).Interpolate(new ChainPose(closing), fraction);
+internal readonly record struct HeldChainSegment(ColliderCapsule Capsule, Quaternion Rotation, ChainPose Anchor,
+    Vector3 ChainRoot)
+{
+    internal Vector3 Start => Capsule.Start;
+    internal Vector3 End => Capsule.End;
 }

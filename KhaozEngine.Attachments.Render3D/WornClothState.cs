@@ -100,7 +100,7 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
     }
 
     internal void Begin(ChainSimulation chains, Skeleton skeleton, ReadOnlySpan<Matrix4x4> previousHost,
-        ReadOnlySpan<Matrix4x4> host, in Matrix4x4 previousModel, in Matrix4x4 model, Vector3 origin, bool reset, bool live)
+        ReadOnlySpan<Matrix4x4> host, in Matrix4x4 previousModel, in Matrix4x4 model, Vector3 origin, bool reset, bool live, bool discardTransfer)
     {
         _substeps = 0;
         _solveWork = default;
@@ -108,13 +108,13 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
         ResetForDroppedTime = false;
         _sameKinematicPose = previousModel == model && previousHost.SequenceEqual(host);
         bool recoverFromRefusal = _hasDisplay && _solve.Status != ClothStepStatus.Accepted;
-        bool rebindTeleport = _rebound && _hasDisplay &&
+        bool resetTransfer = _rebound && (discardTransfer || _hasDisplay &&
             ChainMath.DistanceSquared(_model.Translation, model.Translation + origin) >
-                (double)chains.Options.TeleportDistance * chains.Options.TeleportDistance;
-        if (rebindTeleport) _rebound = false;
+                (double)chains.Options.TeleportDistance * chains.Options.TeleportDistance);
+        if (resetTransfer) _rebound = false;
         _solve = default;
         _projection = default;
-        _fresh = reset || _rebound || rebindTeleport;
+        _fresh = reset || _rebound || resetTransfer;
         _chainFittedReset = reset;
         _switchFrame = _liveRequested != live;
         if (_switchFrame)
@@ -137,7 +137,7 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
         }
         _origin = origin;
 
-        if ((reset || rebindTeleport) && !_rebound)
+        if ((reset || resetTransfer) && !_rebound)
         {
             ClearPublication();
             _hasDisplay = false;

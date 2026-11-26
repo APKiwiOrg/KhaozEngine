@@ -141,7 +141,7 @@ public sealed partial class WornMotion
         bool live = samePart && refusal == WornClothFallback.None;
         var previous = _hasLastHost ? Relative(_lastModel, _origin) : relative;
         state.Begin(_simulation, _skeleton, _preparedPriorClothPose ? _lastHost : [], palette, previous, relative, _origin,
-            _simulation.NeedsReset(relative, seconds), live);
+            _simulation.NeedsReset(relative, seconds), live, discardTransfer: seconds > _simulation.Options.LongestGapSeconds);
         return state;
     }
 
@@ -172,7 +172,7 @@ public sealed partial class WornMotion
         var relative = Relative(_lastModel, _origin);
         var state = slot.State;
         state.Begin(_simulation, _skeleton, _lastHost, _lastHost, relative, relative, _origin,
-            reset: true, live: state.Live);
+            reset: true, live: state.Live, discardTransfer: true);
         EndCloth(state, _lastHost, relative, _lastModel, 0, _lastLevel);
     }
 

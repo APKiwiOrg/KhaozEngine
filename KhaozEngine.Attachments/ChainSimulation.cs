@@ -110,14 +110,18 @@ public sealed class ChainSimulation
         else if (level == MotionLevel.Held)
         {
             // Retain the opening fitted shape for an exterior consumer of held tick geometry.
-            if (exterior is not null) _blend.LiveTarget.CopyFrom(_shown);
+            if (exterior is not null) _stepPresentation.BeginHeld(_shown);
             Hold(anchorWorlds, colliders, deltaSeconds, excluded);
             if (exterior is not null)
             {
                 int count = _clock.Advance(deltaSeconds, out bool droppedTime);
                 if (droppedTime) exterior.OnDroppedTime();
                 for (int step = 0; step < count; step++)
-                    exterior.OnSubstep(this, null, _clock.StepFraction(step, count, deltaSeconds));
+                {
+                    float fraction = _clock.StepFraction(step, count, deltaSeconds);
+                    if (fraction < 1) SampleHeldShape(fraction);
+                    exterior.OnSubstep(this, null, fraction);
+                }
             }
         }
         else
@@ -181,11 +185,32 @@ public sealed class ChainSimulation
         return segment.Pose(_shown.Frames, _previousAnchors[anchor].Matrix, Radius(segment.Chain));
     }
 
-    internal ColliderCapsule HeldSegment(in ChainSegment segment, float fraction)
+    internal bool IsHeld => _held;
+
+    internal HeldChainSegment ShownHeldSegment(in ChainSegment segment)
     {
         int anchor = Rig.Chains[segment.Chain].Anchor;
-        Matrix4x4 posed = _previousAnchors[anchor].Interpolate(_frameAnchors[anchor], fraction);
-        return segment.Pose(_blend.LiveTarget.Frames, _shown.Frames, posed, Radius(segment.Chain), fraction);
+        return segment.PoseHeld(_shown.Frames, _previousAnchors[anchor], Radius(segment.Chain));
+    }
+
+    internal HeldChainSegment HeldSegment(in ChainSegment segment, float fraction)
+    {
+        int anchor = Rig.Chains[segment.Chain].Anchor;
+        if (fraction == 1) return segment.PoseHeld(_shown.Frames, _frameAnchors[anchor], Radius(segment.Chain));
+        return segment.PoseHeld(_stepPresentation.HeldFrames, new ChainPose(_stepAnchors[anchor]), Radius(segment.Chain));
+    }
+
+    private void SampleHeldShape(float fraction)
+    {
+        SampleAnchors(fraction);
+        Span<ChainPose> poses = stackalloc ChainPose[Rig.AnchorCount];
+        Span<ChainPresentationAnchor> frame = stackalloc ChainPresentationAnchor[Rig.AnchorCount];
+        for (int i = 0; i < poses.Length; i++)
+        {
+            poses[i] = new ChainPose(_stepAnchors[i]);
+            frame[i] = new ChainPresentationAnchor(_stepAnchors[i], _stepAnchorInverses[i], poses[i].Rotation);
+        }
+        _stepPresentation.SampleHeld(_shown, poses, frame, fraction);
     }
 
     internal void SeedRange(int first, int count) => _particles.SeedRange(_previousAnchors, _shown.Frames, first, count);

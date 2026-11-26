@@ -166,6 +166,15 @@ internal readonly record struct WornClothHull(BoundClothHull Hull, ClothSupportI
     internal Matrix4x4 Pose(ReadOnlySpan<Matrix4x4> host, in Matrix4x4 model)
     {
         _ = WornMotion.PoseJoint(Hull.HostBone, host, model);
-        return Hull.Compose(host[Hull.HostBone], model);
+        try
+        {
+            return Hull.Compose(host[Hull.HostBone], model);
+        }
+        catch (ArgumentException error) when (error.ParamName == "jointModel")
+        {
+            throw new AttachmentBindingArgumentException(AttachmentBindingRefusal.HostJointPoseInvalid,
+                "The joint cannot form a rigid support pose for the cloth hull.", "hostPalette", error)
+            { BoneIndex = Hull.HostBone, PartId = Hull.PartId };
+        }
     }
 }

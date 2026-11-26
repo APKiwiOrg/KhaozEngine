@@ -257,7 +257,10 @@ public sealed class OutfitMotionDrawTests
         var next = changed.CreateMotion(null);
         var slot = new WornClothSlot();
         slot.Prepare(original.ClothSurface(0, ClothPartId)!);
-        old.Step(rig.Skeleton, rig.Palette, Matrix4x4.Identity, 0, MotionLevel.Held, new(slot, 0, ClothPartId));
+        var request = new WornClothSelection(slot, 0, ClothPartId);
+        old.Step(rig.Skeleton, rig.Palette, Matrix4x4.Identity, 0, MotionLevel.Held, request);
+        for (int i = 0; i < 36; i++)
+            old.Step(rig.Skeleton, rig.Palette, Matrix4x4.Identity, 1f / 120, MotionLevel.Held, request);
         Assert.True(old.TryGetClothPresentation(0, ClothPartId, out var before));
         ulong revision = before.DisplayRevision;
         var nodes = before.Nodes.ToArray();
@@ -276,6 +279,23 @@ public sealed class OutfitMotionDrawTests
         Assert.Equal(nodes, retained.Nodes.ToArray());
         Assert.Equal(palette, retained.GarmentPalette.ToArray());
         Assert.False(retained.IsCurrentPose);
+
+        var current = (Matrix4x4[])rig.Palette.Clone();
+        current[0].M43 += .25f;
+        ulong previousHistory = next.HistoryRevision;
+        next.Step(rig.Skeleton, current, Matrix4x4.Identity, .55f, MotionLevel.Held, new(slot, 1, ClothPartId));
+        Assert.True(next.TryGetClothPresentation(1, ClothPartId, out var afterGap));
+        Assert.True(afterGap.HistoryRevision > previousHistory);
+        Assert.False(old.TryGetClothPresentation(0, ClothPartId, out _));
+
+        var independent = changed.CreateMotion(null);
+        var independentSlot = new WornClothSlot();
+        independentSlot.Prepare(changed.ClothSurface(1, ClothPartId)!);
+        independent.Step(rig.Skeleton, current, Matrix4x4.Identity, .55f, MotionLevel.Held,
+            new(independentSlot, 1, ClothPartId));
+        Assert.True(independent.TryGetClothPresentation(1, ClothPartId, out var fitted));
+        Assert.True(Vector3.Distance(nodes[2], fitted.Nodes[2]) > .001f);
+        AssertClose(fitted.Nodes, afterGap.Nodes);
     }
 
     [Fact]

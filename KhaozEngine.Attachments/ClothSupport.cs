@@ -7,7 +7,8 @@ namespace KhaozEngine.Attachments;
 public readonly struct ClothSupport
 {
     private ClothSupport(ColliderCapsule capsule, Vector3 planeNormal, Quaternion rotation, Vector3 translation,
-        ClothSupportIdentity identity = default, bool lowerSegment = false, bool adjustable = false)
+        ClothSupportIdentity identity = default, bool lowerSegment = false, bool adjustable = false,
+        ClothLowerArc lowerArc = default, int pathStart = 0, int pathCount = 0)
     {
         if (!float.IsFinite(rotation.LengthSquared()) || MathF.Abs(rotation.LengthSquared() - 1) > .0001f)
             throw new ArgumentOutOfRangeException(nameof(rotation), "A unit rotation is required.");
@@ -21,6 +22,9 @@ public readonly struct ClothSupport
         Identity = identity;
         IsLowerSegment = lowerSegment;
         Adjustable = adjustable;
+        _lowerArc = lowerArc;
+        _pathStart = pathStart;
+        _pathCount = pathCount;
     }
 
     internal ColliderCapsule LocalCapsule { get; }
@@ -31,6 +35,16 @@ public readonly struct ClothSupport
     public bool IsLowerSegment { get; }
 
     private bool Adjustable { get; }
+    private readonly ClothLowerArc _lowerArc;
+    private readonly int _pathStart, _pathCount;
+
+    private bool SharesLowerArc(in ClothSupport other) => _lowerArc.IsActive && other._lowerArc.IsActive &&
+        _pathCount == other._pathCount;
+
+    private ReadOnlySpan<ClothHeldEdge> Edges(ClothHeldEdge[]? path) =>
+        _pathCount == 0 ? [] : path.AsSpan(_pathStart, _pathCount);
+    private bool LinearLower(in ClothSupport other) => IsLowerSegment && !SharesLowerArc(other);
+    private ColliderCapsule LowerWorld => _lowerArc.IsActive ? WorldCapsule : LocalCapsule;
 
     internal static ClothSupport PosedCapsule(ColliderCapsule local, Quaternion rotation, Vector3 translation,
         ClothSupportIdentity identity)
@@ -60,6 +74,16 @@ public readonly struct ClothSupport
         return new ClothSupport(capsule, default, Quaternion.Identity, Vector3.Zero, identity, lowerSegment: true);
     }
 
+    internal static ClothSupport HeldLowerSegment(in HeldChainSegment segment, ClothHeldEdge edge,
+        ClothSupportIdentity identity, int pathStart, int pathCount)
+    {
+        ColliderCapsule world = segment.Capsule;
+        ValidateCapsule(world);
+        return new ClothSupport(new ColliderCapsule(Vector3.Zero, edge.LocalAxis, world.Radius), default,
+            segment.Rotation, world.Start, identity, lowerSegment: true, adjustable: true,
+            ClothLowerArc.From(segment.Anchor, segment.ChainRoot), pathStart, pathCount);
+    }
+
     private static void ValidateCapsule(ColliderCapsule capsule)
     {
         if (!float.IsFinite(capsule.Radius) || capsule.Radius <= 0 || !ChainMath.IsFinite(capsule.Start) ||
@@ -78,16 +102,19 @@ public readonly struct ClothSupport
 
     internal ColliderCapsule WorldCapsule =>
         new(ToWorld(LocalCapsule.Start), ToWorld(LocalCapsule.End), LocalCapsule.Radius);
-    internal ColliderCapsule CapsuleAt(in ClothSupport target, float time)
+    internal ColliderCapsule CapsuleAt(in ClothSupport target, float time, in ClothHeldPaths paths)
     {
         if (time == 0) return WorldCapsule;
         if (time == 1) return target.WorldCapsule;
-        if (IsLowerSegment)
-            return new ColliderCapsule(Vector3.Lerp(LocalCapsule.Start, target.LocalCapsule.Start, time),
-                Vector3.Lerp(LocalCapsule.End, target.LocalCapsule.End, time),
-                float.Lerp(LocalCapsule.Radius, target.LocalCapsule.Radius, time));
+        if (LinearLower(target))
+        {
+            ColliderCapsule opening = LowerWorld, closing = target.LowerWorld;
+            return new ColliderCapsule(Vector3.Lerp(opening.Start, closing.Start, time),
+                Vector3.Lerp(opening.End, closing.End, time), float.Lerp(opening.Radius, closing.Radius, time));
+        }
         Quaternion rotation = ClothContactSweep.Interpolate(Rotation, target.Rotation, time);
-        Vector3 translation = Vector3.Lerp(Translation, target.Translation, time);
+        Vector3 translation = SharesLowerArc(target) ? HeldRootAt(target, time, paths) :
+            Vector3.Lerp(Translation, target.Translation, time);
         ColliderCapsule local = Adjustable ? new ColliderCapsule(
             Vector3.Lerp(LocalCapsule.Start, target.LocalCapsule.Start, time),
             Vector3.Lerp(LocalCapsule.End, target.LocalCapsule.End, time),
@@ -96,31 +123,48 @@ public readonly struct ClothSupport
             Vector3.Transform(local.End, rotation) + translation, local.Radius);
     }
 
+    private Vector3 HeldRootAt(in ClothSupport target, float time, in ClothHeldPaths paths)
+    {
+        Vector3 root = _lowerArc.At(target._lowerArc, time);
+        var before = Edges(paths.Opening);
+        var after = target.Edges(paths.Closing);
+        for (int i = 0; i < before.Length; i++) root += before[i].At(after[i], time);
+        return root;
+    }
+
     internal Vector3 PlaneNormal => Vector3.Transform(LocalPlaneNormal, Rotation);
 
     internal bool Matches(in ClothSupport other) =>
         (IsPlane || LocalCapsule.Radius > 0) && Identity == other.Identity &&
         IsLowerSegment == other.IsLowerSegment && LocalPlaneNormal == other.LocalPlaneNormal &&
-        Adjustable == other.Adjustable &&
+        (IsLowerSegment || Adjustable == other.Adjustable) &&
         (IsLowerSegment || Adjustable ? other.LocalCapsule.Radius > 0 : LocalCapsule == other.LocalCapsule);
 
-    internal bool SamePose(in ClothSupport other) => Rotation == other.Rotation && Translation == other.Translation &&
-        LocalCapsule == other.LocalCapsule;
+    internal bool SamePose(in ClothSupport other, in ClothHeldPaths paths) =>
+        Rotation == other.Rotation && Translation == other.Translation &&
+        LocalCapsule == other.LocalCapsule && _lowerArc == other._lowerArc &&
+        Edges(paths.Opening).SequenceEqual(other.Edges(paths.Closing));
 
-    internal float CurvedCapsuleReach(in ClothSupport other, float angle)
+    internal float CurvedCapsuleReach(in ClothSupport other, float angle, in ClothHeldPaths paths)
     {
+        if (LinearLower(other)) return 0;
         float reach = MathF.Max(LocalCapsule.Start.Length(), LocalCapsule.End.Length());
         if (!Adjustable) return reach * angle * angle;
         float lastReach = MathF.Max(other.LocalCapsule.Start.Length(), other.LocalCapsule.End.Length());
         float shift = MathF.Max(Vector3.Distance(LocalCapsule.Start, other.LocalCapsule.Start),
             Vector3.Distance(LocalCapsule.End, other.LocalCapsule.End));
-        return MathF.Max(reach, lastReach) * angle * angle + 2 * angle * shift;
+        float curvature = MathF.Max(reach, lastReach) * angle * angle + 2 * angle * shift;
+        if (!SharesLowerArc(other)) return curvature;
+        curvature += _lowerArc.CurvatureTo(other._lowerArc);
+        var before = Edges(paths.Opening);
+        var after = other.Edges(paths.Closing);
+        for (int i = 0; i < before.Length; i++) curvature += before[i].CurvatureTo(after[i]);
+        return curvature;
     }
 
-    internal ClothSupport Interpolate(in ClothSupport target, float amount)
+    internal ClothSupport InterpolateRigid(in ClothSupport target, float amount)
     {
         if (amount == 1) return target;
-        if (IsLowerSegment) return LowerSegment(CapsuleAt(target, amount), Identity);
         var local = new ColliderCapsule(Vector3.Lerp(LocalCapsule.Start, target.LocalCapsule.Start, amount),
             Vector3.Lerp(LocalCapsule.End, target.LocalCapsule.End, amount),
             float.Lerp(LocalCapsule.Radius, target.LocalCapsule.Radius, amount));
@@ -128,9 +172,10 @@ public readonly struct ClothSupport
             Vector3.Lerp(Translation, target.Translation, amount), Identity);
     }
 
-    internal ClothSupport Rebased(Vector3 change) => IsLowerSegment
+    internal ClothSupport Rebased(Vector3 change) => IsLowerSegment && !_lowerArc.IsActive
         ? LowerSegment(LocalCapsule with { Start = LocalCapsule.Start + change, End = LocalCapsule.End + change }, Identity)
-        : new ClothSupport(LocalCapsule, LocalPlaneNormal, Rotation, Translation + change, Identity, adjustable: Adjustable);
+        : new ClothSupport(LocalCapsule, LocalPlaneNormal, Rotation, Translation + change, Identity,
+            IsLowerSegment, Adjustable, _lowerArc.Rebased(change), _pathStart, _pathCount);
 
     internal Vector3 SurfaceDisplacement(in ClothSupport previous, Vector3 worldPoint)
     {
@@ -142,17 +187,31 @@ public readonly struct ClothSupport
         Translation - previous.Translation + Vector3.Cross(
             ClothContactSweep.AngularDisplacement(previous.Rotation, Rotation), worldPoint - Translation);
 
+    private Vector3 HeldRootClosingDerivative(in ClothSupport previous, in ClothHeldPaths paths)
+    {
+        Vector3 root = Vector3.Transform(_lowerArc.LocalStart, _lowerArc.AnchorRotation) + _lowerArc.AnchorOrigin;
+        Vector3 derivative = _lowerArc.ClosingDerivative(previous._lowerArc, root);
+        var before = previous.Edges(paths.Opening);
+        var after = Edges(paths.Closing);
+        for (int i = 0; i < after.Length; i++) derivative += after[i].ClosingDerivative(before[i]);
+        return derivative;
+    }
+
     internal Vector3 CapsuleClosingDerivative(in ClothSupport previous, Vector3 point,
-        ChainCapsuleCollision.AxisFraction fraction, Vector3 normal)
+        ChainCapsuleCollision.AxisFraction fraction, Vector3 normal, in ClothHeldPaths paths)
     {
         if (!IsLowerSegment && !Adjustable) return SurfaceClosingDerivative(previous, point);
 
-        ColliderCapsule before = previous.LocalCapsule, now = LocalCapsule;
+        bool linear = LinearLower(previous);
+        ColliderCapsule before = linear ? previous.LowerWorld : previous.LocalCapsule;
+        ColliderCapsule now = linear ? LowerWorld : LocalCapsule;
         Vector3 axisChange = (float)fraction.StartWeight * (now.Start - before.Start) +
             (float)fraction.EndWeight * (now.End - before.End);
         Vector3 radiusChange = (now.Radius - before.Radius) * normal;
-        return IsLowerSegment ? axisChange + radiusChange :
-            SurfaceClosingDerivative(previous, point) + Vector3.Transform(axisChange, Rotation) + radiusChange;
+        if (linear) return axisChange + radiusChange;
+        Vector3 surface = SurfaceClosingDerivative(previous, point);
+        if (SharesLowerArc(previous)) surface += HeldRootClosingDerivative(previous, paths) - (Translation - previous.Translation);
+        return surface + Vector3.Transform(axisChange, Rotation) + radiusChange;
     }
 
     internal Vector3 CapsuleDisplacement(in ClothSupport previous, Vector3 point,
@@ -160,9 +219,11 @@ public readonly struct ClothSupport
     {
         if (!IsLowerSegment && !Adjustable) return SurfaceDisplacement(previous, point);
 
-        ColliderCapsule before = previous.LocalCapsule, now = LocalCapsule;
+        bool linear = LinearLower(previous);
+        ColliderCapsule before = linear ? previous.LowerWorld : previous.LocalCapsule;
+        ColliderCapsule now = linear ? LowerWorld : LocalCapsule;
         Vector3 priorCenter = (float)fraction.StartWeight * before.Start + (float)fraction.EndWeight * before.End;
-        if (IsLowerSegment)
+        if (linear)
         {
             Vector3 previousNormal = PreviousRadial(now.End - now.Start, before.End - before.Start, normal);
             return point - (priorCenter + before.Radius * previousNormal);

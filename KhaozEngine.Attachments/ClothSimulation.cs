@@ -53,6 +53,13 @@ public readonly ref struct ClothSubstep(ReadOnlySpan<Vector3> pins, ReadOnlySpan
         ReadOnlySpan<ClothSupport> closingSupports, float seconds, Vector3 gravity)
         : this(pins, openingSupports, closingSupports, seconds, gravity, []) { }
 
+    internal ClothSubstep(ReadOnlySpan<Vector3> pins, ReadOnlySpan<ClothSupport> openingSupports,
+        ReadOnlySpan<ClothSupport> closingSupports, float seconds, Vector3 gravity, ReadOnlySpan<ClothHullSupport> hulls,
+        ClothHeldPaths paths)
+        : this(pins, openingSupports, closingSupports, seconds, gravity, hulls) => HeldPaths = paths;
+
+    internal ClothHeldPaths HeldPaths { get; }
+
     public ReadOnlySpan<ClothHullSupport> Hulls { get; } = hulls;
     public ReadOnlySpan<Vector3> Pins { get; } = pins;
     public ReadOnlySpan<ClothSupport> OpeningSupports { get; } = openingSupports;
@@ -326,7 +333,7 @@ public sealed class ClothSimulation
     }
 
     private static ClothSubstep ClosingOnly(in ClothSubstep step) => new(step.Pins, step.ClosingSupports,
-        step.ClosingSupports, step.Seconds, step.Gravity, step.Hulls);
+        step.ClosingSupports, step.Seconds, step.Gravity, step.Hulls, step.HeldPaths.ClosingOnly);
 
     private ClothContactWork ContactWork() => new(_contact.Checks, _contact.Candidates, _contact.SweepRefinements);
 

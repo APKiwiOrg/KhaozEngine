@@ -11,28 +11,20 @@ namespace KhaozEngine.Tests.Render3D;
 
 public sealed class WornClothHeldSupportTests
 {
+    private const uint ArmId = 124;
+
     [Theory]
-    [InlineData(false, 0, 90)]
-    [InlineData(true, 45, 135)]
-    [InlineData(true, 5, 120)]
-    public void A_rotating_held_segment_reaches_the_pinned_seam_along_its_arc(bool subTick, int startsAt, int endsAt)
+    [InlineData(false, 0, 90, MotionLevel.Held, MotionLevel.Held)]
+    [InlineData(true, 45, 135, MotionLevel.Held, MotionLevel.Held)]
+    [InlineData(true, 5, 120, MotionLevel.Held, MotionLevel.Held)]
+    [InlineData(true, 45, 135, MotionLevel.Simulated, MotionLevel.Held)]
+    [InlineData(true, 45, 135, MotionLevel.Held, MotionLevel.Simulated)]
+    public void A_rotating_held_segment_reaches_the_pinned_seam_along_its_arc(bool subTick, int startsAt, int endsAt,
+        MotionLevel openingLevel, MotionLevel closingLevel)
     {
         using var rig = new OutfitRig();
         var cloth = rig.Wear("arm-cloth.json", ClothAsset(rig, hipOnlyPins: true).Set);
-        var glb = SkinnedAttachmentGlbFixture.Chained();
-        glb.Nodes[0]!["children"] = new JsonArray(1);
-        glb.Nodes[1]!["children"] = new JsonArray(2);
-        glb.Nodes[2]!["translation"] = new JsonArray(0, 0, 0);
-        glb.Nodes[3]!["translation"] = new JsonArray(.1f, 0, 0);
-        glb.SetInverseBind(0, Matrix4x4.CreateTranslation(-.1f, -2, 0));
-        glb.SetInverseBind(2, Matrix4x4.CreateTranslation(0, -2, 0));
-        const uint armId = 124;
-        var arm = new SkinnedAttachmentPartDefinition(armId, rig.Source.Mesh("rotating-arm.glb", glb.Build()))
-        {
-            Motion = new ChainMotionDefinition([new ChainDefinition(["left0", "left1"], .1f * Vector3.UnitX, FallSettings)], []),
-            Regions = [new("alpha", 1)],
-        };
-        var lower = rig.Wear("rotating-arm.json", new AttachmentSetDefinition([arm], AttachmentLayer.Garment, []));
+        var lower = WearArm(rig);
         using var outfit = rig.Cache.BindOutfit(OutfitLiftDrawTests.Body(rig), [lower, cloth]);
         var motion = outfit.CreateMotion(null, new ChainSimulationOptions { HoldBlendSeconds = 0 });
         var surface = outfit.ClothSurface(1, ClothPartId)!;
@@ -52,26 +44,69 @@ public sealed class WornClothHeldSupportTests
         if (startsAt == 5)
             Assert.True(.2f * (1 - MathF.Sin(.5f * (startAngle + endAngle))) > contactReach);
         pose[0] = Matrix4x4.CreateRotationY(startAngle) * Matrix4x4.CreateTranslation(anchor);
-        motion.Step(rig.Skeleton, pose, Matrix4x4.Identity, 0, MotionLevel.Held, select);
+        motion.Step(rig.Skeleton, pose, Matrix4x4.Identity, 0, openingLevel, select);
         Assert.True(motion.TryGetClothPresentation(1, ClothPartId, out var opening));
         ulong revision = opening.DisplayRevision;
         pose[0] = Matrix4x4.CreateRotationY(endAngle) * Matrix4x4.CreateTranslation(anchor);
-        motion.Step(rig.Skeleton, pose, Matrix4x4.Identity, subTick ? .004f : 1f / 60, MotionLevel.Held, select);
+        motion.Step(rig.Skeleton, pose, Matrix4x4.Identity, subTick ? .004f : 1f / 60, closingLevel, select);
         Assert.Equal(subTick ? 0 : 1, motion.ClothStatus.Substeps);
         ClothStepResult contact = subTick ? motion.ClothStatus.Projection : motion.ClothStatus.Solve;
         if (startsAt == 5)
             Assert.True(contact.Status is ClothStepStatus.UnresolvedContact or ClothStepStatus.SweepWork);
         else
             Assert.Equal(ClothStepStatus.UnresolvedContact, contact.Status);
-        Assert.Equal(armId, contact.PartId);
+        Assert.Equal(ArmId, contact.PartId);
         if (subTick)
         {
             Assert.Equal(WornClothFallback.TransferRefused, motion.ClothStatus.Fallback);
             Assert.True(motion.TryGetClothPresentation(1, ClothPartId, out var retained));
             Assert.Equal(revision, retained.DisplayRevision);
         }
-
     }
+
+    [Theory]
+    [InlineData(MotionLevel.Held)]
+    [InlineData(MotionLevel.Simulated)]
+    public void A_layered_rebase_keeps_the_accepted_surface_and_lower_chain_pose(MotionLevel level)
+    {
+        using var rig = new OutfitRig();
+        var cloth = rig.Wear("layered-rebase-cloth.json", ClothAsset(rig, hipOnlyPins: true).Set);
+        var lower = WearArm(rig, includeRigid: true);
+        using var outfit = rig.Cache.BindOutfit(OutfitLiftDrawTests.Body(rig), [lower, cloth]);
+        var options = new ChainSimulationOptions { HoldBlendSeconds = 0 };
+        var far = outfit.CreateMotion(null, options);
+        var near = outfit.CreateMotion(null, options);
+        var farSlot = new WornClothSlot();
+        var nearSlot = new WornClothSlot();
+        var surface = outfit.ClothSurface(1, ClothPartId)!;
+        farSlot.Prepare(surface);
+        nearSlot.Prepare(surface);
+        var farSelection = new WornClothSelection(farSlot, 1, ClothPartId);
+        var nearSelection = new WornClothSelection(nearSlot, 1, ClothPartId);
+        var pose = (Matrix4x4[])rig.Palette.Clone();
+        pose[0].Translation += Vector3.UnitZ;
+
+        const float start = 31.99f, end = 32.01f;
+        var nearEnd = Matrix4x4.CreateTranslation(end - start, 0, 0);
+        far.Step(rig.Skeleton, pose, Matrix4x4.CreateTranslation(start, 0, 0), 0, level, farSelection);
+        near.Step(rig.Skeleton, pose, Matrix4x4.Identity, 0, level, nearSelection);
+        pose[0].M43 += .003f;
+        far.Step(rig.Skeleton, pose, Matrix4x4.CreateTranslation(end, 0, 0), 1f / 60, level, farSelection);
+        near.Step(rig.Skeleton, pose, nearEnd, 1f / 60, level, nearSelection);
+
+        Assert.Equal(WornClothFallback.None, far.ClothStatus.Fallback);
+        Assert.Equal(2, far.ClothStatus.Substeps);
+        Assert.True(far.TryGetClothPresentation(1, ClothPartId, out var rebased));
+        Assert.True(near.TryGetClothPresentation(1, ClothPartId, out var control));
+        Assert.True(rebased.IsCurrentPose);
+        Assert.Equal(end, rebased.WorldOrigin.X);
+        for (int node = 0; node < rebased.Nodes.Length; node++)
+            Assert.InRange(Vector3.Distance(control.Nodes[node] - nearEnd.Translation, rebased.Nodes[node]), 0, .0005f);
+        for (int joint = 0; joint < 2; joint++)
+            Assert.InRange(Vector3.Distance(near.JointsFromAnchor[joint].Translation, far.JointsFromAnchor[joint].Translation),
+                0, .0005f);
+    }
+
     [Fact]
     public void Fitted_held_joint_shapes_preserve_segment_length_at_the_shared_tick()
     {
@@ -118,6 +153,25 @@ public sealed class WornClothHeldSupportTests
         Assert.True(.125f * before.CurvedCapsuleReach(after, 0, paths) >= mid.Start.Length() - MathF.Abs(firstParent.Z));
     }
 
+    private static BoundAttachmentSet WearArm(OutfitRig rig, bool includeRigid = false)
+    {
+        var glb = SkinnedAttachmentGlbFixture.Chained();
+        glb.Nodes[0]!["children"] = new JsonArray(1);
+        glb.Nodes[1]!["children"] = new JsonArray(2);
+        glb.Nodes[2]!["translation"] = new JsonArray(0, 0, 0);
+        glb.Nodes[3]!["translation"] = new JsonArray(.1f, 0, 0);
+        glb.SetInverseBind(0, Matrix4x4.CreateTranslation(-.1f, -2, 0));
+        glb.SetInverseBind(2, Matrix4x4.CreateTranslation(0, -2, 0));
+        var arm = new SkinnedAttachmentPartDefinition(ArmId, rig.Source.Mesh("rotating-arm.glb", glb.Build()))
+        {
+            Motion = new ChainMotionDefinition([new ChainDefinition(["left0", "left1"], .1f * Vector3.UnitX, FallSettings)], []),
+            Regions = [new("alpha", 1)],
+        };
+        ColliderDefinition[] colliders = includeRigid
+            ? [new("hip", 3 * Vector3.UnitZ, 4 * Vector3.UnitZ, .05f)] : [];
+        return rig.Wear("rotating-arm.json", new AttachmentSetDefinition([arm], AttachmentLayer.Garment, [], colliders));
+    }
+
     private sealed class HeldLengthProbe(ChainSegment segment) : IChainExternalStep
     {
         public ChainExclusion Excluded => default;
@@ -131,5 +185,4 @@ public sealed class WornClothHeldSupportTests
             MiddleLength = Vector3.Distance(sample.Start, sample.End);
         }
     }
-
 }

@@ -8,7 +8,7 @@ internal sealed class WornClothSupports
 {
     private const int Capacity = ClothWorkLimits.RigidSupportLimit + ClothWorkLimits.LowerSegmentLimit;
     private readonly ClothSupport[] _frame = new ClothSupport[Capacity];
-    private readonly ClothSupport[] _priorFrame = new ClothSupport[Capacity];
+    private readonly ClothSupport[] _priorRigid = new ClothSupport[ClothWorkLimits.RigidSupportLimit];
     private readonly ClothSupport[] _displayed = new ClothSupport[Capacity];
     private ClothSupport[] _tickOpening = new ClothSupport[Capacity];
     private ClothSupport[] _tickClosing = new ClothSupport[Capacity];
@@ -31,11 +31,11 @@ internal sealed class WornClothSupports
     private static ClothSupport Lower(in ColliderCapsule segment, ClothSupportIdentity identity) =>
         ClothSupport.LowerSegment(segment with { Radius = MathF.Max(1e-10f, segment.Radius) }, identity);
 
-    private ClothSupport ShownLower(ChainSimulation chains, in WornClothSegment lower, int index) => chains.IsHeld
-        ? Held(chains.ShownHeldSegment(lower.Segment), lower, index, _framePath)
-        : Lower(chains.ShownSegment(lower.Segment), lower.Identity);
+    // The displayed chain has a posed hierarchy in either motion mode.
+    private ClothSupport ShownLower(ChainSimulation chains, in WornClothSegment lower, int index) =>
+        Articulated(chains.ShownArticulatedSegment(lower.Segment), lower, index, _framePath);
 
-    private static ClothSupport Held(in HeldChainSegment held, in WornClothSegment lower, int index, ClothHeldEdge[] path)
+    private static ClothSupport Articulated(in HeldChainSegment held, in WornClothSegment lower, int index, ClothHeldEdge[] path)
     {
         ClothHeldEdge edge = ClothHeldEdge.From(held);
         path[index] = edge;
@@ -69,7 +69,7 @@ internal sealed class WornClothSupports
         ReadOnlySpan<Vector3> pins)
     {
         for (int i = 0; i < Rigid; i++)
-            _tickClosing[i] = _priorFrame[i].InterpolateRigid(_frame[i], fraction);
+            _tickClosing[i] = _priorRigid[i].InterpolateRigid(_frame[i], fraction);
         for (int i = 0; i < _binding.Segments.Length; i++)
         {
             var lower = _binding.Segments[i];
@@ -77,7 +77,7 @@ internal sealed class WornClothSupports
             int index = Rigid + i;
             if (particles is null)
             {
-                _tickClosing[index] = Held(chains.HeldSegment(lower.Segment, fraction), lower, i, _tickClosingPath);
+                _tickClosing[index] = Articulated(chains.HeldSegment(lower.Segment, fraction), lower, i, _tickClosingPath);
             }
             else
             {
@@ -149,7 +149,7 @@ internal sealed class WornClothSupports
 
     internal void End()
     {
-        _frame.AsSpan(0, Rigid).CopyTo(_priorFrame);
+        _frame.AsSpan(0, Rigid).CopyTo(_priorRigid);
         _frameHulls.AsSpan(0, Hulls).CopyTo(_priorFrameHulls);
     }
 
@@ -162,9 +162,10 @@ internal sealed class WornClothSupports
 
     internal void Rebase(Vector3 change)
     {
+        for (int i = 0; i < Rigid; i++)
+            _priorRigid[i] = _priorRigid[i].Rebased(change);
         for (int i = 0; i < Count; i++)
         {
-            _priorFrame[i] = _priorFrame[i].Rebased(change);
             _displayed[i] = _displayed[i].Rebased(change);
             _tickOpening[i] = _tickOpening[i].Rebased(change);
         }

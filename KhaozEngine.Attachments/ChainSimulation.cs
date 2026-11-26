@@ -185,9 +185,7 @@ public sealed class ChainSimulation
         return segment.Pose(_shown.Frames, _previousAnchors[anchor].Matrix, Radius(segment.Chain));
     }
 
-    internal bool IsHeld => _held;
-
-    internal HeldChainSegment ShownHeldSegment(in ChainSegment segment)
+    internal HeldChainSegment ShownArticulatedSegment(in ChainSegment segment)
     {
         int anchor = Rig.Chains[segment.Chain].Anchor;
         return segment.PoseHeld(_shown.Frames, _previousAnchors[anchor], Radius(segment.Chain));

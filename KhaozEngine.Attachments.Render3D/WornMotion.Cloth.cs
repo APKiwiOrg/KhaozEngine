@@ -16,6 +16,7 @@ public sealed partial class WornMotion
     private WornClothSlot? _activeCloth;
     private WornClothState? _retainedCloth;
     private bool _preparedPriorClothPose;
+    private bool _discardTransferOnNextPose;
     private WornClothBinding? _preparedCloth;
     private WornClothFallback _preparedRefusal;
     private MotionLevel _lastLevel;
@@ -68,6 +69,7 @@ public sealed partial class WornMotion
         var part = slot.State.Binding.Part;
         _simulation.SeedRange(part.FirstChain, part.Binding.Chains.Length);
         _activeCloth = null;
+        _discardTransferOnNextPose = false;
         HistoryRevision++;
         if (retainPresentation)
             _retainedCloth = slot.State;
@@ -140,8 +142,10 @@ public sealed partial class WornMotion
             ClothStatus = ClothStatus with { Fallback = WornClothFallback.SlotOccupied };
         bool live = samePart && refusal == WornClothFallback.None;
         var previous = _hasLastHost ? Relative(_lastModel, _origin) : relative;
+        bool discardTransfer = _discardTransferOnNextPose || seconds > _simulation.Options.LongestGapSeconds;
         state.Begin(_simulation, _skeleton, _preparedPriorClothPose ? _lastHost : [], palette, previous, relative, _origin,
-            _simulation.NeedsReset(relative, seconds), live, discardTransfer: seconds > _simulation.Options.LongestGapSeconds);
+            _simulation.NeedsReset(relative, seconds), live, discardTransfer);
+        _discardTransferOnNextPose = false;
         return state;
     }
 
@@ -167,7 +171,12 @@ public sealed partial class WornMotion
     {
         PoseRevision++;
         HistoryRevision++;
-        if (_activeCloth is not { } slot || !_hasLastHost) return;
+        if (_activeCloth is not { } slot) return;
+        if (!_hasLastHost)
+        {
+            _discardTransferOnNextPose = true;
+            return;
+        }
         using var scope = DeterministicFpScope.Enter();
         var relative = Relative(_lastModel, _origin);
         var state = slot.State;

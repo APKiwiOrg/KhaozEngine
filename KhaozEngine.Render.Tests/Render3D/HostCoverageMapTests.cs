@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
@@ -297,6 +298,7 @@ public class HostCoverageMapTests
         var regions = new List<HostCoverageRegion> { new("chest", triangles, strengths) };
         var refinement = new[] { new HostCoverageRefinement(new(0, 0, 0, 1), 1) };
         var map = new HostCoverageMap(Hash, topology, regions, refinement, new("synthetic-exporter", "r1"));
+        byte[] canonical = HostCoverageMapJson.Write(map);
         string semantic = HostCoverageMapJson.SemanticSha256(map);
 
         topology[0] = new(9, 9, 9, 9);
@@ -306,8 +308,17 @@ public class HostCoverageMapTests
         regions.Clear();
         refinement[0] = new(new(4, 4, 4, 4), 4);
 
-        Assert.Equal(new[] { new CoverageTopologyEntry(0, 0, 0, 0), new CoverageTopologyEntry(0, 0, 1, 1) }, map.Topology);
         HostCoverageRegion region = Assert.Single(map.Regions);
+        var replacementRegion = new HostCoverageRegion("replacement", region.Triangles, region.Strengths);
+        // #1818: A collection's SyncRoot exposed the array and let callers change data covered by the cached digest.
+        TryReplaceThroughSyncRoot(map.Topology, new CoverageTopologyEntry(0, 0, 0, 1));
+        TryReplaceThroughSyncRoot(map.Regions, replacementRegion);
+        TryReplaceThroughSyncRoot(map.Refinement, new HostCoverageRefinement(new(0, 0, 0, 1), 2));
+        TryReplaceThroughSyncRoot(region.Triangles, new HostCoverageRegionTriangles(new(0, 0, 0, 1), CoverageTriangleRole.Collar));
+        TryReplaceThroughSyncRoot(region.Strengths, new CoverageSurfaceStrength(0, 0.5f));
+
+        Assert.Equal(canonical, HostCoverageMapJson.Write(map));
+        Assert.Equal(new[] { new CoverageTopologyEntry(0, 0, 0, 0), new CoverageTopologyEntry(0, 0, 1, 1) }, map.Topology);
         Assert.Equal(new CoverageTriangleRange(0, 0, 0, 1), Assert.Single(region.Triangles).Triangles);
         Assert.Equal(new[] { new CoverageSurfaceStrength(0, 1f), new CoverageSurfaceStrength(1, 0f) }, region.Strengths);
         Assert.Equal(1, Assert.Single(map.Refinement).Level);
@@ -327,6 +338,19 @@ public class HostCoverageMapTests
         Assert.Equal(new CoverageChildRole[] { new(0, 0, 0, 2, 1, CoverageTriangleRole.Core), new(0, 0, 1, 2, 3, CoverageTriangleRole.Core) }, overridden.ChildRoles);
         Assert.False(overridden.ChildRoles is CoverageChildRole[] || overridden.ChildRoles is List<CoverageChildRole>);
         Assert.Throws<NotSupportedException>(() => ((IList<CoverageChildRole>)overridden.ChildRoles)[0] = default);
+    }
+
+    static void TryReplaceThroughSyncRoot(object items, object replacement)
+    {
+        try
+        {
+            if (items is ICollection collection && collection.SyncRoot is IList storage)
+                storage[0] = replacement;
+        }
+        catch (NotSupportedException)
+        {
+            // The view can refuse to expose a sync root or refuse writes through it.
+        }
     }
 
     [Fact]

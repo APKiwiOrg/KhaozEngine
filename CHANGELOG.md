@@ -43,6 +43,9 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   string allocation. [#1824](https://github.com/APKiwiOrg/KhaozEngine/issues/1824)
 - The equipment coverage tool reports `OutputPartMismatch` and the damaged part's path when an existing
   output part has the wrong length or hash. [#1827](https://github.com/APKiwiOrg/KhaozEngine/issues/1827)
+- Host coverage maps and regions keep immutable snapshots of their collections. Reading a collection's
+  synchronization object can no longer change coverage data after the map computes its digest.
+  [#1818](https://github.com/APKiwiOrg/KhaozEngine/issues/1818)
 
 ## 24.11.0
 

@@ -21,6 +21,24 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(MathF.Atan(0.5f), cam.Elevation, 5);
         }
 
+        // #1356: measure both ground axes in screen pixels at the default azimuth.
+        [Theory]
+        [InlineData(null, 0.4472136f)] // sin(atan(1/2)) = 1/sqrt(5)
+        [InlineData(30f, 0.5f)]
+        public void Ground_axes_project_at_the_documented_slope(float? elevationDegrees, float slope)
+        {
+            const int width = 1280, height = 720;
+            var cam = new IsoCamera3D { AspectRatio = (float)width / height };
+            if (elevationDegrees is float degrees)
+                cam.Elevation = degrees * (MathF.PI / 180f);
+
+            Assert.True(cam.WorldToScreen(Vector3.Zero, width, height, out var origin));
+            Assert.True(cam.WorldToScreen(Vector3.UnitX, width, height, out var x));
+            Assert.True(cam.WorldToScreen(Vector3.UnitZ, width, height, out var z));
+            Assert.Equal(slope, (x.Y - origin.Y) / (x.X - origin.X), 5);
+            Assert.Equal(-slope, (z.Y - origin.Y) / (z.X - origin.X), 5);
+        }
+
         [Fact]
         public void Forward_matches_azimuth_elevation()
         {

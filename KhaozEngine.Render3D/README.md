@@ -6,8 +6,10 @@ The package carries no ECS edge. Entity rendering (`Transform3D`, `MeshInstance`
 in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only consumer does not pull `Ecs`,
 `Simulation` and `Serialization`. The `Game3D` umbrella carries both.
 
-- `IsoCamera3D` - orthographic isometric camera (configurable angle/zoom/target; `ScreenToRay`/`ScreenToGround`
-  picking; `Frame` fit-to-bounds).
+- `IsoCamera3D` provides orthographic projection, `ScreenToRay` and `ScreenToGround` picking, and
+  `Frame` to fit bounds. At the default azimuth and elevation, each ground axis rises about 0.447
+  pixels per horizontal pixel. Set `Elevation = MathF.PI / 6f` at the default 45 degree azimuth
+  for a 2:1 ground grid.
 - `FlyCamera3D` / `FlyCameraController` - free-fly editor camera: `FlyCamera3D` implements `IIsoCamera3D` (a
   world `Position` plus `Yaw`/`Pitch`, no orbit target, pitch clamped short of vertical) so it drops into
   `Scene3D.CameraOverride` exactly like `FollowCamera3D`, and carries the same `ScreenToRay`/`ScreenToGround`/
@@ -1974,8 +1976,9 @@ SharpGLTF) are confined to this package via
 
 `HostCoverageMapJson.Read(utf8, identity)` reads strict host coverage format 1 or 2. `HostCoverageMap`
 owns the exact host GLB SHA-256, welded surface topology, region triangle roles and strengths,
-fixed refinement levels from 1 to 4, and authoring labels. It snapshots and canonically sorts its
-collections. Limits are 32 regions, 65536 source render vertices and 65536 referenced triangles.
+fixed refinement levels from 1 to 4, and authoring labels. Map and region collections are immutable
+snapshots in canonical order, so their contents stay consistent with the map's cached digest.
+Limits are 32 regions, 65536 source render vertices and 65536 referenced triangles.
 Regions are disjoint, and a surface may have positive strength in only one region. Source-dependent
 checks, including core and collar strength requirements, belong to the binding layer with the GLB.
 

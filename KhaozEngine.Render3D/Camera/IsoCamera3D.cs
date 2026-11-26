@@ -4,9 +4,8 @@ using System.Numerics;
 namespace KhaozEngine.Render3D
 {
     /// <summary>
-    /// Orthographic (no perspective) isometric camera. Defaults reproduce a 2:1 iso look
-    /// (azimuth 45 deg, elevation atan(0.5) ~= 26.57 deg). Angle, ortho size/zoom, and target are all
-    /// configurable so true-iso 30-35 deg can be tried by eye. Pure System.Numerics, no GPU.
+    /// Orthographic camera with configurable angles, zoom and target. At the default 45 degree
+    /// azimuth, each ground axis has a screen slope of magnitude sin(Elevation).
     ///
     /// Convention: Y up, right-handed. Eye = Target + Distance * dirToEye, where
     /// dirToEye = normalize(cosE*sinA, sinE, cosE*cosA). Forward = -dirToEye.
@@ -15,7 +14,8 @@ namespace KhaozEngine.Render3D
     {
         /// <summary>Rotation about the Y (up) axis, radians. Default 45 deg.</summary>
         public float Azimuth = MathF.PI / 4f;
-        /// <summary>Tilt above the horizontal, radians. Default atan(0.5) ~= 26.57 deg (2:1 iso).</summary>
+        /// <summary>Tilt above the horizontal in radians. Defaults to atan(0.5), about 26.57 degrees.
+        /// Use MathF.PI / 6 (30 degrees) with the default azimuth for a 2:1 ground grid.</summary>
         public float Elevation = MathF.Atan(0.5f);
         /// <summary>World-space point the camera looks at.</summary>
         public Vector3 Target = Vector3.Zero;

@@ -118,8 +118,8 @@ public sealed class HostCoverageRegion
         this.childRolePath = childRolePath;
 
         Key = key;
-        Triangles = Array.AsReadOnly(ownedTriangles);
-        Strengths = Array.AsReadOnly(ownedStrengths);
+        Triangles = ImmutableArray.Create(ownedTriangles);
+        Strengths = ImmutableArray.Create(ownedStrengths);
         ChildRoles = ImmutableArray.Create(ownedChildRoles);
     }
 
@@ -252,9 +252,9 @@ public sealed class HostCoverageMap
 
         Array.Sort(ownedRegions, (left, right) => string.CompareOrdinal(left.Key, right.Key));
         HostSha256 = hostSha256;
-        Topology = Array.AsReadOnly(ownedTopology);
-        Regions = Array.AsReadOnly(ownedRegions);
-        Refinement = Array.AsReadOnly(ownedRefinement);
+        Topology = ImmutableArray.Create(ownedTopology);
+        Regions = ImmutableArray.Create(ownedRegions);
+        Refinement = ImmutableArray.Create(ownedRefinement);
         Authoring = authoring;
         semanticSha256 = HostCoverageMapJson.ComputeSemanticSha256(this);
     }

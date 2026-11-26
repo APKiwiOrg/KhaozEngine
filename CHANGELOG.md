@@ -11,6 +11,10 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Width-bounded swing guides form a collision sheet from their roots to their virtual tips. Capsules and
   lower-layer chains can contact the cloth between guides. A detected crossing keeps its opening side
   while the row solves guide lengths and local contact. [Attachment motion](docs/design/ATTACHMENT-MOTION-DESIGN.md)
+- A capsule that passes outside a nearly collinear cloth triangle leaves the guides alone. A capsule crossing
+  the thin face can still transfer velocity to them. [#1902](https://github.com/APKiwiOrg/KhaozEngine/issues/1902)
+- A terrain edit that changes a supported placement's height invalidates storage and navigation tiles reached
+  by its old and new collider and interaction envelope. [#1348](https://github.com/APKiwiOrg/KhaozEngine/issues/1348)
 - `TileDocumentGroundHeight` places presented bodies on the same ground triangles used by the terrain mesh and
   colliders, including authored overlay cuts. `TileGroundHeight.TrySample` exposes that surface to headless callers.
   [#1479](https://github.com/APKiwiOrg/KhaozEngine/issues/1479)
@@ -18,6 +22,8 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   capsule takes clearance vertically on a verified inclined plane, so it can reach the waypoint. Stair edges
   retain their horizontal clearance. Rebake saved profiles to pick up the corrected edges.
   [#1265](https://github.com/APKiwiOrg/KhaozEngine/issues/1265)
+- Ground-only route following checks the water at the predicted landing. A wading body holds on shore when the
+  next step would put it in swimming depth. [#1281](https://github.com/APKiwiOrg/KhaozEngine/issues/1281)
 - The SQLite account store reports `AccountDataRefusal.UpdateReturnedNoRow` when an adopted table discards a
   whitelist change, ban or unban for an existing account. It rolls back trigger writes and returns `null` for a
   missing account. [#1718](https://github.com/APKiwiOrg/KhaozEngine/issues/1718)

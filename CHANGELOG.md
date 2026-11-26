@@ -15,6 +15,9 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   the thin face can still transfer velocity to them. [#1902](https://github.com/APKiwiOrg/KhaozEngine/issues/1902)
 - A terrain edit that changes a supported placement's height invalidates storage and navigation tiles reached
   by its old and new collider and interaction envelope. [#1348](https://github.com/APKiwiOrg/KhaozEngine/issues/1348)
+- Changing a terrain surface's frame invalidates physics chunks and navigation tiles across its old and new
+  extents, including walls that use the frame, even when the patch files keep the same bytes.
+  [#1903](https://github.com/APKiwiOrg/KhaozEngine/issues/1903)
 - `TileDocumentGroundHeight` places presented bodies on the same ground triangles used by the terrain mesh and
   colliders, including authored overlay cuts. `TileGroundHeight.TrySample` exposes that surface to headless callers.
   [#1479](https://github.com/APKiwiOrg/KhaozEngine/issues/1479)
@@ -30,12 +33,16 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - A row-only catalog publish includes the last edit saved before the draft freezes, with or without a publish
   policy. An empty replacement draft refuses with `NoPendingDraft`.
   [#1701](https://github.com/APKiwiOrg/KhaozEngine/issues/1701)
+- A direct catalog import that preserves a definition ID advances the owning family block past that ID
+  before allocating another entry. [#1552](https://github.com/APKiwiOrg/KhaozEngine/issues/1552)
 - SQLite catalog reset reports `SchemaObjectUnexpected` when a host view occupies a catalog table name, even
   with `force`. The refusal names the view before reset changes any tables. Reset uses its own unpooled
   connection to isolate it from a host session's temporary objects and settings.
   [#1731](https://github.com/APKiwiOrg/KhaozEngine/issues/1731)
 - Water traces reuse the captured boundary ID for diagonal shore contacts, eliminating the per-contact
   string allocation. [#1824](https://github.com/APKiwiOrg/KhaozEngine/issues/1824)
+- The equipment coverage tool reports `OutputPartMismatch` and the damaged part's path when an existing
+  output part has the wrong length or hash. [#1827](https://github.com/APKiwiOrg/KhaozEngine/issues/1827)
 
 ## 24.11.0
 

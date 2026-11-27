@@ -27,9 +27,16 @@ internal sealed unsafe class CoreGpuDevice : IGpuDevice
     internal CoreGpuDevice(khaoz_gpu_device* handle)
     {
         _handle = handle;
-        Capabilities = ReadCapabilities(handle);
+        khaoz_gpu_capabilities caps;
+        NativeResult.ThrowIfFailed(KhaozNative.khaoz_gpu_device_capabilities(handle, &caps), nameof(ReadCapabilities));
+        Capabilities = ReadCapabilities(caps);
+        UniformOffsetAlignment = VulkanRingStride.AlignmentFor(caps.uniform_offset_alignment);
+        DynamicUniformBufferLimit = caps.max_dynamic_uniform_buffers;
         Factory = new CoreResourceFactory(this);
     }
+
+    internal ulong UniformOffsetAlignment { get; }
+    internal uint DynamicUniformBufferLimit { get; }
 
     public GpuBackendKind Backend => GpuBackendKind.VulkanNative;
     public GpuCapabilities Capabilities { get; }
@@ -239,10 +246,8 @@ internal sealed unsafe class CoreGpuDevice : IGpuDevice
         }
     }
 
-    private static GpuCapabilities ReadCapabilities(khaoz_gpu_device* device)
+    private static GpuCapabilities ReadCapabilities(khaoz_gpu_capabilities caps)
     {
-        khaoz_gpu_capabilities caps;
-        NativeResult.ThrowIfFailed(KhaozNative.khaoz_gpu_device_capabilities(device, &caps), nameof(ReadCapabilities));
         return GpuCapabilities.FromSupportedMsaaSampleCounts(
             clipSpaceYInverted: caps.clip_space_y_inverted != 0,
             depthRangeZeroToOne: caps.depth_range_zero_to_one != 0,

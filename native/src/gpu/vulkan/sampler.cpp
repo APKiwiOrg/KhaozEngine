@@ -1,20 +1,14 @@
-#include "device.hpp"
+#include "sampler.hpp"
 
 #include <array>
 #include <memory>
 
 using namespace khaoz::vulkan;
 
-struct khaoz_gpu_sampler : device_child {
-    VkSampler handle{};
-
-    explicit khaoz_gpu_sampler(khaoz_gpu_device& owner) noexcept : device_child(owner) {}
-    ~khaoz_gpu_sampler() override {
-        if (handle != VK_NULL_HANDLE) {
-            device.api.vkDestroySampler(device.handle, handle, nullptr);
-        }
-    }
-};
+khaoz_gpu_sampler::~khaoz_gpu_sampler() {
+    if (handle != VK_NULL_HANDLE)
+        device.api.vkDestroySampler(device.handle, handle, nullptr);
+}
 
 namespace {
 

@@ -12,12 +12,15 @@ namespace {
 constexpr VkImageAspectFlags color = VK_IMAGE_ASPECT_COLOR_BIT;
 constexpr VkImageAspectFlags depth_stencil = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
 
-texture_format image_format(uint32_t format) {
+} // namespace
+
+texture_format khaoz::vulkan::image_format(uint32_t format, bool depth) {
     switch (format) {
     case KHAOZ_GPU_RGBA8_UNORM:
         return {VK_FORMAT_R8G8B8A8_UNORM, color, 4};
     case KHAOZ_GPU_R32_FLOAT:
-        return {VK_FORMAT_R32_SFLOAT, color, 4};
+        return depth ? texture_format{VK_FORMAT_D32_SFLOAT, VK_IMAGE_ASPECT_DEPTH_BIT, 0}
+                     : texture_format{VK_FORMAT_R32_SFLOAT, color, 4};
     case KHAOZ_GPU_D32_FLOAT_S8_UINT:
         return {VK_FORMAT_D32_SFLOAT_S8_UINT, depth_stencil, 0};
     case KHAOZ_GPU_D24_UNORM_S8_UINT:
@@ -37,9 +40,11 @@ texture_format image_format(uint32_t format) {
     }
 }
 
+namespace {
+
 VkImageUsageFlags image_usage(uint32_t usage) {
     VkImageUsageFlags flags = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-    if ((usage & KHAOZ_GPU_TEXTURE_SAMPLED) != 0)
+    if ((usage & (uint32_t{KHAOZ_GPU_TEXTURE_SAMPLED} | KHAOZ_GPU_TEXTURE_GENERATE_MIPMAPS)) != 0)
         flags |= VK_IMAGE_USAGE_SAMPLED_BIT;
     if ((usage & KHAOZ_GPU_TEXTURE_RENDER_TARGET) != 0)
         flags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
@@ -74,6 +79,49 @@ khaoz_result create_staging(khaoz_gpu_texture& texture) {
     }
     return texture.staging.create(texture.device.allocator, {texture.layer_stride * desc.array_layers, transfer_buffer,
                                                              VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT});
+}
+
+VkImageViewType sampled_type(const khaoz_gpu_texture_desc& desc) {
+    if ((desc.usage & KHAOZ_GPU_TEXTURE_CUBEMAP) != 0)
+        return desc.is_array || desc.array_layers > 6 ? VK_IMAGE_VIEW_TYPE_CUBE_ARRAY : VK_IMAGE_VIEW_TYPE_CUBE;
+    return desc.is_array || desc.array_layers > 1 ? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D;
+}
+
+khaoz_result create_view(khaoz_gpu_texture& texture, VkImageView& view, VkImageViewType type,
+                         VkImageSubresourceRange range) {
+    auto desc = info<VkImageViewCreateInfo>(VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO);
+    desc.image = texture.image;
+    desc.viewType = type;
+    desc.format = texture.format.vk;
+    desc.subresourceRange = range;
+    const auto& device = texture.device;
+    return check(
+        create_handle(
+            view, [&](auto* pending) { return device.api.vkCreateImageView(device.handle, &desc, nullptr, pending); }),
+        "Could not create a Vulkan image view");
+}
+
+khaoz_result create_views(khaoz_gpu_texture& texture, VkImageUsageFlags usage) {
+    const auto& desc = texture.desc;
+    const auto aspects = texture.format.aspects;
+    if ((usage & VK_IMAGE_USAGE_SAMPLED_BIT) != 0) {
+        const auto sampled_aspects =
+            (aspects & VK_IMAGE_ASPECT_DEPTH_BIT) != 0 ? VkImageAspectFlags{VK_IMAGE_ASPECT_DEPTH_BIT} : aspects;
+        const auto result = create_view(texture, texture.sampled, sampled_type(desc),
+                                        {sampled_aspects, 0, desc.mip_levels, 0, desc.array_layers});
+        if (result != KHAOZ_OK)
+            return result;
+    }
+    if ((usage & VK_IMAGE_USAGE_STORAGE_BIT) != 0) {
+        const auto type = desc.is_array || desc.array_layers > 1 ? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D;
+        const auto result = create_view(texture, texture.storage, type, {aspects, 0, 1, 0, desc.array_layers});
+        if (result != KHAOZ_OK)
+            return result;
+    }
+    if ((usage &
+         (VkImageUsageFlags{VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT} | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)) != 0)
+        return create_view(texture, texture.attachment, VK_IMAGE_VIEW_TYPE_2D, {aspects, 0, 1, 0, 1});
+    return KHAOZ_OK;
 }
 
 khaoz_result create_image(khaoz_gpu_texture& texture) {
@@ -126,6 +174,10 @@ khaoz_result create_image(khaoz_gpu_texture& texture) {
     texture.image = pending_image;
     texture.image_memory = pending_memory;
 
+    const auto views = create_views(texture, image.usage);
+    if (views != KHAOZ_OK)
+        return views;
+
     // Establish a resting layout before the image can be recorded in any list. Abandoning or reordering lists
     // then cannot leave a transfer using the wrong old layout.
     return transfer_now(std::make_unique<khaoz_gpu_command_list>(device), [&](VkCommandBuffer commands) {
@@ -142,6 +194,17 @@ khaoz_result create_image(khaoz_gpu_texture& texture) {
         dependency.imageMemoryBarrierCount = 1;
         dependency.pImageMemoryBarriers = &barrier;
         device.api.vkCmdPipelineBarrier2(commands, &dependency);
+
+        // Attachment loads in a later recording can rely on initialized contents.
+        if ((image.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0) {
+            const VkClearDepthStencilValue clear{1.0F, 0};
+            device.api.vkCmdClearDepthStencilImage(commands, texture.image, VK_IMAGE_LAYOUT_GENERAL, &clear, 1,
+                                                   &barrier.subresourceRange);
+        } else if ((image.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) != 0) {
+            const VkClearColorValue clear{};
+            device.api.vkCmdClearColorImage(commands, texture.image, VK_IMAGE_LAYOUT_GENERAL, &clear, 1,
+                                            &barrier.subresourceRange);
+        }
     });
 }
 
@@ -163,6 +226,10 @@ buffer_window khaoz_gpu_texture::subresource(texture_subresource location) const
 }
 
 khaoz_gpu_texture::~khaoz_gpu_texture() {
+    for (const auto view : {attachment, storage, sampled}) {
+        if (view != VK_NULL_HANDLE)
+            device.api.vkDestroyImageView(device.handle, view, nullptr);
+    }
     if (image != VK_NULL_HANDLE) {
         vmaDestroyImage(device.allocator, image, image_memory);
     }
@@ -197,7 +264,7 @@ khaoz_result khaoz_gpu_texture_create(khaoz_gpu_device* device, const khaoz_gpu_
         auto texture = std::make_unique<khaoz_gpu_texture>(*device);
         texture->desc = *desc;
         texture->desc.array_layers *= faces;
-        texture->format = image_format(desc->format);
+        texture->format = image_format(desc->format, (desc->usage & KHAOZ_GPU_TEXTURE_DEPTH_STENCIL) != 0);
         if (texture->format.vk == VK_FORMAT_UNDEFINED) {
             return error(KHAOZ_ERROR_UNSUPPORTED, "The texture format is unknown to the native Vulkan backend");
         }

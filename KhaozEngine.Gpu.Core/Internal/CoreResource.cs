@@ -23,17 +23,26 @@ internal abstract unsafe class CoreResource(CoreGpuDevice owner, void* handle) :
         [CallerMemberName] string operation = "") where T : CoreResource
     {
         ArgumentNullException.ThrowIfNull(resource, parameter);
+        return RequireOwned<T>(device, resource, parameter, kind, operation);
+    }
+
+    internal static T RequireOwned<T>(CoreGpuDevice device, object? resource, string parameter, string kind,
+        string operation) where T : CoreResource
+    {
         if (resource is T typed && ReferenceEquals(typed.Owner, device))
             return typed;
 
-        var reason = resource is T
-            ? GpuResourceOwnershipRefusal.DifferentDevice
-            : GpuResourceOwnershipRefusal.ForeignBackend;
+        var reason = resource switch
+        {
+            null => GpuResourceOwnershipRefusal.MissingResource,
+            T => GpuResourceOwnershipRefusal.DifferentDevice,
+            _ => GpuResourceOwnershipRefusal.ForeignBackend,
+        };
         throw new GpuResourceOwnershipArgumentException(reason, $"Use a {kind} from this Vulkan device.", parameter)
         {
             ExpectedBackend = GpuBackendKind.VulkanNative,
             ExpectedType = typeof(T),
-            ActualType = resource.GetType(),
+            ActualType = resource?.GetType(),
             Context = operation,
             ResourceKind = kind,
         };

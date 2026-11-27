@@ -183,6 +183,7 @@ khaoz_result khaoz_gpu_command_list_copy_buffer(khaoz_gpu_command_list* commands
         }
         if (size != 0) {
             const VkBufferCopy copy{src_offset, dst_offset, size};
+            commands->rendering.finish(*commands);
             record_buffer_copy(commands->device, commands->handle, src->storage.handle, dst->storage.handle, copy);
         }
         return KHAOZ_OK;
@@ -212,6 +213,7 @@ khaoz_result khaoz_gpu_command_list_copy_texture(khaoz_gpu_command_list* command
                  copy->src_array_layer == copy->dst_array_layer)) {
                 return error(KHAOZ_ERROR_INVALID_ARGUMENT, "The texture copy exceeds a subresource or overlaps itself");
             }
+            commands->rendering.finish(*commands);
             before_transfer(commands->device, commands->handle);
             copy_texture(commands->handle, *src, *dst, *copy);
         } else {
@@ -219,6 +221,7 @@ khaoz_result khaoz_gpu_command_list_copy_texture(khaoz_gpu_command_list* command
                 return error(KHAOZ_ERROR_INVALID_ARGUMENT,
                              "A whole texture copy needs distinct textures of the same shape");
             }
+            commands->rendering.finish(*commands);
             before_transfer(commands->device, commands->handle);
             for (uint32_t mip = 0; mip < src->desc.mip_levels; ++mip) {
                 const uint32_t width = mip_extent(src->desc.width, mip);
@@ -229,6 +232,37 @@ khaoz_result khaoz_gpu_command_list_copy_texture(khaoz_gpu_command_list* command
             }
         }
         after_transfer(commands->device, commands->handle);
+        return KHAOZ_OK;
+    });
+}
+
+khaoz_result khaoz_gpu_command_list_update_buffer(khaoz_gpu_command_list* commands, khaoz_gpu_buffer* buffer,
+                                                  uint32_t offset, const void* data, uint32_t size) {
+    return khaoz::abi::guard([&] {
+        const auto usable = require_recording(commands);
+        if (usable != KHAOZ_OK)
+            return usable;
+        if (buffer == nullptr || &buffer->device != &commands->device || buffer->storage.mapped ||
+            !fits(buffer->size, offset, size) || (size != 0 && data == nullptr))
+            return error(KHAOZ_ERROR_INVALID_ARGUMENT, "The Vulkan buffer upload has an invalid destination or source");
+        if (size == 0)
+            return KHAOZ_OK;
+
+        auto upload = std::make_unique<allocated_buffer>();
+        auto result =
+            upload->create(commands->device.allocator, {size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                                                        VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT});
+        if (result != KHAOZ_OK)
+            return result;
+        result = upload->write(0, data, size);
+        if (result != KHAOZ_OK)
+            return result;
+
+        // A new recording releases its old uploads only after the command buffer can be reset.
+        const auto source = upload->handle;
+        commands->uploads.push_back(std::move(upload));
+        commands->rendering.finish(*commands);
+        record_buffer_copy(commands->device, commands->handle, source, buffer->storage.handle, {0, offset, size});
         return KHAOZ_OK;
     });
 }

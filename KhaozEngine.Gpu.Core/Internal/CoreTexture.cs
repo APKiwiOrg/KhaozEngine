@@ -12,6 +12,7 @@ internal sealed unsafe class CoreTexture(CoreGpuDevice owner, khaoz_gpu_texture*
     public uint SampleCount => desc.SampleCount;
     public GpuPixelFormat Format => desc.Format;
     internal uint ArrayLayers => actualArrayLayers;
+    internal GpuTextureUsage Usage => desc.Usage;
     internal bool IsStaging => (desc.Usage & GpuTextureUsage.Staging) != 0;
     internal khaoz_gpu_texture* Handle => (khaoz_gpu_texture*)NativeHandle;
 

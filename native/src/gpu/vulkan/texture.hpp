@@ -15,6 +15,7 @@ struct texture_subresource {
     uint32_t layer;
 };
 
+texture_format image_format(uint32_t format, bool depth = false);
 uint32_t mip_extent(uint32_t base, uint32_t mip) noexcept;
 
 } // namespace khaoz::vulkan
@@ -23,6 +24,9 @@ struct khaoz_gpu_texture : khaoz::vulkan::device_child {
     khaoz_gpu_texture_desc desc{};
     khaoz::vulkan::texture_format format{};
     VkImage image{};
+    VkImageView sampled{};
+    VkImageView storage{};
+    VkImageView attachment{};
     VmaAllocation image_memory{};
     khaoz::vulkan::allocated_buffer staging;
     VkDeviceSize layer_stride{};

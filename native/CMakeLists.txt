@@ -63,6 +63,14 @@ add_library(khaoz_native_objects OBJECT
     src/gpu/vulkan/texture.cpp
     src/gpu/vulkan/sampler.cpp
     src/gpu/vulkan/transfer.cpp
+    src/gpu/vulkan/shaders.cpp
+    src/gpu/vulkan/resource_layout.cpp
+    src/gpu/vulkan/resource_set.cpp
+    src/gpu/vulkan/pipeline.cpp
+    src/gpu/vulkan/pipeline_state.cpp
+    src/gpu/vulkan/framebuffer.cpp
+    src/gpu/vulkan/rendering.cpp
+    src/gpu/vulkan/draw.cpp
 )
 set_target_properties(khaoz_native_objects PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_compile_definitions(khaoz_native_objects PRIVATE KHAOZ_NATIVE_BUILD)

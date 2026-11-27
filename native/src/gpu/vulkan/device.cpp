@@ -39,6 +39,12 @@ khaoz_result create_logical_device(khaoz_gpu_device& device) {
     features12.pNext = &features13;
     features12.timelineSemaphore = VK_TRUE;
     VkPhysicalDeviceFeatures features{};
+    features.depthClamp = adapter.features.depthClamp;
+    features.fillModeNonSolid = adapter.features.fillModeNonSolid;
+    features.independentBlend = adapter.features.independentBlend;
+    features.imageCubeArray = adapter.features.imageCubeArray;
+    features.vertexPipelineStoresAndAtomics = adapter.features.vertexPipelineStoresAndAtomics;
+    features.fragmentStoresAndAtomics = adapter.features.fragmentStoresAndAtomics;
     features.samplerAnisotropy = adapter.features.samplerAnisotropy;
 
     auto desc = info<VkDeviceCreateInfo>(VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO);

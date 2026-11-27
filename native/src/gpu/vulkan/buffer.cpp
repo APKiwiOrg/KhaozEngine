@@ -43,6 +43,7 @@ khaoz_result khaoz_gpu_buffer_create(khaoz_gpu_device* device, uint32_t size_in_
         }
         auto buffer = std::make_unique<khaoz_gpu_buffer>(*device);
         buffer->size = size_in_bytes;
+        buffer->usage = usage;
         buffer->staging = (usage & KHAOZ_GPU_BUFFER_STAGING) != 0;
         VmaAllocationCreateFlags access = 0;
         if (buffer->staging) {

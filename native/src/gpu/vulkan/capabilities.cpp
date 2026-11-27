@@ -69,6 +69,8 @@ khaoz_gpu_capabilities read_capabilities(const khaoz_gpu_device& device) {
         std::clamp(std::min(limits.maxColorAttachments, limits.maxFragmentOutputAttachments), 4U, int_max);
     caps.supports_completion_fences = 1;
     caps.max_fragment_storage_buffers = std::min(limits.maxPerStageDescriptorStorageBuffers, int_max);
+    caps.max_dynamic_uniform_buffers = device.adapter.properties.limits.maxDescriptorSetUniformBuffersDynamic;
+    caps.uniform_offset_alignment = device.adapter.properties.limits.minUniformBufferOffsetAlignment;
     return caps;
 }
 

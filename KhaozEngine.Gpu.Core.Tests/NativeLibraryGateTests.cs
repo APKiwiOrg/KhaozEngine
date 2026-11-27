@@ -25,7 +25,7 @@ public sealed class NativeLibraryGateTests
 
     [NativeFact]
     public void Probe_reports_abi_mismatch_for_the_previous_export_set()
-        => Assert.Equal(NativeLoadStatus.AbiMismatch, NativeLibraryGate.Probe(expectedAbi: 1));
+        => Assert.Equal(NativeLoadStatus.AbiMismatch, NativeLibraryGate.Probe(expectedAbi: 2));
 
     [NativeFact]
     public async Task First_generated_import_refuses_a_stale_abi_library()

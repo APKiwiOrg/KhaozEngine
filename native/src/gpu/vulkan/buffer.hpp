@@ -5,6 +5,7 @@
 struct khaoz_gpu_buffer : khaoz::vulkan::device_child {
     khaoz::vulkan::allocated_buffer storage;
     uint32_t size{};
+    uint32_t usage{};
     bool staging{};
 
     explicit khaoz_gpu_buffer(khaoz_gpu_device& owner) noexcept : device_child(owner) {}

@@ -1,14 +1,30 @@
 #pragma once
 
 #include "memory.hpp"
+#include "rendering.hpp"
 
 #include <memory>
+
+namespace khaoz::vulkan {
+struct recorded_set {
+    const khaoz_gpu_resource_set* set{};
+    uint32_t dynamic_offset{};
+};
+} // namespace khaoz::vulkan
 
 struct khaoz_gpu_command_list : khaoz::vulkan::device_child {
     enum class phase : uint8_t { initial, recording, executable, pending };
 
     VkCommandBuffer handle{};
     phase state{};
+    khaoz::vulkan::rendering_scope rendering;
+    const khaoz_gpu_pipeline* pipeline{};
+    std::vector<khaoz::vulkan::recorded_set> sets;
+    std::vector<uint32_t> dynamic_offsets;
+    std::vector<uint8_t> vertices;
+    std::vector<std::unique_ptr<khaoz::vulkan::allocated_buffer>> uploads;
+    uint32_t index_capacity{};
+    bool index_bound{};
 
     explicit khaoz_gpu_command_list(khaoz_gpu_device& owner) noexcept : device_child(owner) {}
     ~khaoz_gpu_command_list() override;
@@ -16,6 +32,7 @@ struct khaoz_gpu_command_list : khaoz::vulkan::device_child {
 
 namespace khaoz::vulkan {
 
+khaoz_result require_recording(const khaoz_gpu_command_list* commands);
 khaoz_result allocate_commands(khaoz_gpu_device& device, VkCommandBuffer& out);
 khaoz_result begin_commands(khaoz_gpu_device& device, VkCommandBuffer commands);
 khaoz_result end_commands(khaoz_gpu_device& device, VkCommandBuffer commands);

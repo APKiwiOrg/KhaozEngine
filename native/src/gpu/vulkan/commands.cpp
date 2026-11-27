@@ -7,6 +7,12 @@ using namespace khaoz::vulkan;
 
 namespace khaoz::vulkan {
 
+khaoz_result require_recording(const khaoz_gpu_command_list* commands) {
+    if (commands == nullptr || commands->state != khaoz_gpu_command_list::phase::recording)
+        return error(KHAOZ_ERROR_INVALID_ARGUMENT, "The Vulkan command list is not recording");
+    return commands->device.require_usable();
+}
+
 khaoz_result allocate_commands(khaoz_gpu_device& device, VkCommandBuffer& out) {
     const auto usable = device.require_usable();
     if (usable != KHAOZ_OK) {
@@ -99,6 +105,14 @@ khaoz_result khaoz_gpu_command_list_begin(khaoz_gpu_command_list* commands) {
         }
         // vkBeginCommandBuffer implicitly resets an executable buffer from this resettable pool.
         const auto result = begin_commands(commands->device, commands->handle);
+        if (result == KHAOZ_OK) {
+            commands->rendering = {};
+            commands->pipeline = nullptr;
+            commands->sets.clear();
+            commands->vertices.clear();
+            commands->uploads.clear();
+            commands->index_bound = false;
+        }
         commands->state = result == KHAOZ_OK ? phase::recording : phase::initial;
         return result;
     });
@@ -110,6 +124,10 @@ khaoz_result khaoz_gpu_command_list_end(khaoz_gpu_command_list* commands) {
         if (commands == nullptr || commands->state != phase::recording) {
             return error(KHAOZ_ERROR_INVALID_ARGUMENT, "The command list is not recording");
         }
+        const auto usable = commands->device.require_usable();
+        if (usable != KHAOZ_OK)
+            return usable;
+        commands->rendering.finish(*commands);
         const auto result = end_commands(commands->device, commands->handle);
         commands->state = result == KHAOZ_OK ? phase::executable : phase::initial;
         return result;

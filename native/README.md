@@ -114,3 +114,19 @@ handle for a later retry.
 Set `KHAOZ_NATIVE_GPU_TESTS=1` to run the GPU doctests. These require an available Vulkan device
 and `VK_LAYER_KHRONOS_validation`. On macOS use the MoltenVK ICD and expose the validation
 layer manifest and its library to the Vulkan loader.
+
+## Headless Vulkan graphics subset
+
+A graphics shader set takes vertex and fragment SPIR-V with entry point `main`. The managed
+adapter generates both modules with the shared GLSL front end. Layout positions are descriptor
+binding numbers, and pipeline layout positions are set numbers. Sampled images and samplers use
+separate bindings. Uniform descriptors are dynamic, with offsets composed in binding order.
+The buffer window contributes its base offset and a declared-dynamic element also takes the
+caller's offset. The spike records uniform uploads into the command list using staging buffers.
+
+Framebuffers use the first mip and array layer of each attachment and require matching extents
+and sample counts. The command list starts Vulkan dynamic rendering on the first draw or when
+a queued clear needs to be flushed. Image views use the images' `GENERAL` layout. The viewport
+uses negative height and the scissor uses top-left framebuffer coordinates, matching the managed
+Vulkan backend. Recorded copies and buffer uploads close the rendering scope so transfers can
+run between draws. Reopening the scope loads the previous attachment contents.

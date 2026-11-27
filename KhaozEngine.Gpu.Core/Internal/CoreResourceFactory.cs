@@ -81,11 +81,21 @@ internal sealed unsafe class CoreResourceFactory(CoreGpuDevice device) : IGpuRes
         }
     }
 
-    public IGpuFramebuffer CreateFramebuffer(IGpuTexture? depth, params IGpuTexture[] colour) => throw new NotSupportedException();
-    public IGpuResourceLayout CreateResourceLayout(in GpuResourceLayoutDescription d) => throw new NotSupportedException();
-    public IGpuResourceSet CreateResourceSet(in GpuResourceSetDescription d) => throw new NotSupportedException();
-    public IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl) => throw new NotSupportedException();
+    public IGpuFramebuffer CreateFramebuffer(IGpuTexture? depth, params IGpuTexture[] colour)
+        => CoreFramebuffer.Create(device, depth, colour);
+
+    public IGpuResourceLayout CreateResourceLayout(in GpuResourceLayoutDescription d)
+        => CoreResourceLayout.Create(device, d);
+
+    public IGpuResourceSet CreateResourceSet(in GpuResourceSetDescription d)
+        => CoreResourceSet.Create(device, d);
+
+    public IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl)
+        => CoreShaderSet.Create(device, vertGlsl, fragGlsl);
+
     public IGpuComputeShader CreateComputeShaderFromSpirv(string computeGlsl) => throw new NotSupportedException();
-    public IGpuPipeline CreateGraphicsPipeline(in GpuPipelineDescription d) => throw new NotSupportedException();
+    public IGpuPipeline CreateGraphicsPipeline(in GpuPipelineDescription d)
+        => CorePipeline.Create(device, d);
+
     public IGpuComputePipeline CreateComputePipeline(in GpuComputePipelineDescription d) => throw new NotSupportedException();
 }

@@ -3,11 +3,10 @@ using System.Runtime.CompilerServices;
 using KhaozEngine.Gpu.Core.Interop;
 using KhaozEngine.Gpu.Vulkan;
 using KhaozEngine.Gpu.Vulkan.Internal;
-using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Gpu.Core.Internal;
 
-internal sealed unsafe class CoreCommandList(CoreGpuDevice owner, khaoz_gpu_command_list* handle)
+internal sealed unsafe partial class CoreCommandList(CoreGpuDevice owner, khaoz_gpu_command_list* handle)
     : CoreResource(owner, handle), IGpuCommandList
 {
     private bool _recording;
@@ -24,6 +23,7 @@ internal sealed unsafe class CoreCommandList(CoreGpuDevice owner, khaoz_gpu_comm
 
             _sealed = false;
             NativeResult.ThrowIfFailed(KhaozNative.khaoz_gpu_command_list_begin(commands), nameof(Begin));
+            ResetGraphicsBindings();
             _recording = true;
         }
     }
@@ -193,22 +193,6 @@ internal sealed unsafe class CoreCommandList(CoreGpuDevice owner, khaoz_gpu_comm
         };
     }
 
-    public void SetFramebuffer(IGpuFramebuffer fb) => throw new NotSupportedException();
-    public void ClearColorTarget(uint index, Color rgba) => throw new NotSupportedException();
-    public void ClearDepthStencil(float depth) => throw new NotSupportedException();
-    public void SetPipeline(IGpuPipeline p) => throw new NotSupportedException();
-    public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set) => throw new NotSupportedException();
-    public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset) => throw new NotSupportedException();
-    public void SetVertexBuffer(uint slot, IGpuBuffer b) => throw new NotSupportedException();
-    public void SetVertexBuffer(uint slot, IGpuBuffer b, uint offsetBytes) => throw new NotSupportedException();
-    public void SetIndexBuffer(IGpuBuffer b, GpuIndexFormat fmt) => throw new NotSupportedException();
-    public void SetScissorRect(uint index, uint x, uint y, uint w, uint h) => throw new NotSupportedException();
-    public void SetFullScissorRects() => throw new NotSupportedException();
-    public void Draw(uint vertexCount, uint instanceCount, uint vertexStart, uint instanceStart) => throw new NotSupportedException();
-    public void Draw(uint vertexCount) => throw new NotSupportedException();
-    public void DrawIndexed(uint indexCount, uint instanceCount, uint indexStart, int vertexOffset, uint instanceStart) => throw new NotSupportedException();
-    public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, in T data) where T : unmanaged => throw new NotSupportedException();
-    public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged => throw new NotSupportedException();
     public void GenerateMipmaps(IGpuTexture texture) => throw new NotSupportedException();
     public void ResolveTexture(IGpuTexture src, IGpuTexture dst) => throw new NotSupportedException();
     public void SetComputePipeline(IGpuComputePipeline p) => throw new NotSupportedException();

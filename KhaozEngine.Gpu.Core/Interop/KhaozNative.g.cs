@@ -76,6 +76,31 @@ internal partial struct khaoz_gpu_command_list
 }
 
 [GeneratedCode("ClangSharp", "23.1.5.0")]
+internal partial struct khaoz_gpu_shader_set
+{
+}
+
+[GeneratedCode("ClangSharp", "23.1.5.0")]
+internal partial struct khaoz_gpu_resource_layout
+{
+}
+
+[GeneratedCode("ClangSharp", "23.1.5.0")]
+internal partial struct khaoz_gpu_resource_set
+{
+}
+
+[GeneratedCode("ClangSharp", "23.1.5.0")]
+internal partial struct khaoz_gpu_pipeline
+{
+}
+
+[GeneratedCode("ClangSharp", "23.1.5.0")]
+internal partial struct khaoz_gpu_framebuffer
+{
+}
+
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 internal unsafe partial struct khaoz_gpu_device_desc
 {
     [NativeTypeName("uint32_t")]
@@ -176,6 +201,12 @@ internal partial struct khaoz_gpu_capabilities
 
     [NativeTypeName("uint32_t")]
     public uint max_fragment_storage_buffers;
+
+    [NativeTypeName("uint32_t")]
+    public uint max_dynamic_uniform_buffers;
+
+    [NativeTypeName("uint64_t")]
+    public ulong uniform_offset_alignment;
 
     [InlineArray(256)]
     public partial struct _device_name_e__FixedBuffer
@@ -355,6 +386,165 @@ internal partial struct khaoz_gpu_texture_copy
 }
 
 [GeneratedCode("ClangSharp", "23.1.5.0")]
+internal enum khaoz_gpu_resource_kind
+{
+    KHAOZ_GPU_RESOURCE_UNIFORM = 0,
+    KHAOZ_GPU_RESOURCE_STORAGE_READ_ONLY = 1,
+    KHAOZ_GPU_RESOURCE_STORAGE_READ_WRITE = 2,
+    KHAOZ_GPU_RESOURCE_SAMPLED_IMAGE = 3,
+    KHAOZ_GPU_RESOURCE_STORAGE_IMAGE = 4,
+    KHAOZ_GPU_RESOURCE_SAMPLER = 5,
+}
+
+[GeneratedCode("ClangSharp", "23.1.5.0")]
+internal partial struct khaoz_gpu_resource_element
+{
+    [NativeTypeName("uint32_t")]
+    public uint kind;
+
+    [NativeTypeName("uint32_t")]
+    public uint stages;
+
+    [NativeTypeName("uint32_t")]
+    public uint dynamic_offset;
+}
+
+[GeneratedCode("ClangSharp", "23.1.5.0")]
+internal unsafe partial struct khaoz_gpu_resource_binding
+{
+    public khaoz_gpu_buffer* buffer;
+
+    public khaoz_gpu_texture* texture;
+
+    public khaoz_gpu_sampler* sampler;
+
+    [NativeTypeName("uint32_t")]
+    public uint offset;
+
+    [NativeTypeName("uint32_t")]
+    public uint range;
+}
+
+[GeneratedCode("ClangSharp", "23.1.5.0")]
+internal unsafe partial struct khaoz_gpu_vertex_layout
+{
+    [NativeTypeName("const uint32_t *")]
+    public uint* formats;
+
+    [NativeTypeName("uint32_t")]
+    public uint count;
+
+    [NativeTypeName("uint32_t")]
+    public uint stride;
+
+    [NativeTypeName("uint32_t")]
+    public uint instance_step_rate;
+}
+
+[GeneratedCode("ClangSharp", "23.1.5.0")]
+internal partial struct khaoz_gpu_blend_attachment
+{
+    [NativeTypeName("uint32_t")]
+    public uint enabled;
+
+    [NativeTypeName("uint32_t")]
+    public uint src_color;
+
+    [NativeTypeName("uint32_t")]
+    public uint dst_color;
+
+    [NativeTypeName("uint32_t")]
+    public uint color_op;
+
+    [NativeTypeName("uint32_t")]
+    public uint src_alpha;
+
+    [NativeTypeName("uint32_t")]
+    public uint dst_alpha;
+
+    [NativeTypeName("uint32_t")]
+    public uint alpha_op;
+}
+
+[GeneratedCode("ClangSharp", "23.1.5.0")]
+internal unsafe partial struct khaoz_gpu_pipeline_desc
+{
+    public khaoz_gpu_shader_set* shaders;
+
+    [NativeTypeName("khaoz_gpu_resource_layout *const *")]
+    public khaoz_gpu_resource_layout** layouts;
+
+    [NativeTypeName("uint32_t")]
+    public uint layout_count;
+
+    [NativeTypeName("const khaoz_gpu_vertex_layout *")]
+    public khaoz_gpu_vertex_layout* vertex_layouts;
+
+    [NativeTypeName("uint32_t")]
+    public uint vertex_layout_count;
+
+    [NativeTypeName("const uint32_t *")]
+    public uint* color_formats;
+
+    [NativeTypeName("const khaoz_gpu_blend_attachment *")]
+    public khaoz_gpu_blend_attachment* blends;
+
+    [NativeTypeName("uint32_t")]
+    public uint color_count;
+
+    [NativeTypeName("const uint32_t *")]
+    public uint* depth_format;
+
+    [NativeTypeName("uint32_t")]
+    public uint sample_count;
+
+    [NativeTypeName("float[4]")]
+    public _blend_constant_e__FixedBuffer blend_constant;
+
+    [NativeTypeName("uint32_t")]
+    public uint depth_test;
+
+    [NativeTypeName("uint32_t")]
+    public uint depth_write;
+
+    [NativeTypeName("uint32_t")]
+    public uint depth_compare;
+
+    [NativeTypeName("uint32_t")]
+    public uint depth_clip;
+
+    [NativeTypeName("uint32_t")]
+    public uint cull;
+
+    [NativeTypeName("uint32_t")]
+    public uint fill;
+
+    [NativeTypeName("uint32_t")]
+    public uint front_face;
+
+    [NativeTypeName("uint32_t")]
+    public uint topology;
+
+    [InlineArray(4)]
+    public partial struct _blend_constant_e__FixedBuffer
+    {
+        public float e0;
+    }
+}
+
+[GeneratedCode("ClangSharp", "23.1.5.0")]
+internal partial struct khaoz_gpu_color
+{
+    public float r;
+
+    public float g;
+
+    public float b;
+
+    public float a;
+}
+
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 internal static unsafe partial class KhaozNative
 {
     [DllImport("khaoz_native", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
@@ -471,8 +661,71 @@ internal static unsafe partial class KhaozNative
     [DllImport("khaoz_native", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     public static extern khaoz_result khaoz_gpu_command_list_copy_texture(khaoz_gpu_command_list* commands, khaoz_gpu_texture* src, khaoz_gpu_texture* dst, [NativeTypeName("const khaoz_gpu_texture_copy *")] khaoz_gpu_texture_copy* copy);
 
-    [NativeTypeName("#define KHAOZ_NATIVE_ABI_VERSION 2u")]
-    public const uint KHAOZ_NATIVE_ABI_VERSION = 2U;
+    [DllImport("khaoz_native", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern khaoz_result khaoz_gpu_shader_set_create(khaoz_gpu_device* device, [NativeTypeName("const uint32_t *")] uint* vertex, [NativeTypeName("uint32_t")] uint vertex_words, [NativeTypeName("const uint32_t *")] uint* fragment, [NativeTypeName("uint32_t")] uint fragment_words, khaoz_gpu_shader_set** out_shaders);
+
+    [DllImport("khaoz_native", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern khaoz_result khaoz_gpu_shader_set_destroy(khaoz_gpu_shader_set* shaders);
+
+    [DllImport("khaoz_native", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern khaoz_result khaoz_gpu_resource_layout_create(khaoz_gpu_device* device, [NativeTypeName("const khaoz_gpu_resource_element *")] khaoz_gpu_resource_element* elements, [NativeTypeName("uint32_t")] uint count, khaoz_gpu_resource_layout** out_layout);
+
+    [DllImport("khaoz_native", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern khaoz_result khaoz_gpu_resource_layout_destroy(khaoz_gpu_resource_layout* layout);
+
+    [DllImport("khaoz_native", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern khaoz_result khaoz_gpu_resource_set_create(khaoz_gpu_device* device, khaoz_gpu_resource_layout* layout, [NativeTypeName("const khaoz_gpu_resource_binding *")] khaoz_gpu_resource_binding* resources, [NativeTypeName("uint32_t")] uint count, khaoz_gpu_resource_set** out_set);
+
+    [DllImport("khaoz_native", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern khaoz_result khaoz_gpu_resource_set_destroy(khaoz_gpu_resource_set* set);
+
+    [DllImport("khaoz_native", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern khaoz_result khaoz_gpu_pipeline_create(khaoz_gpu_device* device, [NativeTypeName("const khaoz_gpu_pipeline_desc *")] khaoz_gpu_pipeline_desc* desc, khaoz_gpu_pipeline** out_pipeline);
+
+    [DllImport("khaoz_native", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern khaoz_result khaoz_gpu_pipeline_destroy(khaoz_gpu_pipeline* pipeline);
+
+    [DllImport("khaoz_native", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern khaoz_result khaoz_gpu_framebuffer_create(khaoz_gpu_device* device, khaoz_gpu_texture* depth, [NativeTypeName("khaoz_gpu_texture *const *")] khaoz_gpu_texture** colors, [NativeTypeName("uint32_t")] uint count, khaoz_gpu_framebuffer** out_framebuffer);
+
+    [DllImport("khaoz_native", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern khaoz_result khaoz_gpu_framebuffer_destroy(khaoz_gpu_framebuffer* framebuffer);
+
+    [DllImport("khaoz_native", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern khaoz_result khaoz_gpu_command_list_set_framebuffer(khaoz_gpu_command_list* commands, khaoz_gpu_framebuffer* framebuffer);
+
+    [DllImport("khaoz_native", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern khaoz_result khaoz_gpu_command_list_clear_color(khaoz_gpu_command_list* commands, [NativeTypeName("uint32_t")] uint index, [NativeTypeName("const khaoz_gpu_color *")] khaoz_gpu_color* color);
+
+    [DllImport("khaoz_native", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern khaoz_result khaoz_gpu_command_list_clear_depth(khaoz_gpu_command_list* commands, float depth);
+
+    [DllImport("khaoz_native", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern khaoz_result khaoz_gpu_command_list_set_pipeline(khaoz_gpu_command_list* commands, khaoz_gpu_pipeline* pipeline);
+
+    [DllImport("khaoz_native", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern khaoz_result khaoz_gpu_command_list_set_resource_set(khaoz_gpu_command_list* commands, [NativeTypeName("uint32_t")] uint slot, khaoz_gpu_resource_set* set, [NativeTypeName("uint32_t")] uint dynamic_offset);
+
+    [DllImport("khaoz_native", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern khaoz_result khaoz_gpu_command_list_set_vertex_buffer(khaoz_gpu_command_list* commands, [NativeTypeName("uint32_t")] uint slot, khaoz_gpu_buffer* buffer, [NativeTypeName("uint32_t")] uint offset);
+
+    [DllImport("khaoz_native", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern khaoz_result khaoz_gpu_command_list_set_index_buffer(khaoz_gpu_command_list* commands, khaoz_gpu_buffer* buffer, [NativeTypeName("uint32_t")] uint format);
+
+    [DllImport("khaoz_native", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern khaoz_result khaoz_gpu_command_list_set_scissor(khaoz_gpu_command_list* commands, [NativeTypeName("int32_t")] int x, [NativeTypeName("int32_t")] int y, [NativeTypeName("uint32_t")] uint width, [NativeTypeName("uint32_t")] uint height);
+
+    [DllImport("khaoz_native", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern khaoz_result khaoz_gpu_command_list_draw(khaoz_gpu_command_list* commands, [NativeTypeName("uint32_t")] uint vertex_count, [NativeTypeName("uint32_t")] uint instance_count, [NativeTypeName("uint32_t")] uint vertex_start, [NativeTypeName("uint32_t")] uint instance_start);
+
+    [DllImport("khaoz_native", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern khaoz_result khaoz_gpu_command_list_draw_indexed(khaoz_gpu_command_list* commands, [NativeTypeName("uint32_t")] uint index_count, [NativeTypeName("uint32_t")] uint instance_count, [NativeTypeName("uint32_t")] uint index_start, [NativeTypeName("int32_t")] int vertex_offset, [NativeTypeName("uint32_t")] uint instance_start);
+
+    [DllImport("khaoz_native", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern khaoz_result khaoz_gpu_command_list_update_buffer(khaoz_gpu_command_list* commands, khaoz_gpu_buffer* buffer, [NativeTypeName("uint32_t")] uint offset, [NativeTypeName("const void *")] void* data, [NativeTypeName("uint32_t")] uint size);
+
+    [NativeTypeName("#define KHAOZ_NATIVE_ABI_VERSION 3u")]
+    public const uint KHAOZ_NATIVE_ABI_VERSION = 3U;
 }
 
 /// <summary>Defines the type of a member as it was used in the native signature.</summary>

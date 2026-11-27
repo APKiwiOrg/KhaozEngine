@@ -6,6 +6,7 @@ internal sealed unsafe class CoreBuffer(CoreGpuDevice owner, khaoz_gpu_buffer* h
     : CoreMappableResource(owner, handle), IGpuBuffer
 {
     public uint SizeInBytes => desc.SizeInBytes;
+    internal GpuBufferUsage Usage => desc.Usage;
     internal bool IsStaging => (desc.Usage & GpuBufferUsage.Staging) != 0;
     internal khaoz_gpu_buffer* Handle => (khaoz_gpu_buffer*)NativeHandle;
 

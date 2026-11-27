@@ -33,6 +33,33 @@ capability gates and software-adapter refusals. A software result cannot certify
 Paid `gpu-hosted-bench.yml` measurement mode keeps its explicit filter and separate owner authorization.
 Historical timing receipts remain evidence for their original commits and workloads.
 
+### Close cloth CPU feasibility
+
+`ClothPreparationCostDiagnostics.Report_close_cloth_preparation_cost` screens one raised hanging
+garment on the frozen 9 by 13 proxy with the detailed same-GLB material mapping. The support inventory
+is the raised lip and recessed body capsules. At 144 Hz and 60 Hz it compares active cloth with ordinary
+simulated chain fallback on the same asset. The caller window covers direct `WornMotion.Step`, ordinary
+lip and garment draw descriptors, and borrowing the detailed result that `Step` prepares. Pose setup,
+assertions and output are outside the window. The test uses a headless scene on one caller thread
+and reports fixed substeps, factor products, contact work and caller allocation.
+
+The explicit local smoke runs 12 warm and 12 observed frames per row, with null duration fields.
+
+```sh
+mkdir -p local-feed
+dotnet build KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release
+KE_CLOTH_PREPARATION_SMOKE=1 dotnet test \
+  KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build \
+  --filter 'FullyQualifiedName=KhaozEngine.Tests.Render3D.ClothPreparationCostDiagnostics.Report_close_cloth_preparation_cost' \
+  --logger 'console;verbosity=detailed'
+```
+
+With exact-commit owner approval, dispatch `gpu-hosted-bench.yml` from `main` with the full workload
+SHA as `ref`, `linux-vulkan` as `legs`, and the same exact filter. The hosted rows use 1,200 settle,
+120 warm and 600 measured frames each. The workflow's native adapter probe precedes the CPU test.
+An active row above the entire 2 ms CPU preparation allowance at p95 is a stop signal for this implementation.
+The 32-wearer CPU preparation, renderer and GPU qualification requires its own evidence.
+
 ## Equipment coverage cost evidence
 
 The recession-table implementation has headless carry, descriptor, submission-history and allocation

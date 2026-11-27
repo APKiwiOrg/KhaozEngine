@@ -182,7 +182,9 @@ libraries, since game repositories vendor every engine version into git.
 the generated bindings and `NativeLibraryGate.cs` from `KhaozEngine.Gpu.Core`. It exits 0 only when
 the gate reports `Ready`, a 3,335-record frame returns its keys sorted, and headless device creation
 either succeeds and destroys with zero validation errors or reports `KHAOZ_ERROR_VULKAN_UNAVAILABLE`.
-Validation follows `KHAOZ_NATIVE_VALIDATION=1`, since it needs the Khronos layer. The
+Validation follows `KHAOZ_NATIVE_VALIDATION=1`, since it needs the Khronos layer. The CI smoke legs
+run without the layer, so a smoke pass shows the package loads and works, not that it validates
+cleanly. Validation runs in `Test: native-golden` and `Test: native-asan` on lavapipe. The
 [nuget.config](smoke/nuget.config) beside it restores `KhaozEngine.Native` from the folder in
 `KHAOZ_NATIVE_FEED`. Without `KhaozNativeVersion` the project compiles with no package, which is how
 Product CI builds it.
@@ -199,4 +201,6 @@ KHAOZ_NATIVE_FEED="$work/feed" NUGET_PACKAGES="$work/packages" \
 ```
 
 The `native-core-spike` workflow builds every RID, packs all four and runs the smoke app on each
-hosted platform and inside the `mcr.microsoft.com/dotnet/sdk:10.0` image on Linux arm64.
+hosted platform and inside the `mcr.microsoft.com/dotnet/sdk:10.0` image on Linux arm64. Its Scope
+job selects it through the Product CI rules, and it owns the device tests in
+`KhaozEngine.Gpu.Core.Tests`, which skip on the GPU workflow's legs without the native library.

@@ -17,7 +17,7 @@ internal sealed class ClothMaterialSystem
     private readonly double[] _rhs;
     private readonly double[] _solution;
     private readonly float[] _mass;
-    private readonly ClothSkylineFactor _skyline;
+    private readonly ClothSkylineFactor? _skyline;
     private readonly ClothMaterialReuseSolver? _reuse;
     private float _damping;
 
@@ -52,13 +52,22 @@ internal sealed class ClothMaterialSystem
         foreach (ClothHinge hinge in rig.Hinges)
             Include(connected, hinge.First, hinge.Second, hinge.Left, hinge.Right);
 
-        _skyline = new ClothSkylineFactor(_start, limits, reuseMaterialFactor);
-        _rowOffsets = _skyline.Offsets;
-        _matrix = new double[_rowOffsets[^1]];
         if (connected is not null)
-            _reuse = new ClothMaterialReuseSolver(_skyline, new ClothMaterialOperator(connected, _start, _rowOffsets), size);
+        {
+            _rowOffsets = ClothSkylineFactor.BuildOffsets(_start);
+            var factor = new ClothSparseFactor(connected, _start, _rowOffsets, limits);
+            _reuse = new ClothMaterialReuseSolver(factor, new ClothMaterialOperator(connected, _start, _rowOffsets), size);
+        }
+        else
+        {
+            _skyline = new ClothSkylineFactor(_start, limits);
+            _rowOffsets = _skyline.Offsets;
+        }
+        _matrix = new double[_rowOffsets[^1]];
         _solution = _reuse?.Solution ?? _rhs;
     }
+
+    internal long FactorProducts => _reuse?.FactorProducts ?? _skyline!.FactorProducts;
 
     internal void BeginTick() => _reuse?.BeginTick();
 
@@ -121,7 +130,7 @@ internal sealed class ClothMaterialSystem
     internal ClothStepStatus Solve(out ClothMaterialSolveWork work)
     {
         if (_reuse is not null) return _reuse.Solve(_matrix, _rhs, out work);
-        return _skyline.TryFactorAndSolve(_matrix, _rhs, out work) ? ClothStepStatus.Accepted : ClothStepStatus.NonfiniteState;
+        return _skyline!.TryFactorAndSolve(_matrix, _rhs, out work) ? ClothStepStatus.Accepted : ClothStepStatus.NonfiniteState;
     }
 
     private void Include(bool[,]? connected, int a, int b, int c, int d = -1)

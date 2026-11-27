@@ -3,13 +3,12 @@ using System;
 namespace KhaozEngine.Attachments;
 
 // Preconditioned conjugate gradients with a fixed factor and the current assembled matrix.
-internal sealed class ClothMaterialReuseSolver(ClothSkylineFactor skyline, ClothMaterialOperator current, int size)
+internal sealed class ClothMaterialReuseSolver(ClothSparseFactor factor, ClothMaterialOperator current, int size)
 {
     internal const int CorrectionLimit = 16;
     private const double AbsoluteResidualLimit = 1e-12;
     private const double RelativeResidualLimit = 1e-6;
 
-    private readonly double[] _factor = new double[skyline.Offsets[^1]];
     private readonly double[] _residual = new double[size];
     private readonly double[] _preconditioned = new double[size];
     private readonly double[] _direction = new double[size];
@@ -17,6 +16,7 @@ internal sealed class ClothMaterialReuseSolver(ClothSkylineFactor skyline, Cloth
     private bool _hasFactor;
 
     internal double[] Solution { get; } = new double[size];
+    internal long FactorProducts => factor.FactorProducts;
 
     internal void BeginTick() => _hasFactor = false;
 
@@ -28,9 +28,7 @@ internal sealed class ClothMaterialReuseSolver(ClothSkylineFactor skyline, Cloth
         double bound = AbsoluteResidualLimit + RelativeResidualLimit * Math.Sqrt(rhsSquared);
         if (!_hasFactor)
         {
-            matrix.CopyTo(_factor, 0);
-            rhs.CopyTo(Solution, 0);
-            bool factored = skyline.TryFactorAndSolve(_factor, Solution, out ClothMaterialSolveWork factorWork);
+            bool factored = factor.TryFactorAndSolve(matrix, rhs, Solution, out ClothMaterialSolveWork factorWork);
             work = work.Combine(factorWork);
             if (!factored) return ClothStepStatus.NonfiniteState;
             ClothStepStatus status = Certify(matrix, rhs, bound, ref work);
@@ -49,12 +47,11 @@ internal sealed class ClothMaterialReuseSolver(ClothSkylineFactor skyline, Cloth
         double previousWeight = 0;
         for (int iteration = 0; iteration < CorrectionLimit; iteration++)
         {
-            _residual.CopyTo(_preconditioned, 0);
-            skyline.Substitute(_factor, _preconditioned);
+            factor.Substitute(_residual, _preconditioned);
             work = work with
             {
                 CorrectionIterations = work.CorrectionIterations + 1,
-                SubstitutionProducts = work.SubstitutionProducts + skyline.SubstitutionProducts,
+                SubstitutionProducts = work.SubstitutionProducts + factor.SubstitutionProducts,
             };
             double weight = Dot(_residual, _preconditioned, ref work);
             if (!PositiveFinite(weight)) return ClothStepStatus.NonfiniteState;

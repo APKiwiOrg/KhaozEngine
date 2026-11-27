@@ -53,7 +53,7 @@ public sealed class ClothMaterialReuseTests
     {
         int[] start = [0, 0, 0];
         var factor = new ClothSkylineFactor(start, Limits);
-        var solver = new ClothMaterialReuseSolver(factor, new ClothMaterialOperator(new[,] { { true } }, start, factor.Offsets), 3);
+        var solver = MakeReuseSolver(new[,] { { true } }, start);
         double[] first = [4, .25, 3, .5, -.5, 2];
         double[] changed = [5, -1, 4, .25, 1.5, 2];
         double[] load = [2, -1, 3];
@@ -99,9 +99,7 @@ public sealed class ClothMaterialReuseTests
             first[row] = load[row] = 1;
             changed[row] = row + 1;
         }
-        var factor = new ClothSkylineFactor(start, Limits);
-        var solver = new ClothMaterialReuseSolver(factor,
-            new ClothMaterialOperator(new bool[size / 3, size / 3], start, factor.Offsets), size);
+        var solver = MakeReuseSolver(new bool[size / 3, size / 3], start);
         Assert.Equal(ClothStepStatus.Accepted, solver.Solve(first, load, out _));
 
         Assert.Equal(ClothStepStatus.MaterialSolveWork, solver.Solve(changed, load, out ClothMaterialSolveWork work));
@@ -120,8 +118,7 @@ public sealed class ClothMaterialReuseTests
     public void A_zero_load_requires_a_finite_current_residual(double current, ClothStepStatus expected)
     {
         int[] start = [0, 1, 2];
-        var factor = new ClothSkylineFactor(start, Limits);
-        var solver = new ClothMaterialReuseSolver(factor, new ClothMaterialOperator(new[,] { { true } }, start, factor.Offsets), 3);
+        var solver = MakeReuseSolver(new[,] { { true } }, start);
         Assert.Equal(ClothStepStatus.Accepted, solver.Solve([1, 2, 3], [1, 1, 1], out _));
 
         Assert.Equal(expected, solver.Solve([current, 2, 3], [0, 0, 0], out ClothMaterialSolveWork work));
@@ -189,4 +186,11 @@ public sealed class ClothMaterialReuseTests
 
     private static ClothRig Triangle(Vector3[] rest, int[] pins) =>
         ClothRig.Create(rest, [Vector2.Zero, Vector2.UnitX, Vector2.UnitY], [new(0, 1, 2)], pins, [], Material);
+
+    private static ClothMaterialReuseSolver MakeReuseSolver(bool[,] graph, int[] start)
+    {
+        int[] offsets = ClothSkylineFactor.BuildOffsets(start);
+        return new ClothMaterialReuseSolver(new ClothSparseFactor(graph, start, offsets, Limits),
+            new ClothMaterialOperator(graph, start, offsets), start.Length);
+    }
 }

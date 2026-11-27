@@ -8,17 +8,16 @@ internal sealed class ClothSkylineFactor
     private readonly int[] _start;
     private readonly long[] _factorProductsThroughRow;
 
-    internal ClothSkylineFactor(int[] start, ClothWorkLimits limits, bool reuseMaterialFactor = false)
+    internal ClothSkylineFactor(int[] start, ClothWorkLimits limits)
     {
         _start = start;
-        Offsets = new int[start.Length + 1];
+        Offsets = BuildOffsets(start);
         _factorProductsThroughRow = new long[start.Length];
         // Divide first so the per-substep limit can be checked without overflowing.
-        long productsPerFactor = limits.MaxMaterialFactorProducts / (reuseMaterialFactor ? 1 : limits.Iterations);
+        long productsPerFactor = limits.MaxMaterialFactorProducts / limits.Iterations;
         long products = 0;
         for (int row = 0; row < start.Length; row++)
         {
-            Offsets[row + 1] = checked(Offsets[row] + row - start[row] + 1);
             for (int col = start[row]; col <= row; col++)
                 products += col - Math.Max(start[row], start[col]);
             if (products > productsPerFactor)
@@ -34,6 +33,14 @@ internal sealed class ClothSkylineFactor
     internal int[] Offsets { get; }
     internal long FactorProducts { get; }
     internal long SubstitutionProducts { get; }
+
+    internal static int[] BuildOffsets(int[] start)
+    {
+        var offsets = new int[start.Length + 1];
+        for (int row = 0; row < start.Length; row++)
+            offsets[row + 1] = checked(offsets[row] + row - start[row] + 1);
+        return offsets;
+    }
 
     internal bool TryFactorAndSolve(double[] matrix, double[] rhs, out ClothMaterialSolveWork work)
     {
@@ -69,13 +76,6 @@ internal sealed class ClothSkylineFactor
         Backward(matrix, rhs);
         work = new(Factorizations: 1, FactorProducts: FactorProducts, SubstitutionProducts: SubstitutionProducts);
         return true;
-    }
-
-    internal void Substitute(double[] factor, double[] rhs)
-    {
-        for (int row = 0; row < rhs.Length; row++)
-            ForwardRow(factor, rhs, row, _start[row], Offsets[row] - _start[row]);
-        Backward(factor, rhs);
     }
 
     private static void ForwardRow(double[] matrix, double[] rhs, int row, int rowStart, int rowBase)

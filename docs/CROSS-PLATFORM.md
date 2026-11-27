@@ -463,9 +463,10 @@ rehearsals emit `rehearsal`, require a null graphics clock, and retain the full 
 19,800 unit seconds and 350 job minutes. Their budgets and campaign maximums remain exactly zero. The
 [water optics contract](RENDERER-PERFORMANCE.md#water-optics-campaign) owns their separate frame counts.
 
-`windows-vulkan` has no software rehearsal class. Software rehearsals use the runner image family
-as both the logical ID and job label. An image-family pin still permits image revisions, so runtime
-inheritance must be established separately.
+`windows-vulkan` has no software rehearsal class. Paid presets retain their T4 hardware, NVIDIA ICD
+mapping and strict promotion verdict. Software rehearsals use the runner image family as both the
+logical ID and job label. An image-family pin still permits image revisions, so runtime inheritance
+must be established separately.
 
 The owner must approve the exact rehearsal workload, leg, schedule, limits and zero-USD budget before
 a new authorization commit exists. A proposal or implementation is not permission to run.

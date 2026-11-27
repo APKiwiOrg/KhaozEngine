@@ -55,7 +55,7 @@ public sealed class RendererPerfRehearsalControlsWorkflowTests
         var original = fixture.Manifest.DeepClone().AsObject();
         foreach ((string section, string key, JsonNode? value) in new (string, string, JsonNode?)[]
         {
-            ("execution", "runner", JsonValue.Create("gpu-t4-linux")),
+            ("execution", "runner", JsonValue.Create("machine-t4-linux")),
             ("execution", "runner", JsonValue.Create("gpu-t4-windows")),
             ("execution", "adapterPolicy", JsonValue.Create("nvidia-t4-hardware")),
             ("execution", "adapterPolicy", JsonValue.Create(leg == "linux-vulkan" ? "microsoft-warp-software" : "mesa-lavapipe-software")),

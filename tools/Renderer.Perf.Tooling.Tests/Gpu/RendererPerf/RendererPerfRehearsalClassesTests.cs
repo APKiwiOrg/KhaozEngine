@@ -70,7 +70,7 @@ public sealed class RendererPerfRehearsalClassesTests
         {
             ("execution", "runner", JsonValue.Create(leg == "linux-vulkan" ? "windows-2025-vs2026" : "ubuntu-24.04")),
             ("execution", "runner", JsonValue.Create("windows-latest")),
-            ("execution", "runner", JsonValue.Create("gpu-t4-linux")),
+            ("execution", "runner", JsonValue.Create("machine-t4-linux")),
             ("execution", "runner", JsonValue.Create("gpu-t4-windows")),
             ("execution", "adapterPolicy", JsonValue.Create(leg == "linux-vulkan" ? "microsoft-warp-software" : "mesa-lavapipe-software")),
             ("execution", "adapterPolicy", JsonValue.Create("nvidia-t4-hardware")),
@@ -80,7 +80,7 @@ public sealed class RendererPerfRehearsalClassesTests
             ("limits", "jobMinutes", JsonValue.Create(preset == "rehearsal" ? 350 : 120)),
             ("limits", "frameMilliseconds", JsonValue.Create(10000)),
             ("budget", "maximumBilledMinutes", JsonValue.Create(preset == "rehearsal" ? 350 : 120)),
-            ("budget", "ratePerMinute", JsonValue.Create(0.052m)),
+            ("budget", "ratePerMinute", JsonValue.Create(0.01753m)),
             ("budget", "maximumCostUsd", JsonValue.Create(1)),
             ("approval", "campaignMaximumUsd", JsonValue.Create(1))
         })

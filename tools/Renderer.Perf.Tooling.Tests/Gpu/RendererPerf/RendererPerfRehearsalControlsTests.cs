@@ -70,7 +70,7 @@ public sealed class RendererPerfRehearsalControlsTests
                 case "control-order": json["controls"]!.AsArray().ReverseInPlace(); break;
                 case "warmup": json["controls"]![0]!["warmupFrames"] = 32; break;
                 case "measured": json["controls"]![0]!["measuredFrames"] = 64; break;
-                case "paid-runner": json["execution"]!["runner"] = leg == "linux-vulkan" ? "gpu-t4-linux" : "gpu-t4-windows"; break;
+                case "paid-runner": json["execution"]!["runner"] = leg == "linux-vulkan" ? "machine-t4-linux" : "gpu-t4-windows"; break;
                 case "other-runner": json["execution"]!["runner"] = leg == "linux-vulkan" ? "windows-2025-vs2026" : "ubuntu-24.04"; break;
                 case "hardware": json["execution"]!["adapterPolicy"] = "nvidia-t4-hardware"; break;
                 case "other-software": json["execution"]!["adapterPolicy"] = leg == "linux-vulkan" ? "microsoft-warp-software" : "mesa-lavapipe-software"; break;

@@ -79,7 +79,7 @@ public sealed class RendererPerfWorkflowManifestSchemaTests
     [InlineData("", "runtime", "[]")]
     [InlineData("", "recipes", "{}")]
     [InlineData("runtime", "environment", "[]")]
-    [InlineData("budget", "ratePerMinute", "\"0.052\"")]
+    [InlineData("budget", "ratePerMinute", "\"0.01753\"")]
     public void Select_refuses_wrong_field_kinds(string section, string field, string json)
     {
         using var workspace = Workspace();

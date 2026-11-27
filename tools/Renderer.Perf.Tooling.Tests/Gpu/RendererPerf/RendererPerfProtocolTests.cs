@@ -97,7 +97,7 @@ public sealed class RendererPerfProtocolTests
         {
             "duplicate" => text.Insert(1, "\"unitId\":\"other\","),
             "nested-duplicate" => text.Replace("\"unitSeconds\":600", "\"unitSeconds\":600,\"unitSeconds\":600", StringComparison.Ordinal),
-            "nan" => text.Replace("0.052", "NaN", StringComparison.Ordinal),
+            "nan" => text.Replace("0.01753", "NaN", StringComparison.Ordinal),
             "overflow" => text.Replace("\"batchSize\":3", "\"batchSize\":2147483648", StringComparison.Ordinal),
             _ => text
         };
@@ -162,9 +162,9 @@ public sealed class RendererPerfProtocolTests
     }
 
     [Theory]
-    [InlineData("pilot", "linux-vulkan", 1260, 0.780)]
+    [InlineData("pilot", "linux-vulkan", 1260, 0.26295)]
     [InlineData("pilot", "windows-d3d11", 1260, 2.346)]
-    [InlineData("full", "linux-vulkan", 16944, 1.976)]
+    [InlineData("full", "linux-vulkan", 16944, 0.66614)]
     [InlineData("full", "windows-d3d11", 16944, 5.406)]
     [InlineData("full", "windows-vulkan", 16944, 5.406)]
     public void Round_trips_exact_scene_and_block_order(string preset, string leg, int frames, double maximumCost)
@@ -173,7 +173,7 @@ public sealed class RendererPerfProtocolTests
         RendererPerfManifest manifest = RendererPerfManifest.Parse(bytes, Authorization(bytes) with
         {
             Leg = leg,
-            Runner = leg == "linux-vulkan" ? "gpu-t4-linux" : "gpu-t4-windows"
+            Runner = leg == "linux-vulkan" ? "machine-t4-linux" : "gpu-t4-windows"
         });
         Assert.Equal(frames, manifest.TotalFrameCount);
         Assert.Equal((decimal)maximumCost, manifest.Budget.MaximumCostUsd);
@@ -551,9 +551,9 @@ public sealed class RendererPerfProtocolTests
           "workloadSha":"{{Sha}}", "baselineMainSha":"{{Sha}}", "recipes":[], "blocks":[], "controls":[],
           "conditioningFrames":300, "batchSize":3, "maximumScopeOccurrences":255,
           "runtime":{"configuration":"Release","runtimeVersion":"10.0.0","environment":{},"gcMode":"workstation","tieredCompilation":true},
-          "execution":{"backend":"vulkan","adapterPolicy":"nvidia-t4-hardware","runner":"gpu-t4-linux","workflow":"gpu-hosted-bench.yml","leg":"{{leg}}","completionPolicy":"retained-fence-batch-3/1","lockedGraphicsClockMHz":1095},
+          "execution":{"backend":"vulkan","adapterPolicy":"nvidia-t4-hardware","runner":"machine-t4-linux","workflow":"gpu-hosted-bench.yml","leg":"{{leg}}","completionPolicy":"retained-fence-batch-3/1","lockedGraphicsClockMHz":1095},
           "limits":{"unitSeconds":600,"frameMilliseconds":10000,"coldFrameMilliseconds":120000,"jobMinutes":12},
-          "budget":{"maximumBilledMinutes":15,"ratePerMinute":0.052,"currency":"USD","maximumCostUsd":0.780},
+          "budget":{"maximumBilledMinutes":15,"ratePerMinute":0.01753,"currency":"USD","maximumCostUsd":0.26295},
           "approval":{"reference":"owner message 2026-10-21, first Linux pilot","purpose":"validate the renderer protocol","campaignReference":"owner message 2026-10-21, two pilots and two full units","campaignMaximumUsd":7.24}
         }
         """)!.AsObject();
@@ -563,7 +563,7 @@ public sealed class RendererPerfProtocolTests
             root["limits"]!["unitSeconds"] = 1500;
             root["limits"]!["jobMinutes"] = leg == "linux-vulkan" ? 35 : 50;
             root["budget"]!["maximumBilledMinutes"] = leg == "linux-vulkan" ? 38 : 53;
-            root["budget"]!["maximumCostUsd"] = leg == "linux-vulkan" ? 1.976m : 5.406m;
+            root["budget"]!["maximumCostUsd"] = leg == "linux-vulkan" ? 0.66614m : 5.406m;
         }
         if (leg != "linux-vulkan")
         {
@@ -615,7 +615,7 @@ public sealed class RendererPerfProtocolTests
 
     static RendererPerfAuthorization Authorization(byte[] bytes) => new(
         Convert.ToHexStringLower(SHA256.HashData(bytes)), Sha, OtherSha, Sha, 1,
-        ["tools/Renderer.Perf.Tests/authorized/pilot-linux.json"], 1, "linux-vulkan", "gpu-t4-linux", "gpu-hosted-bench.yml");
+        ["tools/Renderer.Perf.Tests/authorized/pilot-linux.json"], 1, "linux-vulkan", "machine-t4-linux", "gpu-hosted-bench.yml");
 
     static RendererPerfReport PartialReport()
     {

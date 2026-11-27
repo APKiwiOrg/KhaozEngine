@@ -405,8 +405,9 @@ not hardware speed.
 G4 and G5 are separately approved hardware cost units with frozen synthetic workloads. Both require
 `KE_COVERAGE_COST_UNIT=Real_body_size_carry_and_scene_overhead_for_1_and_32_actors` in addition to the
 normal hardware opt-ins and exact fact selection. Missing or different values skip before probing
-hardware. Hosted benchmark dispatch forwards its optional `coverage-cost-unit` input to that variable,
-and ordinary shard filters exclude this fact even without Diagnostic filtering. Do not use a broad
+hardware. The `gpu-hosted-bench.yml` dispatch forwards its optional `coverage-cost-unit` input to
+that variable. The Linux Vulkan leg uses the lower-cost machine.dev on-demand Tesla T4, retaining
+the same GPU target. Ordinary shard filters exclude this fact even without Diagnostic filtering. Do not use a broad
 Diagnostic selection as cost-unit authorization. See [performance evidence](RENDERER-PERFORMANCE.md#equipment-coverage-cost-evidence).
 
 Cost schema `khaozengine.coverage-recession-cost/6` measures carry-only and baseline/covered scenes for

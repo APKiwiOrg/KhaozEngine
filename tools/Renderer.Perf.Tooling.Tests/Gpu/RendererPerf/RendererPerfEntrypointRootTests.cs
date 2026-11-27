@@ -44,6 +44,10 @@ public sealed class RendererPerfEntrypointRootTests
     // breaks only the rule its change targets.
     [Theory]
     [InlineData("second-attempt", RendererPerfEntrypointRefusal.NotFirstHostedAttempt)]
+    [InlineData("self-hosted-windows-runner", RendererPerfEntrypointRefusal.NotFirstHostedAttempt)]
+    [InlineData("machine-runner-wrong-leg", RendererPerfEntrypointRefusal.NotFirstHostedAttempt)]
+    [InlineData("wrong-host-environment", RendererPerfEntrypointRefusal.NotFirstHostedAttempt)]
+    [InlineData("runner-manifest-mismatch", RendererPerfEntrypointRefusal.NotFirstHostedAttempt)]
     [InlineData("unit-input", RendererPerfEntrypointRefusal.InputsDisagree)]
     [InlineData("unsafe-unit", RendererPerfEntrypointRefusal.UnsafeUnitToken)]
     [InlineData("nested-root", RendererPerfEntrypointRefusal.CheckoutRootNotGitTopLevel)]
@@ -62,6 +66,13 @@ public sealed class RendererPerfEntrypointRootTests
         switch (change)
         {
             case "second-attempt": fixture.Set("GITHUB_RUN_ATTEMPT", "2"); break;
+            case "self-hosted-windows-runner": fixture.Set("RENDERER_PERF_RUNNER", "gpu-t4-windows"); break;
+            case "machine-runner-wrong-leg": fixture.Set("LEGS", "windows-d3d11"); break;
+            case "wrong-host-environment": fixture.Set("RUNNER_ENVIRONMENT", "github-hosted"); break;
+            case "runner-manifest-mismatch":
+                fixture.Set("RUNNER_ENVIRONMENT", "github-hosted");
+                fixture.Set("RENDERER_PERF_RUNNER", "ubuntu-24.04");
+                break;
             case "unit-input": fixture.Set("KE_RENDERER_PERF_UNIT", "pilot-other"); break;
             case "unsafe-unit":
                 unit = "Pilot-linux";
@@ -170,7 +181,8 @@ public sealed class RendererPerfEntrypointRootTests
             foreach (var pair in Work.Environment) Set(pair.Key, pair.Value);
             Set("GITHUB_WORKSPACE", Root);
             Set("GITHUB_ACTIONS", "true");
-            Set("RUNNER_ENVIRONMENT", "github-hosted");
+            Set("RUNNER_ENVIRONMENT", "self-hosted");
+            Set("RENDERER_PERF_RUNNER", "machine-t4-linux");
             Set("GITHUB_RUN_ATTEMPT", "1");
             Set("KE_GPU_TESTS", "1");
             Set("KE_RENDERER_PERF_UNIT", "pilot-linux");
@@ -182,7 +194,7 @@ public sealed class RendererPerfEntrypointRootTests
             Work.Environment["TESTED_REF"] = Work.Git("rev-parse", "HEAD").Trim();
             var authorization = new RendererPerfAuthorization(Work.Environment["RENDERER_PERF_MANIFEST_SHA256"],
                 Work.Workload, Work.Environment["TESTED_REF"], Work.Workload, 1,
-                [$"tools/Renderer.Perf.Tests/authorized/{authorizedUnit}.json"], 1, "linux-vulkan", "gpu-t4-linux", "gpu-hosted-bench.yml");
+                [$"tools/Renderer.Perf.Tests/authorized/{authorizedUnit}.json"], 1, "linux-vulkan", "machine-t4-linux", "gpu-hosted-bench.yml");
             File.WriteAllBytes(Path.Combine(Work.Reports, "authorization.json"),
                 JsonSerializer.SerializeToUtf8Bytes(authorization, RendererPerfManifest.JsonOptions));
             Set("TESTED_REF", Work.Environment["TESTED_REF"]);

@@ -10,9 +10,10 @@ internal static class RendererPerfPaidPolicy
     internal const int LockedGraphicsClockMHz = 1095;
     // The owner's envelope for every paid pilot and full unit, including attempts already billed.
     internal const decimal CampaignMaximumUsd = 22m;
-    internal const decimal WaterOpticsV2CampaignMaximumUsd = 7.382m;
-    internal const decimal WaterOpticsV3CampaignMaximumUsd = 7.382m;
-    internal const decimal LinuxT4RatePerMinuteUsd = 0.052m;
+    internal const decimal WaterOpticsV2CampaignMaximumUsd = 6.07214m;
+    internal const decimal WaterOpticsV3CampaignMaximumUsd = 6.07214m;
+    internal const string LinuxT4Runner = "machine-t4-linux";
+    internal const decimal LinuxT4RatePerMinuteUsd = 0.01753m;
     internal const decimal WindowsT4RatePerMinuteUsd = 0.102m;
 
     internal static decimal CampaignMaximumFor(string preset)
@@ -28,7 +29,7 @@ internal static class RendererPerfPaidPolicy
         var execution = manifest.Execution;
         bool linux = execution.Leg == "linux-vulkan", pilot = manifest.Preset == "pilot";
         Require(execution.Backend == (execution.Leg == "windows-d3d11" ? "d3d11" : "vulkan")
-            && execution.Runner == (linux ? "gpu-t4-linux" : "gpu-t4-windows")
+            && execution.Runner == (linux ? LinuxT4Runner : "gpu-t4-windows")
             && execution.AdapterPolicy == "nvidia-t4-hardware" && execution.Workflow == "gpu-hosted-bench.yml"
             && execution.CompletionPolicy == "retained-fence-batch-3/1"
             && execution.LockedGraphicsClockMHz == LockedGraphicsClockMHz, "Preset", "Backend, hardware, runner, workflow or completion policy differs from the preset.");

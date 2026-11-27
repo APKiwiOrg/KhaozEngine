@@ -37,7 +37,7 @@ public sealed class RendererPerfRehearsalManifestTests
     }
 
     [Theory]
-    [InlineData("execution", "runner", "gpu-t4-linux")]
+    [InlineData("execution", "runner", "machine-t4-linux")]
     [InlineData("execution", "runner", "gpu-t4-windows")]
     [InlineData("execution", "adapterPolicy", "nvidia-t4-hardware")]
     [InlineData("execution", "backend", "d3d11")]

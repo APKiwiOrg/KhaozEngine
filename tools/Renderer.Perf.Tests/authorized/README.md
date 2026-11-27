@@ -25,8 +25,10 @@ manifest and authorization Git facts there, including from a nested VSTest host 
 recipe source paths must belong to that checkout before startup. No working-directory change,
 output-directory manifest copy or alternate-checkout search is used.
 The workflow checks the authorization diff and exact bytes before selecting a hosted runner and
-again on that runner. The entrypoint independently validates the strict manifest and runtime before
-native creation. Performance presets require hosted NVIDIA T4 hardware. The
+again on that runner. The entrypoint independently checks the selected runner against the strict
+manifest and validates the runtime before native creation. Paid Linux uses logical runner ID
+`machine-t4-linux` on machine.dev, and paid Windows uses `gpu-t4-windows` on GitHub. Both use NVIDIA
+T4 hardware. The
 [renderer reference](../../../docs/RENDERER-PERFORMANCE.md#software-correctness-rehearsal)
 owns the supported software rehearsal legs and schedules, including `rehearsal-controls`, separate
 approvals, limits and correctness verdict. The same reference's
@@ -36,8 +38,8 @@ usable timestamps, complete compiler evidence and certified publication. Partial
 
 The trusted free `legs` job admits paid `water-optics-v2` and `water-optics-v3` only on `linux-vulkan` or `windows-d3d11`,
 with the full T4 job caps of 35 and 50 minutes. It checks every paid campaign maximum before a paid
-runner is allocated. The cap must cover `budget.maximumCostUsd` and stay at or below USD 7.382 for
-each water optics campaign, or USD 22 for v1 `pilot` and `full`. The
+runner is allocated. The cap must cover `budget.maximumCostUsd` and stay within the applicable
+campaign maximum. The
 [water optics contract](../../../docs/RENDERER-PERFORMANCE.md#water-optics-campaign) owns the schedules.
 `rehearsal-water-optics-v2` selects only Linux lavapipe on `ubuntu-24.04`, while
 `rehearsal-water-optics-v2-single` selects only Windows D3D11 WARP on `windows-2025-vs2026`. Both retain

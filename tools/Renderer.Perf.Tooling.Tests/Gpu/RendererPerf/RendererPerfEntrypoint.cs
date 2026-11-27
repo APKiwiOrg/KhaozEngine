@@ -17,9 +17,13 @@ internal static class RendererPerfEntrypoint
 {
     internal static void Run(string unit, string directory)
     {
-        Require(Env("GITHUB_ACTIONS") == "true" && Env("RUNNER_ENVIRONMENT") == "github-hosted" && Env("KE_GPU_TESTS") == "1"
-            && Env("WORKFLOW_RUN_ATTEMPT") == "1" && Env("GITHUB_RUN_ATTEMPT") == "1", RendererPerfEntrypointRefusal.NotFirstHostedAttempt,
-            "Only a first-attempt GitHub-hosted authorization can open the native device.");
+        string? runner = Environment.GetEnvironmentVariable("RENDERER_PERF_RUNNER");
+        bool machineT4 = runner == RendererPerfPaidPolicy.LinuxT4Runner;
+        Require(Env("GITHUB_ACTIONS") == "true" && Env("KE_GPU_TESTS") == "1"
+            && Env("WORKFLOW_RUN_ATTEMPT") == "1" && Env("GITHUB_RUN_ATTEMPT") == "1"
+            && Env("RUNNER_ENVIRONMENT") == (machineT4 ? "self-hosted" : "github-hosted")
+            && (!machineT4 || Env("LEGS") == "linux-vulkan"), RendererPerfEntrypointRefusal.NotFirstHostedAttempt,
+            "Only a first-attempt authorization on the selected runner environment can open the native device.");
         Require(unit == Env("RENDERER_PERF_UNIT") && unit == Env("KE_RENDERER_PERF_UNIT")
             && directory == Env("KE_RENDERER_PERF_REPORTS"), RendererPerfEntrypointRefusal.InputsDisagree, "Explicit entrypoint inputs disagree with the workflow.");
         Require(unit.Length is >= 1 and <= 64 && unit[0] != '-' && unit.All(c => c is >= 'a' and <= 'z' or >= '0' and <= '9' or '-'),
@@ -40,6 +44,8 @@ internal static class RendererPerfEntrypoint
             RendererPerfEntrypointRefusal.AuthorizationNotManifestOnly, "Authorization must add only the manifest to its immutable workload parent.");
         var manifest = RendererPerfManifest.Parse(bytes, authorization);
         Require(manifest.UnitId == unit, RendererPerfEntrypointRefusal.ManifestUnitMismatch, "Manifest names a different unit.");
+        Require(manifest.Execution.Runner == runner, RendererPerfEntrypointRefusal.NotFirstHostedAttempt,
+            "The authorized runner differs from the workflow selection.");
         var environment = RuntimeEnvironment();
         string gc = GCSettings.IsServerGC ? "server" : "workstation";
         Directory.CreateDirectory(directory);

@@ -55,7 +55,7 @@ public sealed class RendererPerfWaterOpticsPresetTests
             control!["warmupFrames"] = shortened ? 32 : 64;
             control["measuredFrames"] = shortened ? 64 : 128;
         }
-        json["approval"]!["campaignMaximumUsd"] = rehearsal ? 0 : 7.382m;
+        json["approval"]!["campaignMaximumUsd"] = rehearsal ? 0 : 6.07214m;
         if (rehearsal)
         {
             json["execution"]!["runner"] = leg == "linux-vulkan" ? "ubuntu-24.04" : "windows-2025-vs2026";
@@ -158,8 +158,8 @@ public sealed class RendererPerfWaterOpticsPresetTests
     }
 
     [Theory]
-    [InlineData("water-optics-v2", "linux-vulkan", 35, 38, "1.976")]
-    [InlineData("water-optics-v3", "linux-vulkan", 35, 38, "1.976")]
+    [InlineData("water-optics-v2", "linux-vulkan", 35, 38, "0.66614")]
+    [InlineData("water-optics-v3", "linux-vulkan", 35, 38, "0.66614")]
     [InlineData("water-optics-v2", "windows-d3d11", 50, 53, "5.406")]
     [InlineData("water-optics-v3", "windows-d3d11", 50, 53, "5.406")]
     public void Paid_caps_are_the_full_caps(string preset, string leg, int minutes, int billed, string cost)
@@ -180,7 +180,7 @@ public sealed class RendererPerfWaterOpticsPresetTests
     {
         var json = ManifestJson(preset, leg);
         RendererPerfRehearsalManifestTests.Parse(json);
-        json["approval"]!["campaignMaximumUsd"] = 7.383m;
+        json["approval"]!["campaignMaximumUsd"] = 6.07314m;
         Assert.Equal("Approval", Assert.Throws<RendererPerfProtocolException>(() => RendererPerfRehearsalManifestTests.Parse(json)).Code);
         json["approval"]!["campaignMaximumUsd"] = json["budget"]!["maximumCostUsd"]!.GetValue<decimal>() - .001m;
         Assert.Equal("Approval", Assert.Throws<RendererPerfProtocolException>(() => RendererPerfRehearsalManifestTests.Parse(json)).Code);
@@ -261,8 +261,8 @@ public sealed class RendererPerfWaterOpticsPresetTests
     }
 
     [Theory]
-    [InlineData("rehearsal-water-optics-v2", "linux-vulkan", "gpu-t4-linux")]
-    [InlineData("rehearsal-water-optics-v3", "linux-vulkan", "gpu-t4-linux")]
+    [InlineData("rehearsal-water-optics-v2", "linux-vulkan", "machine-t4-linux")]
+    [InlineData("rehearsal-water-optics-v3", "linux-vulkan", "machine-t4-linux")]
     [InlineData("rehearsal-water-optics-v2-single", "windows-d3d11", "gpu-t4-windows")]
     [InlineData("rehearsal-water-optics-v3-single", "windows-d3d11", "gpu-t4-windows")]
     public void Water_rehearsal_refuses_hardware_and_nonzero_cost(string preset, string leg, string runner)

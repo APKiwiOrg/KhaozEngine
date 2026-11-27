@@ -500,7 +500,9 @@ Linux rehearsal installs Mesa Vulkan and looks up `/lvp_icd[^/]*\.json$` in
 at that discovered file, and `KE_VULKAN_REQUIRED=1` requires Vulkan. The D3D adapter variable is empty.
 The approved runtime map includes those effective values and the isolated .NET host/root values.
 The observed standard Ubuntu map also includes `DOTNET_MULTILEVEL_LOOKUP=0`, `DOTNET_NOLOGO=1` and
-`DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1`, which the T4 partner image lacked.
+`DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1`, which the T4 partner image lacked. The machine.dev T4 image exports
+the same three, so paid Linux manifests on `machine-t4-linux` declare them. A pilot that omitted them refused
+before native creation in [run 46072064589](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/46072064589).
 
 Windows needs its own exact testhost map. Standard-image Windows runs
 [40414697088](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40414697088) and

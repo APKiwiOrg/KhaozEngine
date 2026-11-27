@@ -17,6 +17,7 @@ public sealed class CoreGoldenTests(ITestOutputHelper output)
     {
         CoreBackendRegistration.SeatAsVulkanNative();
         string? previous = Environment.GetEnvironmentVariable(BackendVariable);
+        long devicesBefore = CoreGpuDevice.CreatedDevices;
         byte[] rgba;
         try
         {
@@ -33,6 +34,8 @@ public sealed class CoreGoldenTests(ITestOutputHelper output)
         var comparison = CoreGoldenCheck.Compare("scene2d_primitives", rgba,
             Scene2DPrimitivesScene.Width, Scene2DPrimitivesScene.Height);
         output.WriteLine($"worst cell difference {comparison.WorstDiff:F4}, offenders {comparison.Offenders.Count}");
+        // Provenance: the frame came from a device the C++ backend created, not a fallback backend.
+        Assert.True(CoreGpuDevice.CreatedDevices > devicesBefore);
         Assert.Equal(0u, CoreGpuDevice.LastDisposedValidationErrors);
         Assert.Empty(comparison.Offenders);
     }

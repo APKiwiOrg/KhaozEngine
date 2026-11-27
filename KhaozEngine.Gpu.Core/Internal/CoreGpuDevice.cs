@@ -27,6 +27,7 @@ internal sealed unsafe class CoreGpuDevice : IGpuDevice
     internal CoreGpuDevice(khaoz_gpu_device* handle)
     {
         _handle = handle;
+        Interlocked.Increment(ref _createdDevices);
         khaoz_gpu_capabilities caps;
         NativeResult.ThrowIfFailed(KhaozNative.khaoz_gpu_device_capabilities(handle, &caps), nameof(ReadCapabilities));
         Capabilities = ReadCapabilities(caps);
@@ -84,6 +85,11 @@ internal sealed unsafe class CoreGpuDevice : IGpuDevice
 
     internal uint DisposeValidationErrors { get; private set; }
     internal static uint LastDisposedValidationErrors { get; private set; }
+
+    private static long _createdDevices;
+
+    /// <summary>Devices the C++ backend has created in this process, so a capture can prove which backend drew it.</summary>
+    internal static long CreatedDevices => Interlocked.Read(ref _createdDevices);
 
     public void Submit(IGpuCommandList cl) => SubmitCore(cl, null);
 

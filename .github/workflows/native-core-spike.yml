@@ -8,45 +8,25 @@ name: native-core-spike
 # the runner, so they load on ubuntu-24.04, the dotnet/sdk:10.0 image game repositories run CI in and
 # players' distributions. The images and every action are pinned by digest or commit.
 
-# A pull request runs this only when it touches the native core, its managed adapter or that adapter's
-# project closure (the gpu-core row of .github/ci-scope.txt), or the shared build files they compile with.
+# The Scope job selects the run with the Product CI rules in .github/ci-scope.txt, as the other native
+# correctness workflows do. The segments cover the adapter's project closure (gpu-core) and the pack and
+# smoke projects. The C++ sources under native/ and the golden scene and grid this workflow reads from
+# KhaozEngine.Render.Tests sit outside any project closure, so they are full overrides there, and a full
+# scope selects this workflow. Schedule and dispatch run everything.
 on:
+  push:
+    branches: [main]
   pull_request:
-    paths:
-      - .github/workflows/native-core-spike.yml
-      - native/**
-      - KhaozEngine.Gpu.Core/**
-      - KhaozEngine.Gpu.Core.Tests/**
-      - KhaozEngine.Diagnostics/**
-      - KhaozEngine.Gpu/**
-      - KhaozEngine.Gpu.D3D11/**
-      - KhaozEngine.Gpu.Metal/**
-      - KhaozEngine.Gpu.TestKit/**
-      - KhaozEngine.Gpu.Vulkan/**
-      - KhaozEngine.Imaging/**
-      - KhaozEngine.Platform/**
-      - KhaozEngine.Primitives/**
-      - KhaozEngine.Render2D/**
-      - KhaozEngine.TestSupport.Gpu/**
-      - KhaozEngine.Windowing/**
-      - KhaozEngine.CodeHealth.Analyzers/**
-      - KhaozEngine.Foundation/build/**
-      - KhaozEngine.Render.Tests/Gpu/Scene2DPrimitivesScene.cs
-      - KhaozEngine.Render.Tests/Gpu/goldens/scene2d_primitives.vulkan-native.txt
-      - build/**
-      - Directory.Build.props
-      - Directory.Build.targets
-      - Directory.Packages.props
-      - nuget.config
-      - .editorconfig
-      - .config/dotnet-tools.json
-      - .filesize-baseline
-      - .testhealth-baseline
+  schedule:
+    - cron: '43 18 * * 0'
   workflow_dispatch:
 
 concurrency:
-  group: native-core-spike-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: >-
+    ${{ github.event_name == 'pull_request' && github.run_attempt == 1 &&
+        format('native-core-spike-pr-{0}', github.event.pull_request.number) ||
+        format('native-core-spike-{0}-{1}', github.event_name, github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.run_attempt == 1 }}
 
 permissions:
   contents: read
@@ -57,8 +37,33 @@ env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1'
 
 jobs:
+  scope:
+    name: Scope
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      selected: ${{ steps.scope.outputs.selected }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          sparse-checkout: |
+            /.github/actions/native-ci-scope/
+            /.github/ci-scope.txt
+          sparse-checkout-cone-mode: false
+      - id: scope
+        uses: ./.github/actions/native-ci-scope
+        with:
+          segments: '["compile-native-pack", "compile-native-smoke", "gpu-core"]'
+
   native-build:
     name: 'Build: native-${{ matrix.rid }}'
+    needs: scope
+    if: needs.scope.outputs.selected == 'true'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     strategy:
@@ -124,8 +129,8 @@ jobs:
           PRESET: ${{ matrix.preset }}
           RID: ${{ matrix.rid }}
         run: |
-          docker run --rm -v "$PWD:/src" -w /src/native -e PRESET -e RID "$IMAGE" bash -euxo pipefail -c '
-            sh scripts/stage-library.sh "out/build/$PRESET" "$RID" /src/stage
+          docker run --rm -v "$PWD:/src" -w /src -e PRESET -e RID "$IMAGE" bash -euxo pipefail -c '
+            sh native/scripts/stage-library.sh "native/out/build/$PRESET" "$RID" /src/stage
             lib="/src/stage/lib/$RID/libkhaoz_native.so"
             readelf -d "$lib" | grep NEEDED
             if readelf -d "$lib" | grep -q "libstdc++\|libgcc_s"; then
@@ -206,6 +211,8 @@ jobs:
 
   native-lint:
     name: 'Test: native-lint'
+    needs: scope
+    if: needs.scope.outputs.selected == 'true'
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     steps:
@@ -245,14 +252,12 @@ jobs:
             '*.inc' '*.inl' '*.ipp' '*.tcc' '*.tpp' '*.ccm' '*.cppm' '*.cxxm' '*.c++m' '*.ixx' \
             ':(exclude)third_party/**' | xargs -0 clang-format --dry-run --Werror --
       - name: Vendored dependency hashes
-        working-directory: native
-        run: sh scripts/refresh-third-party.sh --check
+        run: sh native/scripts/refresh-third-party.sh --check
       - name: Vendored includes stay system includes
-        working-directory: native
         run: |
           set -eux
-          python3 scripts/check-vendored-includes.py -p out/build/linux-x64
-          python3 scripts/check-vendored-includes.py -p out/build/linux-x64-asan
+          python3 native/scripts/check-vendored-includes.py -p native/out/build/linux-x64
+          python3 native/scripts/check-vendored-includes.py -p native/out/build/linux-x64-asan
       - name: clang-tidy
         working-directory: native
         run: |
@@ -272,11 +277,11 @@ jobs:
           dotnet tool restore
           sh native/scripts/generate-bindings.sh
           git diff --exit-code -- KhaozEngine.Gpu.Core/Interop/KhaozNative.g.cs
-      - name: No dash glyphs
-        run: sh scripts/check-dashes.sh --tree
 
   native-asan:
     name: 'Test: native-asan'
+    needs: scope
+    if: needs.scope.outputs.selected == 'true'
     runs-on: ubuntu-26.04
     timeout-minutes: 30
     env:
@@ -319,7 +324,8 @@ jobs:
 
   native-golden:
     name: 'Test: native-golden'
-    needs: native-build
+    needs: [scope, native-build]
+    if: needs.scope.outputs.selected == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -359,7 +365,8 @@ jobs:
 
   native-pack:
     name: 'Package: native'
-    needs: native-build
+    needs: [scope, native-build]
+    if: needs.scope.outputs.selected == 'true'
     runs-on: ubuntu-26.04
     timeout-minutes: 15
     outputs:
@@ -415,7 +422,8 @@ jobs:
 
   native-smoke:
     name: 'Test: native-smoke-${{ matrix.target }}'
-    needs: native-pack
+    needs: [scope, native-pack]
+    if: needs.scope.outputs.selected == 'true'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     strategy:

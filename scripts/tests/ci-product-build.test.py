@@ -296,6 +296,36 @@ def check_gpu_scope(matcher, rules, manifest, canonical, scratch):
     assert values['sharded'] == '[]' and values['vulkan_native'] == 'true'
 
 
+def check_native_core_scope(matcher, rules, manifest):
+    """The native core workflow's segments match the projects it builds, and its inputs outside them run it."""
+    workflow = (ROOT / '.github/workflows/native-core-spike.yml').read_text()
+    requested, base_events = scope_inputs(workflow, rules)
+    assert not base_events, base_events
+
+    def roots(role):
+        return {path for segment in requested if manifest[segment]['role'] == role
+                for path in manifest[segment]['roots']}
+
+    assert {manifest[segment]['role'] for segment in requested} == {'test', 'compile'}, requested
+    tests = roots('test')
+    built = set(re.findall(r'\bdotnet (?:build|test) ([\w./-]+\.csproj)\b', workflow))
+    assert tests and tests == built, (tests, built)
+    consumed = set(re.findall(r'\bdotnet (?:pack|run --project) ([\w./-]+\.csproj)\b', workflow))
+    assert roots('compile') == consumed == {
+        'native/pack/KhaozEngine.Native.csproj', 'native/smoke/NativeSmoke.csproj'}, consumed
+    scripts = set(re.findall(r'\b(native/scripts/[\w.-]+\.(?:sh|py))\b', workflow))
+    assert scripts, 'Expected native scripts in the workflow'
+    assert_external_routes(matcher, rules, requested, workflow, (
+        *scripts, 'Directory.Build.props', 'Directory.Build.targets', 'Directory.Packages.props', 'nuget.config',
+        '.editorconfig', '.config/dotnet-tools.json', 'native/CMakeLists.txt', 'native/CMakePresets.json',
+        'native/include/khaoz/khaoz_native.h', 'native/src/frame/frame.cpp', 'native/tests/test_frame.cpp',
+        'native/third_party/volk/volk.c', 'native/smoke/Program.cs', 'native/smoke/nuget.config',
+        'KhaozEngine.Gpu.Core/Interop/KhaozNative.g.cs', 'KhaozEngine.Render.Tests/Gpu/Scene2DPrimitivesScene.cs',
+        'KhaozEngine.Render.Tests/Gpu/goldens/scene2d_primitives.vulkan-native.txt',
+    ))
+    return tests
+
+
 def check_native_call_sites(matcher, rules, manifest, scratch):
     shared_build = ('Directory.Build.props', 'Directory.Build.targets', 'Directory.Packages.props', 'nuget.config')
     files = {
@@ -372,6 +402,7 @@ def main():
         scratch = Path(scratch)
         check_gpu_scope(matcher, rules, manifest, set(canonical), scratch)
         check_native_call_sites(matcher, rules, manifest, scratch)
+        check_native_core_scope(matcher, rules, manifest)
         full = plan(True, [], scratch)
         roots = projects(scratch / 'product.slnx')
         tests = projects(scratch / 'tests.slnx')

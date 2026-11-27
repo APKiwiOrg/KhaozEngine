@@ -44,7 +44,7 @@ internal static class RendererPerfEntrypoint
             RendererPerfEntrypointRefusal.AuthorizationNotManifestOnly, "Authorization must add only the manifest to its immutable workload parent.");
         var manifest = RendererPerfManifest.Parse(bytes, authorization);
         Require(manifest.UnitId == unit, RendererPerfEntrypointRefusal.ManifestUnitMismatch, "Manifest names a different unit.");
-        Require(manifest.Execution.Runner == runner, RendererPerfEntrypointRefusal.NotFirstHostedAttempt,
+        Require(manifest.Execution.Runner == runner, RendererPerfEntrypointRefusal.ManifestRunnerMismatch,
             "The authorized runner differs from the workflow selection.");
         var environment = RuntimeEnvironment();
         string gc = GCSettings.IsServerGC ? "server" : "workstation";

@@ -47,7 +47,7 @@ public sealed class RendererPerfEntrypointRootTests
     [InlineData("self-hosted-windows-runner", RendererPerfEntrypointRefusal.NotFirstHostedAttempt)]
     [InlineData("machine-runner-wrong-leg", RendererPerfEntrypointRefusal.NotFirstHostedAttempt)]
     [InlineData("wrong-host-environment", RendererPerfEntrypointRefusal.NotFirstHostedAttempt)]
-    [InlineData("runner-manifest-mismatch", RendererPerfEntrypointRefusal.NotFirstHostedAttempt)]
+    [InlineData("runner-manifest-mismatch", RendererPerfEntrypointRefusal.ManifestRunnerMismatch)]
     [InlineData("unit-input", RendererPerfEntrypointRefusal.InputsDisagree)]
     [InlineData("unsafe-unit", RendererPerfEntrypointRefusal.UnsafeUnitToken)]
     [InlineData("nested-root", RendererPerfEntrypointRefusal.CheckoutRootNotGitTopLevel)]

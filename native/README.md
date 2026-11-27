@@ -60,7 +60,8 @@ files and new files that Git does not ignore, excluding `third_party/`. The lint
 first-party translation units from the configured preset's compilation database and reports
 diagnostics in their non-system headers. Include vendored headers by name in angle brackets
 through the `khaoz::*` targets, which supply their SYSTEM include paths. The include check uses
-preprocessor output to flag vendored headers opened as non-system headers. Choose a preset
+preprocessor output to flag vendored headers opened as non-system headers. It strips compile
+output options and keeps preprocessor output in a private temporary directory. Choose a preset
 configured with Clang or GCC and GNU-style compiler options.
 
 ```sh

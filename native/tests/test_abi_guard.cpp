@@ -17,8 +17,20 @@ TEST_CASE("guard returns KHAOZ_OK when the body returns KHAOZ_OK") {
     CHECK(khaoz::abi::guard([] { return KHAOZ_OK; }) == KHAOZ_OK);
 }
 
-TEST_CASE("guard maps std::bad_alloc to KHAOZ_ERROR_OUT_OF_MEMORY") {
-    CHECK(khaoz::abi::guard([]() -> khaoz_result { throw std::bad_alloc(); }) == KHAOZ_ERROR_OUT_OF_MEMORY);
+TEST_CASE("guard reports an out-of-memory error on a thread's first ABI call") {
+    khaoz_result result = KHAOZ_OK;
+    std::size_t length = 0;
+    std::array<char, 2> message{};
+    std::thread worker([&] {
+        result = khaoz::abi::guard([]() -> khaoz_result { throw std::bad_alloc(); });
+        length = khaoz_last_error_message(message.data(), message.size());
+    });
+    worker.join();
+
+    CHECK(result == KHAOZ_ERROR_OUT_OF_MEMORY);
+    CHECK(length > 0);
+    CHECK(message[0] != '\0');
+    CHECK(message[1] == '\0');
 }
 
 TEST_CASE("guard maps std::out_of_range to KHAOZ_ERROR_INTERNAL and records a non-empty last error") {

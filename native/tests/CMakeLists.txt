@@ -1,5 +1,4 @@
 find_package(doctest CONFIG REQUIRED)
-find_package(Threads REQUIRED)
 
 add_executable(khaoz_native_tests test_abi_guard.cpp)
 target_include_directories(khaoz_native_tests PRIVATE ../src)

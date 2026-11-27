@@ -3,7 +3,11 @@
 The C++20 shared library exposes its C ABI in [khaoz_native.h](include/khaoz/khaoz_native.h). Check
 the ABI version after loading the library. The error accessor reports the calling thread's last
 recorded exception and accepts a null buffer to query the length. If recording a diagnostic runs
-out of memory, the accessor reports a fallback message.
+out of memory, the accessor reports a fallback message. POSIX builds use checked thread-specific
+slots to keep diagnostic storage independent of the dynamic loader's TLS allocation. If the OS
+refuses to register a slot, callers without a stored diagnostic can read the fallback.
+POSIX slot registrations used to record errors stay reserved until process exit, so libc can finish
+thread cleanup safely after an explicit library unload.
 
 ## Prerequisites
 

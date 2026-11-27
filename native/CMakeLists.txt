@@ -20,6 +20,8 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     add_link_options(-static-libstdc++ -static-libgcc)
 endif()
 
+find_package(Threads REQUIRED)
+
 # Tests use the same objects as the shared library so the internal ABI guard stays hidden.
 add_library(khaoz_native_objects OBJECT
     src/abi/abi_version.cpp
@@ -28,6 +30,7 @@ add_library(khaoz_native_objects OBJECT
 set_target_properties(khaoz_native_objects PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_compile_definitions(khaoz_native_objects PRIVATE KHAOZ_NATIVE_BUILD)
 target_include_directories(khaoz_native_objects PUBLIC include)
+target_link_libraries(khaoz_native_objects PRIVATE Threads::Threads)
 
 add_library(khaoz_native SHARED)
 target_link_libraries(khaoz_native PRIVATE khaoz_native_objects)

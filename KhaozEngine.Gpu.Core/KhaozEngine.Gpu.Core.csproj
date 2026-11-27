@@ -11,4 +11,7 @@
   <ItemGroup Condition="'$(KhaozNativeLibPath)' != '' And Exists('$(KhaozNativeLibPath)')">
     <None Include="$(KhaozNativeLibPath)" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.Gpu.Core.Tests" />
+  </ItemGroup>
 </Project>

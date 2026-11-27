@@ -21,3 +21,8 @@ Build the native library using the CMake preset for your platform. Pass its abso
 `-p:KhaozNativeLibPath=<path>` when building the managed test project. MSBuild copies the library next
 to the test assembly under its original filename. Run the tests with `KE_NATIVE_TESTS=1`. GPU facts
 also use the shared `KE_GPU_TESTS` gate.
+
+Keep `khaoz_native_stale_abi_fixture` from the native test build beside the library passed to
+`KhaozNativeLibPath`. The managed test copies the fixture into a fresh process's application
+directory under the platform's production library filename. Native test jobs need both files.
+The fixture is for the managed loader test and stays out of the runtime package.

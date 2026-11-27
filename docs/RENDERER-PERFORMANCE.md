@@ -48,7 +48,7 @@ The explicit local smoke runs 12 warm and 12 observed frames per row, with null 
 ```sh
 mkdir -p local-feed
 dotnet build KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release
-KE_CLOTH_PREPARATION_SMOKE=1 dotnet test \
+KE_GPU_TESTS=0 KE_CLOTH_PREPARATION_SMOKE=1 dotnet test \
   KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build \
   --filter 'FullyQualifiedName=KhaozEngine.Tests.Render3D.ClothPreparationCostDiagnostics.Report_close_cloth_preparation_cost' \
   --logger 'console;verbosity=detailed'

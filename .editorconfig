@@ -11,3 +11,8 @@ root = true
 dotnet_diagnostic.KELOC001.severity = error
 dotnet_diagnostic.KELOC002.severity = error
 dotnet_diagnostic.KELOC003.severity = error
+
+# The generated native bindings declare every ABI struct whole. NativeSmoke links them and reads only a few,
+# so their unused fields would raise CS0649 there. Scoped to the generated file alone.
+[KhaozEngine.Gpu.Core/Interop/KhaozNative.g.cs]
+dotnet_diagnostic.CS0649.severity = none

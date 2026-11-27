@@ -377,7 +377,7 @@ def main():
         tests = projects(scratch / 'tests.slnx')
         assert sorted(roots) == sorted(canonical + outside)
         assert len(roots) == len(set(roots))
-        assert len(tests) == 45 and len(outside) == 11
+        assert len(tests) == 45 and len(outside) == 13
         assert sum(item['role'] == 'compile' for item in manifest.values()) - len(outside) == 12
         assert set(tests) == set(full['test_roots'])
         assert not set(tests) & set(outside)

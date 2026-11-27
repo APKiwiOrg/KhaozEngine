@@ -16,6 +16,9 @@ fills, the guard still returns its result code.
 
 Published POSIX keys stay reserved until process exit, so libc can finish thread cleanup safely
 after an explicit library unload.
+On glibc, throwing any C++ exception allocates the runtime's own exception storage before the
+guard's catch runs. A thread that cannot allocate that storage aborts, as in any C++ library, so
+the result code covers every failure after the throw and not an out-of-memory throw itself.
 
 ## Prerequisites
 
@@ -145,3 +148,39 @@ work finished. A framebuffer holds its attachment textures and a resource set ho
 textures and samplers its descriptors name. So an object destroyed while an open recording uses
 it stays valid through End and Submit. The device deletes released objects nothing holds after a
 successful queue wait, after each destroy, at the next Begin and at device teardown.
+
+## Package and smoke test
+
+[pack/KhaozEngine.Native.csproj](pack/KhaozEngine.Native.csproj) packs prebuilt libraries into
+`KhaozEngine.Native`. It compiles no source. Pass `KhaozNativeStage`, a folder with one subfolder per
+RID: `osx-arm64/libkhaoz_native.dylib`, `win-x64/khaoz_native.dll`, `linux-x64/libkhaoz_native.so`
+and `linux-arm64/libkhaoz_native.so`. Each present library lands in `runtimes/<rid>/native/`, so a
+partial stage packs only those RIDs and a build without a stage still compiles. Stage stripped
+libraries, since game repositories vendor every engine version into git. The test fixture
+libraries never go in the package. The spike packs only to a run-local folder, never to
+`local-feed`.
+
+[smoke/NativeSmoke.csproj](smoke/NativeSmoke.csproj) consumes the package as a game would. It links
+the generated bindings and `NativeLibraryGate.cs` from `KhaozEngine.Gpu.Core`. It exits 0 only when
+the gate reports `Ready`, a 3,335-record frame returns its keys sorted, and headless device creation
+either succeeds and destroys with zero validation errors or reports `KHAOZ_ERROR_VULKAN_UNAVAILABLE`.
+Validation follows `KHAOZ_NATIVE_VALIDATION=1`, since it needs the Khronos layer. The
+[nuget.config](smoke/nuget.config) beside it restores `KhaozEngine.Native` from the folder in
+`KHAOZ_NATIVE_FEED`. Without `KhaozNativeVersion` the project compiles with no package, which is how
+Product CI builds it.
+
+From the repository root, after building the macOS preset:
+
+```sh
+work=/tmp/khaozengine-native
+mkdir -p "$work/stage/osx-arm64"
+cp native/out/build/macos-arm64/libkhaoz_native.dylib "$work/stage/osx-arm64/"
+strip -x "$work/stage/osx-arm64/libkhaoz_native.dylib"
+dotnet pack native/pack/KhaozEngine.Native.csproj -c Release \
+  -p:KhaozNativeStage="$work/stage" -p:Version=0.0.0-spike.0 -o "$work/feed"
+KHAOZ_NATIVE_FEED="$work/feed" NUGET_PACKAGES="$work/packages" \
+  dotnet run --project native/smoke/NativeSmoke.csproj -c Release -p:KhaozNativeVersion=0.0.0-spike.0
+```
+
+The `native-core-spike` workflow builds every RID, packs all four and runs the smoke app on each
+hosted platform and inside the `mcr.microsoft.com/dotnet/sdk:10.0` image on Linux arm64.

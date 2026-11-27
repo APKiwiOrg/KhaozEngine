@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Packs the prebuilt native core into runtimes/<rid>/native/. Outside the solution and never built
+       from source here: KhaozNativeStage names a folder holding one subfolder per RID, as CI stages the
+       stripped build artifacts. Each library is optional, so a plain compile without a stage succeeds. -->
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Native</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <Description>Prebuilt KhaozEngine native core for osx-arm64, win-x64, linux-x64 and linux-arm64.</Description>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <IncludeSymbols>false</IncludeSymbols>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <EnableDefaultItems>false</EnableDefaultItems>
+    <!-- No C# source to analyze. -->
+    <KhaozSkipFileSizeAnalyzer>true</KhaozSkipFileSizeAnalyzer>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(KhaozNativeStage)' != ''">
+    <None Include="$(KhaozNativeStage)/osx-arm64/libkhaoz_native.dylib" Pack="true" PackagePath="runtimes/osx-arm64/native/"
+          Condition="Exists('$(KhaozNativeStage)/osx-arm64/libkhaoz_native.dylib')" />
+    <None Include="$(KhaozNativeStage)/win-x64/khaoz_native.dll" Pack="true" PackagePath="runtimes/win-x64/native/"
+          Condition="Exists('$(KhaozNativeStage)/win-x64/khaoz_native.dll')" />
+    <None Include="$(KhaozNativeStage)/linux-x64/libkhaoz_native.so" Pack="true" PackagePath="runtimes/linux-x64/native/"
+          Condition="Exists('$(KhaozNativeStage)/linux-x64/libkhaoz_native.so')" />
+    <None Include="$(KhaozNativeStage)/linux-arm64/libkhaoz_native.so" Pack="true" PackagePath="runtimes/linux-arm64/native/"
+          Condition="Exists('$(KhaozNativeStage)/linux-arm64/libkhaoz_native.so')" />
+  </ItemGroup>
+</Project>

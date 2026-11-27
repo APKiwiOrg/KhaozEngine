@@ -429,7 +429,8 @@ the material surface. At triangle pins the fitted direction follows the triangle
 vertices. Render normals and tangents keep their authored directions relative to the deforming cloth.
 Fixed vertices follow the current host skin. A version 2 handoff fades the fit-specific difference
 between the actual posed, lifted chain surface and the live material pose. Reversal carries the last
-shown difference over the currently accepted material nodes.
+shown difference over the currently accepted material nodes. A stationary endpoint keeps its exact
+visible positions while the proxy projects to an admissible starting shape.
 
 Each version 2 pose sweeps the moving visible triangles against the same posed supports. The sweep
 refits a prebuilt tree and charges all visited nodes and triangles against the allowance left by the

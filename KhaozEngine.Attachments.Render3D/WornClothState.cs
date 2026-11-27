@@ -256,21 +256,27 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
 
         _projection = _fresh ? _solver.ProjectDisplay(_target, _projected, pose) :
             _solver.ProjectDisplay(_displayed, _target, _projected, pose);
-        bool endpoint = !_fresh && blend &&
-            (amount == 0 && _supports.IsStationary && _framePins.AsSpan().SequenceEqual(_priorPins) || (!_liveRequested && amount == 1));
-        bool admissible = _projection.Status == ClothStepStatus.Accepted && (!endpoint || Matches(_target, _projected));
+        bool materialMapping = Binding.Surface.HasMaterialMapping;
+        bool stationaryOpening = blend && amount == 0 && _supports.IsStationary &&
+            _framePins.AsSpan().SequenceEqual(_priorPins);
+        bool endpoint = stationaryOpening || blend && !_liveRequested && amount == 1;
+        bool admissible = _projection.Status == ClothStepStatus.Accepted &&
+            (materialMapping || !endpoint || Matches(_target, _projected));
+        bool correctedOpening = false;
         if (admissible)
         {
             Binding.CopySkinPalette(skeleton, host, _frameGarmentPalette);
             bool liveDetail = _liveRequested && (!_fresh || _rebound);
-            if (Binding.Surface.HasMaterialMapping && !liveDetail) CopyCheapPalette(skeleton, host);
-            bool sameMaterialPose = _displayed.AsSpan().SequenceEqual(_projected) &&
-                (_publishedOwner is null ? _sameKinematicPose :
-                    _frameGarmentPalette.AsSpan().SequenceEqual(_displayedGarmentPalette.AsSpan(0, Binding.Surface.JointCount)));
+            if (materialMapping && !liveDetail) CopyCheapPalette(skeleton, host);
+            bool unchangedNodes = _displayed.AsSpan().SequenceEqual(_projected);
+            bool unchangedSkin = _publishedOwner is null ? _sameKinematicPose :
+                _frameGarmentPalette.AsSpan().SequenceEqual(_displayedGarmentPalette.AsSpan(0, Binding.Surface.JointCount));
+            bool sameMaterialPose = unchangedSkin && (stationaryOpening || unchangedNodes);
             _detailProjection = _detail.Stage(Binding.Surface, _projected, _cheapTarget, model, _origin,
                 _frameGarmentPalette, _cheapGarmentPalette, liveDetail, blend ? amount : 1, sameMaterialPose, pose, _projection);
             admissible = _detailProjection.Status == ClothStepStatus.Accepted;
             if (admissible) _detail.Publish(model, _origin);
+            correctedOpening = materialMapping && stationaryOpening && _switchFrame && _liveRequested && !unchangedNodes;
         }
         if (admissible)
         {
@@ -279,7 +285,7 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
             Publish(absoluteModel);
             _rebound = false;
             _supports.SaveDisplay();
-            if (_fresh || _solve.Status != ClothStepStatus.Accepted)
+            if (_fresh || correctedOpening || _solve.Status != ClothStepStatus.Accepted)
             {
                 _solver.Reset(_displayed);
                 _supports.ResetTickToDisplay();

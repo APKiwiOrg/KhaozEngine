@@ -125,8 +125,12 @@ The buffer window contributes its base offset and a declared-dynamic element als
 caller's offset. The spike records uniform uploads into the command list using staging buffers.
 
 Framebuffers use the first mip and array layer of each attachment and require matching extents
-and sample counts. The command list starts Vulkan dynamic rendering on the first draw or when
+and sample counts. Binding one copies its attachment description into the command list, so a
+framebuffer destroyed after the bind still flushes queued clears and serves later draws. Its
+attachment textures must stay alive until the recording is released. The command list starts Vulkan dynamic rendering on the first draw or when
 a queued clear needs to be flushed. Image views use the images' `GENERAL` layout. The viewport
 uses negative height and the scissor uses top-left framebuffer coordinates, matching the managed
 Vulkan backend. Recorded copies and buffer uploads close the rendering scope so transfers can
-run between draws. Reopening the scope loads the previous attachment contents.
+run between draws. Reopening the scope loads the previous attachment contents. Texture copies
+require the same native Vulkan format and aspects on both sides. An R32Float depth texture is
+`D32_SFLOAT` and an R32Float colour texture is `R32_SFLOAT`, so copies between them are refused.

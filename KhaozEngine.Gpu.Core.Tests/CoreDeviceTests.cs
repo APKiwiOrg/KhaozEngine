@@ -135,6 +135,34 @@ public sealed class CoreDeviceTests
             commands.End();
         });
 
+    [NativeGpuFact]
+    public void R32_float_depth_and_colour_copies_are_refused_while_colour_copies_record()
+        => WithCoreDevice(device =>
+        {
+            using var depth = device.Factory.CreateTexture(GpuTextureDescription.Texture2D(
+                4, 4, GpuPixelFormat.R32Float, GpuTextureUsage.DepthStencil));
+            using var colour = device.Factory.CreateTexture(GpuTextureDescription.Texture2D(
+                4, 4, GpuPixelFormat.R32Float, GpuTextureUsage.RenderTarget));
+            using var otherColour = device.Factory.CreateTexture(GpuTextureDescription.Texture2D(
+                4, 4, GpuPixelFormat.R32Float, GpuTextureUsage.RenderTarget));
+            using var commands = device.Factory.CreateCommandList();
+
+            commands.Begin();
+            AssertIncompatibleTextureCopy(() => commands.CopyTexture(depth, colour));
+            AssertIncompatibleTextureCopy(() => commands.CopyTextureSubresource(colour, 0, 0, depth, 4, 4));
+            commands.CopyTexture(colour, otherColour);
+            commands.End();
+        });
+
+    private static void AssertIncompatibleTextureCopy(Action copy)
+    {
+        var refusal = Assert.Throws<GpuTextureTransferArgumentException>(copy);
+        Assert.Equal(GpuTextureTransferRefusal.TextureShapeMismatch, refusal.Reason);
+        Assert.Equal("destination", refusal.ParamName);
+        Assert.Equal(GpuPixelFormat.R32Float, refusal.SourceFormat);
+        Assert.Equal(GpuPixelFormat.R32Float, refusal.DestinationFormat);
+    }
+
     [NativeFact]
     public void Create_headless_refuses_when_the_vulkan_loader_is_missing()
     {

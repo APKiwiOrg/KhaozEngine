@@ -31,27 +31,28 @@ void attachment_barrier(const khaoz_gpu_command_list& commands) {
 void clear_attachment(const khaoz_gpu_command_list& commands, VkImageAspectFlags aspects, uint32_t index,
                       const VkClearValue& value) {
     const VkClearAttachment attachment{aspects, index, value};
-    const VkClearRect rect{{{0, 0}, commands.rendering.framebuffer->extent}, 0, 1};
+    const VkClearRect rect{{{0, 0}, commands.rendering.framebuffer.extent}, 0, 1};
     commands.device.api.vkCmdClearAttachments(commands.handle, 1, &attachment, 1, &rect);
 }
 
 } // namespace
 
-void rendering_scope::set_framebuffer(khaoz_gpu_command_list& commands, const khaoz_gpu_framebuffer& target) {
-    if (framebuffer == &target)
+void rendering_scope::set_framebuffer(khaoz_gpu_command_list& commands, const framebuffer_targets& target) {
+    if (framebuffer.id == target.id)
         return;
 
-    // Allocate before changing the existing recording. A failed allocation leaves it intact.
+    // Copy and allocate before changing the existing recording. A failed allocation leaves it intact.
+    auto snapshot = target;
     std::vector<VkRenderingAttachmentInfo> attachments;
-    attachments.reserve(target.colors.size());
-    for (const auto& color : target.colors)
+    attachments.reserve(snapshot.colors.size());
+    for (const auto& color : snapshot.colors)
         attachments.push_back(render_attachment(color.view));
 
     finish(commands);
-    framebuffer = &target;
+    framebuffer = std::move(snapshot);
     colors = std::move(attachments);
-    depth = render_attachment(target.depth.view);
-    scissor = {{0, 0}, target.extent};
+    depth = render_attachment(framebuffer.depth.view);
+    scissor = {{0, 0}, framebuffer.extent};
 }
 
 void rendering_scope::clear_color(khaoz_gpu_command_list& commands, uint32_t index, const VkClearValue& clear) {
@@ -67,7 +68,7 @@ void rendering_scope::clear_color(khaoz_gpu_command_list& commands, uint32_t ind
 
 void rendering_scope::clear_depth(khaoz_gpu_command_list& commands, const VkClearValue& clear) {
     if (active) {
-        clear_attachment(commands, framebuffer->depth.aspects, 0, clear);
+        clear_attachment(commands, framebuffer.depth.aspects, 0, clear);
         return;
     }
     depth.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
@@ -77,13 +78,13 @@ void rendering_scope::clear_depth(khaoz_gpu_command_list& commands, const VkClea
 
 void rendering_scope::begin(khaoz_gpu_command_list& commands) {
     auto desc = info<VkRenderingInfo>(VK_STRUCTURE_TYPE_RENDERING_INFO);
-    desc.renderArea = {{0, 0}, framebuffer->extent};
+    desc.renderArea = {{0, 0}, framebuffer.extent};
     desc.layerCount = 1;
     desc.colorAttachmentCount = static_cast<uint32_t>(colors.size());
     desc.pColorAttachments = colors.data();
-    if ((framebuffer->depth.aspects & VK_IMAGE_ASPECT_DEPTH_BIT) != 0)
+    if ((framebuffer.depth.aspects & VK_IMAGE_ASPECT_DEPTH_BIT) != 0)
         desc.pDepthAttachment = &depth;
-    if ((framebuffer->depth.aspects & VK_IMAGE_ASPECT_STENCIL_BIT) != 0)
+    if ((framebuffer.depth.aspects & VK_IMAGE_ASPECT_STENCIL_BIT) != 0)
         desc.pStencilAttachment = &depth;
 
     attachment_barrier(commands);
@@ -107,8 +108,8 @@ void rendering_scope::finish(khaoz_gpu_command_list& commands) {
 void rendering_scope::prepare_draw(khaoz_gpu_command_list& commands) {
     if (!active)
         begin(commands);
-    const auto width = static_cast<float>(framebuffer->extent.width);
-    const auto height = static_cast<float>(framebuffer->extent.height);
+    const auto width = static_cast<float>(framebuffer.extent.width);
+    const auto height = static_cast<float>(framebuffer.extent.height);
     // Match the managed Vulkan viewport's Y flip. Scissors are already in framebuffer coordinates.
     const VkViewport viewport{0.0F, height, width, -height, 0.0F, 1.0F};
     commands.device.api.vkCmdSetViewport(commands.handle, 0, 1, &viewport);
@@ -123,7 +124,7 @@ khaoz_result khaoz_gpu_command_list_set_framebuffer(khaoz_gpu_command_list* comm
             return usable;
         if (framebuffer == nullptr || &framebuffer->device != &commands->device)
             return error(KHAOZ_ERROR_INVALID_ARGUMENT, "A framebuffer from this device is required");
-        commands->rendering.set_framebuffer(*commands, *framebuffer);
+        commands->rendering.set_framebuffer(*commands, framebuffer->targets);
         return KHAOZ_OK;
     });
 }
@@ -147,7 +148,7 @@ khaoz_result khaoz_gpu_command_list_clear_depth(khaoz_gpu_command_list* commands
         const auto usable = require_recording(commands);
         if (usable != KHAOZ_OK)
             return usable;
-        if (commands->rendering.framebuffer == nullptr || commands->rendering.framebuffer->depth.view == VK_NULL_HANDLE)
+        if (!commands->rendering.bound() || commands->rendering.framebuffer.depth.view == VK_NULL_HANDLE)
             return error(KHAOZ_ERROR_INVALID_ARGUMENT, "The depth attachment is not bound");
         if (!(depth >= 0.0F && depth <= 1.0F))
             return error(KHAOZ_ERROR_INVALID_ARGUMENT, "Vulkan clear depth must be between zero and one");

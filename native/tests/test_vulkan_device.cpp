@@ -3,7 +3,9 @@
 #include "gpu/vulkan/device.hpp"
 #include "khaoz/khaoz_native.h"
 
+#include <array>
 #include <cstdlib>
+#include <cstring>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -110,6 +112,84 @@ TEST_CASE("headless device creates and destroys with zero validation errors" * d
     CHECK(khaoz_gpu_device_validation_errors(device) == 0);
     uint32_t errors = 1;
     REQUIRE(khaoz_gpu_device_destroy(device, &errors) == KHAOZ_OK);
+    CHECK(errors == 0);
+}
+
+TEST_CASE("R32 float depth and colour copies are refused while colour copies record" *
+          doctest::skip(!gpu_tests_enabled())) {
+    const khaoz_gpu_device_desc desc{1, nullptr};
+    khaoz_gpu_device* device{};
+    REQUIRE(khaoz_gpu_device_create_headless(&desc, &device) == KHAOZ_OK);
+
+    const khaoz_gpu_texture_desc depth_desc{4, 4, 1, 1, KHAOZ_GPU_R32_FLOAT, KHAOZ_GPU_TEXTURE_DEPTH_STENCIL, 1, 0};
+    auto color_desc = depth_desc;
+    color_desc.usage = KHAOZ_GPU_TEXTURE_RENDER_TARGET;
+    khaoz_gpu_texture* depth{};
+    khaoz_gpu_texture* color{};
+    khaoz_gpu_texture* other_color{};
+    REQUIRE(khaoz_gpu_texture_create(device, &depth_desc, &depth) == KHAOZ_OK);
+    REQUIRE(khaoz_gpu_texture_create(device, &color_desc, &color) == KHAOZ_OK);
+    REQUIRE(khaoz_gpu_texture_create(device, &color_desc, &other_color) == KHAOZ_OK);
+    khaoz_gpu_command_list* commands{};
+    REQUIRE(khaoz_gpu_command_list_create(device, &commands) == KHAOZ_OK);
+    REQUIRE(khaoz_gpu_command_list_begin(commands) == KHAOZ_OK);
+
+    const khaoz_gpu_texture_copy region{0, 0, 0, 0, 4, 4};
+    CHECK(khaoz_gpu_command_list_copy_texture(commands, depth, color, nullptr) == KHAOZ_ERROR_INVALID_ARGUMENT);
+    CHECK(khaoz_gpu_command_list_copy_texture(commands, color, depth, &region) == KHAOZ_ERROR_INVALID_ARGUMENT);
+    CHECK(khaoz_gpu_command_list_copy_texture(commands, color, other_color, &region) == KHAOZ_OK);
+
+    CHECK(khaoz_gpu_command_list_end(commands) == KHAOZ_OK);
+    CHECK(khaoz_gpu_command_list_destroy(commands) == KHAOZ_OK);
+    CHECK(khaoz_gpu_texture_destroy(other_color) == KHAOZ_OK);
+    CHECK(khaoz_gpu_texture_destroy(color) == KHAOZ_OK);
+    CHECK(khaoz_gpu_texture_destroy(depth) == KHAOZ_OK);
+    uint32_t errors = 1;
+    CHECK(khaoz_gpu_device_destroy(device, &errors) == KHAOZ_OK);
+    CHECK(errors == 0);
+}
+
+TEST_CASE("a queued clear survives framebuffer destruction before end" * doctest::skip(!gpu_tests_enabled())) {
+    const khaoz_gpu_device_desc desc{1, nullptr};
+    khaoz_gpu_device* device{};
+    REQUIRE(khaoz_gpu_device_create_headless(&desc, &device) == KHAOZ_OK);
+
+    const khaoz_gpu_texture_desc target_desc{4, 4, 1, 1, KHAOZ_GPU_RGBA8_UNORM, KHAOZ_GPU_TEXTURE_RENDER_TARGET, 1, 0};
+    auto staging_desc = target_desc;
+    staging_desc.usage = KHAOZ_GPU_TEXTURE_STAGING;
+    khaoz_gpu_texture* target{};
+    khaoz_gpu_texture* staging{};
+    REQUIRE(khaoz_gpu_texture_create(device, &target_desc, &target) == KHAOZ_OK);
+    REQUIRE(khaoz_gpu_texture_create(device, &staging_desc, &staging) == KHAOZ_OK);
+    khaoz_gpu_framebuffer* framebuffer{};
+    REQUIRE(khaoz_gpu_framebuffer_create(device, nullptr, &target, 1, &framebuffer) == KHAOZ_OK);
+    khaoz_gpu_command_list* commands{};
+    REQUIRE(khaoz_gpu_command_list_create(device, &commands) == KHAOZ_OK);
+
+    REQUIRE(khaoz_gpu_command_list_begin(commands) == KHAOZ_OK);
+    REQUIRE(khaoz_gpu_command_list_set_framebuffer(commands, framebuffer) == KHAOZ_OK);
+    const khaoz_gpu_color green{0.0F, 1.0F, 0.0F, 1.0F};
+    REQUIRE(khaoz_gpu_command_list_clear_color(commands, 0, &green) == KHAOZ_OK);
+    REQUIRE(khaoz_gpu_framebuffer_destroy(framebuffer) == KHAOZ_OK);
+    REQUIRE(khaoz_gpu_command_list_end(commands) == KHAOZ_OK);
+    REQUIRE(khaoz_gpu_device_submit(device, commands, nullptr) == KHAOZ_OK);
+
+    REQUIRE(khaoz_gpu_command_list_begin(commands) == KHAOZ_OK);
+    REQUIRE(khaoz_gpu_command_list_copy_texture(commands, target, staging, nullptr) == KHAOZ_OK);
+    REQUIRE(khaoz_gpu_command_list_end(commands) == KHAOZ_OK);
+    REQUIRE(khaoz_gpu_device_submit(device, commands, nullptr) == KHAOZ_OK);
+    khaoz_gpu_mapped_data mapped{};
+    REQUIRE(khaoz_gpu_texture_map(staging, KHAOZ_GPU_MAP_READ, &mapped) == KHAOZ_OK);
+    std::array<unsigned char, 4> texel{};
+    std::memcpy(texel.data(), mapped.data, texel.size());
+    CHECK(khaoz_gpu_texture_unmap(staging) == KHAOZ_OK);
+    CHECK(texel == std::array<unsigned char, 4>{0, 255, 0, 255});
+
+    CHECK(khaoz_gpu_command_list_destroy(commands) == KHAOZ_OK);
+    CHECK(khaoz_gpu_texture_destroy(staging) == KHAOZ_OK);
+    CHECK(khaoz_gpu_texture_destroy(target) == KHAOZ_OK);
+    uint32_t errors = 1;
+    CHECK(khaoz_gpu_device_destroy(device, &errors) == KHAOZ_OK);
     CHECK(errors == 0);
 }
 

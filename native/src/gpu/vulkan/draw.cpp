@@ -7,13 +7,13 @@ using namespace khaoz::vulkan;
 
 namespace {
 
-bool match_outputs(const khaoz_gpu_pipeline& pipeline, const khaoz_gpu_framebuffer& target) {
+bool match_outputs(const khaoz_gpu_pipeline& pipeline, const framebuffer_targets& target) {
     return pipeline.samples == target.samples && pipeline.depth_format == target.depth.format &&
            std::equal(pipeline.color_formats.begin(), pipeline.color_formats.end(), target.colors.begin(),
                       target.colors.end(), [](VkFormat format, const auto& color) { return color.format == format; });
 }
 
-bool has_attachment(const khaoz_gpu_framebuffer& target, VkImage image) {
+bool has_attachment(const framebuffer_targets& target, VkImage image) {
     return target.depth.image == image || std::any_of(target.colors.begin(), target.colors.end(),
                                                       [image](const auto& color) { return color.image == image; });
 }
@@ -36,8 +36,8 @@ bool matches_layout(const recorded_set& binding, const std::vector<VkDescriptorS
 
 khaoz_result prepare_draw(khaoz_gpu_command_list& commands) {
     const auto* pipeline = commands.pipeline;
-    const auto* target = commands.rendering.framebuffer;
-    if (pipeline == nullptr || target == nullptr || !match_outputs(*pipeline, *target))
+    const auto& target = commands.rendering.framebuffer;
+    if (pipeline == nullptr || !commands.rendering.bound() || !match_outputs(*pipeline, target))
         return error(KHAOZ_ERROR_INVALID_ARGUMENT, "A graphics draw needs matching pipeline and framebuffer outputs");
 
     if (commands.vertices.size() < pipeline->vertex_bindings ||
@@ -56,7 +56,7 @@ khaoz_result prepare_draw(khaoz_gpu_command_list& commands) {
 
         const auto& set = *binding.set;
         if (std::any_of(set.images.begin(), set.images.end(),
-                        [&](VkImage image) { return has_attachment(*target, image); }))
+                        [&](VkImage image) { return has_attachment(target, image); }))
             return error(KHAOZ_ERROR_UNSUPPORTED, "A draw cannot use its attachment as a shader resource");
         for (const auto& uniform : set.uniforms) {
             if (!valid_uniform_offset(uniform, binding.dynamic_offset, limits))

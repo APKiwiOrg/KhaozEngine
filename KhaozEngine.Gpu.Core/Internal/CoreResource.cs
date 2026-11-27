@@ -19,6 +19,20 @@ internal abstract unsafe class CoreResource(CoreGpuDevice owner, void* handle) :
         }
     }
 
+    internal void* RequireBindingHandle(string nativeHandleKind, string resourceKind, string context)
+    {
+        if (_handle != null && !owner.IsDisposed)
+            return _handle;
+
+        throw new GpuResourceOwnershipDisposedException(GpuResourceOwnershipRefusal.NativeHandleReleased,
+            nativeHandleKind, $"The {resourceKind} handed to Vulkan has been released.")
+        {
+            NativeHandleKind = nativeHandleKind,
+            ResourceKind = resourceKind,
+            Context = context,
+        };
+    }
+
     internal static T Require<T>(CoreGpuDevice device, object resource, string parameter, string kind,
         [CallerMemberName] string operation = "") where T : CoreResource
     {

@@ -7,7 +7,8 @@ struct khaoz_gpu_command_list;
 namespace khaoz::vulkan {
 
 struct rendering_scope {
-    const khaoz_gpu_framebuffer* framebuffer{};
+    // A value copy of the bound framebuffer. Its id is zero while nothing is bound.
+    framebuffer_targets framebuffer;
     std::vector<VkRenderingAttachmentInfo> colors;
     VkRenderingAttachmentInfo depth{};
     VkRect2D scissor{};
@@ -15,7 +16,8 @@ struct rendering_scope {
     bool has_clear{};
     bool wrote_storage{};
 
-    void set_framebuffer(khaoz_gpu_command_list& commands, const khaoz_gpu_framebuffer& target);
+    [[nodiscard]] bool bound() const noexcept { return framebuffer.id != 0; }
+    void set_framebuffer(khaoz_gpu_command_list& commands, const framebuffer_targets& target);
     void clear_color(khaoz_gpu_command_list& commands, uint32_t index, const VkClearValue& clear);
     void clear_depth(khaoz_gpu_command_list& commands, const VkClearValue& clear);
     void begin(khaoz_gpu_command_list& commands);

@@ -19,19 +19,7 @@ public sealed class CoreDrawTests
             var factory = device.Factory;
             using var target = CreateTarget(factory);
             using var framebuffer = factory.CreateFramebuffer(null, target);
-            using var shaders = factory.CreateShadersFromSpirv(
-                """
-                #version 450
-                void main() {
-                    vec2 points[3] = vec2[](vec2(-1, -1), vec2(1, -1), vec2(0, 1));
-                    gl_Position = vec4(points[gl_VertexIndex], 0, 1);
-                }
-                """,
-                """
-                #version 450
-                layout(location = 0) out vec4 colour;
-                void main() { colour = vec4(1, 0, 0, 1); }
-                """);
+            using var shaders = CreateTriangleShaders(factory);
             using var pipeline = factory.CreateGraphicsPipeline(Describe(framebuffer.Outputs, shaders));
             using var commands = factory.CreateCommandList();
             commands.Begin();
@@ -123,6 +111,80 @@ public sealed class CoreDrawTests
             Assert.Equal(new byte[] { 127, 0, 0, 255 }, Pixel(rgba, 32, 16));
             Assert.Equal(new byte[] { 0, 0, 191, 255 }, Pixel(rgba, 32, 48));
         });
+
+    [NativeGpuFact]
+    public void Queued_clear_survives_framebuffer_disposal_before_end()
+        => WithCoreDevice(device =>
+        {
+            var factory = device.Factory;
+            using var target = CreateTarget(factory);
+            using var framebuffer = factory.CreateFramebuffer(null, target);
+            using var commands = factory.CreateCommandList();
+
+            commands.Begin();
+            commands.SetFramebuffer(framebuffer);
+            commands.ClearColorTarget(0, new Color(0f, 1f, 0f, 1f));
+            framebuffer.Dispose();
+            commands.End();
+            device.Submit(commands);
+
+            byte[] rgba = GpuReadback.ToRgba(device, target, Size, Size);
+            Assert.Equal(new byte[] { 0, 255, 0, 255 }, Pixel(rgba, 32, 32));
+        });
+
+    [NativeGpuFact]
+    public void Graphics_binds_report_released_native_handles()
+        => WithCoreDevice(device =>
+        {
+            var factory = device.Factory;
+            using var target = CreateTarget(factory);
+            using var framebuffer = factory.CreateFramebuffer(null, target);
+            using var shaders = CreateTriangleShaders(factory);
+            using var pipeline = factory.CreateGraphicsPipeline(Describe(framebuffer.Outputs, shaders));
+            using var layout = factory.CreateResourceLayout(new GpuResourceLayoutDescription());
+            using var set = factory.CreateResourceSet(new GpuResourceSetDescription(layout));
+            using var buffer = factory.CreateBuffer(new GpuBufferDescription(16,
+                GpuBufferUsage.VertexBuffer | GpuBufferUsage.IndexBuffer));
+            pipeline.Dispose();
+            framebuffer.Dispose();
+            set.Dispose();
+            buffer.Dispose();
+
+            using var commands = factory.CreateCommandList();
+            commands.Begin();
+            AssertReleased(() => commands.SetPipeline(pipeline), "VkPipeline", "graphics pipeline", "binding graphics pipeline");
+            AssertReleased(() => commands.SetFramebuffer(framebuffer), "VkImageView", "framebuffer", "binding framebuffer");
+            AssertReleased(() => commands.SetGraphicsResourceSet(0, set), "VkDescriptorSet", "resource set", "binding graphics resource set");
+            AssertReleased(() => commands.SetVertexBuffer(0, buffer), "VkBuffer", "buffer", "binding vertex buffer");
+            AssertReleased(() => commands.SetIndexBuffer(buffer, GpuIndexFormat.UInt16),
+                "VkBuffer", "buffer", "binding index buffer");
+            commands.End();
+        });
+
+    private static void AssertReleased(Action bind, string nativeHandleKind, string resourceKind, string context)
+    {
+        var refusal = Assert.Throws<GpuResourceOwnershipDisposedException>(bind);
+        Assert.Equal(GpuResourceOwnershipRefusal.NativeHandleReleased, refusal.Reason);
+        Assert.Equal(nativeHandleKind, refusal.ObjectName);
+        Assert.Equal(nativeHandleKind, refusal.NativeHandleKind);
+        Assert.Equal(resourceKind, refusal.ResourceKind);
+        Assert.Equal(context, refusal.Context);
+    }
+
+    private static IGpuShaderSet CreateTriangleShaders(IGpuResourceFactory factory)
+        => factory.CreateShadersFromSpirv(
+            """
+            #version 450
+            void main() {
+                vec2 points[3] = vec2[](vec2(-1, -1), vec2(1, -1), vec2(0, 1));
+                gl_Position = vec4(points[gl_VertexIndex], 0, 1);
+            }
+            """,
+            """
+            #version 450
+            layout(location = 0) out vec4 colour;
+            void main() { colour = vec4(1, 0, 0, 1); }
+            """);
 
     private static GpuPipelineDescription Describe(GpuOutputDescription outputs, IGpuShaderSet shaders) => new()
     {

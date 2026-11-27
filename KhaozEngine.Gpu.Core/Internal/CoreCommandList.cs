@@ -106,6 +106,8 @@ internal sealed unsafe partial class CoreCommandList(CoreGpuDevice owner, khaoz_
             var destination = Require<CoreTexture>(Owner, dst, nameof(dst), "texture");
             var sourceHandle = source.Handle;
             var destinationHandle = destination.Handle;
+            if (!source.HasCompatibleCopyFormat(destination))
+                throw IncompatibleCopy(source, destination);
             VulkanUploadBounds.RequireMipLevel(srcMipLevel, source.MipLevels, nameof(srcMipLevel), "source");
             VulkanUploadBounds.RequireArrayLayer(srcArrayLayer, source.ArrayLayers, nameof(srcArrayLayer), "source");
             VulkanUploadBounds.RequireMipLevel(dstMipLevel, destination.MipLevels, nameof(dstMipLevel), "destination");
@@ -172,11 +174,16 @@ internal sealed unsafe partial class CoreCommandList(CoreGpuDevice owner, khaoz_
     {
         if (source.Width == destination.Width && source.Height == destination.Height
             && source.MipLevels == destination.MipLevels && source.ArrayLayers == destination.ArrayLayers
-            && source.Format == destination.Format && source.SampleCount == destination.SampleCount)
+            && source.HasCompatibleCopyFormat(destination))
             return;
 
-        throw new GpuTextureTransferArgumentException(GpuTextureTransferRefusal.TextureShapeMismatch,
-            "A whole texture copy requires matching source and destination shapes.", nameof(destination))
+        throw IncompatibleCopy(source, destination);
+    }
+
+    private static GpuTextureTransferArgumentException IncompatibleCopy(CoreTexture source, CoreTexture destination)
+        => new(GpuTextureTransferRefusal.TextureShapeMismatch,
+            "Texture copies require matching native formats and sample counts. Whole copies also require matching extents, mips and layers.",
+            nameof(destination))
         {
             SourceWidth = source.Width,
             SourceHeight = source.Height,
@@ -191,7 +198,6 @@ internal sealed unsafe partial class CoreCommandList(CoreGpuDevice owner, khaoz_
             DestinationArrayLayers = destination.ArrayLayers,
             DestinationSampleCount = destination.SampleCount,
         };
-    }
 
     public void GenerateMipmaps(IGpuTexture texture) => throw new NotSupportedException();
     public void ResolveTexture(IGpuTexture src, IGpuTexture dst) => throw new NotSupportedException();

@@ -203,7 +203,10 @@ khaoz_result khaoz_gpu_command_list_copy_texture(khaoz_gpu_command_list* command
         if (usable != KHAOZ_OK) {
             return usable;
         }
-        if (src->desc.format != dst->desc.format || src->desc.sample_count != dst->desc.sample_count) {
+        // R32Float maps to D32_SFLOAT with depth usage and R32_SFLOAT otherwise. The copy names one aspect on
+        // both images, so the native format and aspects must agree, not only the engine format.
+        if (src->desc.format != dst->desc.format || src->format.vk != dst->format.vk ||
+            src->format.aspects != dst->format.aspects || src->desc.sample_count != dst->desc.sample_count) {
             return error(KHAOZ_ERROR_INVALID_ARGUMENT, "Texture copies require matching formats and sample counts");
         }
         if (copy != nullptr) {

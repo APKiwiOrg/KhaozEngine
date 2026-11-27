@@ -27,7 +27,9 @@ internal sealed unsafe partial class CoreCommandList
             var commands = RequireRecording("Binding a framebuffer");
             var target = RequireOwned<CoreFramebuffer>(Owner, fb, "framebuffer", "framebuffer",
                 "a native Vulkan framebuffer bind");
-            NativeResult.ThrowIfFailed(KhaozNative.khaoz_gpu_command_list_set_framebuffer(commands, target.Handle),
+            var handle = (khaoz_gpu_framebuffer*)target.RequireBindingHandle("VkImageView", "framebuffer",
+                "binding framebuffer");
+            NativeResult.ThrowIfFailed(KhaozNative.khaoz_gpu_command_list_set_framebuffer(commands, handle),
                 nameof(SetFramebuffer));
             _framebuffer = target;
         }
@@ -70,7 +72,9 @@ internal sealed unsafe partial class CoreCommandList
             var commands = RequireRecording("Binding a graphics pipeline");
             ArgumentNullException.ThrowIfNull(p);
             var pipeline = Require<CorePipeline>(Owner, p, "pipeline", "graphics pipeline", "a native Vulkan graphics pipeline bind");
-            NativeResult.ThrowIfFailed(KhaozNative.khaoz_gpu_command_list_set_pipeline(commands, pipeline.Handle), nameof(SetPipeline));
+            var handle = (khaoz_gpu_pipeline*)pipeline.RequireBindingHandle("VkPipeline", "graphics pipeline",
+                "binding graphics pipeline");
+            NativeResult.ThrowIfFailed(KhaozNative.khaoz_gpu_command_list_set_pipeline(commands, handle), nameof(SetPipeline));
             _pipeline = pipeline;
         }
     }
@@ -95,8 +99,10 @@ internal sealed unsafe partial class CoreCommandList
             // Like the managed Vulkan binder, an out-of-recording bind is discarded by Begin.
             if (!_recording)
                 return;
+            var handle = binding is null ? null : (khaoz_gpu_resource_set*)binding.RequireBindingHandle(
+                "VkDescriptorSet", "resource set", "binding graphics resource set");
             NativeResult.ThrowIfFailed(KhaozNative.khaoz_gpu_command_list_set_resource_set(
-                commands, slot, binding is null ? null : binding.Handle, dynamicOffset), nameof(SetGraphicsResourceSet));
+                commands, slot, handle, dynamicOffset), nameof(SetGraphicsResourceSet));
             if (binding is null)
                 _sets.Remove(slot);
             else
@@ -114,8 +120,9 @@ internal sealed unsafe partial class CoreCommandList
             var commands = Handle;
             if (!_recording)
                 return;
+            var handle = (khaoz_gpu_buffer*)buffer.RequireBindingHandle("VkBuffer", "buffer", "binding vertex buffer");
             NativeResult.ThrowIfFailed(KhaozNative.khaoz_gpu_command_list_set_vertex_buffer(
-                commands, slot, buffer.Handle, offsetBytes), nameof(SetVertexBuffer));
+                commands, slot, handle, offsetBytes), nameof(SetVertexBuffer));
         }
     }
 
@@ -127,8 +134,9 @@ internal sealed unsafe partial class CoreCommandList
             var commands = Handle;
             if (!_recording)
                 return;
+            var handle = (khaoz_gpu_buffer*)buffer.RequireBindingHandle("VkBuffer", "buffer", "binding index buffer");
             NativeResult.ThrowIfFailed(KhaozNative.khaoz_gpu_command_list_set_index_buffer(
-                commands, buffer.Handle, (uint)fmt), nameof(SetIndexBuffer));
+                commands, handle, (uint)fmt), nameof(SetIndexBuffer));
         }
     }
 
@@ -204,7 +212,8 @@ internal sealed unsafe partial class CoreCommandList
         if (_pipeline is null)
             throw RecordingError(GpuRecordingStateRefusal.GraphicsPipelineNotBound, operation);
         _ = _pipeline.Handle;
-        _ = RequireFramebuffer(operation).Handle;
+        // A bound framebuffer may be disposed. The native recording holds a copy of its attachments.
+        _ = RequireFramebuffer(operation);
         foreach (var (slot, (set, offset)) in _sets)
         {
             if (_pipeline.Accepts(slot, set))

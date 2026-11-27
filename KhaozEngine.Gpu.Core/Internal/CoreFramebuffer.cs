@@ -12,8 +12,6 @@ internal sealed unsafe class CoreFramebuffer(CoreGpuDevice owner, khaoz_gpu_fram
     public uint Width { get; } = width;
     public uint Height { get; } = height;
 
-    internal khaoz_gpu_framebuffer* Handle => (khaoz_gpu_framebuffer*)NativeHandle;
-
     internal static CoreFramebuffer Create(CoreGpuDevice device, IGpuTexture? depth, IGpuTexture[] colour)
     {
         ArgumentNullException.ThrowIfNull(colour);

@@ -34,12 +34,13 @@ internal sealed class ClothSelfBroadPhase
     private bool _workRefused;
     private bool _built;
     private bool _pairsCurrent;
+    private Vector3[]? _proposedCoverage;
 
     internal ClothSelfBroadPhase(ClothRig rig, int maxVisits, int supports)
     {
         _rig = rig;
         int faceCount = rig.Triangles.Length;
-        Topology topology = Topologies.GetValue(rig, static pattern => new Topology(pattern));
+        Topology topology = GetTopology(rig);
         _nodes = topology.Nodes;
         _selfTraversal = topology.SelfTraversal;
         _positionDependencies = topology.PositionDependencies;
@@ -57,6 +58,10 @@ internal sealed class ClothSelfBroadPhase
         _faceNodes = topology.FaceNodes;
         Begin();
     }
+
+    internal static bool HasEligiblePairs(ClothRig rig) => GetTopology(rig).SelfTraversal.Length != 0;
+
+    private static Topology GetTopology(ClothRig rig) => Topologies.GetValue(rig, static pattern => new Topology(pattern));
 
     internal ReadOnlySpan<Pair> Pairs => _pairs.AsSpan(0, _pairCount);
 
@@ -155,11 +160,14 @@ internal sealed class ClothSelfBroadPhase
         _built = false;
         _workRefused = false;
         _pairsCurrent = false;
+        _proposedCoverage = null;
         _queriedCount = 0;
         Array.Fill(_supportCounts, -1);
         Array.Clear(_changedFaces);
         ClearMoves();
     }
+
+    internal void KeepProposedCoverage(Vector3[] proposed) => _proposedCoverage = proposed;
 
     internal void RecordMove(int node, Vector3 point, ClothContactWorkspace work)
     {
@@ -255,7 +263,10 @@ internal sealed class ClothSelfBroadPhase
     {
         if (!work.Visit()) return false;
         Vector3 point = closing[index];
-        _coverage[index] = new ClothBounds(point, point).Expand(ReusePadding);
+        ClothBounds bounds = new ClothBounds(point, point).Expand(ReusePadding);
+        if (_proposedCoverage is { } proposed)
+            bounds = ClothBounds.Enclose(bounds, new ClothBounds(proposed[index], proposed[index]));
+        _coverage[index] = bounds;
         return true;
     }
 

@@ -128,6 +128,7 @@ public sealed class ClothSimulation
     private readonly ClothAirDrag? _airDrag;
     private readonly Vector3[] _displayOpening;
     private readonly Vector3[] _displayWorking;
+    private readonly Vector3[] _displayProposed;
     private Vector3[] _velocities;
     private Vector3[] _workingVelocities;
     private Vector3[] _accepted;
@@ -165,6 +166,7 @@ public sealed class ClothSimulation
         _working = new Vector3[nodes];
         _displayOpening = new Vector3[nodes];
         _displayWorking = new Vector3[nodes];
+        _displayProposed = limits.EnableSelfContact && rig.Triangles.Length > 1 ? new Vector3[nodes] : [];
     }
 
     /// <summary>The most recently accepted node positions, or an empty span before reset.</summary>
@@ -255,16 +257,24 @@ public sealed class ClothSimulation
     public ClothStepResult ProjectDisplay(ReadOnlySpan<Vector3> source, Span<Vector3> displayed, in ClothSubstep pose)
     {
         Validate(pose);
-        return ProjectDisplayCore(source, source, displayed, ClosingOnly(pose), closingOnly: true);
+        return ProjectDisplayCore(source, source, displayed, ClosingOnly(pose), closingOnly: true,
+            checkProposedSelf: false, out _);
     }
 
     /// <summary>Sweeps the last displayed nodes and opening support poses to a new presentation sample.</summary>
     internal ClothStepResult ProjectDisplay(ReadOnlySpan<Vector3> opening, ReadOnlySpan<Vector3> source,
-        Span<Vector3> displayed, in ClothSubstep pose) => ProjectDisplayCore(opening, source, displayed, pose, closingOnly: false);
+        Span<Vector3> displayed, in ClothSubstep pose) => ProjectDisplayCore(opening, source, displayed, pose,
+            closingOnly: false, checkProposedSelf: false, out _);
+
+    /// <summary>Optionally certifies the proposed, unprojected self sweep with the remaining display budget.</summary>
+    internal ClothStepResult ProjectDisplay(ReadOnlySpan<Vector3> opening, ReadOnlySpan<Vector3> source,
+        Span<Vector3> displayed, in ClothSubstep pose, bool checkProposedSelf, out bool proposedSelfClear) =>
+        ProjectDisplayCore(opening, source, displayed, pose, closingOnly: false, checkProposedSelf, out proposedSelfClear);
 
     private ClothStepResult ProjectDisplayCore(ReadOnlySpan<Vector3> opening, ReadOnlySpan<Vector3> source,
-        Span<Vector3> displayed, in ClothSubstep pose, bool closingOnly)
+        Span<Vector3> displayed, in ClothSubstep pose, bool closingOnly, bool checkProposedSelf, out bool proposedSelfClear)
     {
+        proposedSelfClear = false;
         Validate(pose);
         if (opening.Length != _working.Length || source.Length != _working.Length || displayed.Length != source.Length ||
             !AreFinite(opening) || !AreFinite(source))
@@ -277,6 +287,11 @@ public sealed class ClothSimulation
             _displayWorking[_rig.Pins[i]] = pose.Pins[i];
         }
         _contact.Begin();
+        if (checkProposedSelf && _displayProposed.Length > 0)
+        {
+            source.CopyTo(_displayProposed);
+            _contact.KeepProposedCoverage(_displayProposed);
+        }
         ClothStepStatus status = _contact.Prepare(pose, closingOnly);
         if (status == ClothStepStatus.Accepted)
             status = _contact.Project(_displayOpening, _displayWorking, pose);
@@ -302,7 +317,11 @@ public sealed class ClothSimulation
         if (status == ClothStepStatus.Accepted)
             status = _contact.VerifyDisplay(_displayOpening, _displayWorking, pose);
         if (status == ClothStepStatus.Accepted)
+        {
+            if (checkProposedSelf)
+                proposedSelfClear = _contact.VerifyProposedSelf(_displayOpening, _displayProposed);
             _displayWorking.AsSpan().CopyTo(displayed);
+        }
         return StepResult(status, 0, 0);
     }
 

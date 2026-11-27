@@ -21,7 +21,8 @@ internal sealed class ClothSelfContact(ClothRig rig, ClothWorkLimits limits)
             work, externallyChanged);
 
     internal ClothStepStatus Visit(Vector3[] opening, Vector3[] positions, Vector3[] bias,
-        ClothContactWorkspace work, ClothContactVelocity velocities, bool verify, bool collectVelocity)
+        ClothContactWorkspace work, ClothContactVelocity velocities, bool verify, bool collectVelocity,
+        bool requireClearOpening = false)
     {
         float reach = _thickness + ContactMargin + VelocityTouchRoundoff;
         for (int index = 0; ; index++)
@@ -52,7 +53,7 @@ internal sealed class ClothSelfContact(ClothRig rig, ClothWorkLimits limits)
             float required = MathF.Max(.0000001f, _thickness - SolveTolerance);
             if (distance >= required || verify)
             {
-                ClothStepStatus swept = work.CheckSweep(pair, required, out ClothSweepImpact impact);
+                ClothStepStatus swept = work.CheckSweep(pair, required, out ClothSweepImpact impact, requireClearOpening);
                 if (swept != ClothStepStatus.Accepted)
                 {
                     if (verify || swept != ClothStepStatus.UnresolvedContact || impact.OpeningNormal == Vector3.Zero ||

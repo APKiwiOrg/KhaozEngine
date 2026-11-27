@@ -85,6 +85,9 @@ internal sealed class ClothContactWorkspace(ClothWorkLimits limits)
         return false;
     }
 
+    internal bool CanRecheckPairs(int count) =>
+        count <= limits.MaxContactChecks - Checks && count <= limits.MaxContactCandidates - Candidates;
+
     internal bool Visit()
     {
         if (Checks >= limits.MaxContactChecks) return false;

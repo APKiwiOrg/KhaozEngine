@@ -82,6 +82,21 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
     internal ClothStepStatus VerifyDisplay(Vector3[] opening, Vector3[] positions, in ClothSubstep step) =>
         Visit(opening, positions, step, verify: true, collectVelocity: false);
 
+    internal void KeepProposedCoverage(Vector3[] proposed) => _self?.BroadPhase.KeepProposedCoverage(proposed);
+
+    internal bool VerifyProposedSelf(Vector3[] opening, Vector3[] proposed)
+    {
+        if (rig.Triangles.Length == 1) return true;
+        if (_self is null) return !ClothSelfBroadPhase.HasEligiblePairs(rig);
+
+        // The final projected verification built this list over both closing
+        // surfaces. Raw verification needs only the witness rechecks.
+        int pairs = _self.BroadPhase.Pairs.Length;
+        return pairs == 0 || _workspace.CanRecheckPairs(pairs) &&
+            VisitSelf(opening, proposed, verify: true, collectVelocity: false, requireClearOpening: true) ==
+            ClothStepStatus.Accepted;
+    }
+
     private ClothStepStatus Visit(Vector3[] opening, Vector3[] positions, in ClothSubstep step, bool verify,
         bool collectVelocity = true)
     {
@@ -111,8 +126,15 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
         _workspace.PartId = null;
         if (_self is null) return ClothStepStatus.Accepted;
         if (!PrepareCoverage(opening, positions)) return ClothStepStatus.ContactWork;
+        return VisitSelf(opening, positions, verify, collectVelocity);
+    }
+
+    private ClothStepStatus VisitSelf(Vector3[] opening, Vector3[] positions, bool verify, bool collectVelocity,
+        bool requireClearOpening = false)
+    {
         int priorChecks = _workspace.Checks;
-        ClothStepStatus self = _self.Visit(opening, positions, _positionBias, _workspace, _normalVelocity, verify, collectVelocity);
+        ClothStepStatus self = _self!.Visit(opening, positions, _positionBias, _workspace, _normalVelocity,
+            verify, collectVelocity, requireClearOpening);
         SelfContactChecks += _workspace.Checks - priorChecks;
         return self;
     }

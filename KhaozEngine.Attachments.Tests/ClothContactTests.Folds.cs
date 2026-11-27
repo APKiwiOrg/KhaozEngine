@@ -79,4 +79,104 @@ public sealed partial class ClothContactTests
                     2 * Material.HalfThickness - .00025f);
         }
     }
+
+    [Theory]
+    [InlineData(.001f, false, false)]
+    [InlineData(.001f, false, true)]
+    [InlineData(.00165f, true, false)]
+    public void Display_checks_the_proposed_fold_separately_from_the_projected_surface(float proposedHeight,
+        bool clear, bool useSupport)
+    {
+        (ClothRig rig, Vector3[] opening, Vector3[] pins) = DisplayFold();
+        Vector3[] proposed = (Vector3[])opening.Clone();
+        proposed[3].Z = proposedHeight;
+        var simulation = new ClothSimulation(rig, ClothWorkLimits.LayeredContact);
+        simulation.Reset(opening);
+        ClothSupport[] supports = useSupport
+            ? [ClothSupport.Capsule(new ColliderCapsule(Vector3.Zero, Vector3.Zero, .0001f), Quaternion.Identity, .0007f * Vector3.UnitZ)]
+            : [];
+        var pose = new ClothSubstep(pins, supports, supports, Seconds, Vector3.Zero);
+        var displayed = new Vector3[proposed.Length];
+
+        ClothStepResult result = simulation.ProjectDisplay(opening, proposed, displayed, pose,
+            checkProposedSelf: true, out bool proposedSelfClear);
+
+        Assert.Equal(ClothStepStatus.Accepted, result.Status);
+        Assert.Equal(clear, proposedSelfClear);
+        Assert.True(DistanceToTriangle(displayed[3], displayed[0], displayed[1], displayed[2]) >=
+            2 * Material.HalfThickness - .00025f);
+        Assert.Equal(proposedHeight, proposed[3].Z);
+        Assert.Equal(opening, simulation.Positions.ToArray());
+    }
+
+    [Fact]
+    public void Optional_self_check_preserves_the_projected_path_when_no_candidate_work_remains()
+    {
+        (ClothRig rig, Vector3[] opening, Vector3[] pins) = DisplayFold();
+        Vector3[] proposed = (Vector3[])opening.Clone();
+        proposed[3].Z = .00165f;
+        var pose = new ClothSubstep(pins, [], [], Seconds, Vector3.Zero);
+        var expected = new Vector3[opening.Length];
+        var baseline = new ClothSimulation(rig, ClothWorkLimits.LayeredContact);
+        ClothStepResult ordinary = baseline.ProjectDisplay(opening, proposed, expected, pose);
+        Assert.Equal(ClothStepStatus.Accepted, ordinary.Status);
+        Assert.True(ordinary.ContactCandidates > 0);
+        var limited = new ClothSimulation(rig, ClothWorkLimits.LayeredContact with
+        {
+            MaxContactCandidates = ordinary.ContactCandidates,
+        });
+        var displayed = new Vector3[opening.Length];
+
+        ClothStepResult result = limited.ProjectDisplay(opening, proposed, displayed, pose,
+            checkProposedSelf: true, out bool proposedSelfClear);
+
+        Assert.Equal(ClothStepStatus.Accepted, result.Status);
+        Assert.False(proposedSelfClear);
+        Assert.Equal(ordinary.ContactCandidates, result.ContactCandidates);
+        Assert.Equal(expected, displayed);
+    }
+
+    [Fact]
+    public void A_clear_proposed_endpoint_can_still_sweep_through_another_facet()
+    {
+        Vector3[] opening =
+        [
+            new(-.001f, -.002f, 0), new(.001f, -.002f, 0), new(0, .002f, 0),
+            new(-.01f, 0, .002f), new(.02f, -.004f, .002f), new(.02f, .004f, .002f),
+        ];
+        Vector3[] proposed = (Vector3[])opening.Clone();
+        proposed[3] = new Vector3(.01f, 0, -.002f);
+        Vector2[] uv = [Vector2.Zero, Vector2.UnitX, Vector2.UnitY, Vector2.Zero, Vector2.UnitX, Vector2.UnitY];
+        ClothRig rig = ClothRig.Create(opening, uv, [new(0, 1, 2), new(3, 4, 5)], [0, 1, 2, 4, 5], [], Material);
+        var simulation = new ClothSimulation(rig, ClothWorkLimits.LayeredContact);
+        var pose = new ClothSubstep([opening[0], opening[1], opening[2], opening[4], opening[5]], [], [], Seconds, Vector3.Zero);
+        Vector3[] displayed = new Vector3[opening.Length];
+        Assert.True(DistanceToTriangle(Vector3.Zero, opening[3], opening[4], opening[5]) > 2 * Material.HalfThickness);
+        Assert.True(DistanceToTriangle(Vector3.Zero, proposed[3], proposed[4], proposed[5]) > 2 * Material.HalfThickness);
+        Assert.Equal(Vector3.Zero, (opening[3] + proposed[3]) * .5f);
+
+        ClothStepResult result = simulation.ProjectDisplay(opening, proposed, displayed, pose,
+            checkProposedSelf: true, out bool proposedSelfClear);
+
+        Assert.Equal(ClothStepStatus.Accepted, result.Status);
+        Assert.False(proposedSelfClear);
+        for (int sample = 0; sample <= 32; sample++)
+        {
+            Vector3 apex = Vector3.Lerp(opening[3], displayed[3], sample / 32f);
+            Assert.True(DistanceToTriangle(Vector3.Zero, apex, displayed[4], displayed[5]) >=
+                2 * Material.HalfThickness - .00025f);
+        }
+    }
+
+    private static (ClothRig Rig, Vector3[] Opening, Vector3[] Pins) DisplayFold()
+    {
+        Vector3[] opening =
+        [
+            new(-.02f, -.02f, 0), new(.02f, -.02f, 0), new(0, .02f, 0),
+            new(0, 0, .002f), new(.006f, .006f, .013f), new(-.006f, .006f, .013f),
+        ];
+        Vector2[] uv = [Vector2.Zero, Vector2.UnitX, Vector2.UnitY, Vector2.Zero, Vector2.UnitX, Vector2.UnitY];
+        ClothRig rig = ClothRig.Create(opening, uv, [new(0, 1, 2), new(3, 4, 5)], [0, 1, 2, 4, 5], [], Material);
+        return (rig, opening, [opening[0], opening[1], opening[2], opening[4], opening[5]]);
+    }
 }

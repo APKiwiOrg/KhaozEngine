@@ -18,7 +18,8 @@
 extern "C" {
 #endif
 
-#define KHAOZ_NATIVE_ABI_VERSION 1u
+/* This version identifies the public export set. Bump it for any added, removed or changed export. */
+#define KHAOZ_NATIVE_ABI_VERSION 2u
 
 typedef enum khaoz_result {
     KHAOZ_OK = 0,

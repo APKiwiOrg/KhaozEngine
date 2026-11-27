@@ -1,7 +1,8 @@
 # KhaozEngine native core spike
 
 The C++20 shared library exposes its C ABI in [khaoz_native.h](include/khaoz/khaoz_native.h). Check
-the ABI version after loading the library. The error accessor reports the calling thread's last
+the ABI version after loading the library. Any addition, removal or change to a public export
+increments the version. The error accessor reports the calling thread's last
 recorded exception and accepts a null buffer to query the length. If recording a diagnostic runs
 out of memory, the accessor reports a fallback message to the calling thread. A thread that has yet
 to record an error reads an empty message.
@@ -90,8 +91,9 @@ The C ABI can probe for and create a headless Vulkan 1.3 device. The default cre
 reads `KHAOZ_NATIVE_VULKAN_LOADER`. The explicit loader function accepts a path from callers
 that manage their own environment. The selector entry point passes adapter metadata in
 enumeration order to its callback, then uses that same enumeration to open the chosen
-device. Its startup status distinguishes a missing driver from other availability failures.
-Devices use per-instance and per-device dispatch tables.
+device. It checks driver availability and adapter eligibility without layers before creating a
+validation-enabled instance. Its startup status identifies a missing driver, including an
+instance that enumerates no devices. Devices use per-instance and per-device dispatch tables.
 Portability enumeration and the portability subset are enabled when exposed. The sampler uses
 zero mip LOD bias when the portability subset is enabled, since the spike does not enable
 the optional portability feature for sampler bias. The capability reports the bias mode

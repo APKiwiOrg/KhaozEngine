@@ -471,8 +471,8 @@ internal static unsafe partial class KhaozNative
     [DllImport("khaoz_native", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     public static extern khaoz_result khaoz_gpu_command_list_copy_texture(khaoz_gpu_command_list* commands, khaoz_gpu_texture* src, khaoz_gpu_texture* dst, [NativeTypeName("const khaoz_gpu_texture_copy *")] khaoz_gpu_texture_copy* copy);
 
-    [NativeTypeName("#define KHAOZ_NATIVE_ABI_VERSION 1u")]
-    public const uint KHAOZ_NATIVE_ABI_VERSION = 1U;
+    [NativeTypeName("#define KHAOZ_NATIVE_ABI_VERSION 2u")]
+    public const uint KHAOZ_NATIVE_ABI_VERSION = 2U;
 }
 
 /// <summary>Defines the type of a member as it was used in the native signature.</summary>

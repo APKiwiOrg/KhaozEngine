@@ -49,6 +49,7 @@ struct khaoz_gpu_device {
     khaoz_result require_usable() const noexcept;
     khaoz_result wait_for_idle() noexcept;
     khaoz_result close() noexcept;
+    void close_instance() noexcept;
 };
 
 namespace khaoz::vulkan {

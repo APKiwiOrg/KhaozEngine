@@ -87,11 +87,31 @@ khaoz_result bootstrap(khaoz_gpu_device& device, const khaoz_gpu_device_desc& de
     const std::lock_guard lock(bootstrap_gate);
     volkInitializeCustom(device.get_instance_proc);
     const reset_volk reset;
-    auto result = create_instance(device, desc.enable_validation != 0, status);
+    auto result = create_instance(device, false, status);
     if (result != KHAOZ_OK) {
         return result;
     }
-    result = select_adapter(device, desc.device_name_contains, options.selection, status);
+
+    const bool validation = !probe_only && desc.enable_validation != 0;
+    uint32_t configured_status{};
+    if (validation) {
+        // Check the machine before asking for validation. Layers can fail or hide adapters.
+        result = select_adapter(device, nullptr, nullptr, status);
+        if (result != KHAOZ_OK) {
+            return result;
+        }
+        device.close_instance();
+        result = create_instance(device, true, configured_status);
+        if (result != KHAOZ_OK) {
+            return result == KHAOZ_ERROR_VULKAN_UNAVAILABLE ? KHAOZ_ERROR_INTERNAL : result;
+        }
+    }
+
+    result =
+        select_adapter(device, desc.device_name_contains, options.selection, validation ? configured_status : status);
+    if (validation && result == KHAOZ_ERROR_VULKAN_UNAVAILABLE) {
+        return KHAOZ_ERROR_INTERNAL;
+    }
     if (result != KHAOZ_OK || probe_only) {
         return result;
     }
@@ -182,14 +202,7 @@ khaoz_result khaoz_gpu_device::close() noexcept {
         handle = VK_NULL_HANDLE;
         queue = VK_NULL_HANDLE;
     }
-    if (validation.messenger != VK_NULL_HANDLE) {
-        instance_api.vkDestroyDebugUtilsMessengerEXT(instance, validation.messenger, nullptr);
-        validation.messenger = VK_NULL_HANDLE;
-    }
-    if (instance != VK_NULL_HANDLE) {
-        instance_api.vkDestroyInstance(instance, nullptr);
-        instance = VK_NULL_HANDLE;
-    }
+    close_instance();
     return drained;
 }
 

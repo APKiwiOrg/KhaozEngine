@@ -65,17 +65,9 @@ khaoz_result create_instance(khaoz_gpu_device& device, bool enable_validation, u
     desc.ppEnabledExtensionNames = extensions.data();
     const VkResult created =
         create_handle(device.instance, [&](auto* out) { return vkCreateInstance(&desc, nullptr, out); });
-    if (created == VK_ERROR_INCOMPATIBLE_DRIVER) {
-        if (!enable_validation) {
-            startup_status = KHAOZ_GPU_STARTUP_NO_DRIVER;
-            return error(KHAOZ_ERROR_VULKAN_UNAVAILABLE, "No compatible Vulkan driver is installed");
-        }
-
-        // A layer can also reject creation. Confirm the no-driver result without the requested layer.
-        const auto probed = create_instance(device, false, startup_status);
-        if (probed == KHAOZ_ERROR_VULKAN_UNAVAILABLE) {
-            return probed;
-        }
+    if (!enable_validation && created == VK_ERROR_INCOMPATIBLE_DRIVER) {
+        startup_status = KHAOZ_GPU_STARTUP_NO_DRIVER;
+        return error(KHAOZ_ERROR_VULKAN_UNAVAILABLE, "No compatible Vulkan driver is installed");
     }
     if (created != VK_SUCCESS) {
         return check(created, "Could not create a Vulkan 1.3 instance with the requested configuration");
@@ -94,3 +86,16 @@ khaoz_result create_instance(khaoz_gpu_device& device, bool enable_validation, u
 }
 
 } // namespace khaoz::vulkan
+
+void khaoz_gpu_device::close_instance() noexcept {
+    if (validation.messenger != VK_NULL_HANDLE) {
+        instance_api.vkDestroyDebugUtilsMessengerEXT(instance, validation.messenger, nullptr);
+        validation.messenger = VK_NULL_HANDLE;
+    }
+    if (instance != VK_NULL_HANDLE) {
+        instance_api.vkDestroyInstance(instance, nullptr);
+        instance = VK_NULL_HANDLE;
+    }
+    adapter = {};
+    instance_api = {};
+}

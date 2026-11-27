@@ -1,5 +1,4 @@
 using System;
-using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using KhaozEngine.Gpu.Core.Interop;
@@ -42,10 +41,8 @@ internal sealed unsafe class CoreAdapterSelection(string? request)
             for (int i = 0; i < candidates.Length; i++)
             {
                 var adapter = &first[i];
-                string? reported = Marshal.PtrToStringUTF8((nint)(&adapter->device_name.e0));
-                string name = string.IsNullOrEmpty(reported)
-                    ? string.Create(CultureInfo.InvariantCulture, $"unnamed device 0x{adapter->device_id:x8}")
-                    : reported;
+                string name = VulkanPhysicalDeviceReader.ReadDeviceDisplayName(
+                    (nint)(&adapter->device_name.e0), adapter->device_id);
                 var kind = adapter->device_type <= (uint)VulkanPhysicalDeviceClass.Cpu
                     ? (VulkanPhysicalDeviceClass)adapter->device_type : VulkanPhysicalDeviceClass.Other;
                 bool llvmpipe = adapter->mesa_llvmpipe != 0 || name.Contains("llvmpipe", StringComparison.OrdinalIgnoreCase);

@@ -53,10 +53,11 @@ exception and reason for an unavailable machine.
 The core supports buffers, textures, samplers, transfer command lists and completion fences.
 `GpuReadback` can copy data into staging memory and map it through the usual GPU interfaces.
 Drawing, shader and pipeline creation, and presentation are outside the transfer subset.
-`KE_VULKAN_DEVICE` uses the managed Vulkan selection policy, including its warning and
-fallback when the request cannot be honored.
+`KE_VULKAN_DEVICE` uses the managed Vulkan selection policy, including its display names,
+warnings and fallback when the request cannot be honored.
 `KHAOZ_NATIVE_VULKAN_LOADER` selects a loader file and `KHAOZ_NATIVE_VALIDATION=1` enables
-Vulkan validation with an error count that includes device teardown.
+Vulkan validation with an error count that includes device teardown. Startup checks the
+driver and adapter before loading the requested validation layer.
 
 On macOS, use the MoltenVK ICD. If the Homebrew validation manifest names its library without
 a path, set `DYLD_LIBRARY_PATH` to the Homebrew library directory in the launched test command.

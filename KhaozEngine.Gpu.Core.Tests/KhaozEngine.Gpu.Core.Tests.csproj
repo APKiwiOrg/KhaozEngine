@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>KhaozEngine.Tests.GpuCore</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Gpu.Core/KhaozEngine.Gpu.Core.csproj" />
+    <ProjectReference Include="../KhaozEngine.Gpu/KhaozEngine.Gpu.csproj" />
+    <ProjectReference Include="../KhaozEngine.Gpu.Vulkan/KhaozEngine.Gpu.Vulkan.csproj" />
+    <ProjectReference Include="../KhaozEngine.Render2D/KhaozEngine.Render2D.csproj" />
+    <ProjectReference Include="../KhaozEngine.Imaging/KhaozEngine.Imaging.csproj" />
+    <ProjectReference Include="../KhaozEngine.TestSupport.Gpu/KhaozEngine.TestSupport.Gpu.csproj" />
+  </ItemGroup>
+</Project>

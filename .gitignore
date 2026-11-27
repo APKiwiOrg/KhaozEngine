@@ -66,6 +66,9 @@ KhaozEngine.Render.Tests/Gpu/msl-evidence/
 # CPU-vs-GPU skinning parity PNG dumps (Render3DGpuSkinningGpuTests); local-only diagnostic evidence
 gpu-skinning-evidence/
 
+# Native core CMake build trees.
+/native/out/
+
 # Dev-only local NuGet feed (packed packages live here; the durable store is GitHub Packages - see AGENTS.md)
 # No trailing slash, so a local-feed that is a symlink to another feed is ignored as well (#1063).
 local-feed

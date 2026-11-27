@@ -37,6 +37,7 @@
   "floating-point": {"role": "test", "roots": ["KhaozEngine.FloatingPoint.Tests/KhaozEngine.FloatingPoint.Tests.csproj"]},
   "foundation": {"role": "test", "roots": ["KhaozEngine.Foundation.Tests/KhaozEngine.Foundation.Tests.csproj"]},
   "game": {"role": "test", "roots": ["KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj"]},
+  "gpu-core": {"role": "test", "roots": ["KhaozEngine.Gpu.Core.Tests/KhaozEngine.Gpu.Core.Tests.csproj"]},
   "gui": {"role": "test", "roots": ["KhaozEngine.Gui.Tests/KhaozEngine.Gui.Tests.csproj"]},
   "identity-exchange": {"role": "test", "roots": ["KhaozEngine.Identity.Exchange.Tests/KhaozEngine.Identity.Exchange.Tests.csproj"]},
   "item-instances": {"role": "test", "roots": ["KhaozEngine.ItemInstances.Tests/KhaozEngine.ItemInstances.Tests.csproj"]},

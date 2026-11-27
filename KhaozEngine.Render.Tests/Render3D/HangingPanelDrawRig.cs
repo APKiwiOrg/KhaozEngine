@@ -51,20 +51,21 @@ internal sealed partial class HangingPanelDrawRig : IDisposable
     }
 
     internal HangingPanelDrawRig(HangingPanelCut cut, in HangingPanelPose bindPose, ClothDrapeFixture? cloth = null,
-        bool matchGuideLift = false)
+        bool matchGuideLift = false, bool useMaterialMapping = false, float clothBlendSeconds = 0)
     {
         (chestBone, supportBone, host, bodyRegions) = CreateHost();
         supportFromBind = Matrix4x4.CreateTranslation(-bindPose.Support.Translation);
         BoundAttachmentSet support = WearSupport(bindPose.Support.Translation);
         var drape = new PanelDrape(HangingPanelFixture.Seam, HangingPanelFixture.PoseAt(0).Support.Translation,
             HangingPanelCut.FittedRadius);
-        (BoundAttachmentSet garmentSet, GarmentMeshDigest, GarmentDefinitionDigest) = WearPanel(cut, drape, cloth, matchGuideLift);
+        (BoundAttachmentSet garmentSet, GarmentMeshDigest, GarmentDefinitionDigest) =
+            WearPanel(cut, drape, cloth, matchGuideLift, useMaterialMapping);
         outfit = rig.Cache.BindOutfit(bodyRegions, [support, garmentSet]);
         garmentIndex = 1;
         motion = outfit.CreateMotion(null, new ChainSimulationOptions
         {
             Gravity = new Vector3(0, -9.81f, 0),
-            HoldBlendSeconds = cloth is null ? .25f : 0,
+            HoldBlendSeconds = cloth is null ? .25f : clothBlendSeconds,
         });
         Assert.Equal(HangingPanelCut.Columns - 1, motion.RigLinksForTests.Count);
         Assert.All(motion.RigLinksForTests, link => Assert.Equal(GuideStretch, link.Stretch));
@@ -140,12 +141,13 @@ internal sealed partial class HangingPanelDrawRig : IDisposable
         return draws[0];
     }
 
-    private (BoundAttachmentSet Set, string MeshDigest, string DefinitionDigest) WearPanel(HangingPanelCut cut, PanelDrape drape, ClothDrapeFixture? cloth, bool matchGuideLift)
+    private (BoundAttachmentSet Set, string MeshDigest, string DefinitionDigest) WearPanel(HangingPanelCut cut, PanelDrape drape,
+        ClothDrapeFixture? cloth, bool matchGuideLift, bool useMaterialMapping)
     {
         SkinnedAttachmentGlbFixture glb = HostGlb(HostJointCount + HangingPanelCut.Columns * JointsPerGuide);
         ChainMotionDefinition chainMotion = WriteGuides(glb, drape);
         if (cloth is not null)
-            return WearClothPanel(glb, cut, drape, chainMotion, cloth, matchGuideLift);
+            return WearClothPanel(glb, cut, drape, chainMotion, cloth, matchGuideLift, useMaterialMapping);
 
         Vector3[] sourcePositions = cut.Fit(drape);
         var liftDirections = new Vector3[sourcePositions.Length];
@@ -337,7 +339,7 @@ internal sealed partial class HangingPanelDrawRig : IDisposable
                 Positions[vertex] = SkinningMath.SkinVertex(mesh.Vertices[vertex], composed).Position;
         }
 
-        private static PanelTriangle[] ReadFaces(uint[] indices, PanelTriangle[] reference)
+        internal static PanelTriangle[] ReadFaces(ReadOnlySpan<uint> indices, PanelTriangle[] reference)
         {
             Assert.Equal(reference.Length * 3, indices.Length);
             var labels = new PanelTriangle[reference.Length];

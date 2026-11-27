@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Numerics;
 using KhaozEngine.Attachments;
 using KhaozEngine.Attachments.Render3D;
@@ -21,7 +22,9 @@ internal sealed partial class HangingPanelDrawRig
     private WornClothSelection clothRequest;
     private Matrix4x4[]? frozenHost;
     private Vector3[]? detailed;
-    private Matrix4x4[]? composedCloth;
+    private BoundClothSurface? bareSurface;
+    private ClothDetailedReconstruction? bareOutput;
+    private PanelTriangle[]? shownFaces;
     private bool firstClothPose = true;
 
     internal WornClothStatus CurrentClothStatus => motion!.ClothStatus;
@@ -37,6 +40,9 @@ internal sealed partial class HangingPanelDrawRig
         clothCut = cut;
         frozenFixture = fixture;
         bareCloth = bare.Materials[0];
+        bareSurface = bare;
+        bareOutput = new(bare);
+        shownFaces = DrawPanel.ReadFaces(surface.Materials[0].VisibleIndices.AsSpan(), cut.Faces);
         StaticRegistration = surface.RoundTrip;
         fittedCloth = surface.Materials[0];
         foreach (var entry in bareCloth.Embeddings)
@@ -50,7 +56,6 @@ internal sealed partial class HangingPanelDrawRig
         wearerBatch = new(new SingleThreadedJobScheduler());
         frozenHost = (Matrix4x4[])palette.Clone();
         detailed = new Vector3[surface.Materials[0].Vertices.Length];
-        composedCloth = new Matrix4x4[host.Skeleton!.BoneCount + HangingPanelCut.Columns * JointsPerGuide];
         Assert.Equal(fixture.Fitted.Length, surface.FittedNodes.Length);
         for (int i = 0; i < fixture.Fitted.Length; i++)
         {
@@ -88,37 +93,21 @@ internal sealed partial class HangingPanelDrawRig
             Assert.Equal(draw.Skinned.Model, shown.Model);
             firstClothPose = false;
         }
-        return ReadSurface(shown, shown.Surface.Materials[0]);
+        return ReadSurface(shown.DetailedVertices(0).Span);
     }
 
     internal PresentedPanel PresentWithoutOutfitLift()
     {
         Assert.True(outfit.TryGetClothPresentation(garmentIndex, motion!, 1, out var shown));
-        return ReadSurface(shown, bareCloth!);
+        Assert.True(bareOutput!.Fitted(bareSurface!, shown.Nodes, shown.RelativeModel, shown.GarmentPalette));
+        return ReadSurface(bareOutput.Vertices(0));
     }
 
-    private PresentedPanel ReadSurface(scoped in WornClothPresentation shown, BoundClothMaterial material)
+    private PresentedPanel ReadSurface(ReadOnlySpan<ModelVertex> vertices)
     {
-        var cut = clothCut!;
-        var paletteOutput = composedCloth!.AsSpan(0, shown.GarmentPalette.Length);
-        Assert.True(Matrix4x4.Invert(shown.RelativeModel, out Matrix4x4 toModel));
-        var fitted = garment.SourceMesh;
-        for (int i = 0; i < paletteOutput.Length; i++)
-            paletteOutput[i] = SkinningMath.Compose(shown.GarmentPalette[i], fitted.InverseBind[i]);
-        for (int i = 0; i < material.Vertices.Length; i++)
-            detailed![i] = SkinningMath.SkinVertex(material.Vertices[i], paletteOutput).Position;
-
-        foreach (var embedding in material.Embeddings)
-        {
-            ClothTriangle face = shown.Surface.Rig.Triangles[embedding.Triangle];
-            if (!ClothFittedFrame.TryCreate(face, shown.Nodes, out var frame))
-                throw new InvalidOperationException("Presented material triangle has no frame.");
-            Vector3 offset = embedding.FittedOffset;
-            Vector3 worldRelative = face.Blend(shown.Nodes, embedding.Barycentric) +
-                offset.X * frame.U + offset.Y * frame.V + offset.Z * frame.Normal;
-            detailed![embedding.VertexIndex] = Vector3.Transform(worldRelative, toModel);
-        }
-        return new(detailed, cut.Faces, cut.MaterialTriangles, cut.Probes,
+        Assert.Equal(detailed!.Length, vertices.Length);
+        for (int i = 0; i < vertices.Length; i++) detailed[i] = vertices[i].Position;
+        return new(detailed, shownFaces, clothCut!.MaterialTriangles, clothCut.Probes,
             CurrentClothStatus.Fallback == WornClothFallback.None ? 0 : 1);
     }
 
@@ -135,7 +124,7 @@ internal sealed partial class HangingPanelDrawRig
         PanelTriangle closest = default;
         Vector3 point = default;
         float squared = float.PositiveInfinity;
-        foreach (PanelTriangle face in clothCut!.Faces)
+        foreach (PanelTriangle face in shownFaces!)
         {
             if (face.Face != PanelFace.Lining) continue;
             Vector3 candidate = PanelGeometry.ClosestPoint(marker, positions[face.A], positions[face.B], positions[face.C]);
@@ -186,7 +175,7 @@ internal sealed partial class HangingPanelDrawRig
 
     private (BoundAttachmentSet Set, string MeshDigest, string DefinitionDigest) WearClothPanel(SkinnedAttachmentGlbFixture glb,
         HangingPanelCut cut, in PanelDrape drape, ChainMotionDefinition fallback, ClothDrapeFixture fixture,
-        bool matchGuideLift)
+        bool matchGuideLift, bool useMaterialMapping)
     {
         Vector3[] dense = cut.Fit(drape);
         var rigged = fixture.Rig;
@@ -205,6 +194,7 @@ internal sealed partial class HangingPanelDrawRig
         if (matchGuideLift) liftBearings.AsSpan(dense.Length).Fill(LowerStandoff);
         glb.SetUniformSkinning(0, positions.Length, Vector4.Zero, Vector4.UnitX);
         var render = new List<ClothRenderEmbedding>();
+        var material = new List<ClothRenderEmbedding>();
         for (int vertex = 0; vertex < dense.Length; vertex++)
         {
             int source = vertex % HangingPanelCut.VerticesPerSkin;
@@ -216,7 +206,12 @@ internal sealed partial class HangingPanelDrawRig
             var (triangle, weights, signed) = matchGuideLift
                 ? AttachMaterialSite(encodedNodes, rigged.Triangles, positions[vertex], preferred, intrinsicWeights)
                 : AttachSource(encodedNodes, rigged.Triangles, positions[vertex], preferred);
-            render.Add(new(new(0, 0, vertex), triangle, weights, signed));
+            ClothSourceVertex ordinal = new(0, 0, vertex);
+            var fitted = new ClothRenderEmbedding(ordinal, triangle, weights, signed);
+            render.Add(fitted);
+            float detail = vertex == source ? rigged.Material.HalfThickness : -rigged.Material.HalfThickness;
+            var intrinsic = new ClothRenderEmbedding(ordinal, preferred, intrinsicWeights, detail);
+            if (useMaterialMapping && intrinsic != fitted) material.Add(intrinsic);
             WeightGuide(vertex, row, source % HangingPanelCut.Columns);
         }
         var reverse = new ClothSourcePoint[fixture.Fitted.Length];
@@ -246,7 +241,10 @@ internal sealed partial class HangingPanelDrawRig
         var mesh = rig.Source.Mesh("hanging-cloth-panel.glb", glb.Build());
         var sidecar = new ClothSurfaceFile(mesh.Sha256, positions.Length, cut.Faces.Length, rigged.Material,
             [.. rigged.RestPositions], [.. rigged.MaterialCoordinates], [.. rigged.Triangles], [],
-            [.. pins], [.. render], [.. reverse]);
+            [.. pins], [.. render], [.. reverse])
+        {
+            MaterialRender = useMaterialMapping ? ImmutableArray.CreateRange(material) : default,
+        };
         const string sidecarKey = "hanging-cloth-panel.kecs";
         string sha = rig.Source.Add(sidecarKey, ClothSurfaceJson.Write(sidecar));
         var part = new SkinnedAttachmentPartDefinition(1, mesh)

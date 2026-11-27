@@ -7947,12 +7947,14 @@ motion.Step(skeleton, hostPalette, model, deltaSeconds, MotionLevel.Simulated, s
 
 if (outfit.TryGetClothPresentation(wornIndex, motion, partId, out var cloth))
 {
-    // Consume cloth.Nodes with cloth.RelativeModel, cloth.GarmentPalette and cloth.Surface.
+    var vertices = cloth.DetailedVertices(materialIndex);
+    var indices = cloth.Surface.Materials[materialIndex].VisibleIndices;
+    // Use these model-space vertices and visible indices with cloth.Model.
 }
 ```
 
-Borrow the CPU snapshot only until the wearer or slot changes. Keep the accepted nodes, garment
-palette and model together. Use `ClothStatus` to distinguish a handoff from a refused request.
+Borrow the CPU snapshot only until the wearer or slot changes. Keep the accepted detailed surface
+and model together. Use `ClothStatus` to distinguish a handoff from a refused request.
 Standard set and outfit scene submissions use the chain fallback. See the
 [format 8 reference](../KhaozEngine.Attachments/README.md#format-8) and the
 [wearer reservation contract](../KhaozEngine.Attachments.Render3D/README.md#one-local-cloth-reservation).

@@ -25,12 +25,22 @@ public sealed class BoundClothMaterial
     readonly bool[] _moving;
 
     internal BoundClothMaterial(ImmutableArray<SkinnedVertex> vertices, ImmutableArray<uint> visibleIndices,
-        ImmutableArray<BoundClothEmbedding> embeddings, ImmutableArray<BoundClothMaterialEmbedding> materialEmbeddings)
+        ImmutableArray<BoundClothEmbedding> embeddings, ImmutableArray<BoundClothMaterialEmbedding> materialEmbeddings,
+        ReadOnlySpan<Matrix4x4> composed, ReadOnlySpan<ClothFittedFrame> frames)
     {
         (Vertices, VisibleIndices, Embeddings) = (vertices, visibleIndices, embeddings);
         MaterialEmbeddings = materialEmbeddings;
         _moving = new bool[Vertices.Length];
-        foreach (BoundClothEmbedding embedding in embeddings) _moving[embedding.VertexIndex] = true;
+        var shading = ImmutableArray.CreateBuilder<ClothShading>(embeddings.Length);
+        for (int i = 0; i < embeddings.Length; i++)
+        {
+            BoundClothEmbedding embedding = embeddings[i];
+            _moving[embedding.VertexIndex] = true;
+            int triangle = materialEmbeddings.IsDefault ? embedding.Triangle : materialEmbeddings[i].Triangle;
+            shading.Add(new ClothShading(SkinningMath.SkinVertex(vertices[embedding.VertexIndex], composed), frames[triangle]));
+        }
+        Shading = shading.MoveToImmutable();
+        if (!MaterialEmbeddings.IsDefault) DetailedTopology = new(this);
     }
 
     internal bool HasMovingVertices(ReadOnlySpan<uint> indices)
@@ -46,6 +56,9 @@ public sealed class BoundClothMaterial
 
     /// <summary>The full intrinsic mapping for this view, in fitted embedding order. Default for version 1.</summary>
     public ImmutableArray<BoundClothMaterialEmbedding> MaterialEmbeddings { get; }
+    internal ImmutableArray<ClothShading> Shading { get; }
+    internal ClothDetailedTopology? DetailedTopology { get; }
+    internal bool Moves(int vertex) => _moving[vertex];
 }
 
 /// <summary>The checked cloth rig and posed sampling data for one fitted part in a set or outfit.</summary>
@@ -60,6 +73,7 @@ public sealed class BoundClothSurface
     readonly int[] _hostBones;
     readonly int _hostBoneCount;
     readonly Vector3[] _fittedNodes;
+    readonly ClothPinnedDirections? _pinDirections;
 
     internal BoundClothSurface(CheckedClothSurface asset, CoverageSourceTopology source, SkinnedGltfMesh[] materials,
         ResolvedClothPoint[] pins, ResolvedClothPoint[] fallback, ResolvedClothVertex[] render, ReadOnlySpan<int> hostBones,
@@ -96,6 +110,7 @@ public sealed class BoundClothSurface
         for (int triangle = 0; triangle < frames.Length; triangle++)
             if (!ClothFittedFrame.TryCreate(Rig.Triangles[triangle], _fittedNodes, out frames[triangle]))
                 throw asset.Refuse(ClothSurfaceRefusal.FittedTriangle, "$.triangles", "The fitted triangle has no finite frame.", triangle);
+        if (HasMaterialMapping) _pinDirections = new(Rig, _source, _pins, _fittedNodes, composed);
 
         var embeddings = new List<BoundClothEmbedding>[materials.Length];
         var intrinsic = HasMaterialMapping ? new List<BoundClothMaterialEmbedding>[materials.Length] : null;
@@ -127,7 +142,7 @@ public sealed class BoundClothSurface
             uint[] visibleIndices = visible?[material] ?? materials[material].Indices32;
             var view = new BoundClothMaterial(ImmutableArray.Create(vertices), ImmutableArray.Create(visibleIndices),
                 ImmutableArray.CreateRange(embeddings[material]),
-                intrinsic is null ? default : ImmutableArray.CreateRange(intrinsic[material]));
+                intrinsic is null ? default : ImmutableArray.CreateRange(intrinsic[material]), composed, frames);
             HasVisibleMotion |= view.HasMovingVertices(visibleIndices);
             fitted.Add(view);
         }
@@ -217,6 +232,12 @@ public sealed class BoundClothSurface
 
     internal static Vector3 Skin(in SkinnedVertex vertex, ReadOnlySpan<Matrix4x4> composed) =>
         Vector3.Transform(vertex.Position, SkinningMath.BlendSkinMatrix(composed, vertex.BoneIndices, vertex.BoneWeights));
+
+    internal void ComposeGarment(ReadOnlySpan<Matrix4x4> palette, Span<Matrix4x4> composed) =>
+        Compose(palette, _inverseBind, composed);
+
+    internal void PosePinDirections(ReadOnlySpan<Matrix4x4> composed, Span<Vector3> normals) =>
+        _pinDirections!.Pose(Rig, _source, _pins, composed, normals);
 
     internal static void Compose(ReadOnlySpan<Matrix4x4> palette, ReadOnlySpan<Matrix4x4> inverseBind,
         Span<Matrix4x4> composed)

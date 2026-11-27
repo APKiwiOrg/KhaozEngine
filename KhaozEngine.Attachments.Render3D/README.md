@@ -418,14 +418,26 @@ whose preceding cheap pose had no valid cloth samples starts from the current fi
 opens a new history generation.
 
 `TryGetClothPresentation` on a set, outfit or motion borrows the last admissible CPU sample.
-Read it before the next step, reset, rebind or release. `Surface` identifies the fitted and visible
-material views. `Nodes` are in world-aligned metres relative to `WorldOrigin`. Invert
-`RelativeModel` to get model-space coordinates without losing precision at large translations.
-Use the sample's `GarmentPalette` for fixed vertices and its `Model` for the resulting draw.
-After a refused sweep, `IsCurrentPose` can be false. Keep the entire accepted sample together,
-including its palette and model. Its `DisplayRevision` and `HistoryRevision` identify the accepted
-sample and its continuity with an earlier sample on the same motion. Ordinary draw descriptors
-carry the chain fallback.
+Consume `DetailedVertices(materialIndex)` with the same sample's `Model` and
+`Surface.Materials[materialIndex].VisibleIndices`. The read-only vertex memory is in model space
+and follows the full material vertex order. The slot prepares it once per accepted pose for
+reuse across passes. Read it before the next step, reset, rebind or release.
+
+Version 1 reconstructs the moving vertices from the checked fitted triangle frames. Version 2
+uses the intrinsic pattern and signed detail with oriented, area-weighted normals shared across
+the material surface. At pins the fitted normal follows the host pose. Render normals and tangents
+keep their authored directions relative to the deforming cloth. Fixed vertices follow the current
+host skin. A version 2 handoff blends the actual posed, lifted chain surface and the live material
+surface, starts a reversal at the last shown vertices, and verifies the detailed sweep against the
+same supports. The sweep refits a prebuilt tree of moving visible triangles and charges every
+visited node and triangle to its broad-phase budget. `ClothStatus.DetailedProjection` reports the
+attempted handoff verification.
+
+`Nodes` are in world-aligned metres relative to `WorldOrigin`. Invert `RelativeModel` to get
+model-space coordinates without losing precision at large translations. `GarmentPalette`
+contains the host skin pose for the fixed vertices. After a refused sweep, `IsCurrentPose` can be
+false. Keep the accepted vertices, palette and model together. `DisplayRevision` and `HistoryRevision`
+identify the accepted sample and its continuity with an earlier sample on the same motion.
 
 When the cache loads a chained set through a shipped `Scene3D` upload lease, it expands the
 chained meshes' rest bounds for culling. Each chain contributes a sphere at its first joint's

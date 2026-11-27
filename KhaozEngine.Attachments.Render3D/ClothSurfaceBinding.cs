@@ -253,18 +253,22 @@ internal readonly record struct ResolvedClothPoint(int A, int B, int C, Vector3 
 
 internal readonly record struct ClothFittedFrame(Vector3 U, Vector3 V, Vector3 Normal)
 {
-    internal static bool TryCreate(ClothTriangle triangle, ReadOnlySpan<Vector3> nodes, out ClothFittedFrame frame)
+    internal static bool TryCreate(ClothTriangle triangle, ReadOnlySpan<Vector3> nodes, out ClothFittedFrame frame) =>
+        TryCreate(triangle, nodes, out frame, out _);
+
+    internal static bool TryCreate(ClothTriangle triangle, ReadOnlySpan<Vector3> nodes, out ClothFittedFrame frame,
+        out Vector3 areaNormal)
     {
         Vector3 first = nodes[triangle.B] - nodes[triangle.A];
         Vector3 second = nodes[triangle.C] - nodes[triangle.A];
-        Vector3 normal = Vector3.Cross(first, second);
-        float length = first.Length(), area = normal.Length();
+        areaNormal = Vector3.Cross(first, second);
+        float length = first.Length(), area = areaNormal.Length();
         if (!(length > 0 && area > 0 && float.IsFinite(length) && float.IsFinite(area)))
         {
             frame = default;
             return false;
         }
-        Vector3 u = first / length, n = normal / area;
+        Vector3 u = first / length, n = areaNormal / area;
         frame = new(u, Vector3.Cross(n, u), n);
         return true;
     }

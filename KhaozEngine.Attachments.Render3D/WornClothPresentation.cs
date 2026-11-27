@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Render3D;
 
 namespace KhaozEngine.Attachments.Render3D;
 
@@ -35,6 +36,8 @@ public readonly record struct WornClothStatus(WornClothTier Tier, WornClothFallb
 {
     public uint? RequestedPartId { get; init; }
     public bool IsBlending { get; init; }
+    /// <summary>Verification of the detailed visible surface during a handoff.</summary>
+    public ClothStepResult DetailedProjection { get; init; }
     public ClothContactWork SolveWork { get; init; }
     public long MaterialFactorProducts { get; init; }
     public int LowerSegments { get; init; }
@@ -43,13 +46,16 @@ public readonly record struct WornClothStatus(WornClothTier Tier, WornClothFallb
 }
 
 /// <summary>The borrowed CPU surface used for one displayed pose.</summary>
-/// <remarks>Read the nodes before the next step, reset, rebind or release. Positions are world-aligned metres
+/// <remarks>Read the borrowed data before the next step, reset, rebind or release. Node positions are world-aligned metres
 /// relative to <see cref="WorldOrigin"/>. Use <see cref="RelativeModel"/> to reconstruct in model space
 /// without first adding a large world translation. The fitted surface identifies the visible material views.</remarks>
 public readonly ref struct WornClothPresentation
 {
+    private readonly ModelVertex[][] _vertices;
+
     internal WornClothPresentation(WornMotion motion, ulong revision, ulong historyRevision, int wornIndex, BoundClothSurface surface,
-        ReadOnlySpan<Vector3> nodes, Vector3 worldOrigin, in Matrix4x4 model, ReadOnlySpan<Matrix4x4> garmentPalette)
+        ReadOnlySpan<Vector3> nodes, Vector3 worldOrigin, in Matrix4x4 model, ReadOnlySpan<Matrix4x4> garmentPalette,
+        ModelVertex[][] vertices)
     {
         Motion = motion;
         DisplayRevision = revision;
@@ -60,6 +66,7 @@ public readonly ref struct WornClothPresentation
         WorldOrigin = worldOrigin;
         Model = model;
         GarmentPalette = garmentPalette;
+        _vertices = vertices;
         var relativeModel = model;
         relativeModel.Translation -= worldOrigin;
         RelativeModel = relativeModel;
@@ -79,4 +86,13 @@ public readonly ref struct WornClothPresentation
 
     /// <summary>Garment-space pose matrices for the fixed vertices at the accepted display pose.</summary>
     public ReadOnlySpan<Matrix4x4> GarmentPalette { get; }
+
+    /// <summary>Borrow the accepted model-space vertices in a bound material view's full vertex order.
+    /// Draw with this sample's model and that view's visible index stream.</summary>
+    public ReadOnlyMemory<ModelVertex> DetailedVertices(int materialIndex)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(materialIndex);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(materialIndex, _vertices?.Length ?? 0);
+        return _vertices![materialIndex];
+    }
 }

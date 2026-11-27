@@ -15,29 +15,52 @@ public sealed class HangingClothWearerTests
     private static readonly int[] GeometrySelectedRows = [0, 3, 7, 8, 14, 21, 28, 35, 36, 43, 50, 57, 64];
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Frozen_original_cut_meets_all_detailed_display_limits(bool flat) => Measure(flat, geometrySelected: false);
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void Frozen_original_cut_meets_all_detailed_display_limits(bool flat, bool batch)
+    {
+        var failures = Measure(flat, batch, Mapping.Material);
+        Assert.True(failures.Count == 0,
+            $"{failures.Count} failures. {string.Join(", ", failures.GetRange(0, Math.Min(failures.Count, 15)))}");
+    }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Geometry_selected_proxy_meets_the_same_original_cut_limits(bool flat) => Measure(flat, geometrySelected: true);
+    [Trait("Category", "Diagnostic")]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public void Fitted_registration_controls_record_the_detail_or_proxy_limit(bool flat, bool alternate)
+    {
+        var failures = Measure(flat, batch: flat, alternate ? Mapping.Alternate : Mapping.Fitted);
+        string expected = flat && !alternate ? "bearing" : "strain";
+        Assert.Contains(failures, failure => failure.Metric == expected);
+    }
 
-    private static void Measure(bool flat, bool geometrySelected)
+    private enum Mapping { Material, Fitted, Alternate }
+
+    private static List<(double Time, string Metric, float Value)> Measure(bool flat, bool batch, Mapping mapping)
     {
         var neutral = At(0, flat);
         var cut = new HangingPanelCut();
+        bool geometrySelected = mapping == Mapping.Alternate;
         var proxy = new ClothDrapeFixture(geometrySelected ? GeometrySelectedRows : null);
-        using var wearer = new HangingPanelDrawRig(cut, neutral, proxy, matchGuideLift: geometrySelected);
+        using var wearer = new HangingPanelDrawRig(cut, neutral, proxy, matchGuideLift: geometrySelected,
+            useMaterialMapping: mapping == Mapping.Material);
         using (var original = new HangingPanelDrawRig(cut, neutral))
             wearer.VerifyOriginalFallback(original, neutral);
         var gate = flat ? new FlatLipReentry(IsFlatLipEligible) : null;
         var proxyGate = flat ? new FlatLipReentry(IsFlatLipEligible) : null;
-        var failures = new List<string>();
+        var failures = new List<(double Time, string Metric, float Value)>();
         string? tracePath = Environment.GetEnvironmentVariable("KE_CLOTH_WEARER_TRACE");
-        using StreamWriter? trace = string.IsNullOrEmpty(tracePath) ? null : File.CreateText(tracePath + (flat ? ".flat" : ".raised"));
+        string outfit = flat ? "flat" : "raised";
+        string entry = batch ? "batch" : "direct";
+        using StreamWriter? trace = string.IsNullOrEmpty(tracePath) ? null :
+            File.CreateText($"{tracePath}.{mapping.ToString().ToLowerInvariant()}.{outfit}.{entry}.jsonl");
         double prior = 0;
+        bool recoveryPending = false;
         for (int frame = 0; frame <= 20 * 60; frame++)
         {
             double frameTime = frame / 60.0;
@@ -48,22 +71,29 @@ public sealed class HangingClothWearerTests
                 Present(frameTime - (101 / 60.0 - 1.6754), released);
             Present(frameTime, released);
         }
-        Assert.True(failures.Count == 0, $"{failures.Count} failures. {string.Join(", ", failures.GetRange(0, Math.Min(failures.Count, 15)))}");
+        if (recoveryPending)
+            failures.Add((prior, "open flat re-entry window", 0));
+        return failures;
 
         void Present(double time, bool released)
         {
             double driven = released ? 0 : Math.Max(0, time - 4);
             HangingPanelPose pose = At(driven, flat);
             if (released) pose = pose.WithWithdrawal();
-            PresentedPanel panel = wearer.PresentCloth(pose, (float)(time - prior), batch: flat);
+            PresentedPanel panel = wearer.PresentCloth(pose, (float)(time - prior), batch);
             prior = time;
+            WornClothStatus status = wearer.CurrentClothStatus;
+            Require(wearer.CurrentClothPose, "current display revision", (float)status.Projection.Status);
+            Require(status.Fallback == WornClothFallback.None, "refusal", (float)status.Fallback);
+            Require(!status.Solve.Recovered, "fallback recovery", (float)(status.Solve.FallbackStatus ?? ClothStepStatus.Accepted));
             if (time < 8) return;
             ClothObservation geometry = HangingPanelFixture.Observe(pose, panel);
             var closest = wearer.ClosestLiningWitness(pose.MarkerInModel);
             MaterialObservation material = geometry.Material!.Value;
             float lipClearance = MathF.Min(geometry.Lining.Lip, MathF.Min(geometry.Outer.Lip, geometry.Rim.Lip));
             FlatLipBearingDecision? bearing = !released ? gate?.Observe(driven, geometry.IsLipLoaded, geometry.MarkerGap, lipClearance) : null;
-            WornClothStatus status = wearer.CurrentClothStatus;
+            if (bearing is { } observed)
+                recoveryPending = observed.Verdict == FlatLipBearingVerdict.Closing;
             ClothObservation proxyWitness = HangingPanelFixture.Observe(pose, wearer.PresentFrozenProxyWitness(pose));
             ClothObservation withoutLift = HangingPanelFixture.Observe(pose, wearer.PresentWithoutOutfitLift());
             float proxyLip = MathF.Min(proxyWitness.Lining.Lip, MathF.Min(proxyWitness.Outer.Lip, proxyWitness.Rim.Lip));
@@ -78,8 +108,6 @@ public sealed class HangingClothWearerTests
                 staticRegistration = wearer.StaticRegistration, maxGuideLiftError = wearer.MaxGuideLiftError,
                 closest, markedFittedOffset = Components(wearer.MarkedFittedOffset), markedBareOffset = Components(wearer.MarkedBareOffset),
             }));
-            Require(wearer.CurrentClothPose, "current display revision", (float)status.Projection.Status);
-            Require(status.Fallback == WornClothFallback.None, "refusal", (float)status.Fallback);
             Require(geometry.IsExterior, "exterior", geometry.MinimumSignedClearance);
             Require(proxyWitness.IsExterior, "intrinsic exterior", proxyWitness.MinimumSignedClearance);
             Require(material.SeamError <= HangingPanelFixture.SeamLimit, "seam", material.SeamError);
@@ -112,7 +140,7 @@ public sealed class HangingClothWearerTests
 
             void Require(bool pass, string metric, float value)
             {
-                if (!pass) failures.Add($"{time:R}s {metric} {value:R}");
+                if (!pass) failures.Add((time, metric, value));
             }
         }
     }

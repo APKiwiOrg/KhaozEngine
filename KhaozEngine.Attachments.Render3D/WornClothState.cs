@@ -9,6 +9,9 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
 {
     private readonly ClothSimulation _solver = new(rig, ClothWorkLimits.LayeredContact);
     private readonly WornClothSupports _supports = new();
+    private readonly WornClothDetail _detail = new(profile);
+    private readonly Matrix4x4[] _frameGarmentPalette = new Matrix4x4[profile.JointCount];
+    private readonly Matrix4x4[] _cheapGarmentPalette = new Matrix4x4[profile.JointCount];
     private readonly Vector3[] _displayed = new Vector3[rig.RestPositions.Length];
     private readonly Vector3[] _published = new Vector3[rig.RestPositions.Length];
     private readonly Vector3[] _target = new Vector3[rig.RestPositions.Length];
@@ -36,6 +39,7 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
     private Matrix4x4 _model;
     private ClothStepResult _solve;
     private ClothStepResult _projection;
+    private ClothStepResult _detailProjection;
     private int _substeps;
     private ClothContactWork _solveWork;
     private long _factorProducts;
@@ -59,6 +63,7 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
         _hasDisplay = false;
         _historyValid = false;
         _origin = default;
+        _detail.Reset();
     }
 
     internal void Release()
@@ -85,7 +90,8 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
             binding.WornIndex == wornIndex && binding.Surface.PartId == partId)
         {
             presentation = new(wearer, _displayRevision, _displayHistoryRevision, wornIndex, binding.Surface,
-                _published, _publishedOrigin, _model, _displayedGarmentPalette.AsSpan(0, binding.Surface.JointCount));
+                _published, _publishedOrigin, _model, _displayedGarmentPalette.AsSpan(0, binding.Surface.JointCount),
+                _detail.Shown);
             return true;
         }
         presentation = default;
@@ -97,6 +103,7 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
         _publishedOwner?.ForgetClothSnapshot(this);
         _publishedOwner = null;
         _publishedBinding = null;
+        _detail.Reset();
     }
 
     internal void Begin(ChainSimulation chains, Skeleton skeleton, ReadOnlySpan<Matrix4x4> previousHost,
@@ -114,6 +121,7 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
         if (resetTransfer) _rebound = false;
         _solve = default;
         _projection = default;
+        _detailProjection = default;
         _fresh = reset || _rebound || resetTransfer;
         _chainFittedReset = reset;
         _switchFrame = _liveRequested != live;
@@ -153,6 +161,11 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
                 _supports.Begin(Binding, previousHost, previousModel, chains, fresh: true);
                 _historyValid = true;
                 _hasDisplay = _solver.CanSeed(_displayed);
+                if (_hasDisplay && Binding.Surface.HasMaterialMapping)
+                {
+                    CopyCheapPalette(skeleton, previousHost);
+                    _detail.Seed(Binding.Surface, previousModel, _origin, _cheapGarmentPalette);
+                }
             }
             catch (ClothSurfaceDataException error) when (error.Reason == ClothSurfaceRefusal.FittedTriangle)
             {
@@ -243,9 +256,19 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
         bool admissible = _projection.Status == ClothStepStatus.Accepted && (!endpoint || Matches(_target, _projected));
         if (admissible)
         {
+            Binding.CopySkinPalette(skeleton, host, _frameGarmentPalette);
+            bool liveDetail = _liveRequested && (!_fresh || _rebound);
+            if (Binding.Surface.HasMaterialMapping && !liveDetail) CopyCheapPalette(skeleton, host);
+            _detailProjection = _detail.Stage(Binding.Surface, _projected, model, _origin,
+                _frameGarmentPalette, _cheapGarmentPalette, liveDetail, blend || _switchFrame, blend ? amount : 1, pose);
+            admissible = _detailProjection.Status == ClothStepStatus.Accepted;
+            if (admissible) _detail.Publish(model, _origin, liveDetail);
+        }
+        if (admissible)
+        {
             _projected.CopyTo(_displayed, 0);
             _hasDisplay = true;
-            Publish(skeleton, host, absoluteModel);
+            Publish(absoluteModel);
             _rebound = false;
             _supports.SaveDisplay();
             if (_fresh || _solve.Status != ClothStepStatus.Accepted)
@@ -281,6 +304,7 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
             new(_settledCloth && ReferenceEquals(_publishedOwner, Owner) ? WornClothTier.Cloth : cheap,
                 refusal, Binding.Surface.PartId, _substeps, _solve, _projection)
             {
+                DetailedProjection = _detailProjection,
                 IsBlending = _hasDisplay && (_settledCloth != _liveRequested || _elapsed < duration),
                 SolveWork = _solveWork,
                 MaterialFactorProducts = _factorProducts,
@@ -290,9 +314,15 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
             };
     }
 
-    private void Publish(Skeleton skeleton, ReadOnlySpan<Matrix4x4> host, in Matrix4x4 absoluteModel)
+    private void CopyCheapPalette(Skeleton skeleton, ReadOnlySpan<Matrix4x4> host)
     {
-        Binding.CopySkinPalette(skeleton, host, _displayedGarmentPalette);
+        Binding.CopySkinPalette(skeleton, host, _cheapGarmentPalette);
+        Owner!.CopyChainPalette(Binding.WornIndex, Binding.Surface.PartId, host, _cheapGarmentPalette, useClothFallback: true);
+    }
+
+    private void Publish(in Matrix4x4 absoluteModel)
+    {
+        _frameGarmentPalette.CopyTo(_displayedGarmentPalette, 0);
         _displayed.CopyTo(_published, 0);
         if (!ReferenceEquals(_publishedOwner, Owner))
             _publishedOwner?.ForgetClothSnapshot(this);

@@ -96,6 +96,18 @@ on `main`, the detached full workload SHA as `ref`, `linux-vulkan` as `legs` and
 above. Each of the four rows runs 1,200 settle, 120 warm and 600 measured frames. The scope is one
 close wearer and leaves the 32-wearer CPU, renderer and GPU qualification to their own units.
 
+At commit `7afdda262`, sparse factor reuse reduced one-wearer p95 CPU preparation by 22.2% at
+144 Hz and 26.4% at 60 Hz relative to the direct solver in the same run. It still exceeded the
+2 ms allowance by 0.431 ms and 2.354 ms respectively. All 2,400 detailed poses were current.
+Every row recorded zero warm caller bytes, refusals and recoveries. [Hosted CPU comparison](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/45934438002/job/140294340255)
+
+| Cadence | Solver | Median CPU (ms) | p95 CPU (ms) | Maximum CPU (ms) |
+|---|---|---:|---:|---:|
+| 144 Hz | Direct | 2.975 | 3.126 | 3.206 |
+| 144 Hz | Sparse reuse | 2.308 | 2.431 | 3.183 |
+| 60 Hz | Direct | 5.677 | 5.913 | 8.164 |
+| 60 Hz | Sparse reuse | 4.201 | 4.354 | 5.399 |
+
 ## Equipment coverage cost evidence
 
 The recession-table implementation has headless carry, descriptor, submission-history and allocation

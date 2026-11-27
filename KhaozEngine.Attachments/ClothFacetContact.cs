@@ -85,15 +85,14 @@ internal readonly struct ClothHullSweep(ClothFacet first, ClothFacet last, Cloth
         return new ClothSweepSample(contact.Distance, contact.Normal, contact.Weights);
     }
 
-    public float Gap(float time, Vector3 normal)
+    public double Gap(float time, Vector3 normal)
     {
         ClothHullPose pose = PoseAt(time);
-        Vector3 localNormal = Vector3.Transform(normal, Quaternion.Conjugate(pose.Rotation));
-        float maximum = float.NegativeInfinity;
+        var axis = new Offset(normal);
+        double maximum = double.NegativeInfinity;
         foreach (Vector3 vertex in support.Hull.Vertices)
-            maximum = MathF.Max(maximum, Vector3.Dot(vertex, localNormal));
-        return first.At(last, time).MinProjection(normal) -
-            (Vector3.Dot(pose.Translation, normal) + pose.Scale * maximum);
+            maximum = Math.Max(maximum, Offset.Dot(new Offset(pose.World(vertex)), axis));
+        return first.At(last, time).MinProjection(axis) - maximum;
     }
 
     internal HullContact Witness(float time)

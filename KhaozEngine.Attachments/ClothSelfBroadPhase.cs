@@ -59,8 +59,6 @@ internal sealed class ClothSelfBroadPhase
         Begin();
     }
 
-    internal static bool HasEligiblePairs(ClothRig rig) => GetTopology(rig).SelfTraversal.Length != 0;
-
     private static Topology GetTopology(ClothRig rig) => Topologies.GetValue(rig, static pattern => new Topology(pattern));
 
     internal ReadOnlySpan<Pair> Pairs => _pairs.AsSpan(0, _pairCount);

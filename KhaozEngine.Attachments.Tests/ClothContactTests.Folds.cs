@@ -168,6 +168,84 @@ public sealed partial class ClothContactTests
         }
     }
 
+    [Fact]
+    public void Thin_cloth_does_not_certify_coincident_faces_at_the_middle_of_a_proposed_sweep()
+    {
+        const float height = 1f / 1024;
+        Vector3[] opening =
+        [
+            new(-.005f, -.005f, 0), new(.005f, -.005f, 0), new(0, .005f, 0),
+            new(-.04f, -.04f, height), new(.04f, -.04f, height), new(0, .04f, height),
+            new(0, -.09f, height),
+        ];
+        Vector3[] proposed = (Vector3[])opening.Clone();
+        for (int i = 3; i <= 5; i++) proposed[i].Z = -height;
+        var coordinates = Array.ConvertAll(opening, point => new Vector2(point.X, point.Y));
+        ClothTriangle[] triangles = [new(0, 1, 2), new(3, 4, 5), new(4, 3, 6)];
+        ClothRig rig = ClothRig.Create(opening, coordinates, triangles, [0, 1, 2, 6], [],
+            Material with { HalfThickness = .0001f });
+        var simulation = new ClothSimulation(rig, ClothWorkLimits.LayeredContact);
+        var support = ClothSupport.Plane(Vector3.UnitZ, Quaternion.Identity, -.00015f * Vector3.UnitZ);
+        var pose = new ClothSubstep([opening[0], opening[1], opening[2], opening[6]], [support], [support], Seconds, Vector3.Zero);
+        var displayed = new Vector3[opening.Length];
+        var fixedFace = new ClothFacet(triangles[0], opening);
+        var sweep = new ClothSelfSweep(fixedFace, fixedFace, new ClothFacet(triangles[1], opening),
+            new ClothFacet(triangles[1], proposed));
+        Assert.Equal(height, sweep.Sample(0).Distance);
+        Assert.Equal(0, sweep.Sample(.5f).Distance);
+        Assert.Equal(height, sweep.Sample(1).Distance);
+
+        ClothStepResult result = simulation.ProjectDisplay(opening, proposed, displayed, pose,
+            checkProposedSelf: true, out bool proposedSelfClear);
+
+        Assert.Equal(ClothStepStatus.Accepted, result.Status);
+        Assert.False(proposedSelfClear);
+        for (int i = 3; i <= 5; i++)
+            Assert.True(displayed[i].Z >= 2 * rig.Material.HalfThickness);
+    }
+
+    [Fact]
+    public void A_mismatched_proposed_pin_declines_optional_checks_without_expanding_primary_work()
+    {
+        (ClothRig rig, Vector3[] opening, Vector3[] pins) = DisplayFold();
+        Vector3[] proposed = (Vector3[])opening.Clone();
+        proposed[0].X -= .003f;
+        var simulation = new ClothSimulation(rig, ClothWorkLimits.LayeredContact);
+        var pose = new ClothSubstep(pins, [], [], Seconds, Vector3.Zero);
+        var ordinary = new Vector3[opening.Length];
+        var displayed = new Vector3[opening.Length];
+
+        ClothStepResult baseline = simulation.ProjectDisplay(opening, proposed, ordinary, pose);
+        ClothStepResult checkedProposal = simulation.ProjectDisplay(opening, proposed, displayed, pose,
+            checkProposedSelf: true, out bool proposedSelfClear);
+
+        Assert.Equal(ClothStepStatus.Accepted, baseline.Status);
+        Assert.Equal(baseline, checkedProposal);
+        Assert.False(proposedSelfClear);
+        Assert.Equal(ordinary, displayed);
+        Assert.Equal(pins[0], displayed[0]);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Adjacent_faces_only_certify_optional_contact_when_self_contact_is_enabled(bool enableSelfContact)
+    {
+        Vector3[] positions = [Vector3.Zero, .01f * Vector3.UnitX, .01f * Vector3.UnitY, new(.01f, .01f, 0)];
+        Vector2[] coordinates = [Vector2.Zero, Vector2.UnitX, Vector2.UnitY, Vector2.One];
+        ClothRig rig = ClothRig.Create(positions, coordinates, [new(0, 1, 2), new(1, 3, 2)], [], [], Material);
+        var simulation = new ClothSimulation(rig, ClothWorkLimits.LayeredContact with { EnableSelfContact = enableSelfContact });
+        var pose = new ClothSubstep([], [], [], Seconds, Vector3.Zero);
+        Vector3[] displayed = new Vector3[positions.Length];
+
+        ClothStepResult result = simulation.ProjectDisplay(positions, positions, displayed, pose,
+            checkProposedSelf: true, out bool proposedSelfClear);
+
+        Assert.Equal(ClothStepStatus.Accepted, result.Status);
+        Assert.Equal(enableSelfContact, proposedSelfClear);
+        Assert.Equal(positions, displayed);
+    }
+
     private static (ClothRig Rig, Vector3[] Opening, Vector3[] Pins) DisplayFold()
     {
         Vector3[] opening =

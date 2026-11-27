@@ -105,6 +105,65 @@ public sealed partial class ClothContactTests
             simulation.Positions[2]) >= closeSegment.Radius + Material.HalfThickness - .00025f);
     }
 
+    [Theory]
+    [InlineData(false, ClothStepStatus.Accepted)]
+    [InlineData(true, ClothStepStatus.UnresolvedContact)]
+    public void Zero_skin_capsule_sweep_accepts_tangency_but_refuses_sub_micrometre_penetration(bool rotating,
+        ClothStepStatus expected)
+    {
+        const float reach = 1f / 32, radius = 1f / 1024, depth = 1f / 16_777_216;
+        float angle = rotating ? 1f / 64 : 0;
+        float x = reach + radius - (rotating ? depth : 0);
+        var face = new ClothFacet(new Vector3(x, -.01f, -.01f), new Vector3(x, .01f, -.01f), new Vector3(x, 0, .01f));
+        Vector3 tip = reach * Vector3.UnitX;
+        var capsule = new ColliderCapsule(tip, tip, radius);
+        ClothSupport opening = ClothSupport.Capsule(capsule, Quaternion.CreateFromAxisAngle(Vector3.UnitZ, -angle), Vector3.Zero);
+        ClothSupport closing = ClothSupport.Capsule(capsule, Quaternion.CreateFromAxisAngle(Vector3.UnitZ, angle), Vector3.Zero);
+        ClothCapsuleSweep sweep = new ClothCapsuleSweep(opening, closing, default).WithFacets(face, face);
+        if (rotating)
+        {
+            Assert.True(sweep.Sample(0).Distance > 0);
+            Assert.True(sweep.Sample(1).Distance > 0);
+            Assert.InRange(sweep.Sample(.5f).Distance, -2 * depth, -.5f * depth);
+        }
+        else
+            Assert.Equal(0, sweep.Sample(.5f).Distance);
+
+        Assert.Equal(expected, ClothContactSweep.Check(sweep, 0, 8, out _, out _, requireClearOpening: true));
+    }
+
+    [Fact]
+    public void Zero_skin_convex_sweep_refuses_a_face_crossing_between_clear_endpoints()
+    {
+        const float reach = 1f / 32, angle = 1f / 64, depth = 1f / 16_777_216;
+        var size = new Vector3(1f / 1024, 1f / 32_768, 1f / 512);
+        float x = reach + size.X - depth;
+        var face = new ClothFacet(new Vector3(x, -.01f, -.01f), new Vector3(x, .01f, -.01f), new Vector3(x, 0, .01f));
+        var hull = new ClothPosedHull(Identity, Box(reach * Vector3.UnitX, size),
+            new ClothHullPose(Quaternion.CreateFromAxisAngle(Vector3.UnitZ, -angle), Vector3.Zero, 1),
+            new ClothHullPose(Quaternion.CreateFromAxisAngle(Vector3.UnitZ, angle), Vector3.Zero, 1));
+        var sweep = new ClothHullSweep(face, face, hull);
+        Assert.True(sweep.Sample(0).Distance > 0);
+        Assert.True(sweep.Sample(1).Distance > 0);
+        Assert.True(sweep.Gap(.5f, Vector3.UnitX) < 0);
+
+        Assert.NotEqual(ClothStepStatus.Accepted, ClothContactSweep.Check(sweep, 0, 8, out _, out _, requireClearOpening: true));
+    }
+
+    [Fact]
+    public void Zero_skin_sweep_declines_an_opening_inside_a_capsule()
+    {
+        const float radius = 1f / 1024, depth = 1f / 16_777_216;
+        var support = ClothSupport.Capsule(new ColliderCapsule(Vector3.Zero, Vector3.Zero, radius),
+            Quaternion.Identity, Vector3.Zero);
+        var sweep = new ClothCapsuleSweep(support, support, default).WithFacets(Face(radius - depth), Face(radius + depth));
+
+        Assert.Equal(ClothStepStatus.UnresolvedContact, ClothContactSweep.Check(sweep, 0, 8, out _, out _));
+
+        static ClothFacet Face(float x) =>
+            new(new Vector3(x, -.01f, -.01f), new Vector3(x, .01f, -.01f), new Vector3(x, 0, .01f));
+    }
+
     private static float DistanceToTriangle(Vector3 point, Vector3 a, Vector3 b, Vector3 c)
     {
         Vector3 normal = Vector3.Normalize(Vector3.Cross(b - a, c - a));

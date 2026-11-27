@@ -87,7 +87,7 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
     internal bool VerifyProposedSelf(Vector3[] opening, Vector3[] proposed)
     {
         if (rig.Triangles.Length == 1) return true;
-        if (_self is null) return !ClothSelfBroadPhase.HasEligiblePairs(rig);
+        if (_self is null) return false;
 
         // The final projected verification built this list over both closing
         // surfaces. Raw verification needs only the witness rechecks.

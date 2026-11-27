@@ -283,8 +283,12 @@ public sealed class ClothSimulation
         source.CopyTo(_displayWorking);
         for (int i = 0; i < _rig.Pins.Length; i++)
         {
-            if (closingOnly) _displayOpening[_rig.Pins[i]] = pose.Pins[i];
-            _displayWorking[_rig.Pins[i]] = pose.Pins[i];
+            int node = _rig.Pins[i];
+            Vector3 pin = pose.Pins[i];
+            if (checkProposedSelf && source[node] != pin)
+                checkProposedSelf = false;
+            if (closingOnly) _displayOpening[node] = pin;
+            _displayWorking[node] = pin;
         }
         _contact.Begin();
         if (checkProposedSelf && _displayProposed.Length > 0)

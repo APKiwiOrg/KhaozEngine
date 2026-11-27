@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using static KhaozEngine.Attachments.ChainCapsuleCollision;
 
 namespace KhaozEngine.Attachments;
 
@@ -170,6 +171,9 @@ internal readonly struct ClothSelfSweep(ClothFacet firstA, ClothFacet lastA, Clo
             hit.Weights, hit.OpposingWeights);
     }
 
-    public float Gap(float time, Vector3 normal) =>
-        firstA.At(lastA, time).MinProjection(normal) - firstB.At(lastB, time).MaxProjection(normal);
+    public double Gap(float time, Vector3 normal)
+    {
+        var axis = new Offset(normal);
+        return firstA.At(lastA, time).MinProjection(axis) - firstB.At(lastB, time).MaxProjection(axis);
+    }
 }

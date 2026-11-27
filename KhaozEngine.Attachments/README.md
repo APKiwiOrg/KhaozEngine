@@ -748,9 +748,11 @@ remains in `Status`, and `FallbackStatus` and `FallbackWork` describe the recove
 `ProjectDisplay` re-pins a supplied display sample and projects it against the closing supports
 under a separate contact envelope. Its destination span changes only on success. Display
 projection leaves simulation history intact. Material transfers can also qualify their proposed
-unprojected fold sweep under the same display allowance. The proposed and projected endpoints
-share broad-phase coverage. A refused or unavailable proposed check leaves the accepted projected
-path available. The numerical API is separate from attachment JSON,
+unprojected fold sweep under the same display allowance. A qualifying proposal matches the closing
+pins. Multi-face rigs require self-contact to be enabled for this check. The proposed and projected
+endpoints share broad-phase coverage. Positive sweep clearance retains a positive floor, including
+for thin material. A zero-skin support sweep requires an exterior opening and permits tangency at
+zero separation. A refused or unavailable proposed check leaves the accepted projected path available. The numerical API is separate from attachment JSON,
 outfit drawing and motion-level selection.
 
 ## Chain simulation

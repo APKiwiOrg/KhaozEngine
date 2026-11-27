@@ -133,6 +133,17 @@ creates the canonical annotated tag only when a release is explicitly due. The s
 exception is an explicitly pinned and waiting consumer. Check `scripts/release-lock.sh status` before
 merging into or pushing `main`, and wait while a release holds the lock.
 
+## Code comments
+
+Comments are rare. Comment only logic that departs from standard practice or rests on a niche
+product, platform or API reason, and give that reason in one or two lines, with an upstream bug or
+vendor link when one exists. A doc comment (XMLDoc, JSDoc, docstring) is one summary line, never a
+paragraph, remarks or parameter blocks. No narration, section banners, Arrange, Act and Assert
+markers, commented-out code, TODOs or history such as ticket numbers. Comments a tool reads, such as
+version trailers, pragmas and generated markers, are exempt. A suppression carries its one-line
+reason. A change brings comments on the lines it edits up to this bar or removes them, and leaves
+the rest alone.
+
 ## Programs, docs and scratch
 
 - Docs describe the system as it is today. Update them in the same commit as the behaviour they describe,

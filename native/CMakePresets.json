@@ -6,7 +6,6 @@
       "hidden": true,
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/out/build/${presetName}",
-      "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_EXPORT_COMPILE_COMMANDS": true
@@ -18,21 +17,19 @@
       "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Darwin" },
       "cacheVariables": {
         "CMAKE_OSX_ARCHITECTURES": "arm64",
-        "VCPKG_TARGET_TRIPLET": "arm64-osx"
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "15.0"
       }
     },
     {
       "name": "linux-x64",
       "inherits": "base",
-      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" },
-      "cacheVariables": {
-        "VCPKG_TARGET_TRIPLET": "x64-linux"
-      }
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" }
     },
     {
       "name": "linux-x64-asan",
       "inherits": "linux-x64",
       "cacheVariables": {
+        "CMAKE_C_FLAGS": "-fsanitize=address,undefined -fno-omit-frame-pointer",
         "CMAKE_CXX_FLAGS": "-fsanitize=address,undefined -fno-omit-frame-pointer"
       }
     },
@@ -42,8 +39,7 @@
       "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" },
       "architecture": { "value": "x64", "strategy": "external" },
       "cacheVariables": {
-        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded",
-        "VCPKG_TARGET_TRIPLET": "x64-windows-static"
+        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded"
       }
     }
   ],

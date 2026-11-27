@@ -18,11 +18,11 @@ after an explicit library unload.
 
 ## Prerequisites
 
-Use CMake 3.28 or later, Ninja, vcpkg with Git, and a C++20 toolchain. Use Apple Clang on macOS,
-GCC or Clang on Linux, and MSVC from an x64 developer shell on Windows. On macOS and Linux,
-put a pkg-config implementation on PATH for the vcpkg doctest port. Set VCPKG_ROOT to the
-vcpkg checkout before configuring. The manifest pins the port registry baseline. Install LLVM's
-clang-format and clang-tidy tools to check formatting and lint.
+Use CMake 3.28 or later, Ninja and a toolchain with C and C++20 support. Use Apple Clang on macOS, GCC or Clang
+on Linux, and MSVC from an x64 developer shell on Windows. The macOS preset targets macOS 15.0
+or later. All dependencies are in [third_party](third_party/README.md), so configure, build and
+test work offline. If you previously configured the preset with another toolchain, configure
+once with `cmake --fresh --preset <name>` to clear the cached toolchain.
 
 Run the commands for your platform from this directory. On the shared development Mac, run
 configure, build and CTest through build-slot with a label for each command.
@@ -52,3 +52,14 @@ configure, build and CTest through build-slot with a label for each command.
     ctest --preset windows-x64
 
 Each preset writes the build and compilation database under out/build in this directory.
+
+## Source checks
+
+Use LLVM's clang-format and run-clang-tidy on the engine-owned source. From this directory,
+substitute your configured preset in the lint command:
+
+```sh
+find include src tests -type f \( -name '*.c' -o -name '*.h' -o -name '*.cpp' -o -name '*.hpp' \) -exec clang-format --dry-run --Werror {} +
+run-clang-tidy -quiet -j 1 -config-file="$PWD/.clang-tidy" -p out/build/macos-arm64 '(^|/)native/(src|tests)/'
+scripts/refresh-third-party.sh --check
+```

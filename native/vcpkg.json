@@ -1,6 +1,0 @@
-{
-  "name": "khaoz-native",
-  "version-string": "0",
-  "builtin-baseline": "9eec002df1cd109f8f104cd966a763daf9751489",
-  "dependencies": ["doctest"]
-}

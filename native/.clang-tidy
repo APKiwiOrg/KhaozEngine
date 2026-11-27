@@ -10,4 +10,4 @@ Checks: >
   modernize-use-using,
   performance-*
 WarningsAsErrors: '*'
-HeaderFilterRegex: '(^|/)(include/khaoz|src/abi)/'
+HeaderFilterRegex: '(^|/)native/(include/khaoz|src|tests)/'

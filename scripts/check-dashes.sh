@@ -20,6 +20,7 @@ dash_pattern=$(printf '\342\200\224|\342\200\223')
 case "$mode" in
   --tree)
     hit=$(git ls-files -z -- '*.md' '*.cs' '*.h' '*.hpp' '*.cpp' '*.slang' '*.cmake' '*CMakeLists.txt' \
+      ':(exclude)native/third_party/**' \
       | LC_ALL=C xargs -0 grep -lE -- "$dash_pattern" 2>/dev/null || true)
     if [ -n "$hit" ]; then
       echo "check-dashes: em-dash or en-dash found in tracked files (banned in shipped text):" >&2
@@ -29,6 +30,7 @@ case "$mode" in
     ;;
   staged)
     added=$(git diff --cached --unified=0 -- '*.md' '*.cs' '*.h' '*.hpp' '*.cpp' '*.slang' '*.cmake' '*CMakeLists.txt' \
+      ':(exclude)native/third_party/**' \
       2>/dev/null | grep -E '^\+' | grep -vE '^\+\+\+' || true)
     if printf '%s' "$added" | LC_ALL=C grep -qE "$dash_pattern"; then
       echo "check-dashes: staged additions contain an em-dash or en-dash (banned in shipped text)." >&2

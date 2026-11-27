@@ -254,9 +254,11 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
                 _target[i] = Vector3.Lerp(_displayed[i], _target[i], amount);
         Pin(_target, _framePins);
 
-        _projection = _fresh ? _solver.ProjectDisplay(_target, _projected, pose) :
-            _solver.ProjectDisplay(_displayed, _target, _projected, pose);
         bool materialMapping = Binding.Surface.HasMaterialMapping;
+        bool checkFitPath = materialMapping && blend && !_liveRequested && amount is > 0 and < 1;
+        bool proposedSelfClear = false;
+        _projection = _fresh ? _solver.ProjectDisplay(_target, _projected, pose) :
+            _solver.ProjectDisplay(_displayed, _target, _projected, pose, checkFitPath, out proposedSelfClear);
         bool stationaryOpening = blend && amount == 0 && _supports.IsStationary &&
             _framePins.AsSpan().SequenceEqual(_priorPins);
         bool endpoint = stationaryOpening || blend && !_liveRequested && amount == 1;
@@ -274,7 +276,7 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
             bool sameMaterialPose = unchangedSkin && (stationaryOpening || unchangedNodes);
             _detailProjection = _detail.Stage(Binding.Surface, _projected, _cheapTarget, model, _origin,
                 _frameGarmentPalette, _cheapGarmentPalette, liveDetail, blend ? amount : 1, sameMaterialPose, pose, _projection,
-                closingOnly: _fresh);
+                closingOnly: _fresh, foldClearProposal: proposedSelfClear ? _target : default);
             admissible = _detailProjection.Status == ClothStepStatus.Accepted;
             if (admissible) _detail.Publish(model, _origin);
             correctedOpening = materialMapping && stationaryOpening && _switchFrame && _liveRequested && !unchangedNodes;

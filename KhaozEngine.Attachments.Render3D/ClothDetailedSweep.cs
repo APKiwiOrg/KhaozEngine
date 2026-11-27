@@ -14,10 +14,16 @@ internal sealed class ClothDetailedSweep(BoundClothSurface profile, ClothWorkLim
     private readonly ClothContactWorkspace _work = new(limits);
 
     internal ClothStepResult Verify(BoundClothSurface surface, ModelVertex[][] opening, in Matrix4x4 openingModel,
-        ModelVertex[][] closing, in Matrix4x4 closingModel, in ClothSubstep pose, ClothStepResult prior = default)
+        ModelVertex[][] closing, in Matrix4x4 closingModel, in ClothSubstep pose, ClothStepResult prior = default,
+        bool continueSweep = false)
     {
-        _work.Begin(prior.ContactChecks, prior.ContactCandidates);
-        ClothStepStatus status = _work.Prepare(pose, closingOnly: false, allowCoarse: false);
+        ClothStepStatus status = ClothStepStatus.Accepted;
+        // A second candidate uses the same prepared supports and the work already charged to the first one.
+        if (!continueSweep)
+        {
+            _work.Begin(prior.ContactChecks, prior.ContactCandidates);
+            status = _work.Prepare(pose, closingOnly: false, allowCoarse: false);
+        }
         if (status == ClothStepStatus.Accepted)
         {
             for (int material = 0; material < surface.Materials.Length; material++)

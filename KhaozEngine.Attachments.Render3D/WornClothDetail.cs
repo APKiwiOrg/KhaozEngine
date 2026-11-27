@@ -8,7 +8,7 @@ namespace KhaozEngine.Attachments.Render3D;
 internal sealed class WornClothDetail(BoundClothSurface profile, ClothWorkLimits? displayLimits = null)
 {
     private readonly ClothDetailedReconstruction _candidate = new(profile);
-    private readonly ClothDetailedReconstruction? _cheapTargetBase = profile.HasMaterialMapping ? new(profile) : null;
+    private readonly ClothDetailedReconstruction? _materialReference = profile.HasMaterialMapping ? new(profile) : null;
     private readonly Matrix4x4[] _cheapComposed = profile.HasMaterialMapping ? new Matrix4x4[profile.JointCount] : [];
     private readonly ClothDetailedSweep? _sweep = profile.HasMaterialMapping
         ? new(profile, displayLimits ?? ClothWorkLimits.LayeredContact) : null;
@@ -36,16 +36,19 @@ internal sealed class WornClothDetail(BoundClothSurface profile, ClothWorkLimits
     internal ClothStepResult Stage(BoundClothSurface surface, ReadOnlySpan<Vector3> nodes, ReadOnlySpan<Vector3> fallbackNodes,
         in Matrix4x4 model, Vector3 origin, ReadOnlySpan<Matrix4x4> hostPalette, ReadOnlySpan<Matrix4x4> cheapPalette,
         bool liveTarget, float amount, bool sameMaterialPose, in ClothSubstep support, ClothStepResult prior,
-        bool closingOnly = false)
+        bool closingOnly = false, ReadOnlySpan<Vector3> foldClearProposal = default)
     {
         if (!surface.HasMaterialMapping)
             return _candidate.Fitted(surface, nodes, model, hostPalette) ? default : Failure(ClothStepStatus.CollapsedMaterial);
-        if (!_candidate.Material(surface, nodes, model, hostPalette))
+        // A clear skinned surface may finish on the far side of its own proxy contact offset.
+        bool fitPath = !liveTarget && amount is > 0 and < 1 && !foldClearProposal.IsEmpty &&
+            !foldClearProposal.SequenceEqual(nodes) && _candidate.Material(surface, foldClearProposal, model, hostPalette);
+        if (!fitPath && !_candidate.Material(surface, nodes, model, hostPalette))
             return Failure(ClothStepStatus.CollapsedMaterial);
         if (!liveTarget)
         {
             surface.ComposeGarment(cheapPalette, _cheapComposed);
-            if (amount < 1 && !_cheapTargetBase!.Material(surface, fallbackNodes, model, hostPalette))
+            if (amount < 1 && !_materialReference!.Material(surface, fallbackNodes, model, hostPalette))
                 return Failure(ClothStepStatus.CollapsedMaterial);
         }
 
@@ -68,7 +71,36 @@ internal sealed class WornClothDetail(BoundClothSurface profile, ClothWorkLimits
         }
         bool copyOpening = sweepOpening && amount == 0 && sameMaterialPose && openingModel == model;
         Transfer(surface, orientation, liveTarget, amount, copyOpening);
-        return _sweep!.Verify(surface, opening, openingModel, _candidate.Storage, model, support, prior);
+        ClothStepResult result = _sweep!.Verify(surface, opening, openingModel, _candidate.Storage, model, support, prior);
+        if (!fitPath) return result;
+        if (result.Status == ClothStepStatus.Accepted)
+            return CarryFromProjectedPose(surface, nodes, model, hostPalette) ? result :
+                result with { Status = ClothStepStatus.CollapsedMaterial };
+        if (result.Status != ClothStepStatus.UnresolvedContact) return result;
+
+        // The fitted path met real hardware. Try the support-projected path within the same display allowance.
+        if (!_candidate.Material(surface, nodes, model, hostPalette))
+            return result with { Status = ClothStepStatus.CollapsedMaterial };
+        Transfer(surface, orientation, liveTarget, amount, copyOpening);
+        return _sweep.Verify(surface, opening, openingModel, _candidate.Storage, model, support, prior, continueSweep: true);
+    }
+
+    private bool CarryFromProjectedPose(BoundClothSurface surface, ReadOnlySpan<Vector3> nodes, in Matrix4x4 model,
+        ReadOnlySpan<Matrix4x4> hostPalette)
+    {
+        // The next step or reversal starts from the difference between what was shown and the accepted solver nodes.
+        if (!_materialReference!.Material(surface, nodes, model, hostPalette)) return false;
+        for (int material = 0; material < surface.Materials.Length; material++)
+        {
+            var actual = _candidate.Vertices(material);
+            var projected = _materialReference.Vertices(material);
+            foreach (var embedding in surface.Materials[material].Embeddings)
+            {
+                int i = embedding.VertexIndex;
+                _next[material][i] = new(actual[i], projected[i]);
+            }
+        }
+        return true;
     }
 
     private void Transfer(BoundClothSurface surface, in Matrix4x4 orientation, bool liveTarget, float amount, bool copyOpening)
@@ -103,7 +135,7 @@ internal sealed class WornClothDetail(BoundClothSurface profile, ClothWorkLimits
                 {
                     ClothDetailResidual residual = _hasOpening ? _carried[material][i].InBasis(orientation) : default;
                     ClothDetailResidual destination = liveTarget ? default :
-                        new(cheap, _cheapTargetBase!.Vertices(material)[i]);
+                        new(cheap, _materialReference!.Vertices(material)[i]);
                     output[i] = ClothDetailResidual.Lerp(residual, destination, amount).Apply(materialPose);
                 }
                 _next[material][i] = new(output[i], materialPose);

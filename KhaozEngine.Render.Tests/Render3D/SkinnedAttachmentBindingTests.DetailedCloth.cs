@@ -312,4 +312,64 @@ public sealed partial class SkinnedAttachmentBindingTests
         Assert.Equal(budget, proxy.ContactChecks + refused.ContactChecks);
         Assert.Equal(before, limited.Shown[1][moving].Position);
     }
+
+    [Fact]
+    public void Fitted_return_can_take_the_clear_projected_path_within_the_remaining_allowance()
+    {
+        using var rig = new OutfitRig();
+        var fixture = ClothAsset(rig);
+        var source = Assert.IsType<SkinnedAttachmentPartDefinition>(Assert.Single(fixture.Set.Parts));
+        var recipe = Assert.IsType<ClothMotionDefinition>(source.Motion);
+        var file = ClothSurfaceJson.Parse(fixture.Bytes, ClothKey) with { MaterialRender = [] };
+        var set = BindMaterialCloth(rig, fixture.Set, source, recipe, file);
+        var surface = set.ClothSurface(ClothPartId)!;
+        var palette = rig.Draws(set)[0].BoneMatrices;
+        Vector3[] accepted = surface.FittedNodes.ToArray();
+        Vector3[] proposed = (Vector3[])accepted.Clone();
+        Vector3 offset = .02f * Vector3.UnitZ;
+        for (int i = 0; i < proposed.Length; i++) proposed[i] += offset;
+        int vertex = surface.Materials[1].MaterialEmbeddings[0].VertexIndex;
+        Assert.Contains((uint)vertex, surface.Materials[1].VisibleIndices);
+
+        var detail = new WornClothDetail(surface);
+        Seed(detail);
+        Vector3 original = detail.Shown[1][vertex].Position;
+        var proposedDetail = new WornClothDetail(surface);
+        Seed(proposedDetail);
+        var emptyPose = new ClothSubstep([], [], [], ClothWorkLimits.LayeredStepSeconds, Vector3.Zero);
+        Assert.Equal(ClothStepStatus.Accepted, proposedDetail.Stage(surface, proposed, accepted, Matrix4x4.Identity,
+            Vector3.Zero, palette.Span, palette.Span, liveTarget: false, amount: .5f, sameMaterialPose: false,
+            emptyPose, default).Status);
+        proposedDetail.Publish(Matrix4x4.Identity, Vector3.Zero);
+        const float radius = .002f;
+        Vector3 center = proposedDetail.Shown[1][vertex].Position;
+        ClothSupport[] supports = [ClothSupport.Capsule(new(Vector3.Zero, Vector3.Zero, radius), Quaternion.Identity, center)];
+        var pose = new ClothSubstep([], supports, supports, ClothWorkLimits.LayeredStepSeconds, Vector3.Zero);
+        ClothStepResult blocked = detail.Stage(surface, proposed, accepted, Matrix4x4.Identity, Vector3.Zero,
+            palette.Span, palette.Span, liveTarget: false, amount: .5f, sameMaterialPose: false, pose, default);
+        Assert.Equal(ClothStepStatus.UnresolvedContact, blocked.Status);
+
+        ClothStepResult clear = detail.Stage(surface, accepted, accepted, Matrix4x4.Identity, Vector3.Zero,
+            palette.Span, palette.Span, liveTarget: false, amount: .5f, sameMaterialPose: false, pose, default, foldClearProposal: proposed);
+        Assert.Equal(ClothStepStatus.Accepted, clear.Status);
+        Assert.True(clear.ContactChecks > blocked.ContactChecks);
+        detail.Publish(Matrix4x4.Identity, Vector3.Zero);
+        Assert.True(Vector3.Distance(center, detail.Shown[1][vertex].Position) > radius);
+
+        var limited = new WornClothDetail(surface, ClothWorkLimits.LayeredContact with { MaxContactChecks = blocked.ContactChecks });
+        Seed(limited);
+        ClothStepResult exhausted = limited.Stage(surface, accepted, accepted, Matrix4x4.Identity, Vector3.Zero,
+            palette.Span, palette.Span, liveTarget: false, amount: .5f, sameMaterialPose: false, pose, default, foldClearProposal: proposed);
+        Assert.Equal(ClothStepStatus.ContactWork, exhausted.Status);
+        Assert.Equal(blocked.ContactChecks, exhausted.ContactChecks);
+        Assert.Equal(original, limited.Shown[1][vertex].Position);
+
+        void Seed(WornClothDetail target)
+        {
+            var empty = new ClothSubstep([], [], [], ClothWorkLimits.LayeredStepSeconds, Vector3.Zero);
+            Assert.Equal(ClothStepStatus.Accepted, target.Stage(surface, accepted, [], Matrix4x4.Identity, Vector3.Zero,
+                palette.Span, [], liveTarget: true, amount: 1, sameMaterialPose: false, empty, default).Status);
+            target.Publish(Matrix4x4.Identity, Vector3.Zero);
+        }
+    }
 }

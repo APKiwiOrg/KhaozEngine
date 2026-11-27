@@ -25,7 +25,7 @@ internal readonly record struct FlatLipBearingDecision(FlatLipBearingVerdict Ver
 // The geometry oracle supplies the entry clock independently of the lining gap.
 internal sealed class FlatLipReentry(Func<double, bool> eligibleAt)
 {
-    private const double RecoveryWindowSeconds = .025;
+    internal const double RecoveryWindowSeconds = .025;
     private bool _established;
     private bool _qualifiedUnload;
     private double? _entry;
@@ -59,7 +59,7 @@ internal sealed class FlatLipReentry(Func<double, bool> eligibleAt)
         if (_qualifiedUnload)
         {
             _qualifiedUnload = false;
-            entry = FindEntry(_previousSeconds, seconds);
+            entry = FindEntry(eligibleAt, _previousSeconds, seconds);
             _entry = entry;
             return EvaluateWindow(seconds, eligible, gap, entry);
         }
@@ -93,7 +93,7 @@ internal sealed class FlatLipReentry(Func<double, bool> eligibleAt)
         return new(FlatLipBearingVerdict.Closing, entry);
     }
 
-    private double FindEntry(double ineligible, double eligible)
+    internal static double FindEntry(Func<double, bool> eligibleAt, double ineligible, double eligible)
     {
         if (eligibleAt(ineligible) || !eligibleAt(eligible))
             throw new InvalidOperationException("Consecutive fixture ticks must bracket a geometric entry.");

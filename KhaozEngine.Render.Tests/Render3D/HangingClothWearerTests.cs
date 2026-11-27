@@ -13,6 +13,8 @@ namespace KhaozEngine.Tests.Render3D;
 public sealed class HangingClothWearerTests
 {
     private static readonly int[] GeometrySelectedRows = [0, 3, 7, 8, 14, 21, 28, 35, 36, 43, 50, 57, 64];
+    private const double DrivingStart = 4;
+    private const double MeasurementStart = 8;
 
     [Theory]
     [InlineData(false, false)]
@@ -32,12 +34,8 @@ public sealed class HangingClothWearerTests
     [InlineData(true, false)]
     [InlineData(false, true)]
     [InlineData(true, true)]
-    public void Fitted_registration_controls_record_the_detail_or_proxy_limit(bool flat, bool alternate)
-    {
-        var failures = Measure(flat, batch: flat, alternate ? Mapping.Alternate : Mapping.Fitted);
-        string expected = flat && !alternate ? "bearing" : "strain";
-        Assert.Contains(failures, failure => failure.Metric == expected);
-    }
+    public void Fitted_registration_controls_replay_the_original_cut(bool flat, bool alternate) =>
+        Measure(flat, batch: flat, alternate ? Mapping.Alternate : Mapping.Fitted);
 
     private enum Mapping { Material, Fitted, Alternate }
 
@@ -60,24 +58,41 @@ public sealed class HangingClothWearerTests
         using StreamWriter? trace = string.IsNullOrEmpty(tracePath) ? null :
             File.CreateText($"{tracePath}.{mapping.ToString().ToLowerInvariant()}.{outfit}.{entry}.jsonl");
         double prior = 0;
+        double? deadline = null;
+        int deadlineProbes = 0;
         bool recoveryPending = false;
         for (int frame = 0; frame <= 20 * 60; frame++)
         {
             double frameTime = frame / 60.0;
             bool released = frame > 16 * 60;
-            // Keep the 60 Hz presentations and measure the same visible pose just before the flat deadline.
-            // 1.6754 s is off the 120 Hz grid and before the frozen 1.67578353 s deadline.
-            if (flat && frame is 581 or 821)
-                Present(frameTime - (101 / 60.0 - 1.6754), released);
-            Present(frameTime, released);
+            if (flat && !released && frameTime >= MeasurementStart)
+            {
+                double previousFrame = (frame - 1) / 60.0 - DrivingStart;
+                double currentFrame = frameTime - DrivingStart;
+                if (!IsFlatLipEligible(previousFrame) && IsFlatLipEligible(currentFrame))
+                {
+                    double geometricEntry = FlatLipReentry.FindEntry(IsFlatLipEligible, previousFrame, currentFrame);
+                    // Put the derived deadline on the inside of the inclusive interval after converting clocks.
+                    deadline = Math.BitDecrement(DrivingStart + geometricEntry + FlatLipReentry.RecoveryWindowSeconds);
+                }
+                if (deadline is double time && time <= frameTime)
+                {
+                    Present(time, released, deadlineSample: true);
+                    deadlineProbes++;
+                    deadline = null;
+                }
+            }
+            Present(frameTime, released, deadlineSample: false);
         }
         if (recoveryPending)
             failures.Add((prior, "open flat re-entry window", 0));
+        if (flat)
+            Assert.True(deadlineProbes > 0);
         return failures;
 
-        void Present(double time, bool released)
+        void Present(double time, bool released, bool deadlineSample)
         {
-            double driven = released ? 0 : Math.Max(0, time - 4);
+            double driven = released ? 0 : Math.Max(0, time - DrivingStart);
             HangingPanelPose pose = At(driven, flat);
             if (released) pose = pose.WithWithdrawal();
             PresentedPanel panel = wearer.PresentCloth(pose, (float)(time - prior), batch);
@@ -86,7 +101,7 @@ public sealed class HangingClothWearerTests
             Require(wearer.CurrentClothPose, "current display revision", (float)status.Projection.Status);
             Require(status.Fallback == WornClothFallback.None, "refusal", (float)status.Fallback);
             Require(!status.Solve.Recovered, "fallback recovery", (float)(status.Solve.FallbackStatus ?? ClothStepStatus.Accepted));
-            if (time < 8) return;
+            if (time < MeasurementStart) return;
             ClothObservation geometry = HangingPanelFixture.Observe(pose, panel);
             var closest = wearer.ClosestLiningWitness(pose.MarkerInModel);
             MaterialObservation material = geometry.Material!.Value;
@@ -103,7 +118,7 @@ public sealed class HangingClothWearerTests
 
             trace?.WriteLine(JsonSerializer.Serialize(new
             {
-                time, phase = pose.PhaseSeconds, geometry, bearing, status, proxyWitness, proxyBearing, withoutLift,
+                time, phase = pose.PhaseSeconds, deadlineSample, geometry, bearing, status, proxyWitness, proxyBearing, withoutLift,
                 proxyRows = geometrySelected ? GeometrySelectedRows : null,
                 staticRegistration = wearer.StaticRegistration, maxGuideLiftError = wearer.MaxGuideLiftError,
                 closest, markedFittedOffset = Components(wearer.MarkedFittedOffset), markedBareOffset = Components(wearer.MarkedBareOffset),
@@ -127,6 +142,8 @@ public sealed class HangingClothWearerTests
             if (!geometrySelected)
                 Require(proxyBearing?.Acceptable ?? proxyWitness.HasBearing, "intrinsic bearing", proxyWitness.MarkerGap);
             Require(bearing?.Acceptable ?? geometry.HasBearing, "bearing", geometry.MarkerGap);
+            if (deadlineSample)
+                Require(geometry.HasBearing, "flat deadline bearing", geometry.MarkerGap);
             Require(material.TensileStrain <= HangingPanelFixture.StrainLimit, "strain", material.TensileStrain);
             MaterialObservation intrinsicMaterial = proxyWitness.Material.Value;
             Require(intrinsicMaterial.TensileStrain <= HangingPanelFixture.StrainLimit,

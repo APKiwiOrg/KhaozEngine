@@ -55,11 +55,20 @@ Each preset writes the build and compilation database under out/build in this di
 
 ## Source checks
 
-Use LLVM's clang-format and run-clang-tidy on the engine-owned source. From this directory,
-substitute your configured preset in the lint command:
+Use LLVM's clang-format and run-clang-tidy from this directory. The formatter checks tracked
+files and new files that Git does not ignore. The linter checks translation units from the
+configured preset's compilation database and the headers they include. Both exclude
+`third_party/`. Substitute your configured preset in the lint command.
 
 ```sh
-find include src tests -type f \( -name '*.c' -o -name '*.h' -o -name '*.cpp' -o -name '*.hpp' \) -exec clang-format --dry-run --Werror {} +
-run-clang-tidy -quiet -j 1 -config-file="$PWD/.clang-tidy" -p out/build/macos-arm64 '(^|/)native/(src|tests)/'
+git ls-files -z --cached --others --exclude-standard -- \
+  '*.[cChH]' '*.cc' '*.cp' '*.cpp' '*.cxx' '*.c++' '*.hh' '*.hpp' '*.hxx' '*.h++' \
+  '*.inc' '*.inl' '*.ipp' '*.tcc' '*.tpp' '*.ccm' '*.cppm' '*.cxxm' '*.c++m' '*.ixx' \
+  ':(exclude)third_party/**' | xargs -0 clang-format --dry-run --Werror --
+
+native_root=$(python3 -c 'import os, re; print(re.escape(os.getcwd()))')
+run-clang-tidy -quiet -j 1 -config-file="$PWD/.clang-tidy" -p out/build/macos-arm64 \
+  -source-filter "^${native_root}"'[/\\](?!third_party[/\\])'
+
 scripts/refresh-third-party.sh --check
 ```

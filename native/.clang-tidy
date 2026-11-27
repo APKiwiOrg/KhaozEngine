@@ -10,4 +10,5 @@ Checks: >
   modernize-use-using,
   performance-*
 WarningsAsErrors: '*'
-HeaderFilterRegex: '(^|/)native/(include/khaoz|src|tests)/'
+HeaderFilterRegex: '(^|[/\\])native[/\\]'
+ExcludeHeaderFilterRegex: '(^|[/\\])native[/\\]third_party[/\\]'

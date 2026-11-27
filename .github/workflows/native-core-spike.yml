@@ -306,9 +306,8 @@ jobs:
           dotnet build KhaozEngine.Gpu.Core.Tests/KhaozEngine.Gpu.Core.Tests.csproj -c Release
           -p:KhaozNativeLibPath="$PWD/native/out/build/linux-x64-asan/libkhaoz_native.so"
       # The golden repeat with the sanitized library runs here, beside the build that produced it, so the
-      # preloaded runtime is the same Clang release that instrumented the library. The .NET host is not
-      # instrumented, so the runtime is preloaded ahead of it, and leak detection is off because the
-      # runtime's own allocations at exit are not the library's.
+      # preloaded runtime is the same Clang release that instrumented the library. The script preloads the
+      # runtime into the test host only, proves it ran there and checks the required facts.
       - name: Native C# tests and the golden on lavapipe under the sanitizer runtime
         env:
           KE_GPU_TESTS: '1'
@@ -316,16 +315,7 @@ jobs:
           KE_GRAPHICS_BACKEND: vulkan-native
           KE_VULKAN_DEVICE: llvmpipe
           KHAOZ_NATIVE_VALIDATION: '1'
-          ASAN_OPTIONS: detect_leaks=0
-        run: |
-          set -eux
-          runtime=$(clang -print-file-name=libclang_rt.asan-x86_64.so)
-          [ -f "$runtime" ] || runtime="$(clang -print-runtime-dir)/libclang_rt.asan.so"
-          test -f "$runtime"
-          LD_PRELOAD="$runtime" dotnet test KhaozEngine.Gpu.Core.Tests/KhaozEngine.Gpu.Core.Tests.csproj -c Release \
-            --no-build --filter "Category!=Diagnostic&Category!=LiveSocket" \
-            --logger "trx;LogFileName=asan.trx" --results-directory "$RUNNER_TEMP/results"
-          python3 native/scripts/check-required-tests.py "$RUNNER_TEMP/results/asan.trx"
+        run: sh native/scripts/ci-asan-dotnet-test.sh "$RUNNER_TEMP/results"
 
   native-golden:
     name: 'Test: native-golden'

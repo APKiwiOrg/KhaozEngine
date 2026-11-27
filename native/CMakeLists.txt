@@ -4,6 +4,9 @@ project(khaoz_native LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+# The project uses no C++20 modules. Without this, CMake 3.28 and later scan every C++20 source and add
+# a module map response file to each compile command, which the include check refuses.
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 set(CMAKE_C_VISIBILITY_PRESET hidden)
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)

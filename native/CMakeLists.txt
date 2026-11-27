@@ -53,7 +53,6 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     add_compile_definitions(_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     add_compile_definitions(_GLIBCXX_ASSERTIONS)
-    add_link_options(-static-libstdc++ -static-libgcc)
 endif()
 
 find_package(Threads REQUIRED)
@@ -96,7 +95,10 @@ add_library(khaoz_native SHARED)
 target_link_libraries(khaoz_native PRIVATE khaoz_native_objects)
 target_include_directories(khaoz_native PUBLIC include)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    target_link_options(khaoz_native PRIVATE "LINKER:--exclude-libs,ALL")
+    # Only the shipped library carries the C++ runtime statically, so it loads on hosts with an older
+    # libstdc++. Tests and fixtures use the shared runtime: a fixture with its own static copy would
+    # allocate a private exception pool at load that no dlclose frees, which LeakSanitizer reports.
+    target_link_options(khaoz_native PRIVATE -static-libstdc++ -static-libgcc "LINKER:--exclude-libs,ALL")
 endif()
 
 include(CTest)

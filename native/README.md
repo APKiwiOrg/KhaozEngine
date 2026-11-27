@@ -65,7 +65,9 @@ Each preset writes the build and compilation database under out/build in this di
 Build presets pass `-k 0` to Ninja, so one build reports every compile error.
 Release builds carry debug information. MSVC links it into a separate PDB. CI splits it into a
 symbols artifact and strips the shipped library. Shipped Linux libraries are built inside the
-`manylinux_2_28` images, so they need glibc 2.28 at most.
+`manylinux_2_28` images, so they need glibc 2.28 at most. The shipped Linux library links libstdc++
+and libgcc statically. Tests and fixtures use the shared runtime, since a fixture with its own static
+copy allocates an exception pool at load that unloading never frees.
 
 ## Source checks
 

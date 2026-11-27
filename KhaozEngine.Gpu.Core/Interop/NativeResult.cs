@@ -23,7 +23,7 @@ internal static class NativeResult
         };
     }
 
-    private static unsafe string ReadLastError()
+    internal static unsafe string ReadLastError()
     {
         // The diagnostic belongs to the calling thread. Query the length and copy it on that thread.
         int length = checked((int)KhaozNative.khaoz_last_error_message(null, 0));

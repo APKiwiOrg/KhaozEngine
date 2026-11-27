@@ -1,0 +1,219 @@
+#include "device.hpp"
+
+#include <memory>
+#include <mutex>
+
+using namespace khaoz::vulkan;
+
+namespace {
+
+// Volk uses process-global pointers during table population. Calls on a live device use only its own tables.
+std::mutex bootstrap_gate;
+
+struct reset_volk {
+    ~reset_volk() { volkFinalize(); }
+};
+
+khaoz_result create_logical_device(khaoz_gpu_device& device) {
+    const auto& adapter = device.adapter;
+    auto queue = info<VkDeviceQueueCreateInfo>(VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO);
+    constexpr float priority = 1.0F;
+    queue.queueFamilyIndex = adapter.queue_family;
+    queue.queueCount = 1;
+    queue.pQueuePriorities = &priority;
+
+    constexpr const char* portability_subset = "VK_KHR_portability_subset";
+    std::vector<VkExtensionProperties> extensions;
+    const auto enumerated = enumerate(extensions, [&device](auto* count, auto* properties) {
+        return device.instance_api.vkEnumerateDeviceExtensionProperties(device.adapter.handle, nullptr, count,
+                                                                        properties);
+    });
+    if (enumerated != VK_SUCCESS) {
+        return check(enumerated, "Could not enumerate Vulkan device extensions");
+    }
+
+    auto features13 = info<VkPhysicalDeviceVulkan13Features>(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES);
+    features13.dynamicRendering = VK_TRUE;
+    features13.synchronization2 = VK_TRUE;
+    auto features12 = info<VkPhysicalDeviceVulkan12Features>(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES);
+    features12.pNext = &features13;
+    features12.timelineSemaphore = VK_TRUE;
+    VkPhysicalDeviceFeatures features{};
+    features.samplerAnisotropy = adapter.features.samplerAnisotropy;
+
+    auto desc = info<VkDeviceCreateInfo>(VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO);
+    desc.pNext = &features12;
+    desc.queueCreateInfoCount = 1;
+    desc.pQueueCreateInfos = &queue;
+    desc.pEnabledFeatures = &features;
+    device.portability_subset = has_extension(extensions, portability_subset);
+    if (device.portability_subset) {
+        desc.enabledExtensionCount = 1;
+        desc.ppEnabledExtensionNames = &portability_subset;
+    }
+    const auto result = device.instance_api.vkCreateDevice(adapter.handle, &desc, nullptr, &device.handle);
+    if (result != VK_SUCCESS) {
+        return check(result, "Could not create the Vulkan logical device");
+    }
+
+    volkLoadDeviceTable(&device.api, device.handle);
+    device.api.vkGetDeviceQueue(device.handle, adapter.queue_family, 0, &device.queue);
+    auto pool = info<VkCommandPoolCreateInfo>(VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO);
+    pool.queueFamilyIndex = adapter.queue_family;
+    pool.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    return check(device.api.vkCreateCommandPool(device.handle, &pool, nullptr, &device.command_pool),
+                 "Could not create the Vulkan command pool");
+}
+
+khaoz_result bootstrap(khaoz_gpu_device& device, const khaoz_gpu_device_desc& desc, const char* loader_path,
+                       bool probe_only) {
+    device.get_instance_proc = device.loader.open(loader_path);
+    if (device.get_instance_proc == nullptr) {
+        return error(KHAOZ_ERROR_VULKAN_UNAVAILABLE, "Could not load the Vulkan loader or its vkGetInstanceProcAddr");
+    }
+
+    const std::lock_guard lock(bootstrap_gate);
+    volkInitializeCustom(device.get_instance_proc);
+    const reset_volk reset;
+    auto result = create_instance(device, desc.enable_validation != 0);
+    if (result != KHAOZ_OK) {
+        return result;
+    }
+    result = select_adapter(device, desc.device_name_contains);
+    if (result != KHAOZ_OK || probe_only) {
+        return result;
+    }
+    return create_logical_device(device);
+}
+
+khaoz_result create(const khaoz_gpu_device_desc* desc, const char* loader_path, khaoz_gpu_device** out_device) {
+    if (out_device == nullptr) {
+        return error(KHAOZ_ERROR_INVALID_ARGUMENT, "An output device pointer is required");
+    }
+    *out_device = nullptr;
+    if (desc == nullptr) {
+        return error(KHAOZ_ERROR_INVALID_ARGUMENT, "A device description is required");
+    }
+
+    auto device = std::make_unique<khaoz_gpu_device>();
+    auto result = bootstrap(*device, *desc, loader_path, false);
+    if (result != KHAOZ_OK) {
+        return result;
+    }
+    result = create_allocator(*device);
+    if (result != KHAOZ_OK) {
+        return result;
+    }
+    device->capabilities = read_capabilities(*device);
+    *out_device = device.release();
+    return KHAOZ_OK;
+}
+
+} // namespace
+
+khaoz_gpu_device::~khaoz_gpu_device() { close(); }
+
+khaoz_result khaoz_gpu_device::wait_for_idle() const noexcept {
+    return queue == VK_NULL_HANDLE ? KHAOZ_OK : check(api.vkQueueWaitIdle(queue), "Could not drain the Vulkan queue");
+}
+
+khaoz_result khaoz_gpu_device::close() noexcept {
+    const auto drained = wait_for_idle();
+    if (children != nullptr && validation.messenger != VK_NULL_HANDLE) {
+        validation.record_error("Vulkan device closed with live GPU resources");
+    }
+    while (children != nullptr) {
+        delete children;
+    }
+    if (allocator != nullptr) {
+        vmaDestroyAllocator(allocator);
+        allocator = nullptr;
+    }
+    if (command_pool != VK_NULL_HANDLE) {
+        api.vkDestroyCommandPool(handle, command_pool, nullptr);
+        command_pool = VK_NULL_HANDLE;
+    }
+    if (handle != VK_NULL_HANDLE) {
+        api.vkDestroyDevice(handle, nullptr);
+        handle = VK_NULL_HANDLE;
+        queue = VK_NULL_HANDLE;
+    }
+    if (validation.messenger != VK_NULL_HANDLE) {
+        instance_api.vkDestroyDebugUtilsMessengerEXT(instance, validation.messenger, nullptr);
+        validation.messenger = VK_NULL_HANDLE;
+    }
+    if (instance != VK_NULL_HANDLE) {
+        instance_api.vkDestroyInstance(instance, nullptr);
+        instance = VK_NULL_HANDLE;
+    }
+    return drained;
+}
+
+device_child::device_child(khaoz_gpu_device& owner) noexcept : device(owner), next(owner.children) {
+    if (next != nullptr) {
+        next->previous = this;
+    }
+    device.children = this;
+}
+
+device_child::~device_child() {
+    if (next != nullptr) {
+        next->previous = previous;
+    }
+    if (previous == nullptr) {
+        device.children = next;
+    } else {
+        previous->next = next;
+    }
+}
+
+khaoz_result khaoz_gpu_device_create_headless(const khaoz_gpu_device_desc* desc, khaoz_gpu_device** out_device) {
+    return khaoz::abi::guard([&] {
+        const auto path = loader_environment();
+        return create(desc, path ? path->c_str() : nullptr, out_device);
+    });
+}
+
+khaoz_result khaoz_gpu_device_create_headless_with_loader(const khaoz_gpu_device_desc* desc, const char* loader_path,
+                                                          khaoz_gpu_device** out_device) {
+    return khaoz::abi::guard([&] { return create(desc, loader_path, out_device); });
+}
+
+khaoz_result khaoz_gpu_device_probe(const char* loader_path) {
+    return khaoz::abi::guard([&] {
+        const auto device = std::make_unique<khaoz_gpu_device>();
+        return bootstrap(*device, {}, loader_path, true);
+    });
+}
+
+khaoz_result khaoz_gpu_device_capabilities(const khaoz_gpu_device* device, khaoz_gpu_capabilities* out_caps) {
+    return khaoz::abi::guard([&] {
+        if (device == nullptr || out_caps == nullptr) {
+            return error(KHAOZ_ERROR_INVALID_ARGUMENT, "A device and capability output are required");
+        }
+        *out_caps = device->capabilities;
+        return KHAOZ_OK;
+    });
+}
+
+uint32_t khaoz_gpu_device_validation_errors(const khaoz_gpu_device* device) {
+    return device != nullptr ? device->validation.errors : 0;
+}
+
+khaoz_result khaoz_gpu_device_destroy(khaoz_gpu_device* device, uint32_t* out_validation_errors) {
+    return khaoz::abi::guard([&] {
+        const std::unique_ptr<khaoz_gpu_device> owned(device);
+        const auto result = device != nullptr ? device->close() : KHAOZ_OK;
+        if (out_validation_errors != nullptr) {
+            *out_validation_errors = khaoz_gpu_device_validation_errors(device);
+        }
+        return result;
+    });
+}
+
+khaoz_result khaoz_gpu_device_wait_for_idle(khaoz_gpu_device* device) {
+    return khaoz::abi::guard([&] {
+        return device != nullptr ? device->wait_for_idle()
+                                 : error(KHAOZ_ERROR_INVALID_ARGUMENT, "A device is required");
+    });
+}

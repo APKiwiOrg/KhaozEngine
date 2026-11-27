@@ -83,3 +83,23 @@ run-clang-tidy -quiet -j 1 -config-file="$PWD/.clang-tidy" -p "$build_dir" \
 
 scripts/refresh-third-party.sh --check
 ```
+
+## Headless Vulkan transfer subset
+
+The C ABI can probe for and create a headless Vulkan 1.3 device. The default creation function
+reads `KHAOZ_NATIVE_VULKAN_LOADER`. The explicit loader function accepts a path from callers
+that manage their own environment. Devices use per-instance and per-device dispatch tables.
+Portability enumeration and the portability subset are enabled when exposed. The sampler uses
+zero mip LOD bias when the portability subset is enabled, since the spike does not enable
+the optional portability feature for sampler bias.
+
+Buffers and images are allocated through VMA. Staging textures use host-visible buffers with
+a layout for each mip and array layer. Off-timeline uploads finish before returning. Transfer
+lists submit asynchronously and can signal a fence. Images rest in `GENERAL` so abandoning or
+reordering lists leaves their layout valid. Release children before destroying the device and
+serialize calls on each device. Validation catches a device closed with live children and the
+ABI returns the total count after releasing the children, the device and the instance.
+
+Set `KHAOZ_NATIVE_GPU_TESTS=1` to run the GPU doctests. These require an available Vulkan device
+and `VK_LAYER_KHRONOS_validation`. On macOS use the MoltenVK ICD and expose the validation
+layer manifest and its library to the Vulkan loader.

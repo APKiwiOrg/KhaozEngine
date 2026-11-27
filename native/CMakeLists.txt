@@ -50,11 +50,26 @@ add_library(khaoz_native_objects OBJECT
     src/abi/abi_version.cpp
     src/abi/last_error.cpp
     src/frame/frame.cpp
+    src/gpu/vulkan/device.cpp
+    src/gpu/vulkan/adapter.cpp
+    src/gpu/vulkan/capabilities.cpp
+    src/gpu/vulkan/instance.cpp
+    src/gpu/vulkan/loader.cpp
+    src/gpu/vulkan/validation.cpp
+    src/gpu/vulkan/memory.cpp
+    src/gpu/vulkan/buffer.cpp
+    src/gpu/vulkan/commands.cpp
+    src/gpu/vulkan/fence.cpp
+    src/gpu/vulkan/texture.cpp
+    src/gpu/vulkan/sampler.cpp
+    src/gpu/vulkan/transfer.cpp
 )
 set_target_properties(khaoz_native_objects PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_compile_definitions(khaoz_native_objects PRIVATE KHAOZ_NATIVE_BUILD)
 target_include_directories(khaoz_native_objects PUBLIC include)
-target_link_libraries(khaoz_native_objects PRIVATE Threads::Threads)
+target_include_directories(khaoz_native_objects PRIVATE src)
+target_compile_definitions(khaoz_native_objects PRIVATE VMA_STATIC_VULKAN_FUNCTIONS=0 VMA_DYNAMIC_VULKAN_FUNCTIONS=1)
+target_link_libraries(khaoz_native_objects PRIVATE Threads::Threads khaoz::volk khaoz::vulkan_headers khaoz::vma)
 
 add_library(khaoz_native SHARED)
 target_link_libraries(khaoz_native PRIVATE khaoz_native_objects)

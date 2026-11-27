@@ -40,3 +40,21 @@ The fixture is for the managed loader test and stays out of the runtime package.
 The report-only frame probe requires `KE_NATIVE_FRAME_TIMING=1` in addition to
 `KE_NATIVE_TESTS=1`. It times submit for the 3,335-record random and frame-coherent workloads and
 can write a JSON receipt at `KE_NATIVE_FRAME_RECEIPT`.
+
+## Headless Vulkan transfers
+
+The spike tests explicitly seat `CoreVulkanBackendProvider` as `VulkanNative`. The provider
+checks the native library ABI and probes for an eligible Vulkan 1.3 adapter. It uses the
+managed Vulkan assembly's structured creation refusal so both providers expose the same
+exception and reason for an unavailable machine.
+
+The core supports buffers, textures, samplers, transfer command lists and completion fences.
+`GpuReadback` can copy data into staging memory and map it through the usual GPU interfaces.
+Drawing, shader and pipeline creation, and presentation are outside the transfer subset.
+`KE_VULKAN_DEVICE` selects an eligible adapter using the managed provider's request syntax.
+`KHAOZ_NATIVE_VULKAN_LOADER` selects a loader file and `KHAOZ_NATIVE_VALIDATION=1` enables
+Vulkan validation with an error count that includes device teardown.
+
+On macOS, use the MoltenVK ICD. If the Homebrew validation manifest names its library without
+a path, set `DYLD_LIBRARY_PATH` to the Homebrew library directory in the launched test command.
+Set it inside `build-slot` using `env`, since macOS can strip it when starting the slot wrapper.

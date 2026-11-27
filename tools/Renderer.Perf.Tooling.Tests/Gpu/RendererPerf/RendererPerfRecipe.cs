@@ -379,6 +379,8 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
         // Frozen workloads retain their historical shadow hold and display-grid history.
         post.Temporal.ShadowLightHoldTexels = 1f;
         post.Temporal.HistoryDetail = TemporalHistoryDetail.Display;
+        // Textured meshes used the linear sampler (anisotropy 1) before this setting existed.
+        post.Quality.MaterialAnisotropy = 1;
         post.Hdr.Enabled = active;
         post.Bloom.Enabled = active;
         post.Atmosphere.Enabled = active;

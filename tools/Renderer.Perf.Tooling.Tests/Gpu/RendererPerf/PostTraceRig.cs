@@ -101,7 +101,8 @@ internal sealed class PostTraceDevice : IGpuDevice
 {
     internal readonly OpenListTrackingGpuDevice Native = new();
     readonly PostTraceFactory _factory;
-    internal PostTraceDevice() => _factory = new(Native.Factory);
+    internal PostTraceDevice(Func<IGpuTexture?, IGpuTexture[], IGpuFramebuffer>? createFramebuffer = null)
+        => _factory = new(Native.Factory, createFramebuffer);
     internal System.Collections.Generic.List<GeometryTraceCommands> Lists => _factory.Lists;
     internal int Waits;
     internal GeometryTraceCommands? UploadTrace;

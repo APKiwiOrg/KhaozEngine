@@ -95,6 +95,57 @@ public sealed class RendererPerfRecipeSettingsTests
         Assert.NotEqual(RendererPerfRecipe.Digest(new AtmosphereSettings()), RendererPerfRecipe.Digest(settings));
     }
 
+    // #1831: Keep the original workload and identity when the engine default changes.
+    [Fact]
+    public void Frozen_recipes_keep_linear_material_sampling_and_its_legacy_encoding()
+    {
+        using var recipe = RendererPerfRecipe.Create("empty", verifyFrozen: false);
+        using var rig = new HeadlessSceneRig();
+        recipe.ResetBlock(rig.Scene);
+        var quality = rig.Scene.Post.Quality;
+        var legacy = JsonSerializer.SerializeToNode(quality, LegacyOptions)!.AsObject();
+        legacy.Remove(nameof(RenderQuality.MaterialAnisotropy));
+
+        Assert.Equal(1, quality.MaterialAnisotropy);
+        Assert.Equal(legacy.ToJsonString(), JsonSerializer.Serialize(quality, RendererPerfRecipe.Json));
+    }
+
+    [Fact]
+    public void Explicit_anisotropic_material_sampling_is_captured_in_the_identity()
+    {
+        const int anisotropy = 16;
+        var quality = new RenderQuality { MaterialAnisotropy = anisotropy };
+        var encoded = JsonSerializer.SerializeToNode(quality, RendererPerfRecipe.Json)!.AsObject();
+
+        Assert.Equal(anisotropy, encoded[nameof(RenderQuality.MaterialAnisotropy)]!.GetValue<int>());
+        Assert.NotEqual(RendererPerfRecipe.Digest(new RenderQuality { MaterialAnisotropy = 1 }),
+            RendererPerfRecipe.Digest(quality));
+    }
+
+    // #1831: surfaces frozen before material emissive keep their identity.
+    [Fact]
+    public void Surfaces_without_emissive_keep_the_legacy_encoding()
+    {
+        var surface = new Scene3D.SurfaceMaps(Scene3D.TextureHandle.Invalid, alphaCutoff: 0.5f);
+        var legacy = JsonSerializer.SerializeToNode(surface, LegacyOptions)!.AsObject();
+        legacy.Remove(nameof(Scene3D.SurfaceMaps.Emissive));
+        legacy.Remove(nameof(Scene3D.SurfaceMaps.EmissiveFactor));
+
+        Assert.Equal(legacy.ToJsonString(), JsonSerializer.Serialize(surface, RendererPerfRecipe.Json));
+    }
+
+    [Fact]
+    public void An_emissive_colour_is_captured_in_the_surface_identity()
+    {
+        var plain = new Scene3D.SurfaceMaps(Scene3D.TextureHandle.Invalid);
+        var glowing = new Scene3D.SurfaceMaps(Scene3D.TextureHandle.Invalid, default, default, 0f,
+            Scene3D.TextureHandle.Invalid, new Vector3(1f, 0.5f, 0f));
+        var encoded = JsonSerializer.SerializeToNode(glowing, RendererPerfRecipe.Json)!.AsObject();
+
+        Assert.True(encoded.ContainsKey(nameof(Scene3D.SurfaceMaps.EmissiveFactor)));
+        Assert.NotEqual(RendererPerfRecipe.Digest(plain), RendererPerfRecipe.Digest(glowing));
+    }
+
     [Fact]
     public void Inherited_underwater_overrides_keep_the_legacy_look_encoding()
     {

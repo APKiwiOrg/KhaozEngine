@@ -245,7 +245,12 @@ public sealed class RendererPerfControlTimingTests
     public void D3D11_trace_brackets_every_clear_before_the_end_tail(bool deferred, int id, int colors, int depths)
     {
         using var rig = new D3D11TimestampEndFixture(deferred);
-        using var device = new PostTraceDevice();
+        using var device = new PostTraceDevice(static (depth, colors) =>
+        {
+            IGpuTexture firstAttachment = colors.Length > 0 ? colors[0] : depth!;
+            var outputs = new GpuOutputDescription(depth?.Format, colors.Select(color => color.Format).ToArray());
+            return new TraceFramebuffer(outputs, firstAttachment.Width, firstAttachment.Height);
+        });
         var facts = RendererPerfControls.Definition(id);
         using var work = RendererPerfControls.Create(device, new(id, "1", facts.WorkSha256, 64, 128));
         work.PrepareCold(-64);

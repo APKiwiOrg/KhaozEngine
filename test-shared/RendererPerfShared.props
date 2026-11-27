@@ -9,6 +9,7 @@
     <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/CoveragePerf/D3D11TimestampEndFixture.cs" Link="Shared/Gpu/CoveragePerf/D3D11TimestampEndFixture.cs" />
     <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/D3D11TimestampTestApi.cs" Link="Shared/Gpu/D3D11TimestampTestApi.cs" />
     <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/D3D11TimestampTestEmitter.cs" Link="Shared/Gpu/D3D11TimestampTestEmitter.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/D3D11TraceResources.cs" Link="Shared/Gpu/D3D11TraceResources.cs" />
     <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/FakeD3D11InfoQueue.cs" Link="Shared/Gpu/FakeD3D11InfoQueue.cs" />
     <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/FakeD3D11Ring.cs" Link="Shared/Gpu/FakeD3D11Ring.cs" />
     <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/FakeGpuDevice.cs" Link="Shared/Gpu/FakeGpuDevice.cs" />

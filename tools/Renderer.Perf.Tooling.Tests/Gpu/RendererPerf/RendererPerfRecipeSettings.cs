@@ -28,6 +28,24 @@ internal static class RendererPerfRecipeSettings
                         property.ShouldSerialize = static (_, field) => field is long budget && budget != 2560L * 1440;
                 return;
             }
+            // Linear sampling preserves the frozen encoding. Other anisotropy values remain authored inputs.
+            if (info.Type == typeof(RenderQuality))
+            {
+                foreach (var property in info.Properties)
+                    if (property.Name == nameof(RenderQuality.MaterialAnisotropy))
+                        property.ShouldSerialize = static (_, field) => field is int anisotropy && anisotropy != 1;
+                return;
+            }
+            // A surface without an emissive map or colour preserves the frozen encoding. Either one remains an authored input.
+            if (info.Type == typeof(Scene3D.SurfaceMaps))
+            {
+                foreach (var property in info.Properties)
+                    if (property.Name == nameof(Scene3D.SurfaceMaps.Emissive))
+                        property.ShouldSerialize = static (_, field) => field is Scene3D.TextureHandle map && map.IsValid;
+                    else if (property.Name == nameof(Scene3D.SurfaceMaps.EmissiveFactor))
+                        property.ShouldSerialize = static (_, field) => field is System.Numerics.Vector3 colour && colour != System.Numerics.Vector3.Zero;
+                return;
+            }
             if (info.Type == typeof(RigidInstanceDraw))
             {
                 foreach (var property in info.Properties)

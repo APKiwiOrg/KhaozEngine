@@ -268,6 +268,12 @@ remain serialized and change settings, authored and construction identities. Omi
 without pinning the workload would silently change shadow work behind an unchanged identity. Frozen recipe
 files, digests and strict comparisons remain unchanged.
 
+Frozen recipes pin `RenderQuality.MaterialAnisotropy` to `1` because textured meshes used the linear sampler
+before the setting existed. The recipe-local resolver omits `1` from the frozen settings encoding. Other
+values remain authored inputs and change the settings and recipe identities. Surface maps frozen before
+material emissive existed carry no emissive map and a zero emissive colour, so the resolver omits both at
+those values. An emissive map or colour remains an authored input.
+
 The recipe-local JSON resolver omits `RigidInstanceDraw.ShadowMobility` only for `Static`, preserving the
 existing rigid construction bytes and digests. `Dynamic` and other nondefault values remain authored geometry
 inputs and change geometry and construction identities. Frozen recipe files and strict comparisons stay unchanged.

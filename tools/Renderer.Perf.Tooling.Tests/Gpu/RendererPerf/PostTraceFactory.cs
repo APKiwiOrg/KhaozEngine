@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Diagnostics;
@@ -6,12 +7,14 @@ using static KhaozEngine.Tests.Gpu.RendererPerf.RendererPerfGeometryTraceTests;
 namespace KhaozEngine.Tests.Gpu.RendererPerf;
 
 /// <summary>Trace preparer lists as well as the frame, without changing inert resource semantics.</summary>
-internal sealed class PostTraceFactory(IGpuResourceFactory inner) : IGpuResourceFactory
+internal sealed class PostTraceFactory(IGpuResourceFactory inner,
+    Func<IGpuTexture?, IGpuTexture[], IGpuFramebuffer>? createFramebuffer) : IGpuResourceFactory
 {
     internal readonly List<GeometryTraceCommands> Lists = [];
     public IGpuBuffer CreateBuffer(in GpuBufferDescription d) => inner.CreateBuffer(d);
     public IGpuTexture CreateTexture(in GpuTextureDescription d) => inner.CreateTexture(d);
-    public IGpuFramebuffer CreateFramebuffer(IGpuTexture? depth, params IGpuTexture[] colors) => inner.CreateFramebuffer(depth, colors);
+    public IGpuFramebuffer CreateFramebuffer(IGpuTexture? depth, params IGpuTexture[] colors) =>
+        createFramebuffer?.Invoke(depth, colors) ?? inner.CreateFramebuffer(depth, colors);
     public IGpuSampler CreateSampler(in GpuSamplerDescription d) => inner.CreateSampler(d);
     public IGpuResourceLayout CreateResourceLayout(in GpuResourceLayoutDescription d) => inner.CreateResourceLayout(d);
     public IGpuResourceSet CreateResourceSet(in GpuResourceSetDescription d) => inner.CreateResourceSet(d);

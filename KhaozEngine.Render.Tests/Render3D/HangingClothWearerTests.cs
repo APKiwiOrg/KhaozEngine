@@ -101,6 +101,10 @@ public sealed class HangingClothWearerTests
             Require(wearer.CurrentClothPose, "current display revision", (float)status.Projection.Status);
             Require(status.Fallback == WornClothFallback.None, "refusal", (float)status.Fallback);
             Require(!status.Solve.Recovered, "fallback recovery", (float)(status.Solve.FallbackStatus ?? ClothStepStatus.Accepted));
+            Require(status.DisplayWork.BroadPhaseVisits <= ClothWorkLimits.BroadPhaseVisitLimit,
+                "display broad-phase work", status.DisplayWork.BroadPhaseVisits);
+            Require(status.DisplayWork.NarrowPhaseCandidates <= ClothWorkLimits.NarrowPhaseCandidateLimit,
+                "display candidates", status.DisplayWork.NarrowPhaseCandidates);
             if (time < MeasurementStart) return;
             ClothObservation geometry = HangingPanelFixture.Observe(pose, panel);
             var closest = wearer.ClosestLiningWitness(pose.MarkerInModel);

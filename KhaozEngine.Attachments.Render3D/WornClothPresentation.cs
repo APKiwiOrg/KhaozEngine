@@ -36,8 +36,11 @@ public readonly record struct WornClothStatus(WornClothTier Tier, WornClothFallb
 {
     public uint? RequestedPartId { get; init; }
     public bool IsBlending { get; init; }
-    /// <summary>Verification of the detailed visible surface during a handoff.</summary>
+    /// <summary>Verification of the detailed visible surface.</summary>
     public ClothStepResult DetailedProjection { get; init; }
+    /// <summary>Combined work charged to the display projection and its detailed surface check.</summary>
+    public ClothContactWork DisplayWork => new(Projection.ContactChecks + DetailedProjection.ContactChecks,
+        Projection.ContactCandidates + DetailedProjection.ContactCandidates, Projection.SweepRefinements + DetailedProjection.SweepRefinements);
     public ClothContactWork SolveWork { get; init; }
     public long MaterialFactorProducts { get; init; }
     public int LowerSegments { get; init; }

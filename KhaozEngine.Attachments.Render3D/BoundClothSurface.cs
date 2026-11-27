@@ -110,7 +110,7 @@ public sealed class BoundClothSurface
         for (int triangle = 0; triangle < frames.Length; triangle++)
             if (!ClothFittedFrame.TryCreate(Rig.Triangles[triangle], _fittedNodes, out frames[triangle]))
                 throw asset.Refuse(ClothSurfaceRefusal.FittedTriangle, "$.triangles", "The fitted triangle has no finite frame.", triangle);
-        if (HasMaterialMapping) _pinDirections = new(Rig, _source, _pins, _fittedNodes, composed);
+        if (HasMaterialMapping) _pinDirections = new(Rig, _source, _pins, _fittedNodes, posed, composed);
 
         var embeddings = new List<BoundClothEmbedding>[materials.Length];
         var intrinsic = HasMaterialMapping ? new List<BoundClothMaterialEmbedding>[materials.Length] : null;

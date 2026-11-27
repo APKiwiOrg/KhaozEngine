@@ -10,7 +10,7 @@ internal sealed class ClothPinnedDirections
     private readonly Vector3[] _directions;
 
     internal ClothPinnedDirections(ClothRig rig, SkinnedVertex[] source, ResolvedClothPoint[] samples,
-        ReadOnlySpan<Vector3> fittedNodes, ReadOnlySpan<Matrix4x4> composed)
+        ReadOnlySpan<Vector3> fittedNodes, ReadOnlySpan<Vector3> fittedSource, ReadOnlySpan<Matrix4x4> composed)
     {
         _directions = new Vector3[samples.Length];
         Span<Vector3> normals = stackalloc Vector3[fittedNodes.Length];
@@ -27,7 +27,13 @@ internal sealed class ClothPinnedDirections
         {
             ResolvedClothPoint sample = samples[pin];
             Vector3 fittedNormal = normals[rig.Pins[pin]];
-            Matrix4x4 skin = SkinDirection(source, sample, composed);
+            if (sample.IsTriangle)
+            {
+                if (ClothFittedFrame.TryCreate(fittedSource[sample.A], fittedSource[sample.B], fittedSource[sample.C], out var frame, out _))
+                    _directions[pin] = frame.Coordinates(fittedNormal);
+                continue;
+            }
+            Matrix4x4 skin = SkinMatrix(source[sample.A], composed);
             _directions[pin] = Matrix4x4.Invert(skin, out Matrix4x4 inverse)
                 ? Vector3.TransformNormal(fittedNormal, inverse) : Vector3.Zero;
         }
@@ -38,21 +44,20 @@ internal sealed class ClothPinnedDirections
     {
         for (int pin = 0; pin < samples.Length; pin++)
         {
-            Vector3 direction = Vector3.TransformNormal(_directions[pin], SkinDirection(source, samples[pin], composed));
+            ResolvedClothPoint sample = samples[pin];
+            Vector3 direction = sample.IsTriangle
+                ? PosedTriangleDirection(sample, source, composed, _directions[pin])
+                : Vector3.TransformNormal(_directions[pin], SkinMatrix(source[sample.A], composed));
             if (direction != Vector3.Zero)
                 normals[rig.Pins[pin]] = direction;
         }
     }
 
-    private static Matrix4x4 SkinDirection(SkinnedVertex[] source, ResolvedClothPoint sample,
-        ReadOnlySpan<Matrix4x4> composed)
-    {
-        Matrix4x4 a = SkinMatrix(source[sample.A], composed);
-        return sample.IsTriangle
-            ? a * sample.Weights.X + SkinMatrix(source[sample.B], composed) * sample.Weights.Y +
-              SkinMatrix(source[sample.C], composed) * sample.Weights.Z
-            : a;
-    }
+    private static Vector3 PosedTriangleDirection(ResolvedClothPoint sample, SkinnedVertex[] source,
+        ReadOnlySpan<Matrix4x4> composed, Vector3 direction) =>
+        ClothFittedFrame.TryCreate(BoundClothSurface.Skin(source[sample.A], composed),
+            BoundClothSurface.Skin(source[sample.B], composed), BoundClothSurface.Skin(source[sample.C], composed),
+            out var frame, out _) ? ClothDetailedReconstruction.Directions(frame, direction) : Vector3.Zero;
 
     private static Matrix4x4 SkinMatrix(in SkinnedVertex vertex, ReadOnlySpan<Matrix4x4> composed) =>
         SkinningMath.BlendSkinMatrix(composed, vertex.BoneIndices, vertex.BoneWeights);

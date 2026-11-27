@@ -425,13 +425,16 @@ reuse across passes. Read it before the next step, reset, rebind or release.
 
 Version 1 reconstructs the moving vertices from the checked fitted triangle frames. Version 2
 uses the intrinsic pattern and signed detail with oriented, area-weighted normals shared across
-the material surface. At pins the fitted normal follows the host pose. Render normals and tangents
-keep their authored directions relative to the deforming cloth. Fixed vertices follow the current
-host skin. A version 2 handoff blends the actual posed, lifted chain surface and the live material
-surface, starts a reversal at the last shown vertices, and verifies the detailed sweep against the
-same supports. The sweep refits a prebuilt tree of moving visible triangles and charges every
-visited node and triangle to its broad-phase budget. `ClothStatus.DetailedProjection` reports the
-attempted handoff verification.
+the material surface. At triangle pins the fitted direction follows the triangle's posed source
+vertices. Render normals and tangents keep their authored directions relative to the deforming cloth.
+Fixed vertices follow the current host skin. A version 2 handoff fades the fit-specific difference
+between the actual posed, lifted chain surface and the live material pose. Reversal carries the last
+shown difference over the currently accepted material nodes.
+
+Each version 2 pose sweeps the moving visible triangles against the same posed supports. The sweep
+refits a prebuilt tree and charges all visited nodes and triangles against the allowance left by the
+proxy projection. `ClothStatus.DetailedProjection` reports the full-surface check, and
+`ClothStatus.DisplayWork` reports the combined cost.
 
 `Nodes` are in world-aligned metres relative to `WorldOrigin`. Invert `RelativeModel` to get
 model-space coordinates without losing precision at large translations. `GarmentPalette`

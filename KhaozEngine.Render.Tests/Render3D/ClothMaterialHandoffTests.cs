@@ -6,10 +6,12 @@ using KhaozEngine.Attachments;
 using KhaozEngine.Attachments.Render3D;
 using KhaozEngine.Render3D;
 using Xunit;
+using static KhaozEngine.Tests.Render3D.SkinnedAttachmentBindingTests;
 
 namespace KhaozEngine.Tests.Render3D;
 
-public sealed partial class SkinnedAttachmentBindingTests
+[Collection("AllocSensitive")]
+public sealed class ClothMaterialHandoffTests
 {
     [Fact]
     public void Material_handoff_matches_the_lifted_chain_pose_and_preserves_mid_blend_reversal()
@@ -18,7 +20,7 @@ public sealed partial class SkinnedAttachmentBindingTests
         var fixture = ClothAsset(rig, hipOnlyPins: true);
         var part = Assert.IsType<SkinnedAttachmentPartDefinition>(Assert.Single(fixture.Set.Parts));
         var recipe = Assert.IsType<ClothMotionDefinition>(part.Motion);
-        ClothSurfaceFile file = ClothSurfaceJson.Parse(fixture.Bytes, ClothKey);
+        ClothSurfaceFile file = ClothSurfaceJson.Parse(fixture.Bytes, recipe.Surface.Key);
         var fit = file.Render[2];
         var cloth = BindMaterialCloth(rig, fixture.Set, part, recipe, file with
         {
@@ -60,11 +62,16 @@ public sealed partial class SkinnedAttachmentBindingTests
         Step(0, null);
         float demotionStart = AssertClose(live, Shown(), movingOnly: true);
         for (int i = 0; i < 4; i++) Step(options.MaxStepSeconds, null);
-        long allocated = GC.GetAllocatedBytesForCurrentThread();
-        motion.Step(rig.Skeleton, pose, model, options.MaxStepSeconds, MotionLevel.Simulated);
-        bool hasSample = outfit.TryGetClothPresentation(worn, motion, ClothPartId, out var warm);
-        ReadOnlyMemory<ModelVertex> warmVertices = hasSample ? warm.DetailedVertices(0) : default;
-        long warmBytes = GC.GetAllocatedBytesForCurrentThread() - allocated;
+        ReadOnlyMemory<ModelVertex> warmVertices;
+        long warmBytes;
+        using (AllocationRegion.Start("warm detailed cloth handoff"))
+        {
+            long allocated = GC.GetAllocatedBytesForCurrentThread();
+            motion.Step(rig.Skeleton, pose, model, options.MaxStepSeconds, MotionLevel.Simulated);
+            bool hasSample = outfit.TryGetClothPresentation(worn, motion, ClothPartId, out var warm);
+            warmVertices = hasSample ? warm.DetailedVertices(0) : default;
+            warmBytes = GC.GetAllocatedBytesForCurrentThread() - allocated;
+        }
         Assert.Equal(WornClothFallback.None, motion.ClothStatus.Fallback);
         Assert.False(warmVertices.IsEmpty);
         Assert.Equal(0, warmBytes);
@@ -73,12 +80,22 @@ public sealed partial class SkinnedAttachmentBindingTests
         Step(0, selection);
         float reversal = AssertClose(turning, Shown(), movingOnly: true);
 
-        // The host and wearer move during the return. The fixed vertices use that pose.
         Step(0, null);
+        Vector3[][] residual = ReadResidual();
+        float carriedDetail = 0;
+        foreach (Vector3[] material in residual)
+            foreach (Vector3 vertex in material) carriedDetail = MathF.Max(carriedDetail, vertex.Length());
+        Assert.True(carriedDetail > ClothSurfaceFile.RoundTripTolerance);
+
+        // The next direction change also moves the host and wearer. Rebase the detail on the current material.
         pose[1].Translation += new Vector3(.003f, .001f, 0);
         model.Translation += new Vector3(.002f, 0, .002f);
-        Step(options.MaxStepSeconds, null);
+        Step(0, selection);
+        float movingReversal = AssertClose(residual, ReadResidual(), movingOnly: true);
         float host = AssertClose(Cheap(motion), Shown(), fixedOnly: true);
+
+        Step(0, null);
+        Step(options.MaxStepSeconds, null);
         for (int i = 1; i < 9; i++) Step(options.MaxStepSeconds, null);
         Step(options.MaxStepSeconds - .000001f, null);
         Vector3[][] outgoing = Shown();
@@ -89,7 +106,8 @@ public sealed partial class SkinnedAttachmentBindingTests
         if (Environment.GetEnvironmentVariable("KE_CLOTH_WEARER_TRACE") is { Length: > 0 } trace)
             File.WriteAllText(trace + ".handoff.json", JsonSerializer.Serialize(new
             {
-                cheapTravel, swingDisplacement, promotion, demotionStart, reversal, host, approach, demotionEnd, warmBytes,
+                cheapTravel, swingDisplacement, promotion, demotionStart, reversal, movingReversal, carriedDetail, host,
+                approach, demotionEnd, warmBytes,
             }));
 
         void Step(float seconds, WornClothSelection? request)
@@ -113,6 +131,18 @@ public sealed partial class SkinnedAttachmentBindingTests
                     points[material][i] = vertices[i].Position;
             }
             return points;
+        }
+
+        Vector3[][] ReadResidual()
+        {
+            Assert.True(outfit.TryGetClothPresentation(worn, motion, ClothPartId, out var displayed));
+            var reconstructor = new ClothDetailedReconstruction(surface);
+            Assert.True(reconstructor.Material(surface, displayed.Nodes, displayed.RelativeModel, displayed.GarmentPalette));
+            Vector3[][] output = Shown();
+            for (int material = 0; material < output.Length; material++)
+            for (int vertex = 0; vertex < output[material].Length; vertex++)
+                output[material][vertex] -= reconstructor.Vertices(material)[vertex].Position;
+            return output;
         }
 
         Vector3[][] Cheap(WornMotion? chainMotion)

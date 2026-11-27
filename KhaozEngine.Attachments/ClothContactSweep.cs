@@ -62,14 +62,15 @@ internal static class ClothContactSweep
     private readonly record struct Window(float Start, float End, ClothSweepSample First, ClothSweepSample Last);
 
     internal static ClothStepStatus Check<T>(in T pair, float required, int maxRefinements, out int refinements,
-        out ClothSweepImpact impact) where T : struct, IClothSweepPair
+        out ClothSweepImpact impact, bool requireClearOpening = false) where T : struct, IClothSweepPair
     {
         refinements = 0;
         ClothSweepSample first = pair.Sample(0), last = pair.Sample(1);
         impact = new ClothSweepImpact(1, first.Normal, last);
         if (!float.IsFinite(first.Distance) || !float.IsFinite(last.Distance) || !float.IsFinite(pair.Curvature))
             return ClothStepStatus.NonfiniteState;
-        if (last.Distance < required) return ClothStepStatus.UnresolvedContact;
+        if (last.Distance < required || requireClearOpening && first.Distance < required)
+            return ClothStepStatus.UnresolvedContact;
 
         // An inherited clearance deficit can be moved out as positioning bias.
         // Require the sweep to preserve at least the opening clearance.

@@ -15,6 +15,7 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
     private readonly Vector3[] _displayed = new Vector3[rig.RestPositions.Length];
     private readonly Vector3[] _published = new Vector3[rig.RestPositions.Length];
     private readonly Vector3[] _target = new Vector3[rig.RestPositions.Length];
+    private readonly Vector3[] _cheapTarget = profile.HasMaterialMapping ? new Vector3[rig.RestPositions.Length] : [];
     private readonly Vector3[] _projected = new Vector3[rig.RestPositions.Length];
     private readonly Vector3[] _framePins = new Vector3[rig.Pins.Length];
     private readonly Vector3[] _priorPins = new Vector3[rig.Pins.Length];
@@ -164,7 +165,9 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
                 if (_hasDisplay && Binding.Surface.HasMaterialMapping)
                 {
                     CopyCheapPalette(skeleton, previousHost);
-                    _detail.Seed(Binding.Surface, previousModel, _origin, _cheapGarmentPalette);
+                    Binding.CopySkinPalette(skeleton, previousHost, _frameGarmentPalette);
+                    _hasDisplay = _detail.Seed(Binding.Surface, _displayed, previousModel, _origin,
+                        _frameGarmentPalette, _cheapGarmentPalette);
                 }
             }
             catch (ClothSurfaceDataException error) when (error.Reason == ClothSurfaceRefusal.FittedTriangle)
@@ -244,6 +247,8 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
 
         Pin(_target, _framePins);
         bool blend = _hasDisplay && !_fresh && (_settledCloth != _liveRequested || _elapsed < duration);
+        if (!_liveRequested && blend && amount < 1 && Binding.Surface.HasMaterialMapping)
+            _target.CopyTo(_cheapTarget, 0);
         if (blend && amount < 1)
             for (int i = 0; i < _target.Length; i++)
                 _target[i] = Vector3.Lerp(_displayed[i], _target[i], amount);
@@ -259,10 +264,13 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
             Binding.CopySkinPalette(skeleton, host, _frameGarmentPalette);
             bool liveDetail = _liveRequested && (!_fresh || _rebound);
             if (Binding.Surface.HasMaterialMapping && !liveDetail) CopyCheapPalette(skeleton, host);
-            _detailProjection = _detail.Stage(Binding.Surface, _projected, model, _origin,
-                _frameGarmentPalette, _cheapGarmentPalette, liveDetail, blend || _switchFrame, blend ? amount : 1, pose);
+            bool sameMaterialPose = _displayed.AsSpan().SequenceEqual(_projected) &&
+                (_publishedOwner is null ? _sameKinematicPose :
+                    _frameGarmentPalette.AsSpan().SequenceEqual(_displayedGarmentPalette.AsSpan(0, Binding.Surface.JointCount)));
+            _detailProjection = _detail.Stage(Binding.Surface, _projected, _cheapTarget, model, _origin,
+                _frameGarmentPalette, _cheapGarmentPalette, liveDetail, blend ? amount : 1, sameMaterialPose, pose, _projection);
             admissible = _detailProjection.Status == ClothStepStatus.Accepted;
-            if (admissible) _detail.Publish(model, _origin, liveDetail);
+            if (admissible) _detail.Publish(model, _origin);
         }
         if (admissible)
         {

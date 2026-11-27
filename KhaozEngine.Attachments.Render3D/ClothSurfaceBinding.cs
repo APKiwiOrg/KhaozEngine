@@ -257,10 +257,12 @@ internal readonly record struct ClothFittedFrame(Vector3 U, Vector3 V, Vector3 N
         TryCreate(triangle, nodes, out frame, out _);
 
     internal static bool TryCreate(ClothTriangle triangle, ReadOnlySpan<Vector3> nodes, out ClothFittedFrame frame,
-        out Vector3 areaNormal)
+        out Vector3 areaNormal) => TryCreate(nodes[triangle.A], nodes[triangle.B], nodes[triangle.C], out frame, out areaNormal);
+
+    internal static bool TryCreate(Vector3 a, Vector3 b, Vector3 c, out ClothFittedFrame frame, out Vector3 areaNormal)
     {
-        Vector3 first = nodes[triangle.B] - nodes[triangle.A];
-        Vector3 second = nodes[triangle.C] - nodes[triangle.A];
+        Vector3 first = b - a;
+        Vector3 second = c - a;
         areaNormal = Vector3.Cross(first, second);
         float length = first.Length(), area = areaNormal.Length();
         if (!(length > 0 && area > 0 && float.IsFinite(length) && float.IsFinite(area)))

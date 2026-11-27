@@ -38,12 +38,12 @@ public sealed partial class SkinnedAttachmentBindingTests
         Assert.Equal("$.render[0]", error.JsonPath);
     }
 
-    private static BoundAttachmentSet BindMaterialCloth(OutfitRig rig, AttachmentSetDefinition original,
+    internal static BoundAttachmentSet BindMaterialCloth(OutfitRig rig, AttachmentSetDefinition original,
         SkinnedAttachmentPartDefinition source, ClothMotionDefinition recipe, ClothSurfaceFile file)
     {
         const string key = "material-coat.kecs";
         string hash = rig.Source.Add(key, ClothSurfaceJson.Write(file));
         var part = source with { Motion = new ClothMotionDefinition(new(key, hash), recipe.Fallback) };
-        return rig.Wear("material-coat.json", new AttachmentSetDefinition([part], original.Layer!.Value, []));
+        return rig.Wear("material-coat.json", new AttachmentSetDefinition([part], original.Layer!.Value, [], original.Colliders));
     }
 }

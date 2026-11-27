@@ -14,9 +14,9 @@ internal sealed class ClothDetailedSweep(BoundClothSurface profile, ClothWorkLim
     private readonly ClothContactWorkspace _work = new(limits);
 
     internal ClothStepResult Verify(BoundClothSurface surface, ModelVertex[][] opening, in Matrix4x4 openingModel,
-        ModelVertex[][] closing, in Matrix4x4 closingModel, in ClothSubstep pose)
+        ModelVertex[][] closing, in Matrix4x4 closingModel, in ClothSubstep pose, ClothStepResult prior = default)
     {
-        _work.Begin();
+        _work.Begin(prior.ContactChecks, prior.ContactCandidates);
         ClothStepStatus status = _work.Prepare(pose, closingOnly: false, allowCoarse: false);
         if (status == ClothStepStatus.Accepted)
         {
@@ -28,13 +28,19 @@ internal sealed class ClothDetailedSweep(BoundClothSurface profile, ClothWorkLim
                 {
                     _before[i] = Vector3.Transform(opening[material][i].Position, openingModel);
                     _after[i] = Vector3.Transform(closing[material][i].Position, closingModel);
+                    if (!ChainMath.IsFinite(_before[i]) || !ChainMath.IsFinite(_after[i]))
+                    {
+                        status = ClothStepStatus.NonfiniteState;
+                        break;
+                    }
                 }
+                if (status != ClothStepStatus.Accepted) break;
                 tree.Refit(_before, _after, _faceBounds, _nodeBounds);
                 status = CheckView(tree, pose);
                 if (status != ClothStepStatus.Accepted) break;
             }
         }
-        return new ClothStepResult(status, 0, _work.Candidates, _work.Checks, 0)
+        return new ClothStepResult(status, 0, _work.Candidates - prior.ContactCandidates, _work.Checks - prior.ContactChecks, 0)
         {
             PartId = status == ClothStepStatus.Accepted ? null : _work.PartId,
             SweepRefinements = _work.SweepRefinements,
@@ -83,8 +89,8 @@ internal sealed class ClothDetailedSweep(BoundClothSurface profile, ClothWorkLim
                 var first = new ClothFacet(face, _before);
                 var last = new ClothFacet(face, _after);
                 ClothStepStatus status = hull is { } detailed
-                    ? _work.CheckSweep(new ClothHullSweep(first, last, detailed), 0, out _)
-                    : _work.CheckSweep(capsule.WithFacets(first, last), 0, out _);
+                    ? _work.CheckSweep(new ClothHullSweep(first, last, detailed), 0, out _, requireClearOpening: true)
+                    : _work.CheckSweep(capsule.WithFacets(first, last), 0, out _, requireClearOpening: true);
                 if (status != ClothStepStatus.Accepted) return status;
             }
             i++;

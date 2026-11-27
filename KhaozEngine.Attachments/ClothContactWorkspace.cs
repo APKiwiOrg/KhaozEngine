@@ -18,10 +18,10 @@ internal sealed class ClothContactWorkspace(ClothWorkLimits limits)
     internal ReadOnlySpan<ClothAffineHull> AffineHulls => _affine.AsSpan(0, _affineCount);
     internal ReadOnlySpan<ClothPosedHull> Hulls => _hulls.AsSpan(0, _hullCount);
 
-    internal void Begin()
+    internal void Begin(int priorChecks = 0, int priorCandidates = 0)
     {
-        Checks = 0;
-        Candidates = 0;
+        Checks = priorChecks;
+        Candidates = priorCandidates;
         SweepRefinements = 0;
         PartId = null;
         Array.Clear(_affine, 0, _affineCount);
@@ -87,23 +87,23 @@ internal sealed class ClothContactWorkspace(ClothWorkLimits limits)
 
     internal bool Visit()
     {
-        if (Checks == limits.MaxContactChecks) return false;
+        if (Checks >= limits.MaxContactChecks) return false;
         Checks++;
         return true;
     }
 
     internal bool Candidate()
     {
-        if (Candidates == limits.MaxContactCandidates) return false;
+        if (Candidates >= limits.MaxContactCandidates) return false;
         Candidates++;
         return true;
     }
 
-    internal ClothStepStatus CheckSweep<T>(in T pair, float required, out ClothSweepImpact impact)
+    internal ClothStepStatus CheckSweep<T>(in T pair, float required, out ClothSweepImpact impact, bool requireClearOpening = false)
         where T : struct, IClothSweepPair
     {
         ClothStepStatus status = ClothContactSweep.Check(pair, required, limits.MaxSweepRefinements,
-            out int refinements, out impact);
+            out int refinements, out impact, requireClearOpening);
         SweepRefinements += refinements;
         return status;
     }

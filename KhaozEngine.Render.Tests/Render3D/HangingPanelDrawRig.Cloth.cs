@@ -28,13 +28,15 @@ internal sealed partial class HangingPanelDrawRig
     private bool firstClothPose = true;
 
     internal WornClothStatus CurrentClothStatus => motion!.ClothStatus;
+    internal ClothMaterialSolveWork CurrentMaterialWork => clothRequest.Slot.LastFrameMaterialWork;
     internal bool CurrentClothPose { get; private set; }
     internal Vector3 MarkedFittedOffset { get; private set; }
     internal Vector3 MarkedBareOffset { get; private set; }
     internal ClothRoundTrip StaticRegistration { get; private set; }
     internal float MaxGuideLiftError { get; private set; }
 
-    private void InitializeCloth(ClothDrapeFixture fixture, HangingPanelCut cut, BoundClothSurface bare, bool matchGuideLift)
+    private void InitializeCloth(ClothDrapeFixture fixture, HangingPanelCut cut, BoundClothSurface bare,
+        bool matchGuideLift, bool reuseMaterialFactor)
     {
         var surface = outfit.ClothSurface(garmentIndex, 1)!;
         clothCut = cut;
@@ -49,7 +51,7 @@ internal sealed partial class HangingPanelDrawRig
             if (entry.VertexIndex == cut.Probes.MarkedPatch) MarkedBareOffset = entry.FittedOffset;
         foreach (var entry in surface.Materials[0].Embeddings)
             if (entry.VertexIndex == cut.Probes.MarkedPatch) MarkedFittedOffset = entry.FittedOffset;
-        var slot = new WornClothSlot();
+        var slot = reuseMaterialFactor ? new WornClothSlot(reuseMaterialFactor: true) : new WornClothSlot();
         slot.Prepare(surface);
         clothRequest = new(slot, garmentIndex, 1);
         crowd = outfit.CreateMotion(null);

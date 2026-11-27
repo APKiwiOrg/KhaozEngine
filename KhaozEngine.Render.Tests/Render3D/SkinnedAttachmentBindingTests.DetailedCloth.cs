@@ -139,10 +139,13 @@ public sealed partial class SkinnedAttachmentBindingTests
     }
 
     [Theory]
-    [InlineData(false, false)]
-    [InlineData(true, false)]
-    [InlineData(true, true)]
-    public void Detailed_support_validation_publishes_only_a_clear_current_pose(bool compatibleRebind, bool moveAtRebind)
+    [InlineData(false, false, false)]
+    [InlineData(true, false, false)]
+    [InlineData(true, true, false)]
+    [InlineData(true, false, true)]
+    [InlineData(true, true, true)]
+    public void Detailed_support_validation_publishes_only_a_clear_current_pose(bool compatibleRebind, bool moveAtRebind,
+        bool reuseMaterialFactor)
     {
         using var rig = new OutfitRig();
         var fixture = ClothAsset(rig, hipOnlyPins: true);
@@ -157,7 +160,7 @@ public sealed partial class SkinnedAttachmentBindingTests
             [new ColliderDefinition("knee", center, center, radius)]);
         var set = BindMaterialCloth(rig, withSupport, source, recipe, file with { MaterialRender = [protrusion] });
         BoundClothSurface surface = set.ClothSurface(ClothPartId)!;
-        var slot = new WornClothSlot();
+        var slot = reuseMaterialFactor ? new WornClothSlot(reuseMaterialFactor: true) : new WornClothSlot();
         slot.Prepare(surface);
         var selection = new WornClothSelection(slot, 0, ClothPartId);
         var pose = (Matrix4x4[])rig.Palette.Clone();
@@ -167,6 +170,7 @@ public sealed partial class SkinnedAttachmentBindingTests
         motion.Step(rig.Skeleton, pose, Matrix4x4.Identity, ClothWorkLimits.LayeredStepSeconds, MotionLevel.Held, selection);
         Assert.Equal(WornClothTier.Cloth, motion.ClothStatus.Tier);
         Assert.Equal(WornClothFallback.None, motion.ClothStatus.Fallback);
+        if (reuseMaterialFactor) Assert.Equal(1, slot.LastFrameMaterialWork.Factorizations);
         Assert.True(set.TryGetClothPresentation(motion, ClothPartId, out var live));
         Assert.True(live.IsCurrentPose);
         int peak = surface.Materials[1].MaterialEmbeddings[protrusionIndex].VertexIndex;
@@ -205,6 +209,7 @@ public sealed partial class SkinnedAttachmentBindingTests
                 Vector3.Distance(candidate.Pose(pose, model).WorldCapsule.Start, previousPoint) < radius * .5f);
             Assert.Contains((uint)peak, changedSurface.Materials[1].VisibleIndices);
             Assert.True(slot.Rebind(newMotion, 1, ClothPartId));
+            Assert.Equal(default, slot.LastFrameMaterialWork);
             newMotion.Step(rig.Skeleton, pose, model, 0, MotionLevel.Held, new(slot, 1, ClothPartId));
             Assert.Equal(ClothStepStatus.Accepted, newMotion.ClothStatus.Projection.Status);
             if (moveAtRebind)

@@ -9,9 +9,15 @@ namespace KhaozEngine.Attachments.Render3D;
 /// step the owner without a selection until the handoff completes, or release an owner leaving visibility.</remarks>
 public sealed class WornClothSlot
 {
+    private readonly bool _reuseMaterialFactor;
     private WornClothState? _state;
     internal WornMotion? Owner => _state?.Owner;
     internal WornClothState State => _state!;
+    internal ClothMaterialSolveWork LastFrameMaterialWork => _state?.LastFrameMaterialWork ?? default;
+
+    public WornClothSlot() : this(reuseMaterialFactor: false) { }
+
+    internal WornClothSlot(bool reuseMaterialFactor) => _reuseMaterialFactor = reuseMaterialFactor;
 
     /// <summary>Whether this slot holds a prewarmed material profile.</summary>
     public bool IsPrepared => _state is not null;
@@ -47,7 +53,7 @@ public sealed class WornClothSlot
             rig = ClothRig.Create(rest, coordinates, rig.Triangles, rig.Pins, surface.Description.Hinges.AsSpan(),
                 rig.Material with { HalfThickness = rig.Material.HalfThickness * scale });
         }
-        _state = new(surface, rig, scale);
+        _state = new(surface, rig, scale, _reuseMaterialFactor);
     }
 
     /// <summary>Immediately withdraw a wearer that has left visibility.</summary>

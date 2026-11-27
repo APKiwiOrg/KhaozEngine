@@ -396,7 +396,9 @@ render thread.
 Create a caller-owned `WornClothSlot` and call `Prepare(fittedSurface, scale)` at equip time.
 The default scale is 1. A positive uniform model scale must match the prepared scale. The live
 profile uses the wearer's 1/120 s clock and a cap of eight fixed steps per frame. One prewarmed
-slot owns the material solver, transfer history and contact work for one garment.
+slot owns the material solver, transfer history and contact work for one garment. The public slot
+uses a fresh factor for each coupled material projection. `ClothStatus.MaterialFactorProducts`
+counts attempted factor products across the frame's fixed steps.
 
 Pass a `WornClothSelection(slot, wornIndex, partId)` as the final argument to `WornMotion.Step`
 or `WornMotionBatch.Add`. Nominate the designated visible local wearer. Ordinary swing and held

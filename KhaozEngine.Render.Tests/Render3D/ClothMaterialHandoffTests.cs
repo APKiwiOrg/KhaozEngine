@@ -13,8 +13,10 @@ namespace KhaozEngine.Tests.Render3D;
 [Collection("AllocSensitive")]
 public sealed class ClothMaterialHandoffTests
 {
-    [Fact]
-    public void Material_handoff_matches_the_lifted_chain_pose_and_preserves_mid_blend_reversal()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Material_handoff_matches_the_lifted_chain_pose_and_preserves_mid_blend_reversal(bool reuseMaterialFactor)
     {
         using var rig = new OutfitRig();
         var fixture = ClothAsset(rig, hipOnlyPins: true);
@@ -32,7 +34,7 @@ public sealed class ClothMaterialHandoffTests
         var surface = outfit.ClothSurface(worn, ClothPartId)!;
         var options = new ChainSimulationOptions { HoldBlendSeconds = 1f / 12 };
         var motion = outfit.CreateMotion(null, options);
-        var slot = new WornClothSlot();
+        var slot = reuseMaterialFactor ? new WornClothSlot(reuseMaterialFactor: true) : new WornClothSlot();
         slot.Prepare(surface);
         var selection = new WornClothSelection(slot, worn, ClothPartId);
         var pose = (Matrix4x4[])rig.Palette.Clone();
@@ -104,7 +106,7 @@ public sealed class ClothMaterialHandoffTests
         Assert.False(outfit.TryGetClothPresentation(worn, motion, ClothPartId, out _));
         float demotionEnd = AssertClose(Cheap(motion), outgoing, movingOnly: true);
         if (Environment.GetEnvironmentVariable("KE_CLOTH_WEARER_TRACE") is { Length: > 0 } trace)
-            File.WriteAllText(trace + ".handoff.json", JsonSerializer.Serialize(new
+            File.WriteAllText(trace + (reuseMaterialFactor ? ".reuse.handoff.json" : ".handoff.json"), JsonSerializer.Serialize(new
             {
                 cheapTravel, swingDisplacement, promotion, demotionStart, reversal, movingReversal, carriedDetail, host,
                 approach, demotionEnd, warmBytes,

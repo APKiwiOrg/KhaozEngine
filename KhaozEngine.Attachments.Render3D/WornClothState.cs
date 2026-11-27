@@ -5,9 +5,10 @@ using KhaozEngine.Render3D;
 namespace KhaozEngine.Attachments.Render3D;
 
 // A single solver and display history live together for the entire reservation.
-internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, float scale) : IChainExternalStep
+internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, float scale, bool reuseMaterialFactor)
+    : IChainExternalStep
 {
-    private readonly ClothSimulation _solver = new(rig, ClothWorkLimits.LayeredContact);
+    private readonly ClothSimulation _solver = new(rig, ClothWorkLimits.LayeredContact, reuseMaterialFactor);
     private readonly WornClothSupports _supports = new();
     private readonly WornClothDetail _detail = new(profile);
     private readonly Matrix4x4[] _frameGarmentPalette = new Matrix4x4[profile.JointCount];
@@ -43,10 +44,10 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
     private ClothStepResult _detailProjection;
     private int _substeps;
     private ClothContactWork _solveWork;
-    private long _factorProducts;
 
     internal WornMotion? Owner { get; private set; }
     internal WornClothBinding Binding { get; private set; } = null!;
+    internal ClothMaterialSolveWork LastFrameMaterialWork { get; private set; }
     internal bool ResetForDroppedTime { get; private set; }
     internal float Scale { get; } = scale;
     internal bool Compatible(BoundClothSurface surface) => profile.CompatibleMaterial(surface);
@@ -70,6 +71,7 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
     internal void Release()
     {
         ClearPublication();
+        LastFrameMaterialWork = default;
         Owner = null;
         Binding = null!;
         _hasDisplay = false;
@@ -79,6 +81,7 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
 
     internal void Rebind(WornMotion owner, WornClothBinding binding)
     {
+        LastFrameMaterialWork = default;
         Owner = owner;
         Binding = binding;
         _rebound = true;
@@ -112,7 +115,7 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
     {
         _substeps = 0;
         _solveWork = default;
-        _factorProducts = 0;
+        LastFrameMaterialWork = default;
         ResetForDroppedTime = false;
         _sameKinematicPose = previousModel == model && previousHost.SequenceEqual(host);
         bool recoverFromRefusal = _hasDisplay && _solve.Status != ClothStepStatus.Accepted;
@@ -204,7 +207,7 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
         _solve = _solver.Advance(step);
         _solveWork = new(_solveWork.BroadPhaseVisits + _solve.ContactChecks,
             _solveWork.NarrowPhaseCandidates + _solve.ContactCandidates, _solveWork.SweepRefinements + _solve.SweepRefinements);
-        _factorProducts += _solve.MaterialFactorProducts;
+        LastFrameMaterialWork = LastFrameMaterialWork.Combine(_solver.LastAdvanceMaterialWork);
         _substeps++;
         _supports.EndTick();
     }
@@ -324,7 +327,7 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
                 DetailedProjection = _detailProjection,
                 IsBlending = _hasDisplay && (_settledCloth != _liveRequested || _elapsed < duration),
                 SolveWork = _solveWork,
-                MaterialFactorProducts = _factorProducts,
+                MaterialFactorProducts = LastFrameMaterialWork.FactorProducts,
                 LowerSegments = Binding.Segments.Length,
                 RigidSupports = Binding.Capsules.Length,
                 Hulls = Binding.Hulls.Length,

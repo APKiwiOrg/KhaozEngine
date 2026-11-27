@@ -11,10 +11,14 @@ namespace KhaozEngine.Tests.Render3D;
 public sealed class HangingClothWearerHandoffTests(ITestOutputHelper output)
 {
     [Theory]
-    [InlineData(false, false)]
-    [InlineData(false, true)]
-    [InlineData(true, true)]
-    public void Detailed_cut_remains_exterior_through_promotion_reversal_and_fitted_rest(bool flat, bool refuseFirst)
+    [InlineData(false, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(true, true, false)]
+    [InlineData(false, false, true)]
+    [InlineData(false, true, true)]
+    [InlineData(true, true, true)]
+    public void Detailed_cut_remains_exterior_through_promotion_reversal_and_fitted_rest(bool flat, bool refuseFirst,
+        bool reuseMaterialFactor)
     {
         // #1870: verify the lining, outer skin and rim returned by the wearer during a real handoff.
         const float tick = 1f / 120, blend = 1f / 12;
@@ -26,7 +30,7 @@ public sealed class HangingClothWearerHandoffTests(ITestOutputHelper output)
         double peakPhase = 0;
         int peakProxyNarrow = 0, peakDetailedNarrow = 0, peakCombinedNarrow = 0;
         using var rig = new HangingPanelDrawRig(cut, pose, new ClothDrapeFixture(),
-            useMaterialMapping: true, clothBlendSeconds: blend);
+            useMaterialMapping: true, clothBlendSeconds: blend, reuseMaterialFactor: reuseMaterialFactor);
 
         MotionLevel incoming = flat ? MotionLevel.Simulated : MotionLevel.Held;
         var cheap = Step(0, incoming, false);
@@ -116,6 +120,8 @@ public sealed class HangingClothWearerHandoffTests(ITestOutputHelper output)
                 $"Stale detailed surface at {time:R} s, request {request}, {level}, {sample.Status}, visible clearance {sample.Geometry.MinimumSignedClearance:R} m.");
             Assert.True(sample.Status.Fallback == WornClothFallback.None,
                 $"At {time:R} s, request {request}, {level}, status {sample.Status}, visible clearance {sample.Geometry.MinimumSignedClearance:R} m.");
+            if (reuseMaterialFactor)
+                Assert.Equal(sample.Status.Substeps, rig.CurrentMaterialWork.Factorizations);
             inspectedHandoff |= sample.HasCloth && sample.Status.IsBlending && sample.Status.DetailedProjection.ContactChecks > 0;
             if (sample.Status.DisplayWork.BroadPhaseVisits > peak.DisplayWork.BroadPhaseVisits)
             {

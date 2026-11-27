@@ -51,7 +51,8 @@ internal sealed partial class HangingPanelDrawRig : IDisposable
     }
 
     internal HangingPanelDrawRig(HangingPanelCut cut, in HangingPanelPose bindPose, ClothDrapeFixture? cloth = null,
-        bool matchGuideLift = false, bool useMaterialMapping = false, float clothBlendSeconds = 0)
+        bool matchGuideLift = false, bool useMaterialMapping = false, float clothBlendSeconds = 0,
+        bool reuseMaterialFactor = false)
     {
         (chestBone, supportBone, host, bodyRegions) = CreateHost();
         supportFromBind = Matrix4x4.CreateTranslation(-bindPose.Support.Translation);
@@ -82,7 +83,7 @@ internal sealed partial class HangingPanelDrawRig : IDisposable
         else
         {
             garment.VerifyRestPositions(cut.Fit(drape), allowTrailing: true);
-            InitializeCloth(cloth, cut, garmentSet.ClothSurface(1)!, matchGuideLift);
+            InitializeCloth(cloth, cut, garmentSet.ClothSurface(1)!, matchGuideLift, reuseMaterialFactor);
         }
         hardware = new DrawPanel(rig.Scene, Write(0, bindPose.Wearer));
     }

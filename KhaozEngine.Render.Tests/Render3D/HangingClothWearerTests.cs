@@ -2,7 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using KhaozEngine.Attachments;
 using KhaozEngine.Attachments.Render3D;
 using KhaozEngine.Tests.Attachments;
@@ -17,13 +20,17 @@ public sealed class HangingClothWearerTests
     private const double MeasurementStart = 8;
 
     [Theory]
-    [InlineData(false, false)]
-    [InlineData(false, true)]
-    [InlineData(true, false)]
-    [InlineData(true, true)]
-    public void Frozen_original_cut_meets_all_detailed_display_limits(bool flat, bool batch)
+    [InlineData(false, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(true, false, false)]
+    [InlineData(true, true, false)]
+    [InlineData(false, false, true)]
+    [InlineData(false, true, true)]
+    [InlineData(true, false, true)]
+    [InlineData(true, true, true)]
+    public void Frozen_original_cut_meets_all_detailed_display_limits(bool flat, bool batch, bool reuseMaterialFactor)
     {
-        var failures = Measure(flat, batch, Mapping.Material);
+        var failures = Measure(flat, batch, reuseMaterialFactor ? Mapping.Reuse : Mapping.Material);
         Assert.True(failures.Count == 0,
             $"{failures.Count} failures. {string.Join(", ", failures.GetRange(0, Math.Min(failures.Count, 15)))}");
     }
@@ -37,16 +44,17 @@ public sealed class HangingClothWearerTests
     public void Fitted_registration_controls_replay_the_original_cut(bool flat, bool alternate) =>
         Measure(flat, batch: flat, alternate ? Mapping.Alternate : Mapping.Fitted);
 
-    private enum Mapping { Material, Fitted, Alternate }
+    private enum Mapping { Material, Fitted, Alternate, Reuse }
 
     private static List<(double Time, string Metric, float Value)> Measure(bool flat, bool batch, Mapping mapping)
     {
         var neutral = At(0, flat);
         var cut = new HangingPanelCut();
         bool geometrySelected = mapping == Mapping.Alternate;
+        bool reuse = mapping == Mapping.Reuse;
         var proxy = new ClothDrapeFixture(geometrySelected ? GeometrySelectedRows : null);
         using var wearer = new HangingPanelDrawRig(cut, neutral, proxy, matchGuideLift: geometrySelected,
-            useMaterialMapping: mapping == Mapping.Material);
+            useMaterialMapping: mapping is Mapping.Material or Mapping.Reuse, reuseMaterialFactor: reuse);
         using (var original = new HangingPanelDrawRig(cut, neutral))
             wearer.VerifyOriginalFallback(original, neutral);
         var gate = flat ? new FlatLipReentry(IsFlatLipEligible) : null;
@@ -101,32 +109,59 @@ public sealed class HangingClothWearerTests
             Require(wearer.CurrentClothPose, "current display revision", (float)status.Projection.Status);
             Require(status.Fallback == WornClothFallback.None, "refusal", (float)status.Fallback);
             Require(!status.Solve.Recovered, "fallback recovery", (float)(status.Solve.FallbackStatus ?? ClothStepStatus.Accepted));
+            if (reuse)
+            {
+                ClothMaterialSolveWork work = wearer.CurrentMaterialWork;
+                Require(work.Factorizations == status.Substeps, "factorizations", work.Factorizations);
+                Require(work.ResidualChecks >= status.Substeps * (ClothWorkLimits.IterationLimit - 1),
+                    "residual certificates", work.ResidualChecks);
+            }
             Require(status.DisplayWork.BroadPhaseVisits <= ClothWorkLimits.BroadPhaseVisitLimit,
                 "display broad-phase work", status.DisplayWork.BroadPhaseVisits);
             Require(status.DisplayWork.NarrowPhaseCandidates <= ClothWorkLimits.NarrowPhaseCandidateLimit,
                 "display candidates", status.DisplayWork.NarrowPhaseCandidates);
-            if (time < MeasurementStart) return;
+            bool measured = time >= MeasurementStart;
+            if (!measured && (!reuse || trace is null)) return;
+            string? visiblePositionsSha256 = reuse && trace is not null
+                ? Convert.ToHexStringLower(SHA256.HashData(MemoryMarshal.AsBytes(panel.Vertices[..cut.Rest.Length])))
+                : null;
             ClothObservation geometry = HangingPanelFixture.Observe(pose, panel);
             var closest = wearer.ClosestLiningWitness(pose.MarkerInModel);
             MaterialObservation material = geometry.Material!.Value;
             float lipClearance = MathF.Min(geometry.Lining.Lip, MathF.Min(geometry.Outer.Lip, geometry.Rim.Lip));
-            FlatLipBearingDecision? bearing = !released ? gate?.Observe(driven, geometry.IsLipLoaded, geometry.MarkerGap, lipClearance) : null;
+            FlatLipBearingDecision? bearing = measured && !released
+                ? gate?.Observe(driven, geometry.IsLipLoaded, geometry.MarkerGap, lipClearance) : null;
             if (bearing is { } observed)
                 recoveryPending = observed.Verdict == FlatLipBearingVerdict.Closing;
             ClothObservation proxyWitness = HangingPanelFixture.Observe(pose, wearer.PresentFrozenProxyWitness(pose));
             ClothObservation withoutLift = HangingPanelFixture.Observe(pose, wearer.PresentWithoutOutfitLift());
             float proxyLip = MathF.Min(proxyWitness.Lining.Lip, MathF.Min(proxyWitness.Outer.Lip, proxyWitness.Rim.Lip));
-            FlatLipBearingDecision? proxyBearing = !released
+            FlatLipBearingDecision? proxyBearing = measured && !released
                 ? proxyGate?.Observe(driven, proxyWitness.IsLipLoaded, proxyWitness.MarkerGap, proxyLip)
                 : null;
 
-            trace?.WriteLine(JsonSerializer.Serialize(new
+            if (trace is not null)
             {
-                time, phase = pose.PhaseSeconds, deadlineSample, geometry, bearing, status, proxyWitness, proxyBearing, withoutLift,
-                proxyRows = geometrySelected ? GeometrySelectedRows : null,
-                staticRegistration = wearer.StaticRegistration, maxGuideLiftError = wearer.MaxGuideLiftError,
-                closest, markedFittedOffset = Components(wearer.MarkedFittedOffset), markedBareOffset = Components(wearer.MarkedBareOffset),
-            }));
+                var sample = new
+                {
+                    time, phase = pose.PhaseSeconds, deadlineSample, geometry, bearing, status, proxyWitness, proxyBearing, withoutLift,
+                    proxyRows = geometrySelected ? GeometrySelectedRows : null,
+                    staticRegistration = wearer.StaticRegistration, maxGuideLiftError = wearer.MaxGuideLiftError,
+                    closest, markedFittedOffset = Components(wearer.MarkedFittedOffset), markedBareOffset = Components(wearer.MarkedBareOffset),
+                };
+                if (reuse)
+                {
+                    JsonObject details = JsonSerializer.SerializeToNode(sample)!.AsObject();
+                    details["materialWork"] = JsonSerializer.SerializeToNode(wearer.CurrentMaterialWork);
+                    details["visiblePositionsSha256"] = visiblePositionsSha256;
+                    details["garmentMeshSha256"] = wearer.GarmentMeshDigest;
+                    details["garmentDefinitionSha256"] = wearer.GarmentDefinitionDigest;
+                    trace.WriteLine(details.ToJsonString());
+                }
+                else
+                    trace.WriteLine(JsonSerializer.Serialize(sample));
+            }
+            if (!measured) return;
             Require(geometry.IsExterior, "exterior", geometry.MinimumSignedClearance);
             Require(proxyWitness.IsExterior, "intrinsic exterior", proxyWitness.MinimumSignedClearance);
             Require(material.SeamError <= HangingPanelFixture.SeamLimit, "seam", material.SeamError);

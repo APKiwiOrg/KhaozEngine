@@ -61,15 +61,17 @@ public sealed class WornMotionFloatingPointTests
         AssertBits(direct.JointsFromAnchor, batched.JointsFromAnchor);
     }
 
-    [Fact]
-    public void Cloth_direct_and_batched_match_at_non_tick_poses_under_changed_rounding()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Cloth_direct_and_batched_match_at_non_tick_poses_under_changed_rounding(bool reuseMaterialFactor)
     {
         if (!DeterministicFp.IsSupported) return;
         using var fixture = new WornClothFloatingPointFixture();
         var direct = fixture.Set.CreateMotion(null);
         var batched = fixture.Set.CreateMotion(null);
-        var directSlot = new WornClothSlot();
-        var batchSlot = new WornClothSlot();
+        var directSlot = new WornClothSlot(reuseMaterialFactor);
+        var batchSlot = new WornClothSlot(reuseMaterialFactor);
         directSlot.Prepare(fixture.Set.ClothSurface(1)!);
         batchSlot.Prepare(fixture.Set.ClothSurface(1)!);
         var batch = new WornMotionBatch(new TowardZeroScheduler());

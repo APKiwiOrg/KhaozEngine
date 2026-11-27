@@ -37,14 +37,17 @@ public sealed class ClothDrapeTests(ITestOutputHelper output, ClothDrapeEvidence
     [Fact]
     public void A_withdrawn_lip_releases_the_hem_to_its_bare_plumb_line() => CheckGeometry(evidence.Samples, withdrawn: true);
 
-    [Fact]
-    public void The_near_profile_keeps_the_loaded_and_withdrawn_drape_with_self_contact_work()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void The_near_profile_keeps_the_loaded_and_withdrawn_drape_with_self_contact_work(bool reuseMaterialFactor)
     {
-        CheckGeometry(evidence.LayeredSamples, withdrawn: false);
-        CheckGeometry(evidence.LayeredSamples, withdrawn: true);
+        IReadOnlyList<DrapeSample> samples = reuseMaterialFactor ? evidence.LayeredReuseSamples : evidence.LayeredSamples;
+        CheckGeometry(samples, withdrawn: false);
+        CheckGeometry(samples, withdrawn: true);
         foreach (bool flat in new[] { false, true })
         {
-            DrapeSample last = evidence.LayeredSamples.Last(sample => sample.Flat == flat);
+            DrapeSample last = samples.Last(sample => sample.Flat == flat);
             Assert.InRange(last.PeakSelfContactChecks, 1, last.PeakContactChecks);
             Assert.InRange(last.PeakContactChecks, 1, ClothWorkLimits.LayeredContact.MaxContactChecks);
             Assert.InRange(last.PeakContactCandidates, 1, ClothWorkLimits.LayeredContact.MaxContactCandidates);

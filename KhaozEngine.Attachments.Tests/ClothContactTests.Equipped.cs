@@ -8,11 +8,13 @@ namespace KhaozEngine.Tests.Attachments;
 
 public sealed partial class ClothContactTests(ITestOutputHelper output)
 {
-    [Fact]
-    public void Equipped_breathing_checks_all_contact_work_within_the_near_profile()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Equipped_breathing_checks_all_contact_work_within_the_near_profile(bool reuseMaterialFactor)
     {
         var fixture = new ClothDrapeFixture();
-        var simulation = new ClothSimulation(fixture.Rig, ClothWorkLimits.LayeredContact);
+        var simulation = new ClothSimulation(fixture.Rig, ClothWorkLimits.LayeredContact, reuseMaterialFactor);
         simulation.Reset(fixture.Fitted);
         Span<ClothSupport> first = stackalloc ClothSupport[32];
         Span<ClothSupport> last = stackalloc ClothSupport[32];
@@ -21,6 +23,8 @@ public sealed partial class ClothContactTests(ITestOutputHelper output)
         HangingPanelPose opening = HangingPanelFixture.PoseAt(0);
         PoseInventory(opening, first);
         int broad = 0, narrow = 0, sweeps = 0, impulse = 0, peakTick = 0, self = 0;
+        long peakFactorProducts = 0;
+        ClothMaterialSolveWork materialWork = default;
         float minimumCapsuleClearance = float.PositiveInfinity;
         float minimumTailClearance = float.PositiveInfinity;
         Span<float> hullClearance = [float.PositiveInfinity, float.PositiveInfinity];
@@ -39,6 +43,16 @@ public sealed partial class ClothContactTests(ITestOutputHelper output)
                 $"Tick {tick}, phase {pose.PhaseSeconds:R}, {step.Status}, part {step.PartId}, " +
                 $"iteration {step.Iterations}, broad {step.ContactChecks}, self {step.SelfContactChecks}, " +
                 $"narrow {step.ContactCandidates}, sweeps {step.SweepRefinements}, velocity {step.NormalVelocityChecks}.");
+            ClothMaterialSolveWork work = simulation.LastAdvanceMaterialWork;
+            materialWork = materialWork.Combine(work);
+            if (reuseMaterialFactor)
+            {
+                // The original equipped sheet costs 418,932 products for one current-matrix factor.
+                Assert.Equal(1, work.Factorizations);
+                Assert.InRange(step.MaterialFactorProducts, 1L, 418_932L);
+                Assert.InRange(work.MaxAcceptedResidualRatio, 0d, 1d);
+            }
+            peakFactorProducts = Math.Max(peakFactorProducts, step.MaterialFactorProducts);
             if (step.ContactChecks > broad)
             {
                 broad = step.ContactChecks;
@@ -67,7 +81,9 @@ public sealed partial class ClothContactTests(ITestOutputHelper output)
 
         output.WriteLine($"Broad {broad} at tick {peakTick}, self and shared refit {self}, narrow {narrow}, " +
             $"sweeps {sweeps}, normal work {impulse}, extra capsule clearance {minimumCapsuleClearance:R} m. " +
-            $"Tail clearance {minimumTailClearance:R} m and hull clearances {hullClearance[0]:R}, {hullClearance[1]:R} m.");
+            $"Tail clearance {minimumTailClearance:R} m and hull clearances {hullClearance[0]:R}, {hullClearance[1]:R} m. " +
+            $"Peak material factor products per tick {peakFactorProducts}.");
+        output.WriteLine($"Material work across {3 * cycle} ticks: {materialWork}.");
         Assert.InRange(minimumTailClearance, -HangingPanelFixture.ClearanceTolerance, .00055f);
         for (int i = 0; i < hullClearance.Length; i++)
             Assert.InRange(hullClearance[i], 0, .00055f);

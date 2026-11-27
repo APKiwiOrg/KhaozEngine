@@ -18,11 +18,13 @@ public sealed class ClothDrapeEvidence
     internal static readonly Vector3 Gravity = new(0, -9.81f, 0);
     private readonly Lazy<List<DrapeSample>> _samples = new(() => Measure(layered: false));
     private readonly Lazy<List<DrapeSample>> _layered = new(() => Measure(layered: true));
+    private readonly Lazy<List<DrapeSample>> _layeredReuse = new(() => Measure(layered: true, reuseMaterialFactor: true));
 
     internal IReadOnlyList<DrapeSample> Samples => _samples.Value;
     internal IReadOnlyList<DrapeSample> LayeredSamples => _layered.Value;
+    internal IReadOnlyList<DrapeSample> LayeredReuseSamples => _layeredReuse.Value;
 
-    private static List<DrapeSample> Measure(bool layered)
+    private static List<DrapeSample> Measure(bool layered, bool reuseMaterialFactor = false)
     {
         var fixture = new ClothDrapeFixture();
         var samples = new List<DrapeSample>();
@@ -35,7 +37,7 @@ public sealed class ClothDrapeEvidence
             ClothWorkLimits limits = layered
                 ? ClothWorkLimits.LayeredContact
                 : new ClothWorkLimits(4, 24, 256, 4096, MaxMaterialFactorProducts: 1_675_728);
-            var simulation = new ClothSimulation(fixture.Rig, limits);
+            var simulation = new ClothSimulation(fixture.Rig, limits, reuseMaterialFactor);
             simulation.Reset(fixture.Fitted);
             HangingPanelPose opening = At(0, flat);
             int recoveries = 0, checks = 0, candidates = 0, velocityContacts = 0;
@@ -81,6 +83,7 @@ public sealed class ClothDrapeEvidence
         }
 
         string? tracePath = Environment.GetEnvironmentVariable("KE_CLOTH_DRAPE_TRACE");
+        if (!string.IsNullOrEmpty(tracePath) && reuseMaterialFactor) tracePath += ".reuse";
         using StreamWriter? trace = string.IsNullOrEmpty(tracePath) ? null :
             File.CreateText(layered ? tracePath + ".layered" : tracePath);
         foreach (DrapeSample sample in samples)

@@ -8,12 +8,18 @@
 #if defined(_WIN32)
 #include <string>
 #else
+#include "thread_error_fallback.hpp"
+
 #include <pthread.h>
 #include <string.h>
 
 #include <atomic>
 #include <cstdlib>
 #include <memory>
+#endif
+
+#if defined(__linux__)
+constinit thread_local bool khaoz::abi::ThreadErrorFallback::active_ = false;
 #endif
 
 namespace {
@@ -29,64 +35,54 @@ using ErrorMessage = std::unique_ptr<char, decltype(&std::free)>;
 // POSIX thread-specific slots report allocation failure without entering the loader's TLS resolver.
 class ThreadErrors {
   public:
-    ThreadErrors() noexcept {
-        message_key_valid_ = pthread_key_create(&message_key_, std::free) == 0;
-        failure_key_valid_ = pthread_key_create(&failure_key_, nullptr) == 0;
-    }
+    ThreadErrors() noexcept : message_key_valid_(pthread_key_create(&message_key_, std::free) == 0) {}
 
     ~ThreadErrors() {
         // Thread exit can race dlclose. Published slots stay registered so libc
         // can finish their cleanup without calling back into this library.
-        if (published_.load(std::memory_order_relaxed)) {
-            return;
-        }
-        if (message_key_valid_) {
+        if (message_key_valid_ && !published_.load(std::memory_order_relaxed)) {
             pthread_key_delete(message_key_);
-        }
-        if (failure_key_valid_) {
-            pthread_key_delete(failure_key_);
         }
     }
 
     void record(const char* message) noexcept {
-        if (!message_key_valid_ || !failure_key_valid_) {
+        if (!message_key_valid_) {
+            fallback_.record();
             return;
         }
-        ErrorMessage copy(::strdup(message), std::free);
         auto* previous = static_cast<char*>(pthread_getspecific(message_key_));
-        if (pthread_setspecific(message_key_, copy.get()) != 0) {
-            registration_failed_.store(true, std::memory_order_relaxed);
+        auto* replacement = ::strdup(message);
+        if (pthread_setspecific(message_key_, replacement) != 0) {
+            const ErrorMessage uninstalled(replacement, std::free);
+            fallback_.record();
             return;
         }
         const ErrorMessage old_message(previous, std::free);
-        if (copy.release() != nullptr || pthread_setspecific(failure_key_, &failure_marker_) == 0) {
-            published_.store(true, std::memory_order_relaxed);
-        } else {
-            registration_failed_.store(true, std::memory_order_relaxed);
+        if (replacement == nullptr) {
+            fallback_.record();
+            return;
         }
+        published_.store(true, std::memory_order_relaxed);
+        fallback_.clear();
     }
 
     [[nodiscard]] std::string_view message() const noexcept {
-        if (!message_key_valid_ || !failure_key_valid_) {
+        if (fallback_.active()) {
             return storage_failure;
         }
-        if (const auto* value = static_cast<const char*>(pthread_getspecific(message_key_))) {
-            return value;
-        }
-        if (pthread_getspecific(failure_key_) != nullptr || registration_failed_.load(std::memory_order_relaxed)) {
-            return storage_failure;
+        if (message_key_valid_) {
+            if (const auto* value = static_cast<const char*>(pthread_getspecific(message_key_))) {
+                return value;
+            }
         }
         return {};
     }
 
   private:
+    khaoz::abi::ThreadErrorFallback fallback_;
     pthread_key_t message_key_{};
-    pthread_key_t failure_key_{};
-    bool message_key_valid_ = false;
-    bool failure_key_valid_ = false;
+    bool message_key_valid_;
     std::atomic<bool> published_{false};
-    std::atomic<bool> registration_failed_{false};
-    char failure_marker_{};
 };
 
 ThreadErrors last_error;

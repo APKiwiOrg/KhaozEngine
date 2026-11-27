@@ -294,7 +294,12 @@ refs and attempts after one.
 
 The dispatch-only workflow uses GitHub's T4 larger runners for Windows Direct3D 11 and Vulkan.
 The organization runner group `gpu-bench` admits this workflow on main only. Linux hardware uses
-a machine.dev on-demand T4 in AWS us-east-1, with the same GPU at a lower per-minute rate. The Linux
+a machine.dev on-demand T4 in AWS us-east-1, with the same GPU at a lower per-minute rate. Spot T4
+capacity costs about 60% less, but machine.dev does not resume or rerun a job whose spot instance is
+reclaimed, so a paid unit would fail after consuming its single approved attempt
+([machine.dev spot guide](https://machine.dev/docs/guides/spot/)). StarSling's consumer-GPU runners are
+not an option, because its GPU beta admits only accounts with more than 300,000 runner minutes
+([#1557](https://github.com/APKiwiOrg/KhaozEngine/issues/1557)). The Linux
 runner registers just in time outside that group. The dispatch-only trigger and repository fork
 approval policy guard its allocation. Software rehearsals and free admission use standard GitHub-hosted runners.
 

@@ -8,6 +8,16 @@ set(CMAKE_C_VISIBILITY_PRESET hidden)
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
 
+# Release builds carry debug information, so CI can publish it as the symbols artifact before it strips
+# the shipped library. MSVC keeps it in the objects and links a separate PDB. /DEBUG would turn off
+# unreferenced-code removal and folding, so they are turned back on.
+if(MSVC)
+    set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT Embedded)
+    add_link_options(/DEBUG /OPT:REF /OPT:ICF)
+else()
+    add_compile_options(-g)
+endif()
+
 # Compile the unmodified upstream C source before adding the engine warning flags.
 set(third_party "${CMAKE_CURRENT_SOURCE_DIR}/third_party")
 add_library(khaoz_native_doctest INTERFACE)

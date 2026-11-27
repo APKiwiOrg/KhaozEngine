@@ -43,6 +43,12 @@ configure, build and CTest through build-slot with a label for each command.
     cmake --build --preset linux-x64
     ctest --preset linux-x64
 
+### Linux arm64
+
+    cmake --preset linux-arm64
+    cmake --build --preset linux-arm64
+    ctest --preset linux-arm64
+
 ### Linux x64 with address and undefined behavior sanitizers
 
     cmake --preset linux-x64-asan
@@ -56,6 +62,9 @@ configure, build and CTest through build-slot with a label for each command.
     ctest --preset windows-x64
 
 Each preset writes the build and compilation database under out/build in this directory.
+Release builds carry debug information. MSVC links it into a separate PDB. CI splits it into a
+symbols artifact and strips the shipped library. Shipped Linux libraries are built inside the
+`manylinux_2_28` images, so they need glibc 2.28 at most.
 
 ## Source checks
 

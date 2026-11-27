@@ -71,6 +71,31 @@ all 1,200 detailed poses with zero refusals and zero recovery attempts. [Hosted 
 | 60 Hz | Cloth | 5.595 | 6.732 | 12.372 |
 | 60 Hz | Swing | 0.401 | 0.438 | 0.463 |
 
+### Reused cloth factor CPU comparison
+
+`ClothPreparationCostDiagnostics.Report_reused_factor_cloth_preparation_cost` compares the public
+direct natural-order solve and the internal sparse factor-reuse solve. Each cadence has two active
+cloth rows on the same raised garment and two capsules, using the same preparation window as the
+close cloth screen. The direct solve factors four times per fixed tick. The prototype factors once
+at 225,234 products per tick and certifies the true residual of each projection. The rows report
+those counts and the accepted residual ratio outside the preparation window.
+
+After the Release build above, run the comparison smoke on a headless test process. It compares all
+published proxy and detailed positions across both modes for its 12 observed frames per cadence and
+emits null duration fields.
+
+```sh
+KE_GPU_TESTS=0 KE_CLOTH_FACTOR_COMPARISON_SMOKE=1 dotnet test \
+  KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build \
+  --filter 'FullyQualifiedName=KhaozEngine.Tests.Render3D.ClothPreparationCostDiagnostics.Report_reused_factor_cloth_preparation_cost' \
+  --logger 'console;verbosity=detailed'
+```
+
+The comparison has its own exact-commit approval. Its first hosted attempt uses `gpu-hosted-bench.yml`
+on `main`, the detached full workload SHA as `ref`, `linux-vulkan` as `legs` and the comparison filter
+above. Each of the four rows runs 1,200 settle, 120 warm and 600 measured frames. The scope is one
+close wearer and leaves the 32-wearer CPU, renderer and GPU qualification to their own units.
+
 ## Equipment coverage cost evidence
 
 The recession-table implementation has headless carry, descriptor, submission-history and allocation

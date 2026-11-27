@@ -260,7 +260,12 @@ def check_gpu_scope(matcher, rules, manifest, canonical, scratch):
     gpu_roots, use = device_tests(canonical, manifest)
     assert all(manifest[segment]['role'] == 'test' for segment in requested), requested
     selected = {path for segment in requested for path in manifest[segment]['roots']}
-    assert selected == gpu_roots, f'GPU segment roots differ from device tests: {sorted(selected ^ gpu_roots)}'
+    # Device tests that need the native core library skip on every GPU leg, so the native core
+    # workflow owns them. Each device test project belongs to exactly one of the two workflows.
+    native = check_native_core_scope(matcher, rules, manifest)
+    assert not selected & native, f'Device tests owned by both workflows: {sorted(selected & native)}'
+    owned = selected | native
+    assert owned == gpu_roots, f'Device test owners differ from device tests: {sorted(owned ^ gpu_roots)}'
     outside = 'tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf/RendererPerfWaterOpticsRecipeTests.cs'
     assert use.search(source_code(outside)) and not any(
         outside.startswith(str(Path(project).parent) + '/') for project in canonical
@@ -402,7 +407,6 @@ def main():
         scratch = Path(scratch)
         check_gpu_scope(matcher, rules, manifest, set(canonical), scratch)
         check_native_call_sites(matcher, rules, manifest, scratch)
-        check_native_core_scope(matcher, rules, manifest)
         full = plan(True, [], scratch)
         roots = projects(scratch / 'product.slnx')
         tests = projects(scratch / 'tests.slnx')

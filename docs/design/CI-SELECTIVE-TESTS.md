@@ -126,14 +126,16 @@ The build helper checks the segment inventory and rules against the actual graph
 conditional references. A valid rule set with a stale project mapping fails the check. Files known
 to be prose may skip compilation and still run whole-tree convention guards.
 
-Native correctness uses the same scope rules on pull requests and main pushes. GPU selects
-the dependency closures of canonical-solution test projects with device-gated tests. Foliage
-selects `map-doc` and `render`, terrain selects `tile-world-physics`, and Windows console selects
-its two probe compile roots. The native core workflow selects `gpu-core` and the pack and smoke
-compile roots. Every full scope selects all five workflows. Shared assets, the GPU build
-scripts, the Windows console smoke script, the C++ sources under `native/` and the golden scene
-and grid the native core tests read from `KhaozEngine.Render.Tests` are full overrides, since no
-project closure reaches them.
+Native correctness uses the same scope rules on pull requests and main pushes. The dependency
+closures of canonical-solution test projects with device-gated tests are split between two owners.
+The native core workflow owns `gpu-core`, because every device fact in `KhaozEngine.Gpu.Core.Tests`
+needs the native library that only that workflow builds, so those facts skip on every GPU leg. GPU
+selects the rest. Each device test project has exactly one owner. Foliage selects `map-doc` and
+`render`, terrain selects `tile-world-physics`, and Windows console selects its two probe compile
+roots. The native core workflow selects `gpu-core` and the pack and smoke compile roots. Every full
+scope selects all five workflows. Shared assets, the GPU build scripts, the Windows console smoke
+script, the C++ sources under `native/` and the golden scene and grid the native core tests read
+from `KhaozEngine.Render.Tests` are full overrides, since no project closure reaches them.
 
 The Product CI tooling fixture derives the GPU project roster and checks each workflow's actual
 segment inputs, the foliage build list and the projects the native core workflow builds, packs

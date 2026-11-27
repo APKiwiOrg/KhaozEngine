@@ -39,6 +39,14 @@ The fixture is for the managed loader test. Keep the `khaoz_native_vulkan_startu
 beside it for the managed startup refusal tests. Both fixtures stay out of the runtime
 package.
 
+`CoreGoldenTests` renders a managed golden scene through `Render2DSnapshot` with the native backend
+seated as `VulkanNative` and `KE_GRAPHICS_BACKEND=vulkan-native` pinned, so the capture cannot fall
+back to another backend. It compares the result with the committed
+`KhaozEngine.Render.Tests/Gpu/goldens/<scene>.vulkan-native.txt` grid at tolerance `0.01` and never
+writes a golden. The scene source is linked from `KhaozEngine.Render.Tests`, so the managed golden test
+and this one draw the same calls. That grid was baked on Linux lavapipe, which makes the lavapipe CI leg
+the authoritative comparison. A MoltenVK run is advisory.
+
 The report-only frame probe requires `KE_NATIVE_FRAME_TIMING=1` in addition to
 `KE_NATIVE_TESTS=1`. It times submit for the 3,335-record random and frame-coherent workloads and
 can write a JSON receipt at `KE_NATIVE_FRAME_RECEIPT`.

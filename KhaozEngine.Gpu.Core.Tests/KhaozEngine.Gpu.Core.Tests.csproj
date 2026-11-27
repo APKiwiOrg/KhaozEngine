@@ -19,6 +19,9 @@
     <ProjectReference Include="../KhaozEngine.Imaging/KhaozEngine.Imaging.csproj" />
     <ProjectReference Include="../KhaozEngine.TestSupport.Gpu/KhaozEngine.TestSupport.Gpu.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../KhaozEngine.Render.Tests/Gpu/Scene2DPrimitivesScene.cs" Link="Scene2DPrimitivesScene.cs" />
+  </ItemGroup>
   <ItemGroup Condition="'$(KhaozNativeLibPath)' != ''">
     <None Include="$([System.IO.Path]::GetDirectoryName('$(KhaozNativeLibPath)'))/*khaoz_native_stale_abi_fixture$([System.IO.Path]::GetExtension('$(KhaozNativeLibPath)'))"
           CopyToOutputDirectory="PreserveNewest" />

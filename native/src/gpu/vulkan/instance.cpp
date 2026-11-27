@@ -70,7 +70,8 @@ khaoz_result create_instance(khaoz_gpu_device& device, bool enable_validation, u
         return error(KHAOZ_ERROR_VULKAN_UNAVAILABLE, "No compatible Vulkan driver is installed");
     }
     if (created != VK_SUCCESS) {
-        return check(created, "Could not create a Vulkan 1.3 instance with the requested configuration");
+        return check(created, enable_validation ? "Could not create a validation-enabled Vulkan 1.3 instance"
+                                                : "Could not create an unlayered Vulkan 1.3 instance");
     }
 
     volkLoadInstanceTable(&device.instance_api, device.instance);

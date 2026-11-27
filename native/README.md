@@ -92,8 +92,9 @@ reads `KHAOZ_NATIVE_VULKAN_LOADER`. The explicit loader function accepts a path 
 that manage their own environment. The selector entry point passes adapter metadata in
 enumeration order to its callback, then uses that same enumeration to open the chosen
 device. It checks driver availability and adapter eligibility without layers before creating a
-validation-enabled instance. Its startup status identifies a missing driver, including an
-instance that enumerates no devices. Devices use per-instance and per-device dispatch tables.
+validation-enabled instance. A failure to open the unlayered instance or enumerate an eligible
+adapter reports machine unavailability. Startup status identifies a missing driver, including
+an instance that enumerates no devices. Devices use per-instance and per-device dispatch tables.
 Portability enumeration and the portability subset are enabled when exposed. The sampler uses
 zero mip LOD bias when the portability subset is enabled, since the spike does not enable
 the optional portability feature for sampler bias. The capability reports the bias mode

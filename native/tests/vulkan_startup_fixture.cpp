@@ -12,7 +12,14 @@ struct VkPhysicalDevice_T {};
 
 namespace {
 
-enum class startup_mode : uint8_t { supported_with_unloadable_layer, missing_driver_and_layer, zero_devices };
+enum class startup_mode : uint8_t {
+    supported_with_unloadable_layer,
+    missing_driver_and_layer,
+    zero_devices,
+    instance_initialization_failed,
+    instance_host_memory_failed,
+    device_enumeration_failed,
+};
 startup_mode mode{};
 VkInstance_T unlayered_instance;
 VkInstance_T failed_output;
@@ -50,14 +57,23 @@ VKAPI_ATTR VkResult VKAPI_CALL instance_layers(uint32_t* count, VkLayerPropertie
 
 VKAPI_ATTR VkResult VKAPI_CALL create_instance(const VkInstanceCreateInfo* info, const VkAllocationCallbacks*,
                                                VkInstance* instance) {
-    if (info->enabledLayerCount == 0 && mode != startup_mode::missing_driver_and_layer) {
-        *instance = &unlayered_instance;
-        return VK_SUCCESS;
+    *instance = &failed_output;
+    if (mode == startup_mode::missing_driver_and_layer) {
+        return VK_ERROR_INCOMPATIBLE_DRIVER;
+    }
+    if (info->enabledLayerCount > 0) {
+        return mode == startup_mode::supported_with_unloadable_layer ? VK_ERROR_LAYER_NOT_PRESENT
+                                                                     : VK_ERROR_INCOMPATIBLE_DRIVER;
+    }
+    if (mode == startup_mode::instance_initialization_failed) {
+        return VK_ERROR_INITIALIZATION_FAILED;
+    }
+    if (mode == startup_mode::instance_host_memory_failed) {
+        return VK_ERROR_OUT_OF_HOST_MEMORY;
     }
 
-    *instance = &failed_output;
-    return mode == startup_mode::supported_with_unloadable_layer ? VK_ERROR_LAYER_NOT_PRESENT
-                                                                 : VK_ERROR_INCOMPATIBLE_DRIVER;
+    *instance = &unlayered_instance;
+    return VK_SUCCESS;
 }
 
 VKAPI_ATTR void VKAPI_CALL destroy_instance(VkInstance instance, const VkAllocationCallbacks*) {
@@ -67,6 +83,9 @@ VKAPI_ATTR void VKAPI_CALL destroy_instance(VkInstance instance, const VkAllocat
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL physical_devices(VkInstance, uint32_t* count, VkPhysicalDevice* devices) {
+    if (mode == startup_mode::device_enumeration_failed) {
+        return VK_ERROR_INITIALIZATION_FAILED;
+    }
     if (mode == startup_mode::zero_devices) {
         *count = 0;
         return VK_SUCCESS;

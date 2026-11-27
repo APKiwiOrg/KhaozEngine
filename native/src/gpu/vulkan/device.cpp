@@ -87,9 +87,11 @@ khaoz_result bootstrap(khaoz_gpu_device& device, const khaoz_gpu_device_desc& de
     const std::lock_guard lock(bootstrap_gate);
     volkInitializeCustom(device.get_instance_proc);
     const reset_volk reset;
+    // A failed unlayered instance is a support refusal, regardless of the driver's result.
+    // The instance keeps its diagnostic and any separate missing-driver status.
     auto result = create_instance(device, false, status);
     if (result != KHAOZ_OK) {
-        return result;
+        return KHAOZ_ERROR_VULKAN_UNAVAILABLE;
     }
 
     const bool validation = !probe_only && desc.enable_validation != 0;
@@ -98,7 +100,7 @@ khaoz_result bootstrap(khaoz_gpu_device& device, const khaoz_gpu_device_desc& de
         // Check the machine before asking for validation. Layers can fail or hide adapters.
         result = select_adapter(device, nullptr, nullptr, status);
         if (result != KHAOZ_OK) {
-            return result;
+            return KHAOZ_ERROR_VULKAN_UNAVAILABLE;
         }
         device.close_instance();
         result = create_instance(device, true, configured_status);
@@ -109,13 +111,14 @@ khaoz_result bootstrap(khaoz_gpu_device& device, const khaoz_gpu_device_desc& de
 
     result =
         select_adapter(device, desc.device_name_contains, options.selection, validation ? configured_status : status);
-    if (validation && result == KHAOZ_ERROR_VULKAN_UNAVAILABLE) {
-        return KHAOZ_ERROR_INTERNAL;
+    if (result == KHAOZ_OK) {
+        return probe_only ? KHAOZ_OK : create_logical_device(device);
     }
-    if (result != KHAOZ_OK || probe_only) {
-        return result;
+    if (validation) {
+        return result == KHAOZ_ERROR_VULKAN_UNAVAILABLE ? KHAOZ_ERROR_INTERNAL : result;
     }
-    return create_logical_device(device);
+    // An invalid selector result is a caller error. Other failures are from the support check.
+    return result == KHAOZ_ERROR_INVALID_ARGUMENT ? result : KHAOZ_ERROR_VULKAN_UNAVAILABLE;
 }
 
 khaoz_result create(const khaoz_gpu_device_desc* desc, const startup_options& options, khaoz_gpu_device** out_device) {

@@ -15,6 +15,9 @@ public sealed class CoreStartupTests
         SupportedWithUnloadableLayer,
         MissingDriverAndLayer,
         ZeroDevices,
+        InstanceInitializationFailed,
+        InstanceHostMemoryFailed,
+        DeviceEnumerationFailed,
     }
 
     [NativeFact]
@@ -37,12 +40,30 @@ public sealed class CoreStartupTests
     public void An_unlayered_instance_with_zero_devices_is_a_missing_driver()
         => WithStartupFixture(StartupMode.ZeroDevices, "1", AssertMissingDriver);
 
+    [NativeFact]
+    public void Unlayered_instance_initialization_failure_is_a_machine_refusal()
+        => WithStartupFixture(StartupMode.InstanceInitializationFailed, "1", AssertOtherMachineRefusal);
+
+    [NativeFact]
+    public void Unlayered_instance_host_memory_failure_is_a_machine_refusal()
+        => WithStartupFixture(StartupMode.InstanceHostMemoryFailed, "1", AssertOtherMachineRefusal);
+
+    [NativeFact]
+    public void Unlayered_device_enumeration_failure_is_a_machine_refusal()
+        => WithStartupFixture(StartupMode.DeviceEnumerationFailed, null, AssertOtherMachineRefusal);
+
+    private static void AssertOtherMachineRefusal(CoreVulkanBackendProvider provider)
+        => AssertMachineRefusal(provider, driverPackage: null);
+
     private static void AssertMissingDriver(CoreVulkanBackendProvider provider)
+        => AssertMachineRefusal(provider, driverPackage: "mesa-vulkan-drivers");
+
+    private static void AssertMachineRefusal(CoreVulkanBackendProvider provider, string? driverPackage)
     {
         Assert.False(provider.IsSupported());
         var refusal = Assert.Throws<VulkanBackendCreationUnsupportedException>(() => provider.CreateHeadless());
         Assert.Equal(VulkanBackendCreationRefusal.MachineUnsupported, refusal.Reason);
-        Assert.Equal("mesa-vulkan-drivers", refusal.DriverPackage);
+        Assert.Equal(driverPackage, refusal.DriverPackage);
         Assert.Equal("GpuBackendSelector.IsBackendSupported", refusal.Probe);
         Assert.False(string.IsNullOrEmpty(refusal.MissingRequirement));
     }

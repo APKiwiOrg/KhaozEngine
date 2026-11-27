@@ -47,6 +47,8 @@ status=0
 dotnet test KhaozEngine.Gpu.Core.Tests/KhaozEngine.Gpu.Core.Tests.csproj -c Release --no-build \
     --settings "$settings" --filter "Category!=Diagnostic&Category!=LiveSocket" \
     --logger "trx;LogFileName=asan.trx" --results-directory "$results" || status=$?
+# Printed before the log check, so a failure before any test host starts reads as that failure.
+echo "dotnet test exit status: $status"
 
 set -- "$logs"/testhost.*
 if [ ! -f "$1" ]; then

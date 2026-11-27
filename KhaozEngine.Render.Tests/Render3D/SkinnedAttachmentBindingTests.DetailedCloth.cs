@@ -223,6 +223,17 @@ public sealed partial class SkinnedAttachmentBindingTests
                 Vector3 newPoint = Vector3.Transform(accepted.DetailedVertices(1).Span[peak].Position, accepted.Model);
                 Assert.True(Vector3.Distance(previousPoint, newPoint) > 2 * radius);
                 Assert.False(set.TryGetClothPresentation(motion, ClothPartId, out _));
+
+                newMotion.Step(rig.Skeleton, pose, model, ClothWorkLimits.LayeredStepSeconds, MotionLevel.Held,
+                    new(slot, 1, ClothPartId));
+                Assert.Equal(WornClothFallback.None, newMotion.ClothStatus.Fallback);
+                Assert.Equal(1, newMotion.ClothStatus.Substeps);
+                Assert.Equal(ClothStepStatus.Accepted, newMotion.ClothStatus.Solve.Status);
+                Assert.Equal(reuseMaterialFactor ? 1 : newMotion.ClothStatus.Solve.Iterations,
+                    slot.LastFrameMaterialWork.Factorizations);
+                Assert.True(rebound.TryGetClothPresentation(1, newMotion, ClothPartId, out var stepped));
+                Assert.True(stepped.IsCurrentPose);
+                Assert.Same(changedSurface, stepped.Surface);
                 return;
             }
 

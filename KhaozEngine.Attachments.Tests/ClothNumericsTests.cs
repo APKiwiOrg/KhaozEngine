@@ -11,6 +11,23 @@ public sealed class ClothNumericsTests
     private static readonly ClothMaterial Material = ClothDrapeTests.Woven with { NormalAirDrag = 0 };
 
     [Fact]
+    public void A_refused_direct_factor_still_charges_its_full_bound()
+    {
+        Vector3[] rest = [Vector3.Zero, .1f * Vector3.UnitX, .1f * Vector3.UnitY];
+        var rig = ClothRig.Create(rest, [Vector2.Zero, Vector2.UnitX, Vector2.UnitY], [new(0, 1, 2)],
+            [0, 1], [], Material with { DampingSeconds = float.MaxValue });
+        var simulation = new ClothSimulation(rig, new ClothWorkLimits(4, 0, 0, 0));
+        simulation.Reset(rest);
+
+        ClothStepResult step = simulation.Advance(new ClothSubstep(rest.AsSpan(0, 2), [], [], StepSeconds, Vector3.Zero));
+
+        Assert.Equal(ClothStepStatus.NonfiniteState, step.Status);
+        Assert.Equal(4, step.MaterialFactorProducts);
+        Assert.Equal(0, simulation.LastAdvanceMaterialWork.FactorProducts);
+        Assert.Equal(rest, simulation.Positions.ToArray());
+    }
+
+    [Fact]
     public void A_contact_margin_does_not_launch_a_stationary_sheet()
     {
         Vector3[] rest = [new(0, Material.HalfThickness, 0), new(.01f, Material.HalfThickness, 0),

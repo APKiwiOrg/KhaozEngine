@@ -736,20 +736,24 @@ particle's coverage, the solver refits the bounds that depend on that particle. 
 lists retest membership for the refitted faces and retain their other candidates. Each runtime
 bound refit, overlap test and candidate recheck consumes the same work budget.
 `MaxMaterialFactorProducts` independently bounds Cholesky products. The direct path reserves one
-full factor per configured iteration at admission. `MaterialFactorProducts` counts the products
-evaluated, including the completed factor work before a failed pivot.
+full factor per configured iteration at admission. The public `MaterialFactorProducts` bound
+charges a full factor for every attempt, including one that stops at a failed pivot. The internal
+work counters record the products actually evaluated.
 
-The internal factor reuse prototype reserves one factor per tick. It directly solves the first
-linearization and uses that factor as a preconditioner for conjugate gradients on every later
-linearization. Each later solve starts from zero and applies its own assembled matrix, including
-its current membrane and hinge terms. A projection is admitted only after recomputing the true
+The internal factor reuse prototype reserves one sparse Cholesky factor per tick. At bind time,
+triangle and hinge couplings determine the graph of free three-axis node blocks. Elimination chooses
+the lowest current degree, with ties resolved by original free node ordinal, and records the exact
+fill. The first solve of the tick factors its current matrix in that order. Later solves start
+from zero and reuse the factor as a preconditioner for conjugate gradients on their own assembled
+matrices. Assembly and matrix-vector products use the original degree order. A projection is
+admitted only after recomputing the true
 double-precision residual with that matrix and checking `||b - A x|| <= 1e-12 + 1e-6 * ||b||`.
 Each later solve has at most 16 correction iterations. A finite solve that cannot meet the bound
 returns `MaterialSolveWork`. Numerical breakdown returns `NonfiniteState`. The next tick rebuilds
 the factor, and the fixed-step attempt follows the same state publication rules as the direct path.
 
 The reuse workspace is allocated with the instance. For `n` free scalar degrees of freedom,
-`E` skyline off-diagonal entries, `S` structurally present off-diagonal matrix entries and `q`
+`E` filled off-diagonal factor entries, `S` structurally present off-diagonal matrix entries and `q`
 later projections, a tick uses at most `2 E (1 + 16 q)` triangular products,
 `(n + 2 S) (1 + 32 q)` matrix-vector products counted as scalar multiplications, and
 `n (2 + 113 q)` vector multiplications. The prototype charges triangular products for the

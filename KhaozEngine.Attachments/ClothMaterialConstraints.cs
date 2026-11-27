@@ -10,6 +10,8 @@ internal sealed class ClothMaterialConstraints(ClothRig rig, ClothWorkLimits lim
     private readonly float[] _multipliers = new float[3 * rig.Membranes.Length + rig.Hinges.Length];
     private readonly ClothMaterialRow[] _rows = new ClothMaterialRow[3 * rig.Membranes.Length + rig.Hinges.Length];
 
+    internal long ProductsPerFactor => _system.FactorProducts;
+
     internal void Begin()
     {
         Array.Clear(_multipliers);

@@ -10,6 +10,57 @@ public sealed partial class ClothContactTests
     [Fact]
     public void Distant_parts_of_one_fold_clear_on_both_skins_without_launching()
     {
+        ClothRig rig = FoldedStrip();
+        Vector3[] rest = rig.RestPositions.ToArray();
+        var contact = new ClothContact(rig, ClothWorkLimits.LayeredContact);
+        var step = new ClothSubstep([], [], [], Seconds, Vector3.Zero);
+        Vector3[] working = rest.AsSpan().ToArray();
+
+        contact.Begin();
+        for (int iteration = 0; iteration < 4; iteration++)
+            Assert.Equal(ClothStepStatus.Accepted, contact.Project(rest, working, step));
+        Vector3[] velocities = new Vector3[working.Length];
+        for (int i = 0; i < working.Length; i++)
+            velocities[i] = (working[i] - rest[i] - contact.PositionBias[i]) / Seconds;
+        Assert.Equal(ClothStepStatus.Accepted, contact.Complete(rest, working, velocities, step));
+
+        Assert.True(working[0].Z < 0);
+        Assert.True(working[8].Z > rest[8].Z);
+        Assert.True(DistanceToTriangle(working[8], working[0], working[1], working[3]) >= 2 * Material.HalfThickness);
+        Assert.All(velocities, velocity => Assert.InRange(velocity.Length(), 0, .000001f));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_fixed_material_step_separates_the_two_sides_of_a_fold(bool reuseMaterialFactor)
+    {
+        ClothRig rig = FoldedStrip();
+        var simulation = new ClothSimulation(rig, ClothWorkLimits.LayeredContact, reuseMaterialFactor);
+        simulation.Reset(rig.RestPositions);
+        var step = new ClothSubstep([], [], [], Seconds, Vector3.Zero);
+        float required = 2 * rig.Material.HalfThickness - .00025f;
+        Assert.True(Gap(simulation.Positions) < required);
+
+        for (int tick = 0; tick < 2; tick++)
+        {
+            ClothStepResult result = simulation.Advance(step);
+            Assert.Equal(ClothStepStatus.Accepted, result.Status);
+            if (tick == 0)
+            {
+                Assert.True(result.SelfContactChecks > 0);
+                Assert.True(result.ContactCandidates > 0);
+            }
+            Assert.True(Gap(simulation.Positions) >= required);
+            Assert.Equal(reuseMaterialFactor ? 1 : result.Iterations, simulation.LastAdvanceMaterialWork.Factorizations);
+            if (reuseMaterialFactor) Assert.True(simulation.LastAdvanceMaterialWork.ResidualChecks > 0);
+        }
+
+        static float Gap(ReadOnlySpan<Vector3> points) => DistanceToTriangle(points[8], points[0], points[1], points[3]);
+    }
+
+    private static ClothRig FoldedStrip()
+    {
         float overlap = .0005f;
         Vector3[] rest =
         [
@@ -29,24 +80,9 @@ public sealed partial class ClothContactTests
             triangles[node] = new ClothTriangle(node, node + 1, node + 3);
             triangles[node + 1] = new ClothTriangle(node, node + 3, node + 2);
         }
-        ClothRig rig = ClothRig.Create(rest, uv, triangles, [], [], Material);
-        var contact = new ClothContact(rig, ClothWorkLimits.LayeredContact);
-        var step = new ClothSubstep([], [], [], Seconds, Vector3.Zero);
-        Vector3[] working = rest.AsSpan().ToArray();
-
-        contact.Begin();
-        for (int iteration = 0; iteration < 4; iteration++)
-            Assert.Equal(ClothStepStatus.Accepted, contact.Project(rest, working, step));
-        Vector3[] velocities = new Vector3[working.Length];
-        for (int i = 0; i < working.Length; i++)
-            velocities[i] = (working[i] - rest[i] - contact.PositionBias[i]) / Seconds;
-        Assert.Equal(ClothStepStatus.Accepted, contact.Complete(rest, working, velocities, step));
-
-        Assert.True(working[0].Z < 0);
-        Assert.True(working[8].Z > rest[8].Z);
-        Assert.True(DistanceToTriangle(working[8], working[0], working[1], working[3]) >= 2 * Material.HalfThickness);
-        Assert.All(velocities, velocity => Assert.InRange(velocity.Length(), 0, .000001f));
+        return ClothRig.Create(rest, uv, triangles, [], [], Material);
     }
+
     [Fact]
     public void A_swept_fold_uses_the_free_witness_instead_of_distant_pinned_vertices()
     {

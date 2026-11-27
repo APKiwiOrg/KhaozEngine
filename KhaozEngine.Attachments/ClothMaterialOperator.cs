@@ -2,8 +2,8 @@ using System.Collections.Generic;
 
 namespace KhaozEngine.Attachments;
 
-// The current assembled matrix has structural zeros inside the factor's skyline.
-// Triangle and hinge node pairs determine which entries assembly can write.
+// The current matrix uses skyline storage. Triangle and hinge node pairs identify
+// the entries that assembly can write and a matrix-vector product must visit.
 internal sealed class ClothMaterialOperator
 {
     private readonly int[] _start;

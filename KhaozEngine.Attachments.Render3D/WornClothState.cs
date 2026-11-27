@@ -44,6 +44,7 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
     private ClothStepResult _detailProjection;
     private int _substeps;
     private ClothContactWork _solveWork;
+    private long _factorProducts;
 
     internal WornMotion? Owner { get; private set; }
     internal WornClothBinding Binding { get; private set; } = null!;
@@ -116,6 +117,7 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
         _substeps = 0;
         _solveWork = default;
         LastFrameMaterialWork = default;
+        _factorProducts = 0;
         ResetForDroppedTime = false;
         _sameKinematicPose = previousModel == model && previousHost.SequenceEqual(host);
         bool recoverFromRefusal = _hasDisplay && _solve.Status != ClothStepStatus.Accepted;
@@ -208,6 +210,7 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
         _solveWork = new(_solveWork.BroadPhaseVisits + _solve.ContactChecks,
             _solveWork.NarrowPhaseCandidates + _solve.ContactCandidates, _solveWork.SweepRefinements + _solve.SweepRefinements);
         LastFrameMaterialWork = LastFrameMaterialWork.Combine(_solver.LastAdvanceMaterialWork);
+        _factorProducts += _solve.MaterialFactorProducts;
         _substeps++;
         _supports.EndTick();
     }
@@ -327,7 +330,7 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
                 DetailedProjection = _detailProjection,
                 IsBlending = _hasDisplay && (_settledCloth != _liveRequested || _elapsed < duration),
                 SolveWork = _solveWork,
-                MaterialFactorProducts = LastFrameMaterialWork.FactorProducts,
+                MaterialFactorProducts = _factorProducts,
                 LowerSegments = Binding.Segments.Length,
                 RigidSupports = Binding.Capsules.Length,
                 Hulls = Binding.Hulls.Length,

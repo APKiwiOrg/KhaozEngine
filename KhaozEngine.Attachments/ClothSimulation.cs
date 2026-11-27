@@ -258,7 +258,8 @@ public sealed class ClothSimulation
             (_accepted, _working) = (_working, _accepted);
         }
         LastAdvanceMaterialWork = materialWork;
-        return StepResult(status, iterations, materialWork.FactorProducts);
+        // The public work bound charges every factor that started, including one that stopped at a failed pivot.
+        return StepResult(status, iterations, materialWork.Factorizations * _material.ProductsPerFactor);
     }
 
     /// <summary>Projects a display sample against the closing supports in a separate, single-pass envelope.</summary>

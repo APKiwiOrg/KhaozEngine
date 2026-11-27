@@ -9,6 +9,33 @@ namespace KhaozEngine.Tests.Render3D;
 public sealed class WornClothPoseResetTests
 {
     [Fact]
+    public void A_refused_direct_tick_keeps_its_full_public_frame_charge()
+    {
+        using var rig = new OutfitRig();
+        var fixture = ClothAsset(rig);
+        var part = Assert.IsType<SkinnedAttachmentPartDefinition>(Assert.Single(fixture.Set.Parts));
+        var recipe = Assert.IsType<ClothMotionDefinition>(part.Motion);
+        var file = ClothSurfaceJson.Parse(fixture.Bytes, recipe.Surface.Key);
+        var set = BindMaterialCloth(rig, fixture.Set, part, recipe,
+            file with { Material = file.Material with { DampingSeconds = float.MaxValue } });
+        var motion = set.CreateMotion(null, new ChainSimulationOptions { Gravity = Vector3.Zero, HoldBlendSeconds = 0 });
+        var slot = new WornClothSlot();
+        slot.Prepare(set.ClothSurface(ClothPartId)!);
+        var selection = new WornClothSelection(slot, 0, ClothPartId);
+        motion.Step(rig.Skeleton, rig.Palette, Matrix4x4.Identity, 0, MotionLevel.Held, selection);
+
+        motion.Step(rig.Skeleton, rig.Palette, Matrix4x4.Identity, ClothWorkLimits.LayeredStepSeconds,
+            MotionLevel.Held, selection);
+        Assert.Equal(ClothStepStatus.NonfiniteState, motion.ClothStatus.Solve.Status);
+        Assert.Equal(WornClothFallback.SolveRefused, motion.ClothStatus.Fallback);
+        Assert.Equal(4, motion.ClothStatus.MaterialFactorProducts);
+        Assert.Equal(0, slot.LastFrameMaterialWork.FactorProducts);
+
+        motion.Step(rig.Skeleton, rig.Palette, Matrix4x4.Identity, 0, MotionLevel.Held, selection);
+        Assert.Equal(0, motion.ClothStatus.MaterialFactorProducts);
+    }
+
+    [Fact]
     public void Reset_before_the_first_pose_discards_a_compatible_rebind_and_seeds_the_current_fit()
     {
         using var rig = new OutfitRig();

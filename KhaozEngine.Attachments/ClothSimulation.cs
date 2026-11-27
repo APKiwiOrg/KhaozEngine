@@ -84,7 +84,7 @@ public enum ClothStepStatus
     MaterialSolveWork,
 }
 
-/// <summary>Outcome and attempted work. Material factor products count the products evaluated during factorization.
+/// <summary>Outcome and attempted work. Material factor products charge the full bound for each attempted factor.
 /// A refusal leaves the previous accepted positions available.</summary>
 public readonly record struct ClothStepResult(ClothStepStatus Status, int Iterations, int ContactCandidates,
     int ContactChecks, long MaterialFactorProducts)

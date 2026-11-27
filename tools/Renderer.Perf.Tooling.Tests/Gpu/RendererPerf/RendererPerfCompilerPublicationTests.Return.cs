@@ -75,7 +75,8 @@ public sealed partial class RendererPerfCompilerPublicationTests
             Assert.Equal(outcome.Report.Publication.ElapsedMilliseconds, stored.Publication.ElapsedMilliseconds);
             Assert.Equal(outcome.Report.Publication.EstimatedCostUsd, stored.Publication.EstimatedCostUsd);
             Assert.Equal(cancel ? 0d : 600000d, stored.Publication.ElapsedMilliseconds.Value);
-            Assert.Equal(cancel ? 0d : .52d, stored.Publication.EstimatedCostUsd.Value!.Value, 12);
+            Assert.Equal(cancel ? 0d : 600000d / 60000d * (double)f.Template.Manifest.Budget.RatePerMinute,
+                stored.Publication.EstimatedCostUsd.Value!.Value, 12);
             Assert.NotNull(initialPartial);
             Assert.Equal(initialPartial.Blocks, outcome.Report.Blocks);
             Assert.Equal(initialPartial.Pipelines, outcome.Report.Pipelines);

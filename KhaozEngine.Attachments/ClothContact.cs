@@ -121,7 +121,7 @@ internal sealed class ClothContact(ClothRig rig, ClothWorkLimits limits)
     {
         if (_self is null || (!externallyChanged && _self.BroadPhase.IsCurrent)) return true;
         int startChecks = _workspace.Checks;
-        bool result = _self.Prepare(opening, positions, _workspace);
+        bool result = _self.Prepare(opening, positions, _workspace, externallyChanged);
         SelfContactChecks += _workspace.Checks - startChecks;
         return result;
     }

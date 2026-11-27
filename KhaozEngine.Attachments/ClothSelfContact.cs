@@ -16,8 +16,9 @@ internal sealed class ClothSelfContact(ClothRig rig, ClothWorkLimits limits)
 
     internal void Begin() => _broadPhase.Begin();
 
-    internal bool Prepare(Vector3[] opening, Vector3[] positions, ClothContactWorkspace work) =>
-        _broadPhase.EnsureCoverage(opening, positions, .5f * (_thickness + ContactMargin + VelocityTouchRoundoff), work);
+    internal bool Prepare(Vector3[] opening, Vector3[] positions, ClothContactWorkspace work, bool externallyChanged = false) =>
+        _broadPhase.EnsureCoverage(opening, positions, .5f * (_thickness + ContactMargin + VelocityTouchRoundoff),
+            work, externallyChanged);
 
     internal ClothStepStatus Visit(Vector3[] opening, Vector3[] positions, Vector3[] bias,
         ClothContactWorkspace work, ClothContactVelocity velocities, bool verify, bool collectVelocity)
@@ -25,9 +26,11 @@ internal sealed class ClothSelfContact(ClothRig rig, ClothWorkLimits limits)
         float reach = _thickness + ContactMargin + VelocityTouchRoundoff;
         for (int index = 0; ; index++)
         {
-            if (!_broadPhase.IsCurrent)
+            if (index == 0 || !_broadPhase.IsCurrent)
             {
-                if (!Prepare(opening, positions, work)) return ClothStepStatus.ContactWork;
+                if (!_broadPhase.IsCurrent && !Prepare(opening, positions, work))
+                    return ClothStepStatus.ContactWork;
+                if (!_broadPhase.EnsurePairs(work)) return ClothStepStatus.ContactWork;
                 index = 0;
             }
             if (index == _broadPhase.Pairs.Length) break;

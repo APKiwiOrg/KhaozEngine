@@ -729,8 +729,11 @@ part ID where applicable and attempted work. The near profile caps broad-phase v
 and narrow-phase attempts at 512 per substep. Work includes rejected broad pairs,
 candidate rechecks and up to eight interior sweep refinements per narrow-phase attempt. The spatial
 tree can reuse a support's candidate indices while verified node coverage still contains the surface.
-A correction outside that coverage rebuilds the tree and restarts an affected traversal under the
-same work caps.
+The rig's precomputed self-contact traversal contains spatial pairs with eligible descendants.
+Self-contact searches those pairs on first use of the current coverage. If a correction leaves a
+particle's coverage, the solver refits the bounds that depend on that particle. Existing support
+lists retest membership for the refitted faces and retain their other candidates. Each runtime
+bound refit, overlap test and candidate recheck consumes the same work budget.
 `MaxMaterialFactorProducts` independently bounds work in the material solver.
 
 A refusal retains the last accepted positions and velocities. To supply a current outfit fit for

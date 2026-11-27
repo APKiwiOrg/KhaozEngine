@@ -4,7 +4,7 @@ This is the living contract for the internal renderer baseline, offline summarie
 [CROSS-PLATFORM.md](CROSS-PLATFORM.md#paid-hosted-renderer-performance-mode) owns hosted admission
 and execution. The [cold publication design](design/RENDERER-COLD-PUBLICATION.md)
 retains the design rationale. The renderer sections record no measured baseline or performance budget.
-The hosted CPU physics rebase diagnostic below carries its own fixed limit.
+The physics rebase and close cloth diagnostics below have separate CPU limits.
 
 ## Default correctness and on-demand probes
 
@@ -59,6 +59,17 @@ SHA as `ref`, `linux-vulkan` as `legs`, and the same exact filter. The hosted ro
 120 warm and 600 measured frames each. The workflow's native adapter probe precedes the CPU test.
 An active row above the entire 2 ms CPU preparation allowance at p95 is a stop signal for this implementation.
 The 32-wearer CPU preparation, renderer and GPU qualification requires its own evidence.
+
+A single cloth wearer at commit `63200c391` exceeded the 2 ms allowance at both cadences on the
+Linux Tesla T4 host. All four rows recorded zero warm caller bytes. The two cloth rows published
+all 1,200 detailed poses with zero refusals and zero recovery attempts. [Hosted CPU measurement](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/45926478877/job/140268894305)
+
+| Cadence | Garment mode | Median CPU (ms) | p95 CPU (ms) | Maximum CPU (ms) |
+|---|---|---:|---:|---:|
+| 144 Hz | Cloth | 2.867 | 3.020 | 4.133 |
+| 144 Hz | Swing | 0.229 | 0.278 | 0.321 |
+| 60 Hz | Cloth | 5.595 | 6.732 | 12.372 |
+| 60 Hz | Swing | 0.401 | 0.438 | 0.463 |
 
 ## Equipment coverage cost evidence
 

@@ -278,9 +278,33 @@ jobs:
           sh native/scripts/generate-bindings.sh
           git diff --exit-code -- KhaozEngine.Gpu.Core/Interop/KhaozNative.g.cs
 
+  # The test project is built once per run. The test jobs place their own libkhaoz_native.so and the two
+  # fixture libraries into this output and run the tests from it.
+  native-tests-build:
+    name: 'Build: native-tests'
+    needs: scope
+    if: needs.scope.outputs.selected == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build
+        run: dotnet build KhaozEngine.Gpu.Core.Tests/KhaozEngine.Gpu.Core.Tests.csproj -c Release
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: khaoz-native-tests
+          path: KhaozEngine.Gpu.Core.Tests/bin/Release/net10.0/
+          if-no-files-found: error
+          retention-days: 7
+
   native-asan:
     name: 'Test: native-asan'
-    needs: scope
+    needs: [scope, native-tests-build]
     if: needs.scope.outputs.selected == 'true'
     runs-on: ubuntu-26.04
     timeout-minutes: 30
@@ -306,10 +330,16 @@ jobs:
           cmake --preset linux-x64-asan
           cmake --build --preset linux-x64-asan
           ctest --preset linux-x64-asan
-      - name: Build the native core tests against the sanitized library
-        run: >-
-          dotnet build KhaozEngine.Gpu.Core.Tests/KhaozEngine.Gpu.Core.Tests.csproj -c Release
-          -p:KhaozNativeLibPath="$PWD/native/out/build/linux-x64-asan/libkhaoz_native.so"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: khaoz-native-tests
+          path: KhaozEngine.Gpu.Core.Tests/bin/Release/net10.0
+      - name: Place the sanitized library and fixtures in the test output
+        run: |
+          set -eux
+          for name in libkhaoz_native libkhaoz_native_stale_abi_fixture libkhaoz_native_vulkan_startup_fixture; do
+            cp "native/out/build/linux-x64-asan/$name.so" KhaozEngine.Gpu.Core.Tests/bin/Release/net10.0/
+          done
       # The golden repeat with the sanitized library runs here, beside the build that produced it, so the
       # preloaded runtime is the same Clang release that instrumented the library. The script preloads the
       # runtime into the test host only, proves it ran there and checks the required facts.
@@ -324,7 +354,7 @@ jobs:
 
   native-golden:
     name: 'Test: native-golden'
-    needs: [scope, native-build]
+    needs: [scope, native-build, native-tests-build]
     if: needs.scope.outputs.selected == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -343,22 +373,27 @@ jobs:
           dotnet-version: '10.0.x'
       - name: Install software Vulkan (lavapipe) and the validation layer
         run: sh native/scripts/ci-install-lavapipe.sh
+      # The shipped library and the fixtures land in the built test output, where the tests load them.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: khaoz-native-tests
+          path: KhaozEngine.Gpu.Core.Tests/bin/Release/net10.0
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: khaoz-native-linux-x64
-          path: ${{ runner.temp }}/native
+          path: KhaozEngine.Gpu.Core.Tests/bin/Release/net10.0
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: khaoz-native-fixtures-linux-x64
-          path: ${{ runner.temp }}/native
-      - name: Build the native core tests against the shipped library
-        run: >-
-          dotnet build KhaozEngine.Gpu.Core.Tests/KhaozEngine.Gpu.Core.Tests.csproj -c Release
-          -p:KhaozNativeLibPath="$RUNNER_TEMP/native/libkhaoz_native.so"
+          path: KhaozEngine.Gpu.Core.Tests/bin/Release/net10.0
       - name: Golden and native tests on lavapipe
         run: |
           set -eux
-          dotnet test KhaozEngine.Gpu.Core.Tests/KhaozEngine.Gpu.Core.Tests.csproj -c Release --no-build \
+          lib=KhaozEngine.Gpu.Core.Tests/bin/Release/net10.0/libkhaoz_native.so
+          if nm -D --undefined-only "$lib" | grep -q ' __asan_'; then
+            echo "::error::$lib is a sanitized build, not the shipped library"; exit 1
+          fi
+          dotnet test KhaozEngine.Gpu.Core.Tests/bin/Release/net10.0/KhaozEngine.Gpu.Core.Tests.dll \
             --filter "Category!=Diagnostic&Category!=LiveSocket" \
             --logger "trx;LogFileName=golden.trx" --results-directory "$RUNNER_TEMP/results"
           python3 native/scripts/check-required-tests.py "$RUNNER_TEMP/results/golden.trx"

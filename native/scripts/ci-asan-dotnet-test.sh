@@ -1,6 +1,7 @@
 #!/bin/sh
-# CI only: runs the native core C# tests against the ASan-built library, from the repository root, after
-# KhaozEngine.Gpu.Core.Tests was built with KhaozNativeLibPath naming that library.
+# CI only: runs the native core C# tests against the ASan-built library, from the repository root. The
+# built KhaozEngine.Gpu.Core.Tests output must already hold the ASan-built libkhaoz_native.so and the two
+# fixture libraries.
 #
 # The ASan runtime is preloaded into the test host alone, through the run settings, and not into the
 # dotnet CLI that launches it. The CLI and MSBuild load none of the instrumented code, and on the hosted
@@ -44,7 +45,7 @@ cat > "$settings" <<SETTINGS
 SETTINGS
 
 status=0
-dotnet test KhaozEngine.Gpu.Core.Tests/KhaozEngine.Gpu.Core.Tests.csproj -c Release --no-build \
+dotnet test KhaozEngine.Gpu.Core.Tests/bin/Release/net10.0/KhaozEngine.Gpu.Core.Tests.dll \
     --settings "$settings" --filter "Category!=Diagnostic&Category!=LiveSocket" \
     --logger "trx;LogFileName=asan.trx" --results-directory "$results" || status=$?
 # Printed before the log check, so a failure before any test host starts reads as that failure.

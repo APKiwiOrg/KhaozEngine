@@ -89,7 +89,10 @@ void copy_staging(VkCommandBuffer commands, const khaoz_gpu_texture& source, con
 
 void copy_images(VkCommandBuffer commands, const khaoz_gpu_texture& source, const khaoz_gpu_texture& destination,
                  const khaoz_gpu_texture_copy& copy) {
-    constexpr std::array aspects{VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, VK_IMAGE_ASPECT_STENCIL_BIT};
+    // Held as flags: MSVC gives the FlagBits enum an int base, so brace-initialising the uint32_t
+    // aspect mask from a FlagBits variable would be a narrowing conversion.
+    constexpr std::array<VkImageAspectFlags, 3> aspects{VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_ASPECT_DEPTH_BIT,
+                                                        VK_IMAGE_ASPECT_STENCIL_BIT};
     std::array<VkImageCopy, 2> regions{};
     uint32_t count = 0;
     for (auto aspect : aspects) {

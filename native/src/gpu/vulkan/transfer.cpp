@@ -183,6 +183,8 @@ khaoz_result khaoz_gpu_command_list_copy_buffer(khaoz_gpu_command_list* commands
         }
         if (size != 0) {
             const VkBufferCopy copy{src_offset, dst_offset, size};
+            commands->hold(*src);
+            commands->hold(*dst);
             commands->rendering.finish(*commands);
             record_buffer_copy(commands->device, commands->handle, src->storage.handle, dst->storage.handle, copy);
         }
@@ -216,6 +218,8 @@ khaoz_result khaoz_gpu_command_list_copy_texture(khaoz_gpu_command_list* command
                  copy->src_array_layer == copy->dst_array_layer)) {
                 return error(KHAOZ_ERROR_INVALID_ARGUMENT, "The texture copy exceeds a subresource or overlaps itself");
             }
+            commands->hold(*src);
+            commands->hold(*dst);
             commands->rendering.finish(*commands);
             before_transfer(commands->device, commands->handle);
             copy_texture(commands->handle, *src, *dst, *copy);
@@ -224,6 +228,8 @@ khaoz_result khaoz_gpu_command_list_copy_texture(khaoz_gpu_command_list* command
                 return error(KHAOZ_ERROR_INVALID_ARGUMENT,
                              "A whole texture copy needs distinct textures of the same shape");
             }
+            commands->hold(*src);
+            commands->hold(*dst);
             commands->rendering.finish(*commands);
             before_transfer(commands->device, commands->handle);
             for (uint32_t mip = 0; mip < src->desc.mip_levels; ++mip) {
@@ -263,6 +269,7 @@ khaoz_result khaoz_gpu_command_list_update_buffer(khaoz_gpu_command_list* comman
 
         // A new recording releases its old uploads only after the command buffer can be reset.
         const auto source = upload->handle;
+        commands->hold(*buffer);
         commands->uploads.push_back(std::move(upload));
         commands->rendering.finish(*commands);
         record_buffer_copy(commands->device, commands->handle, source, buffer->storage.handle, {0, offset, size});

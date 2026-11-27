@@ -34,6 +34,7 @@ khaoz_result build(khaoz_gpu_framebuffer& framebuffer, const khaoz_gpu_texture* 
     if (depth != nullptr) {
         if (!valid_attachment(framebuffer, depth, VK_IMAGE_ASPECT_DEPTH_BIT, KHAOZ_GPU_TEXTURE_DEPTH_STENCIL))
             return error(KHAOZ_ERROR_INVALID_ARGUMENT, "Invalid Vulkan depth attachment");
+        framebuffer.textures.add(*depth, &framebuffer);
         targets.depth = attachment(*depth);
     }
 
@@ -41,6 +42,7 @@ khaoz_result build(khaoz_gpu_framebuffer& framebuffer, const khaoz_gpu_texture* 
         const auto* color = colors[i];
         if (!valid_attachment(framebuffer, color, VK_IMAGE_ASPECT_COLOR_BIT, KHAOZ_GPU_TEXTURE_RENDER_TARGET))
             return error(KHAOZ_ERROR_INVALID_ARGUMENT, "Invalid Vulkan colour attachment");
+        framebuffer.textures.add(*color, &framebuffer);
         targets.colors.push_back(attachment(*color));
     }
     targets.id = next_framebuffer_id.fetch_add(1, std::memory_order_relaxed);
@@ -48,6 +50,11 @@ khaoz_result build(khaoz_gpu_framebuffer& framebuffer, const khaoz_gpu_texture* 
 }
 
 } // namespace
+
+khaoz_gpu_framebuffer::~khaoz_gpu_framebuffer() {
+    if (!device.closing)
+        textures.release(this);
+}
 
 khaoz_result khaoz_gpu_framebuffer_create(khaoz_gpu_device* device, khaoz_gpu_texture* depth,
                                           khaoz_gpu_texture* const* colors, uint32_t count,

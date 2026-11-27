@@ -107,7 +107,8 @@ lists submit asynchronously and can signal a fence. Images rest in `GENERAL` so 
 reordering lists leaves their layout valid. Release children before destroying the device and
 serialize calls on each device. Validation catches a device closed with live children and the
 ABI returns the total count after releasing the children, the device and the instance.
-An inconclusive queue wait refuses new work and retains submitted resources for teardown.
+An inconclusive queue wait refuses new work and retains submitted resources until a later
+wait drains the queue or the device is destroyed.
 A device destroy that cannot confirm either queue completion or device loss retains the
 handle for a later retry.
 
@@ -125,12 +126,22 @@ The buffer window contributes its base offset and a declared-dynamic element als
 caller's offset. The spike records uniform uploads into the command list using staging buffers.
 
 Framebuffers use the first mip and array layer of each attachment and require matching extents
-and sample counts. Binding one copies its attachment description into the command list, so a
-framebuffer destroyed after the bind still flushes queued clears and serves later draws. Its
-attachment textures must stay alive until the recording is released. The command list starts Vulkan dynamic rendering on the first draw or when
+and sample counts. Binding one copies its attachment description into the command list. A bound
+resource set is recorded as a shared immutable copy of what draws check, so a draw never reads a
+destroyed set. The command list starts Vulkan dynamic rendering on the first draw or when
 a queued clear needs to be flushed. Image views use the images' `GENERAL` layout. The viewport
 uses negative height and the scissor uses top-left framebuffer coordinates, matching the managed
 Vulkan backend. Recorded copies and buffer uploads close the rendering scope so transfers can
 run between draws. Reopening the scope loads the previous attachment contents. Texture copies
 require the same native Vulkan format and aspects on both sides. An R32Float depth texture is
 `D32_SFLOAT` and an R32Float colour texture is `R32_SFLOAT`, so copies between them are refused.
+Staging textures are colour, so a depth texture cannot be read back through one.
+
+Destruction follows the managed backend's deferred model. Destroying a texture, buffer, sampler,
+resource set, pipeline or framebuffer waits for submitted work, then deletes it only when nothing
+still holds it. A command list holds every pipeline, framebuffer, resource set, buffer and texture
+it records, until the list begins again, is destroyed, or a drained queue proves its submitted
+work finished. A framebuffer holds its attachment textures and a resource set holds the buffers,
+textures and samplers its descriptors name. So an object destroyed while an open recording uses
+it stays valid through End and Submit. The device deletes released objects nothing holds after a
+successful queue wait, after each destroy, at the next Begin and at device teardown.

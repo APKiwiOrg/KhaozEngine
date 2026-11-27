@@ -25,6 +25,9 @@ struct framebuffer_targets {
 
 struct khaoz_gpu_framebuffer final : khaoz::vulkan::device_child {
     khaoz::vulkan::framebuffer_targets targets;
+    // The attachment textures stay alive while the framebuffer does.
+    khaoz::vulkan::held_uses textures;
 
     explicit khaoz_gpu_framebuffer(khaoz_gpu_device& owner) noexcept : device_child(owner) {}
+    ~khaoz_gpu_framebuffer() override;
 };

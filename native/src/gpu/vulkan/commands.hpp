@@ -2,12 +2,13 @@
 
 #include "memory.hpp"
 #include "rendering.hpp"
+#include "resource_set.hpp"
 
 #include <memory>
 
 namespace khaoz::vulkan {
 struct recorded_set {
-    const khaoz_gpu_resource_set* set{};
+    std::shared_ptr<const resource_set_shape> set;
     uint32_t dynamic_offset{};
 };
 } // namespace khaoz::vulkan
@@ -23,11 +24,16 @@ struct khaoz_gpu_command_list : khaoz::vulkan::device_child {
     std::vector<uint32_t> dynamic_offsets;
     std::vector<uint8_t> vertices;
     std::vector<std::unique_ptr<khaoz::vulkan::allocated_buffer>> uploads;
+    // Everything the recording references stays alive until the recording is reset or destroyed, or until a
+    // drained queue proves its submitted work finished.
+    khaoz::vulkan::held_uses held;
     uint32_t index_capacity{};
     bool index_bound{};
 
     explicit khaoz_gpu_command_list(khaoz_gpu_device& owner) noexcept : device_child(owner) {}
     ~khaoz_gpu_command_list() override;
+    void drained() noexcept override;
+    void hold(const khaoz::vulkan::device_child& child) { held.add(child, this); }
 };
 
 namespace khaoz::vulkan {

@@ -97,6 +97,7 @@ khaoz_result khaoz_gpu_command_list_set_pipeline(khaoz_gpu_command_list* command
             return usable;
         if (pipeline == nullptr || &pipeline->device != &commands->device)
             return error(KHAOZ_ERROR_INVALID_ARGUMENT, "A graphics pipeline from this device is required");
+        commands->hold(*pipeline);
         commands->device.api.vkCmdBindPipeline(commands->handle, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->handle);
         commands->pipeline = pipeline;
         return KHAOZ_OK;
@@ -114,12 +115,14 @@ khaoz_result khaoz_gpu_command_list_set_resource_set(khaoz_gpu_command_list* com
             return error(KHAOZ_ERROR_INVALID_ARGUMENT,
                          "A valid set slot and a resource set from this device are required");
         if (set != nullptr && dynamic_offset != 0 &&
-            std::none_of(set->uniforms.begin(), set->uniforms.end(),
+            std::none_of(set->shape->uniforms.begin(), set->shape->uniforms.end(),
                          [](const auto& uniform) { return uniform.applies_caller_offset; }))
             return error(KHAOZ_ERROR_INVALID_ARGUMENT, "The resource set has no declared dynamic element");
         if (slot >= commands->sets.size())
             commands->sets.resize(size_t{slot} + 1);
-        commands->sets.at(slot) = {set, dynamic_offset};
+        if (set != nullptr)
+            commands->hold(*set);
+        commands->sets.at(slot) = {set == nullptr ? nullptr : set->shape, dynamic_offset};
         return KHAOZ_OK;
     });
 }
@@ -137,6 +140,7 @@ khaoz_result khaoz_gpu_command_list_set_vertex_buffer(khaoz_gpu_command_list* co
                          "The Vulkan vertex binding has an invalid buffer, slot or offset");
         if (slot >= commands->vertices.size())
             commands->vertices.resize(size_t{slot} + 1);
+        commands->hold(*buffer);
         commands->vertices.at(slot) = 1;
         const VkDeviceSize vk_offset = offset;
         commands->device.api.vkCmdBindVertexBuffers(commands->handle, slot, 1, &buffer->storage.handle, &vk_offset);
@@ -154,6 +158,7 @@ khaoz_result khaoz_gpu_command_list_set_index_buffer(khaoz_gpu_command_list* com
             (buffer->usage & KHAOZ_GPU_BUFFER_INDEX) == 0 || format > 1)
             return error(KHAOZ_ERROR_INVALID_ARGUMENT, "The Vulkan index binding has an invalid buffer or format");
         const auto type = format == 0 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32;
+        commands->hold(*buffer);
         commands->device.api.vkCmdBindIndexBuffer(commands->handle, buffer->storage.handle, 0, type);
         commands->index_bound = true;
         commands->index_capacity = buffer->size / (format == 0 ? 2U : 4U);

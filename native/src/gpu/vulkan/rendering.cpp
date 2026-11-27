@@ -124,6 +124,7 @@ khaoz_result khaoz_gpu_command_list_set_framebuffer(khaoz_gpu_command_list* comm
             return usable;
         if (framebuffer == nullptr || &framebuffer->device != &commands->device)
             return error(KHAOZ_ERROR_INVALID_ARGUMENT, "A framebuffer from this device is required");
+        commands->hold(*framebuffer);
         commands->rendering.set_framebuffer(*commands, framebuffer->targets);
         return KHAOZ_OK;
     });

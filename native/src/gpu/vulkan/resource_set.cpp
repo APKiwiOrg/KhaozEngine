@@ -14,7 +14,7 @@ bool from_device(const device_child* resource, const khaoz_gpu_device& device) {
     return resource != nullptr && &resource->device == &device;
 }
 
-bool write_buffer(khaoz_gpu_resource_set& set, const khaoz_gpu_resource_element& element,
+bool write_buffer(khaoz_gpu_resource_set& set, resource_set_shape& shape, const khaoz_gpu_resource_element& element,
                   const khaoz_gpu_resource_binding& resource, VkDescriptorBufferInfo& out) {
     const auto* buffer = resource.buffer;
     if (!from_device(buffer, set.device) || buffer->staging || resource.range == 0 ||
@@ -31,19 +31,21 @@ bool write_buffer(khaoz_gpu_resource_set& set, const khaoz_gpu_resource_element&
         (!uniform && alignment != 0 && resource.offset % alignment != 0))
         return false;
 
+    set.resources.add(*buffer, &set);
     if (uniform) {
-        set.uniforms.push_back({resource.offset, resource.range, buffer->size, element.dynamic_offset != 0});
+        shape.uniforms.push_back({resource.offset, resource.range, buffer->size, element.dynamic_offset != 0});
     }
-    set.writable_storage |= element.kind == KHAOZ_GPU_RESOURCE_STORAGE_READ_WRITE;
+    shape.writable_storage |= element.kind == KHAOZ_GPU_RESOURCE_STORAGE_READ_WRITE;
     out = {buffer->storage.handle, uniform ? 0U : resource.offset, resource.range};
     return true;
 }
 
-bool write_image(khaoz_gpu_resource_set& set, const khaoz_gpu_resource_element& element,
+bool write_image(khaoz_gpu_resource_set& set, resource_set_shape& shape, const khaoz_gpu_resource_element& element,
                  const khaoz_gpu_resource_binding& resource, VkDescriptorImageInfo& out) {
     if (element.kind == KHAOZ_GPU_RESOURCE_SAMPLER) {
         if (!from_device(resource.sampler, set.device))
             return false;
+        set.resources.add(*resource.sampler, &set);
         out.sampler = resource.sampler->handle;
         return true;
     }
@@ -54,14 +56,15 @@ bool write_image(khaoz_gpu_resource_set& set, const khaoz_gpu_resource_element& 
     const auto view = sampled ? texture->sampled : texture->storage;
     if (view == VK_NULL_HANDLE)
         return false;
-    set.images.push_back(texture->image);
-    set.writable_storage |= !sampled;
+    set.resources.add(*texture, &set);
+    shape.images.push_back(texture->image);
+    shape.writable_storage |= !sampled;
     // Task 4 establishes GENERAL as the resting layout for every image.
     out = {VK_NULL_HANDLE, view, VK_IMAGE_LAYOUT_GENERAL};
     return true;
 }
 
-khaoz_result allocate_set(khaoz_gpu_resource_set& set, VkDescriptorSetLayout layout,
+khaoz_result allocate_set(khaoz_gpu_resource_set& set, resource_set_shape& shape, VkDescriptorSetLayout layout,
                           const std::vector<VkDescriptorPoolSize>& sizes) {
     auto& device = set.device;
     auto pool = info<VkDescriptorPoolCreateInfo>(VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO);
@@ -81,7 +84,7 @@ khaoz_result allocate_set(khaoz_gpu_resource_set& set, VkDescriptorSetLayout lay
     allocate.descriptorPool = set.pool;
     allocate.descriptorSetCount = 1;
     allocate.pSetLayouts = &layout;
-    return check(create_handle(set.handle,
+    return check(create_handle(shape.handle,
                                [&](auto* pending) {
                                    return device.api.vkAllocateDescriptorSets(device.handle, &allocate, pending);
                                }),
@@ -94,6 +97,7 @@ khaoz_result build(khaoz_gpu_resource_set& set, const khaoz_gpu_resource_layout&
     std::vector<VkDescriptorImageInfo> images(count);
     std::vector<VkWriteDescriptorSet> writes(count);
     std::vector<VkDescriptorPoolSize> sizes;
+    resource_set_shape shape;
     for (uint32_t i = 0; i < count; ++i) {
         const auto& element = layout.elements.at(i);
         const auto type = layout.bindings.at(i).descriptorType;
@@ -103,11 +107,11 @@ khaoz_result build(khaoz_gpu_resource_set& set, const khaoz_gpu_resource_layout&
         write.descriptorCount = 1;
         write.descriptorType = type;
         if (element.kind <= KHAOZ_GPU_RESOURCE_STORAGE_READ_WRITE) {
-            if (!write_buffer(set, element, resources[i], buffers.at(i)))
+            if (!write_buffer(set, shape, element, resources[i], buffers.at(i)))
                 return error(KHAOZ_ERROR_INVALID_ARGUMENT, "Invalid Vulkan buffer descriptor");
             write.pBufferInfo = &buffers.at(i);
         } else {
-            if (!write_image(set, element, resources[i], images.at(i)))
+            if (!write_image(set, shape, element, resources[i], images.at(i)))
                 return error(KHAOZ_ERROR_INVALID_ARGUMENT, "Invalid Vulkan image or sampler descriptor");
             write.pImageInfo = &images.at(i);
         }
@@ -118,20 +122,24 @@ khaoz_result build(khaoz_gpu_resource_set& set, const khaoz_gpu_resource_layout&
             ++size->descriptorCount;
     }
 
-    const auto result = allocate_set(set, layout.handle, sizes);
+    const auto result = allocate_set(set, shape, layout.handle, sizes);
     if (result != KHAOZ_OK)
         return result;
     for (auto& write : writes)
-        write.dstSet = set.handle;
+        write.dstSet = shape.handle;
+    shape.bindings = layout.bindings;
+    auto published = std::make_shared<const resource_set_shape>(std::move(shape));
     if (count != 0)
         set.device.api.vkUpdateDescriptorSets(set.device.handle, count, writes.data(), 0, nullptr);
-    set.bindings = layout.bindings;
+    set.shape = std::move(published);
     return KHAOZ_OK;
 }
 
 } // namespace
 
 khaoz_gpu_resource_set::~khaoz_gpu_resource_set() {
+    if (!device.closing)
+        resources.release(this);
     if (pool != VK_NULL_HANDLE)
         device.api.vkDestroyDescriptorPool(device.handle, pool, nullptr);
 }

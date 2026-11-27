@@ -179,7 +179,28 @@ khaoz_result khaoz_gpu_device::wait_for_idle() noexcept {
         queue_failure = result;
     }
     work_pending = result != KHAOZ_OK && result != KHAOZ_ERROR_DEVICE_LOST;
+    if (!work_pending && !closing) {
+        for (auto* child = children; child != nullptr; child = child->next) {
+            child->drained();
+        }
+        collect();
+    }
     return result;
+}
+
+void khaoz_gpu_device::collect() noexcept {
+    // Destructors only release uses, so the next pointer survives a deletion. A pass can make more children
+    // collectable, so sweep until one finds nothing new.
+    while (collectable != 0 && !work_pending && !closing) {
+        collectable = 0;
+        for (auto* child = children; child != nullptr;) {
+            auto* next = child->next;
+            if (child->retired && child->uses == 0) {
+                delete child;
+            }
+            child = next;
+        }
+    }
 }
 
 khaoz_result khaoz_gpu_device::close() noexcept {
@@ -195,6 +216,8 @@ khaoz_result khaoz_gpu_device::close() noexcept {
             }
         }
     }
+    // Every child goes, so holders skip releasing uses on children that may already be deleted.
+    closing = true;
     while (children != nullptr) {
         delete children;
     }

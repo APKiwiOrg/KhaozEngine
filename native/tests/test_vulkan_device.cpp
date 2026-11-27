@@ -149,7 +149,8 @@ TEST_CASE("R32 float depth and colour copies are refused while colour copies rec
     CHECK(errors == 0);
 }
 
-TEST_CASE("a queued clear survives framebuffer destruction before end" * doctest::skip(!gpu_tests_enabled())) {
+TEST_CASE("a queued clear survives framebuffer and attachment destruction before end" *
+          doctest::skip(!gpu_tests_enabled())) {
     const khaoz_gpu_device_desc desc{1, nullptr};
     khaoz_gpu_device* device{};
     REQUIRE(khaoz_gpu_device_create_headless(&desc, &device) == KHAOZ_OK);
@@ -158,11 +159,14 @@ TEST_CASE("a queued clear survives framebuffer destruction before end" * doctest
     auto staging_desc = target_desc;
     staging_desc.usage = KHAOZ_GPU_TEXTURE_STAGING;
     khaoz_gpu_texture* target{};
+    khaoz_gpu_texture* released{};
     khaoz_gpu_texture* staging{};
     REQUIRE(khaoz_gpu_texture_create(device, &target_desc, &target) == KHAOZ_OK);
+    REQUIRE(khaoz_gpu_texture_create(device, &target_desc, &released) == KHAOZ_OK);
     REQUIRE(khaoz_gpu_texture_create(device, &staging_desc, &staging) == KHAOZ_OK);
+    std::array attachments{target, released};
     khaoz_gpu_framebuffer* framebuffer{};
-    REQUIRE(khaoz_gpu_framebuffer_create(device, nullptr, &target, 1, &framebuffer) == KHAOZ_OK);
+    REQUIRE(khaoz_gpu_framebuffer_create(device, nullptr, attachments.data(), 2, &framebuffer) == KHAOZ_OK);
     khaoz_gpu_command_list* commands{};
     REQUIRE(khaoz_gpu_command_list_create(device, &commands) == KHAOZ_OK);
 
@@ -170,7 +174,9 @@ TEST_CASE("a queued clear survives framebuffer destruction before end" * doctest
     REQUIRE(khaoz_gpu_command_list_set_framebuffer(commands, framebuffer) == KHAOZ_OK);
     const khaoz_gpu_color green{0.0F, 1.0F, 0.0F, 1.0F};
     REQUIRE(khaoz_gpu_command_list_clear_color(commands, 0, &green) == KHAOZ_OK);
+    REQUIRE(khaoz_gpu_command_list_clear_color(commands, 1, &green) == KHAOZ_OK);
     REQUIRE(khaoz_gpu_framebuffer_destroy(framebuffer) == KHAOZ_OK);
+    REQUIRE(khaoz_gpu_texture_destroy(released) == KHAOZ_OK);
     REQUIRE(khaoz_gpu_command_list_end(commands) == KHAOZ_OK);
     REQUIRE(khaoz_gpu_device_submit(device, commands, nullptr) == KHAOZ_OK);
 

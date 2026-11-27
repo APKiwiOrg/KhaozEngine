@@ -64,8 +64,18 @@ khaoz_result submit(khaoz_gpu_device& device, VkCommandBuffer commands, VkFence 
 } // namespace khaoz::vulkan
 
 khaoz_gpu_command_list::~khaoz_gpu_command_list() {
+    if (!device.closing) {
+        held.release(this);
+    }
     if (handle != VK_NULL_HANDLE) {
         device.api.vkFreeCommandBuffers(device.handle, device.command_pool, 1, &handle);
+    }
+}
+
+void khaoz_gpu_command_list::drained() noexcept {
+    // A submitted one-time recording cannot run again, so its references end with its work.
+    if (state == phase::pending) {
+        held.release(this);
     }
 }
 
@@ -112,6 +122,8 @@ khaoz_result khaoz_gpu_command_list_begin(khaoz_gpu_command_list* commands) {
             commands->vertices.clear();
             commands->uploads.clear();
             commands->index_bound = false;
+            commands->held.release(commands);
+            commands->device.collect();
         }
         commands->state = result == KHAOZ_OK ? phase::recording : phase::initial;
         return result;

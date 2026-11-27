@@ -133,6 +133,99 @@ public sealed class CoreDrawTests
         });
 
     [NativeGpuFact]
+    public void Disposed_set_bound_to_a_slot_the_pipeline_declines_is_skipped_at_draw()
+        => WithCoreDevice(device =>
+        {
+            var factory = device.Factory;
+            using var target = CreateTarget(factory);
+            using var framebuffer = factory.CreateFramebuffer(null, target);
+            using var declared = factory.CreateResourceLayout(new GpuResourceLayoutDescription(
+                new GpuResourceLayoutElement("tint", GpuResourceKind.UniformBuffer, GpuShaderStages.Fragment)));
+            using var other = factory.CreateResourceLayout(new GpuResourceLayoutDescription(
+                new GpuResourceLayoutElement("sam", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
+            var set = factory.CreateResourceSet(new GpuResourceSetDescription(other, device.PointSampler));
+            using var shaders = CreateTriangleShaders(factory);
+            var description = Describe(framebuffer.Outputs, shaders);
+            description.ResourceLayouts = [declared];
+            using var pipeline = factory.CreateGraphicsPipeline(description);
+            using var commands = factory.CreateCommandList();
+
+            commands.Begin();
+            commands.SetFramebuffer(framebuffer);
+            commands.ClearColorTarget(0, new Color(0f, 0f, 1f, 1f));
+            commands.SetPipeline(pipeline);
+            commands.SetGraphicsResourceSet(0, set);
+            set.Dispose();
+            commands.Draw(3);
+            commands.End();
+            device.Submit(commands);
+
+            byte[] rgba = GpuReadback.ToRgba(device, target, Size, Size);
+            Assert.Equal(new byte[] { 255, 0, 0, 255 }, Pixel(rgba, 32, 32));
+        });
+
+    [NativeGpuFact]
+    public void Attachment_disposed_during_recording_stays_valid_until_the_work_completes()
+        => WithCoreDevice(device =>
+        {
+            var factory = device.Factory;
+            var disposed = CreateTarget(factory);
+            using var kept = CreateTarget(factory);
+            using var framebuffer = factory.CreateFramebuffer(null, disposed, kept);
+            using var commands = factory.CreateCommandList();
+
+            commands.Begin();
+            commands.SetFramebuffer(framebuffer);
+            commands.ClearColorTarget(0, new Color(1f, 0f, 0f, 1f));
+            commands.ClearColorTarget(1, new Color(0f, 1f, 0f, 1f));
+            disposed.Dispose();
+            commands.End();
+            device.Submit(commands);
+
+            byte[] rgba = GpuReadback.ToRgba(device, kept, Size, Size);
+            Assert.Equal(new byte[] { 0, 255, 0, 255 }, Pixel(rgba, 32, 32));
+        });
+
+    [NativeGpuFact]
+    public void Vertex_buffer_disposed_after_bind_still_feeds_the_draw()
+        => WithCoreDevice(device =>
+        {
+            var factory = device.Factory;
+            using var target = CreateTarget(factory);
+            using var framebuffer = factory.CreateFramebuffer(null, target);
+            var vertices = factory.CreateBuffer(new GpuBufferDescription(24, GpuBufferUsage.VertexBuffer));
+            device.UpdateBuffer<Vector2>(vertices, 0, [new(-1, -1), new(3, -1), new(-1, 3)]);
+            using var shaders = factory.CreateShadersFromSpirv(
+                """
+                #version 450
+                layout(location = 0) in vec2 position;
+                void main() { gl_Position = vec4(position, 0, 1); }
+                """,
+                """
+                #version 450
+                layout(location = 0) out vec4 colour;
+                void main() { colour = vec4(1, 0, 0, 1); }
+                """);
+            var description = Describe(framebuffer.Outputs, shaders);
+            description.VertexLayouts = [new GpuVertexLayoutDescription(new GpuVertexElement("position", GpuVertexElementFormat.Float2))];
+            using var pipeline = factory.CreateGraphicsPipeline(description);
+            using var commands = factory.CreateCommandList();
+
+            commands.Begin();
+            commands.SetFramebuffer(framebuffer);
+            commands.ClearColorTarget(0, new Color(0f, 0f, 1f, 1f));
+            commands.SetPipeline(pipeline);
+            commands.SetVertexBuffer(0, vertices);
+            vertices.Dispose();
+            commands.Draw(3);
+            commands.End();
+            device.Submit(commands);
+
+            byte[] rgba = GpuReadback.ToRgba(device, target, Size, Size);
+            Assert.Equal(new byte[] { 255, 0, 0, 255 }, Pixel(rgba, 32, 32));
+        });
+
+    [NativeGpuFact]
     public void Graphics_binds_report_released_native_handles()
         => WithCoreDevice(device =>
         {

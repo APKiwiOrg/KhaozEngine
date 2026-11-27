@@ -15,10 +15,13 @@ internal sealed class ClothMaterialSystem
     private readonly int[] _rowOffsets;
     private readonly double[] _matrix;
     private readonly double[] _rhs;
+    private readonly double[] _solution;
     private readonly float[] _mass;
+    private readonly ClothSkylineFactor _skyline;
+    private readonly ClothMaterialReuseSolver? _reuse;
     private float _damping;
 
-    internal ClothMaterialSystem(ClothRig rig, ClothWorkLimits limits)
+    internal ClothMaterialSystem(ClothRig rig, ClothWorkLimits limits, bool reuseMaterialFactor)
     {
         _degrees = new int[rig.RestPositions.Length];
         int size = 0;
@@ -30,7 +33,6 @@ internal sealed class ClothMaterialSystem
 
         _mass = new float[size];
         _start = new int[size];
-        _rowOffsets = new int[size + 1];
         _rhs = new double[size];
         for (int node = 0; node < _degrees.Length; node++)
         {
@@ -43,29 +45,22 @@ internal sealed class ClothMaterialSystem
             }
         }
 
+        int freeNodes = size / 3;
+        bool[,]? connected = reuseMaterialFactor ? new bool[freeNodes, freeNodes] : null;
         foreach (ClothTriangle triangle in rig.Triangles)
-            Include(triangle.A, triangle.B, triangle.C);
+            Include(connected, triangle.A, triangle.B, triangle.C);
         foreach (ClothHinge hinge in rig.Hinges)
-            Include(hinge.First, hinge.Second, hinge.Left, hinge.Right);
+            Include(connected, hinge.First, hinge.Second, hinge.Left, hinge.Right);
 
-        // Divide first so the per-substep limit can be checked without overflowing.
-        long productsPerIteration = limits.MaxMaterialFactorProducts / limits.Iterations;
-        long products = 0;
-        for (int row = 0; row < size; row++)
-        {
-            _rowOffsets[row + 1] = checked(_rowOffsets[row] + row - _start[row] + 1);
-            for (int col = _start[row]; col <= row; col++)
-                products += col - Math.Max(_start[row], _start[col]);
-            if (products > productsPerIteration)
-                throw new ArgumentOutOfRangeException(nameof(limits), limits,
-                    "The cloth material system exceeds its per-substep factor work limit.");
-        }
-
-        FactorProducts = products;
+        _skyline = new ClothSkylineFactor(_start, limits, reuseMaterialFactor);
+        _rowOffsets = _skyline.Offsets;
         _matrix = new double[_rowOffsets[^1]];
+        if (connected is not null)
+            _reuse = new ClothMaterialReuseSolver(_skyline, new ClothMaterialOperator(connected, _start, _rowOffsets), size);
+        _solution = _reuse?.Solution ?? _rhs;
     }
 
-    internal long FactorProducts { get; }
+    internal void BeginTick() => _reuse?.BeginTick();
 
     internal void Begin(float damping)
     {
@@ -120,52 +115,16 @@ internal sealed class ClothMaterialSystem
     internal Vector3 Delta(int node)
     {
         int basis = _degrees[node];
-        return basis < 0 ? Vector3.Zero : new Vector3((float)_rhs[basis], (float)_rhs[basis + 1], (float)_rhs[basis + 2]);
+        return basis < 0 ? Vector3.Zero : new Vector3((float)_solution[basis], (float)_solution[basis + 1], (float)_solution[basis + 2]);
     }
 
-    internal bool Solve()
+    internal ClothStepStatus Solve(out ClothMaterialSolveWork work)
     {
-        // In-place skyline Cholesky followed by forward and backward substitution.
-        double[] matrix = _matrix, rhs = _rhs;
-        int[] start = _start, offsets = _rowOffsets;
-        for (int row = 0; row < rhs.Length; row++)
-        {
-            int rowStart = start[row];
-            int rowBase = offsets[row] - rowStart;
-            for (int col = rowStart; col <= row; col++)
-            {
-                int colBase = offsets[col] - start[col];
-                double entry = matrix[rowBase + col];
-                for (int k = Math.Max(rowStart, start[col]); k < col; k++)
-                    entry -= matrix[rowBase + k] * matrix[colBase + k];
-
-                if (row == col)
-                {
-                    if (entry <= 0 || !double.IsFinite(entry)) return false;
-                    matrix[rowBase + row] = Math.Sqrt(entry);
-                }
-                else
-                    matrix[rowBase + col] = entry / matrix[colBase + col];
-            }
-
-            double load = rhs[row];
-            for (int col = rowStart; col < row; col++)
-                load -= rhs[col] * matrix[rowBase + col];
-            rhs[row] = load / matrix[rowBase + row];
-        }
-
-        for (int row = rhs.Length - 1; row >= 0; row--)
-        {
-            int rowStart = start[row];
-            int rowBase = offsets[row] - rowStart;
-            double displacement = rhs[row] /= matrix[rowBase + row];
-            for (int col = rowStart; col < row; col++)
-                rhs[col] -= matrix[rowBase + col] * displacement;
-        }
-        return true;
+        if (_reuse is not null) return _reuse.Solve(_matrix, _rhs, out work);
+        return _skyline.TryFactorAndSolve(_matrix, _rhs, out work) ? ClothStepStatus.Accepted : ClothStepStatus.NonfiniteState;
     }
 
-    private void Include(int a, int b, int c, int d = -1)
+    private void Include(bool[,]? connected, int a, int b, int c, int d = -1)
     {
         Span<int> nodes = stackalloc int[4] { a, b, c, d };
         int minimum = _degrees.Length * 3;
@@ -175,8 +134,13 @@ internal sealed class ClothMaterialSystem
         foreach (int node in nodes)
         {
             if (node < 0 || _degrees[node] < 0) continue;
+            int basis = _degrees[node];
             for (int axis = 0; axis < 3; axis++)
-                _start[_degrees[node] + axis] = Math.Min(_start[_degrees[node] + axis], minimum);
+                _start[basis + axis] = Math.Min(_start[basis + axis], minimum);
+            if (connected is null) continue;
+            foreach (int other in nodes)
+                if (other >= 0 && _degrees[other] >= 0)
+                    connected[basis / 3, _degrees[other] / 3] = true;
         }
     }
 }

@@ -4,15 +4,17 @@ using System.Numerics;
 namespace KhaozEngine.Attachments;
 
 // Each material iteration linearizes all triangle and hinge energies together.
-internal sealed class ClothMaterialConstraints(ClothRig rig, ClothWorkLimits limits)
+internal sealed class ClothMaterialConstraints(ClothRig rig, ClothWorkLimits limits, bool reuseMaterialFactor)
 {
-    private readonly ClothMaterialSystem _system = new(rig, limits);
+    private readonly ClothMaterialSystem _system = new(rig, limits, reuseMaterialFactor);
     private readonly float[] _multipliers = new float[3 * rig.Membranes.Length + rig.Hinges.Length];
     private readonly ClothMaterialRow[] _rows = new ClothMaterialRow[3 * rig.Membranes.Length + rig.Hinges.Length];
 
-    internal long FactorProducts => _system.FactorProducts;
-
-    internal void Begin() => Array.Clear(_multipliers);
+    internal void Begin()
+    {
+        Array.Clear(_multipliers);
+        _system.BeginTick();
+    }
 
     internal bool HasMaterialFrames(ReadOnlySpan<Vector3> positions)
     {
@@ -21,9 +23,9 @@ internal sealed class ClothMaterialConstraints(ClothRig rig, ClothWorkLimits lim
         return true;
     }
 
-    internal ClothStepStatus Project(Vector3[] positions, Vector3[] opening, float seconds, out bool factorAttempted)
+    internal ClothStepStatus Project(Vector3[] positions, Vector3[] opening, float seconds, out ClothMaterialSolveWork work)
     {
-        factorAttempted = false;
+        work = default;
         float inverseStepSquared = 1 / (seconds * seconds);
         float damping = rig.Material.DampingSeconds / seconds;
         _system.Begin(damping);
@@ -36,8 +38,8 @@ internal sealed class ClothMaterialConstraints(ClothRig rig, ClothWorkLimits lim
             _rows[firstHinge + i] = rig.Hinges[i].Add(_system, positions, opening, inverseStepSquared,
                 damping, _multipliers[firstHinge + i]);
 
-        factorAttempted = true;
-        if (!_system.Solve()) return ClothStepStatus.NonfiniteState;
+        ClothStepStatus status = _system.Solve(out work);
+        if (status != ClothStepStatus.Accepted) return status;
         for (int i = 0; i < _rows.Length; i++)
             _multipliers[i] += _rows[i].UpdateMultiplier(_system, damping);
         for (int i = 0; i < positions.Length; i++)

@@ -81,9 +81,10 @@ public enum ClothStepStatus
     SweepWork,
     SupportCapacity,
     UnsupportedHullTransform,
+    MaterialSolveWork,
 }
 
-/// <summary>Outcome and attempted work. Factor products bound the work across attempted factorizations.
+/// <summary>Outcome and attempted work. Material factor products count the products evaluated during factorization.
 /// A refusal leaves the previous accepted positions available.</summary>
 public readonly record struct ClothStepResult(ClothStepStatus Status, int Iterations, int ContactCandidates,
     int ContactChecks, long MaterialFactorProducts)
@@ -136,7 +137,9 @@ public sealed class ClothSimulation
     private float _stepSeconds;
     private bool _initialized;
 
-    public ClothSimulation(ClothRig rig, ClothWorkLimits limits)
+    public ClothSimulation(ClothRig rig, ClothWorkLimits limits) : this(rig, limits, reuseMaterialFactor: false) { }
+
+    internal ClothSimulation(ClothRig rig, ClothWorkLimits limits, bool reuseMaterialFactor)
     {
         ArgumentNullException.ThrowIfNull(rig);
         if (rig.RestPositions.Length > ClothWorkLimits.NodeLimit || rig.Triangles.Length > ClothWorkLimits.FaceLimit)
@@ -155,7 +158,7 @@ public sealed class ClothSimulation
 
         _rig = rig;
         _limits = limits;
-        _material = new ClothMaterialConstraints(rig, limits);
+        _material = new ClothMaterialConstraints(rig, limits, reuseMaterialFactor);
         _contact = new ClothContact(rig, limits);
         if (rig.Material.NormalAirDrag > 0)
             _airDrag = new ClothAirDrag(rig);
@@ -173,6 +176,8 @@ public sealed class ClothSimulation
     public ReadOnlySpan<Vector3> Positions => _initialized ? _accepted : [];
 
     internal ReadOnlySpan<Vector3> Velocities => _velocities;
+
+    internal ClothMaterialSolveWork LastAdvanceMaterialWork { get; private set; }
 
     internal bool CanSeed(ReadOnlySpan<Vector3> positions) => AreFinite(positions) && _material.HasMaterialFrames(positions);
 
@@ -197,6 +202,7 @@ public sealed class ClothSimulation
     /// <summary>Advances once with optional fitted recovery. Recovery checks the exact fit at the closing pose.</summary>
     public ClothStepResult Advance(in ClothSubstep step, ReadOnlySpan<Vector3> fittedFallback)
     {
+        LastAdvanceMaterialWork = default;
         ClothStepResult attempt = AdvanceCore(step);
         if (attempt.Status == ClothStepStatus.Accepted || fittedFallback.IsEmpty) return attempt;
         ClothStepStatus fallback = CheckFallback(step, fittedFallback);
@@ -209,7 +215,7 @@ public sealed class ClothSimulation
         Validate(step);
         _contact.Begin();
         ClothStepStatus status = _contact.Prepare(step);
-        if (status != ClothStepStatus.Accepted) return StepResult(status, 0, 0);
+        if (status != ClothStepStatus.Accepted) return StepResult(status, 0);
         _material.Begin();
 
         _airDrag?.Begin(_accepted, step.Seconds);
@@ -224,13 +230,14 @@ public sealed class ClothSimulation
         for (int i = 0; i < _rig.Pins.Length; i++)
             _working[_rig.Pins[i]] = step.Pins[i];
 
-        int iterations = 0, factorizations = 0;
+        int iterations = 0;
+        ClothMaterialSolveWork materialWork = default;
         status = CheckTravel();
         while (status == ClothStepStatus.Accepted && iterations < _limits.Iterations)
         {
             iterations++;
-            status = _material.Project(_working, _accepted, step.Seconds, out bool factorAttempted);
-            if (factorAttempted) factorizations++;
+            status = _material.Project(_working, _accepted, step.Seconds, out ClothMaterialSolveWork projectionWork);
+            materialWork = materialWork.Combine(projectionWork);
             if (status != ClothStepStatus.Accepted) break;
             status = CheckTravel();
             if (status == ClothStepStatus.Accepted)
@@ -250,7 +257,8 @@ public sealed class ClothSimulation
             (_velocities, _workingVelocities) = (_workingVelocities, _velocities);
             (_accepted, _working) = (_working, _accepted);
         }
-        return StepResult(status, iterations, factorizations);
+        LastAdvanceMaterialWork = materialWork;
+        return StepResult(status, iterations, materialWork.FactorProducts);
     }
 
     /// <summary>Projects a display sample against the closing supports in a separate, single-pass envelope.</summary>
@@ -326,7 +334,7 @@ public sealed class ClothSimulation
                 proposedSelfClear = _contact.VerifyProposedSelf(_displayOpening, _displayProposed);
             _displayWorking.AsSpan().CopyTo(displayed);
         }
-        return StepResult(status, 0, 0);
+        return StepResult(status, 0);
     }
 
     internal void Rebase(Vector3 change)
@@ -360,8 +368,8 @@ public sealed class ClothSimulation
 
     private ClothContactWork ContactWork() => new(_contact.Checks, _contact.Candidates, _contact.SweepRefinements);
 
-    private ClothStepResult StepResult(ClothStepStatus status, int iterations, int factorizations) =>
-        new(status, iterations, _contact.Candidates, _contact.Checks, factorizations * _material.FactorProducts)
+    private ClothStepResult StepResult(ClothStepStatus status, int iterations, long factorProducts = 0) =>
+        new(status, iterations, _contact.Candidates, _contact.Checks, factorProducts)
         {
             NormalVelocityContacts = _contact.VelocityContacts,
             NormalVelocityChecks = _contact.VelocityChecks,

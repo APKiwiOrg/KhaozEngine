@@ -689,10 +689,11 @@ weighted by tributary rest area.
 Use `with { HalfThickness = thicknessMetres }` to match the authored garment. Values remain explicit
 in the written sidecar. Measured textile properties vary with the material and weave.
 
-Create a `ClothSimulation` per instance. Each iteration uses one coupled skyline solve for the
-material constraints. `Reset` copies fitted positions and clears velocity. At each fixed tick,
-pass `ClothSubstep` the closing pins in rig order, matching opening and closing support spans,
-step seconds and world gravity. Express positions and support poses in one world-aligned frame.
+Create a `ClothSimulation` per instance. Each iteration directly factors and solves the coupled
+skyline system for the material constraints by default. `Reset` copies fitted positions and clears
+velocity. At each fixed tick, pass `ClothSubstep` the closing pins in rig order, matching opening and
+closing support spans, step seconds and world gravity. Express positions and support poses in one
+world-aligned frame.
 
 - `ClothSupport.Capsule` takes a capsule in support-local metres and a rigid pose.
   `ClothSupport.LowerSegment` takes the solved world endpoints and radius of a kinematic lower chain
@@ -734,7 +735,29 @@ Self-contact searches those pairs on first use of the current coverage. If a cor
 particle's coverage, the solver refits the bounds that depend on that particle. Existing support
 lists retest membership for the refitted faces and retain their other candidates. Each runtime
 bound refit, overlap test and candidate recheck consumes the same work budget.
-`MaxMaterialFactorProducts` independently bounds work in the material solver.
+`MaxMaterialFactorProducts` independently bounds Cholesky products. The direct path reserves one
+full factor per configured iteration at admission. `MaterialFactorProducts` counts the products
+evaluated, including the completed factor work before a failed pivot.
+
+The internal factor reuse prototype reserves one factor per tick. It directly solves the first
+linearization and uses that factor as a preconditioner for conjugate gradients on every later
+linearization. Each later solve starts from zero and applies its own assembled matrix, including
+its current membrane and hinge terms. A projection is admitted only after recomputing the true
+double-precision residual with that matrix and checking `||b - A x|| <= 1e-12 + 1e-6 * ||b||`.
+Each later solve has at most 16 correction iterations. A finite solve that cannot meet the bound
+returns `MaterialSolveWork`. Numerical breakdown returns `NonfiniteState`. The next tick rebuilds
+the factor, and the fixed-step attempt follows the same state publication rules as the direct path.
+
+The reuse workspace is allocated with the instance. For `n` free scalar degrees of freedom,
+`E` skyline off-diagonal entries, `S` structurally present off-diagonal matrix entries and `q`
+later projections, a tick uses at most `2 E (1 + 16 q)` triangular products,
+`(n + 2 S) (1 + 32 q)` matrix-vector products counted as scalar multiplications, and
+`n (2 + 113 q)` vector multiplications. The prototype charges triangular products for the
+initial solve and each preconditioner application, matrix products for the correction directions
+and true residual checks, and vector products for dot products, norms and scaled vector updates.
+These counts exclude assembly, scalar arithmetic outside the vector loops and memory operations.
+Internal diagnostics report attempted work and the peak accepted ratio of true residual norm to
+its bound for the last fixed-step attempt. Display projection uses its own contact work envelope.
 
 A refusal retains the last accepted positions and velocities. To supply a current outfit fit for
 recovery, pass it to `Advance` as `fittedFallback`. A separate bounded check verifies the pins,

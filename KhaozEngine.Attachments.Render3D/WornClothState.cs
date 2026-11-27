@@ -273,7 +273,8 @@ internal sealed class WornClothState(BoundClothSurface profile, ClothRig rig, fl
                 _frameGarmentPalette.AsSpan().SequenceEqual(_displayedGarmentPalette.AsSpan(0, Binding.Surface.JointCount));
             bool sameMaterialPose = unchangedSkin && (stationaryOpening || unchangedNodes);
             _detailProjection = _detail.Stage(Binding.Surface, _projected, _cheapTarget, model, _origin,
-                _frameGarmentPalette, _cheapGarmentPalette, liveDetail, blend ? amount : 1, sameMaterialPose, pose, _projection);
+                _frameGarmentPalette, _cheapGarmentPalette, liveDetail, blend ? amount : 1, sameMaterialPose, pose, _projection,
+                closingOnly: _fresh);
             admissible = _detailProjection.Status == ClothStepStatus.Accepted;
             if (admissible) _detail.Publish(model, _origin);
             correctedOpening = materialMapping && stationaryOpening && _switchFrame && _liveRequested && !unchangedNodes;

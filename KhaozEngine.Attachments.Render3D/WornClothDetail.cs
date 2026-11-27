@@ -35,7 +35,8 @@ internal sealed class WornClothDetail(BoundClothSurface profile, ClothWorkLimits
 
     internal ClothStepResult Stage(BoundClothSurface surface, ReadOnlySpan<Vector3> nodes, ReadOnlySpan<Vector3> fallbackNodes,
         in Matrix4x4 model, Vector3 origin, ReadOnlySpan<Matrix4x4> hostPalette, ReadOnlySpan<Matrix4x4> cheapPalette,
-        bool liveTarget, float amount, bool sameMaterialPose, in ClothSubstep support, ClothStepResult prior)
+        bool liveTarget, float amount, bool sameMaterialPose, in ClothSubstep support, ClothStepResult prior,
+        bool closingOnly = false)
     {
         if (!surface.HasMaterialMapping)
             return _candidate.Fitted(surface, nodes, model, hostPalette) ? default : Failure(ClothStepStatus.CollapsedMaterial);
@@ -51,7 +52,9 @@ internal sealed class WornClothDetail(BoundClothSurface profile, ClothWorkLimits
         Matrix4x4 openingModel = model;
         ModelVertex[][] opening = _candidate.Storage;
         Matrix4x4 orientation = Matrix4x4.Identity;
-        if (_hasOpening)
+        // A fresh support pose has no matching opening geometry. Keep the old publication until this pose is accepted.
+        bool sweepOpening = _hasOpening && !closingOnly;
+        if (sweepOpening)
         {
             openingModel = _model;
             openingModel.Translation += _origin - origin;
@@ -63,7 +66,7 @@ internal sealed class WornClothDetail(BoundClothSurface profile, ClothWorkLimits
                 orientation.Translation = Vector3.Zero;
             }
         }
-        bool copyOpening = _hasOpening && amount == 0 && sameMaterialPose && openingModel == model;
+        bool copyOpening = sweepOpening && amount == 0 && sameMaterialPose && openingModel == model;
         Transfer(surface, orientation, liveTarget, amount, copyOpening);
         return _sweep!.Verify(surface, opening, openingModel, _candidate.Storage, model, support, prior);
     }

@@ -139,16 +139,18 @@ public sealed partial class SkinnedAttachmentBindingTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Support_can_refuse_signed_detail_without_publishing_a_partial_pose(bool compatibleRebind)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void Detailed_support_validation_publishes_only_a_clear_current_pose(bool compatibleRebind, bool moveAtRebind)
     {
         using var rig = new OutfitRig();
         var fixture = ClothAsset(rig, hipOnlyPins: true);
         var source = Assert.IsType<SkinnedAttachmentPartDefinition>(Assert.Single(fixture.Set.Parts));
         var recipe = Assert.IsType<ClothMotionDefinition>(source.Motion);
         ClothSurfaceFile file = ClothSurfaceJson.Parse(fixture.Bytes, ClothKey);
-        ClothRenderEmbedding protrusion = file.Render[2] with { SignedOffset = .12f };
+        int protrusionIndex = compatibleRebind ? 0 : 2;
+        ClothRenderEmbedding protrusion = file.Render[protrusionIndex] with { SignedOffset = .12f };
         var center = new Vector3(0, 2, .4f);
         const float radius = .012f;
         var withSupport = new AttachmentSetDefinition(fixture.Set.Parts, fixture.Set.Layer!.Value, [],
@@ -167,7 +169,7 @@ public sealed partial class SkinnedAttachmentBindingTests
         Assert.Equal(WornClothFallback.None, motion.ClothStatus.Fallback);
         Assert.True(set.TryGetClothPresentation(motion, ClothPartId, out var live));
         Assert.True(live.IsCurrentPose);
-        int peak = surface.Materials[1].MaterialEmbeddings[2].VertexIndex;
+        int peak = surface.Materials[1].MaterialEmbeddings[protrusionIndex].VertexIndex;
         Assert.Contains((uint)peak, surface.Materials[1].VisibleIndices);
         Vector3 point = live.DetailedVertices(1).Span[peak].Position;
         var collider = Assert.Single(motion.FindClothBinding(0, ClothPartId)!.Capsules);
@@ -183,11 +185,16 @@ public sealed partial class SkinnedAttachmentBindingTests
         if (compatibleRebind)
         {
             BoundAttachmentSet lower = OutfitLiftDrawTests.Garment(rig, standoff: .002f);
-            int hip = rig.Map.Bone("hip");
-            Assert.True(Matrix4x4.Invert(rig.Body.InverseBind[hip] * pose[hip], out Matrix4x4 toSupportRest));
+            Matrix4x4 model = Matrix4x4.Identity;
+            if (moveAtRebind)
+            {
+                pose[rig.Map.Bone("hip")].Translation += 4 * radius * Vector3.UnitZ;
+                model.Translation = .003f * Vector3.UnitX;
+            }
+            Assert.True(Matrix4x4.Invert(rig.Body.InverseBind[knee] * pose[knee] * model, out Matrix4x4 toSupportRest));
             Vector3 addedCenter = Vector3.Transform(previousPoint, toSupportRest);
             var changed = new AttachmentSetDefinition(lower.Definition.Parts, lower.Definition.Layer,
-                lower.Definition.Covers, [new ColliderDefinition("hip", addedCenter, addedCenter, radius)], lower.Definition.Standoff);
+                lower.Definition.Covers, [new ColliderDefinition("knee", addedCenter, addedCenter, radius)], lower.Definition.Standoff);
             var newLower = rig.Wear("material-rebind-support.json", changed);
             using BoundOutfit rebound = rig.Cache.BindOutfit(OutfitLiftDrawTests.Body(rig), [newLower, set]);
             var changedSurface = rebound.ClothSurface(1, ClothPartId)!;
@@ -195,10 +202,25 @@ public sealed partial class SkinnedAttachmentBindingTests
             Assert.NotEqual(surface.Materials[1].Vertices[peak].Position, changedSurface.Materials[1].Vertices[peak].Position);
             var newMotion = rebound.CreateMotion(null, options);
             Assert.Contains(newMotion.FindClothBinding(1, ClothPartId)!.Capsules, candidate =>
-                Vector3.Distance(candidate.Pose(pose, Matrix4x4.Identity).WorldCapsule.Start, previousPoint) < radius * .5f);
+                Vector3.Distance(candidate.Pose(pose, model).WorldCapsule.Start, previousPoint) < radius * .5f);
+            Assert.Contains((uint)peak, changedSurface.Materials[1].VisibleIndices);
             Assert.True(slot.Rebind(newMotion, 1, ClothPartId));
-            newMotion.Step(rig.Skeleton, pose, Matrix4x4.Identity, 0, MotionLevel.Held, new(slot, 1, ClothPartId));
+            newMotion.Step(rig.Skeleton, pose, model, 0, MotionLevel.Held, new(slot, 1, ClothPartId));
             Assert.Equal(ClothStepStatus.Accepted, newMotion.ClothStatus.Projection.Status);
+            if (moveAtRebind)
+            {
+                Assert.Equal(ClothStepStatus.Accepted, newMotion.ClothStatus.DetailedProjection.Status);
+                Assert.Equal(WornClothFallback.None, newMotion.ClothStatus.Fallback);
+                Assert.True(rebound.TryGetClothPresentation(1, newMotion, ClothPartId, out var accepted));
+                Assert.True(accepted.IsCurrentPose);
+                Assert.Same(changedSurface, accepted.Surface);
+                Assert.Equal(model, accepted.Model);
+                Vector3 newPoint = Vector3.Transform(accepted.DetailedVertices(1).Span[peak].Position, accepted.Model);
+                Assert.True(Vector3.Distance(previousPoint, newPoint) > 2 * radius);
+                Assert.False(set.TryGetClothPresentation(motion, ClothPartId, out _));
+                return;
+            }
+
             Assert.Equal(ClothStepStatus.UnresolvedContact, newMotion.ClothStatus.DetailedProjection.Status);
             Assert.Equal(WornClothFallback.TransferRefused, newMotion.ClothStatus.Fallback);
             Assert.False(rebound.TryGetClothPresentation(1, newMotion, ClothPartId, out _));

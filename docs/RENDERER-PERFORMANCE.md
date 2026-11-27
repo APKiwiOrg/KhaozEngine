@@ -156,12 +156,18 @@ builds it and tests only the pure summary/verdict logic, never the timing worklo
 
 `tools/Renderer.Perf.Tests` is outside the solution. Its one opt-in performance fact is not an ordinary
 headless test. Every native measurement or load run needs separate owner approval naming the workload,
-leg, frame counts, duration and spending cap. The v1 paid manifest's campaign cap is at most USD 22, the owner's
-envelope for every v1 paid pilot and full unit including attempts already billed, and each unit's own cost cap must
-fit inside it. The owner raised it from USD 18 after the locked
+leg, frame counts, duration and spending cap. A v1 paid manifest's `approval.campaignMaximumUsd` is its campaign's
+envelope, at most USD 22. The envelope covers every paid pilot and full unit of that campaign including attempts
+already billed, and each unit's own cost cap must fit inside it. The first v1 campaign closed at USD 17.908 of its
+USD 22 envelope with the [published pair](performance/renderer/index-full-linux-full-windows.md). That envelope rose
+from USD 18 after the locked
 [Linux full unit](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40599806485) refused and the locked
-[Windows full unit](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40599810511) was cancelled. Both
-attempts count against it. Implementation approval never authorizes a dispatch, pilot, retry, profiler capture or follow-up
+[Windows full unit](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40599810511) was cancelled, and both
+attempts count against it. The machine.dev rebaseline ([#1907](https://github.com/APKiwiOrg/KhaozEngine/issues/1907))
+is a separate v1 campaign on one workload with a USD 9 envelope for a Linux and a Windows pilot and full unit. Their
+unit caps total USD 8.68109. machine.dev also bills its default 100 GB EBS volume at USD 0.08 per GB-month, about
+USD 0.01 over the 53 Linux billed minutes, which no unit cap can carry because the cap is billed minutes times the
+leg rate. Implementation approval never authorizes a dispatch, pilot, retry, profiler capture or follow-up
 measurement. Software Vulkan and WARP can establish
 correctness only. They cannot establish a hardware floor or a T4 result.
 

@@ -10,5 +10,5 @@ Checks: >
   modernize-use-using,
   performance-*
 WarningsAsErrors: '*'
-HeaderFilterRegex: '(^|[/\\])native[/\\]'
-ExcludeHeaderFilterRegex: '(^|[/\\])native[/\\]third_party[/\\]'
+HeaderFilterRegex: '.*'
+SystemHeaders: false

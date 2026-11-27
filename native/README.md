@@ -56,15 +56,20 @@ Each preset writes the build and compilation database under out/build in this di
 ## Source checks
 
 Use LLVM's clang-format and run-clang-tidy from this directory. The formatter checks tracked
-files and new files that Git does not ignore. The linter checks translation units from the
-configured preset's compilation database and the headers they include. Both exclude
-`third_party/`. Substitute your configured preset in the lint command.
+files and new files that Git does not ignore, excluding `third_party/`. The linter checks
+first-party translation units from the configured preset's compilation database and reports
+diagnostics in their non-system headers. Include vendored headers by name in angle brackets
+through the `khaoz::*` targets, which supply their SYSTEM include paths. The include check
+rejects direct paths into the vendored tree and quoted vendored header names. Substitute
+your configured preset in the lint command.
 
 ```sh
 git ls-files -z --cached --others --exclude-standard -- \
   '*.[cChH]' '*.cc' '*.cp' '*.cpp' '*.cxx' '*.c++' '*.hh' '*.hpp' '*.hxx' '*.h++' \
   '*.inc' '*.inl' '*.ipp' '*.tcc' '*.tpp' '*.ccm' '*.cppm' '*.cxxm' '*.c++m' '*.ixx' \
   ':(exclude)third_party/**' | xargs -0 clang-format --dry-run --Werror --
+
+python3 scripts/check-vendored-includes.py
 
 native_root=$(python3 -c 'import os, re; print(re.escape(os.getcwd()))')
 run-clang-tidy -quiet -j 1 -config-file="$PWD/.clang-tidy" -p out/build/macos-arm64 \

@@ -317,16 +317,29 @@ def check_native_core_scope(matcher, rules, manifest):
     assert tests and tests == built, (tests, built)
     consumed = set(re.findall(r'\bdotnet (?:pack|run --project) ([\w./-]+\.csproj)\b', workflow))
     assert roots('compile') == consumed == {
-        'native/pack/KhaozEngine.Native.csproj', 'native/smoke/NativeSmoke.csproj'}, consumed
+        'native/KhaozEngine.Native.csproj', 'native/smoke/NativeSmoke.csproj'}, consumed
     scripts = set(re.findall(r'\b(native/scripts/[\w.-]+\.(?:sh|py))\b', workflow))
     assert scripts, 'Expected native scripts in the workflow'
+    # The C++ sources are the package's inputs. They reach this workflow through the pack project's
+    # closure row, never as a full scope, and reach no other native correctness workflow.
+    others = set()
+    for name in ('cross-platform-gpu', 'foliage-conformance', 'terrain-format', 'windows-console'):
+        others.update(scope_inputs((ROOT / f'.github/workflows/{name}.yml').read_text(), rules)[0])
+    for path in (*sorted(scripts), 'native/CMakeLists.txt', 'native/CMakePresets.json', 'native/.clang-tidy',
+                 'native/include/khaoz/khaoz_native.h', 'native/src/frame/frame.cpp', 'native/tests/test_frame.cpp',
+                 'native/third_party/volk/volk.c'):
+        full, segments, _ = matcher.select(rules, [path])
+        assert not full and 'compile-native-pack' in segments, (path, full, segments)
+        assert not others.intersection(segments), (path, segments)
+    golden = ('KhaozEngine.Render.Tests/Gpu/Scene2DPrimitivesScene.cs',
+              'KhaozEngine.Render.Tests/Gpu/goldens/scene2d_primitives.vulkan-native.txt')
+    assert all(matcher.select(rules, [path])[0] for path in golden), golden
     assert_external_routes(matcher, rules, requested, workflow, (
         *scripts, 'Directory.Build.props', 'Directory.Build.targets', 'Directory.Packages.props', 'nuget.config',
         '.editorconfig', '.config/dotnet-tools.json', 'native/CMakeLists.txt', 'native/CMakePresets.json',
         'native/include/khaoz/khaoz_native.h', 'native/src/frame/frame.cpp', 'native/tests/test_frame.cpp',
         'native/third_party/volk/volk.c', 'native/smoke/Program.cs', 'native/smoke/nuget.config',
-        'KhaozEngine.Gpu.Core/Interop/KhaozNative.g.cs', 'KhaozEngine.Render.Tests/Gpu/Scene2DPrimitivesScene.cs',
-        'KhaozEngine.Render.Tests/Gpu/goldens/scene2d_primitives.vulkan-native.txt',
+        'KhaozEngine.Gpu.Core/Interop/KhaozNative.g.cs', *golden,
     ))
     return tests
 

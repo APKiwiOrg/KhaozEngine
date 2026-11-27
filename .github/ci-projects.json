@@ -21,7 +21,7 @@
   "compile-gesture-input-probe": {"role": "compile", "roots": ["tools/GestureInputProbe/GestureInputProbe.csproj"]},
   "compile-items-benchmark": {"role": "compile", "roots": ["tools/Items.Benchmark.Tests/Items.Benchmark.Tests.csproj"]},
   "compile-map-doc-oracle-harness": {"role": "compile", "roots": ["KhaozEngine.MapDoc.OracleHarness.Tests/KhaozEngine.MapDoc.OracleHarness.Tests.csproj"]},
-  "compile-native-pack": {"role": "compile", "roots": ["native/pack/KhaozEngine.Native.csproj"]},
+  "compile-native-pack": {"role": "compile", "roots": ["native/KhaozEngine.Native.csproj"]},
   "compile-native-smoke": {"role": "compile", "roots": ["native/smoke/NativeSmoke.csproj"]},
   "compile-nav-capture-research": {"role": "compile", "roots": ["tools/NavCapture.Research.Tests/NavCapture.Research.Tests.csproj"]},
   "compile-physics-aot-probe": {"role": "compile", "roots": ["KhaozEngine.Physics.AotProbe/KhaozEngine.Physics.AotProbe.csproj"]},

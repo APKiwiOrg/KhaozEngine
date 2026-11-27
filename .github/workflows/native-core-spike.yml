@@ -10,9 +10,10 @@ name: native-core-spike
 
 # The Scope job selects the run with the Product CI rules in .github/ci-scope.txt, as the other native
 # correctness workflows do. The segments cover the adapter's project closure (gpu-core) and the pack and
-# smoke projects. The C++ sources under native/ and the golden scene and grid this workflow reads from
-# KhaozEngine.Render.Tests sit outside any project closure, so they are full overrides there, and a full
-# scope selects this workflow. Schedule and dispatch run everything.
+# smoke projects. The pack project sits at the root of native/, so its row covers the C++ sources and a
+# C++ change selects this workflow alone. The golden scene and grid read from KhaozEngine.Render.Tests are
+# linked across projects, so they are full overrides there, and a full scope selects this workflow.
+# Schedule and dispatch run everything.
 on:
   push:
     branches: [main]
@@ -445,9 +446,9 @@ jobs:
             mkdir -p "$stage/$rid"
             cp "$RUNNER_TEMP/artifacts/khaoz-native-$rid/$file" "$stage/$rid/"
           done
-          engine=$(dotnet msbuild native/pack/KhaozEngine.Native.csproj -getProperty:KhaozEngineVersion)
+          engine=$(dotnet msbuild native/KhaozEngine.Native.csproj -getProperty:KhaozEngineVersion)
           version="$engine-spike.$RUN_NUMBER"
-          dotnet pack native/pack/KhaozEngine.Native.csproj -c Release -p:KhaozNativeStage="$stage" \
+          dotnet pack native/KhaozEngine.Native.csproj -c Release -p:KhaozNativeStage="$stage" \
             -p:Version="$version" -o "$feed"
           package="$feed/KhaozEngine.Native.$version.nupkg"
           entries=$(unzip -Z1 "$package" | grep '^runtimes/' | sort)

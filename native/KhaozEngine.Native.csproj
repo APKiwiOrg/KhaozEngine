@@ -1,7 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!-- Packs the prebuilt native core into runtimes/<rid>/native/. Outside the solution and never built
        from source here: KhaozNativeStage names a folder holding one subfolder per RID, as CI stages the
-       stripped build artifacts. Each library is optional, so a plain compile without a stage succeeds. -->
+       stripped build artifacts. Each library is optional, so a plain compile without a stage succeeds.
+       The project sits at the root of native/ because the C++ sources there are the package's real
+       inputs: Product CI derives the compile-native-pack scope row from this folder, so a C++ change
+       selects the native core workflow without a full scope. EnableDefaultItems is off, so nothing
+       under native/ (sources, out/ build trees, the smoke project) is globbed into it. -->
   <PropertyGroup>
     <PackageId>KhaozEngine.Native</PackageId>
     <Version>$(KhaozEngineVersion)</Version>

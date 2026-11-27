@@ -167,8 +167,10 @@ successful queue wait, after each destroy, at the next Begin and at device teard
 
 ## Package and smoke test
 
-[pack/KhaozEngine.Native.csproj](pack/KhaozEngine.Native.csproj) packs prebuilt libraries into
-`KhaozEngine.Native`. It compiles no source. Pass `KhaozNativeStage`, a folder with one subfolder per
+[KhaozEngine.Native.csproj](KhaozEngine.Native.csproj) packs prebuilt libraries into
+`KhaozEngine.Native`. It compiles no source and globs nothing. It sits at the root of `native/`, so
+Product CI's scope row for it covers the C++ sources and a C++ change selects the native core
+workflow without a full scope. Pass `KhaozNativeStage`, a folder with one subfolder per
 RID: `osx-arm64/libkhaoz_native.dylib`, `win-x64/khaoz_native.dll`, `linux-x64/libkhaoz_native.so`
 and `linux-arm64/libkhaoz_native.so`. Each present library lands in `runtimes/<rid>/native/`, so a
 partial stage packs only those RIDs and a build without a stage still compiles. Stage stripped
@@ -194,7 +196,7 @@ From the repository root, after building the macOS preset:
 ```sh
 work=/tmp/khaozengine-native
 sh native/scripts/stage-library.sh native/out/build/macos-arm64 osx-arm64 "$work/stage"
-dotnet pack native/pack/KhaozEngine.Native.csproj -c Release \
+dotnet pack native/KhaozEngine.Native.csproj -c Release \
   -p:KhaozNativeStage="$work/stage/lib" -p:Version=0.0.0-spike.0 -o "$work/feed"
 KHAOZ_NATIVE_FEED="$work/feed" NUGET_PACKAGES="$work/packages" \
   dotnet run --project native/smoke/NativeSmoke.csproj -c Release -p:KhaozNativeVersion=0.0.0-spike.0

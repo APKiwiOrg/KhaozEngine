@@ -15,6 +15,16 @@ ABI. The generated imports bind through the same check and retain the verified h
 lifetime of their entry points. Failed native operations carry the calling thread's UTF-8 diagnostic
 into the managed exception.
 
+## Frame submission
+
+`FrameSubmitBoundary` owns a fixed-capacity frame. Pass a span of 64-byte `khaoz_draw_record`
+values to submit the whole frame in one call. Each record carries a 3x4 row-major affine transform,
+mesh and material IDs, and an unsigned 64-bit sort key. The native core stable-sorts complete
+records by key into host storage allocated at creation. The host storage stands in for a mapped
+upload buffer so the path runs without a GPU. A successful submit allocates no memory on either
+side, and a rejected submit leaves the previous frame intact. Serialize operations on each
+instance. `CopySortedKeys` copies into a caller-provided span with room for the submitted frame.
+
 ## Tests
 
 Build the native library using the CMake preset for your platform. Pass its absolute path as
@@ -26,3 +36,7 @@ Keep `khaoz_native_stale_abi_fixture` from the native test build beside the libr
 `KhaozNativeLibPath`. The managed test copies the fixture into a fresh process's application
 directory under the platform's production library filename. Native test jobs need both files.
 The fixture is for the managed loader test and stays out of the runtime package.
+
+The report-only frame probe requires `KE_NATIVE_FRAME_TIMING=1` in addition to
+`KE_NATIVE_TESTS=1`. It times submit for the 3,335-record random and frame-coherent workloads and
+can write a JSON receipt at `KE_NATIVE_FRAME_RECEIPT`.

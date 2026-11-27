@@ -37,6 +37,31 @@ KHAOZ_API uint32_t khaoz_native_abi_version(void);
  */
 KHAOZ_API size_t khaoz_last_error_message(char* buffer, size_t capacity);
 
+/* A row-major 3x4 affine transform followed by draw identifiers and an unsigned sort key. */
+typedef struct khaoz_draw_record {
+    float world[12];
+    uint32_t mesh_id;
+    uint32_t material_id;
+    uint64_t sort_key;
+} khaoz_draw_record;
+
+typedef struct khaoz_frame khaoz_frame;
+
+/* A frame owns fixed-capacity host storage. Serialize calls on each frame. */
+KHAOZ_API khaoz_result khaoz_frame_create(uint32_t capacity, khaoz_frame** out_frame);
+
+/* Stable-sorts a copy into the frame. Invalid input leaves the previous frame intact.
+ * A null records pointer is valid for an empty submit.
+ */
+KHAOZ_API khaoz_result khaoz_frame_submit(khaoz_frame* frame, const khaoz_draw_record* records, uint32_t count);
+
+/* Copies all sorted keys into a destination with room for every submitted record.
+ * out_keys may be null for an empty frame. out_count is required and written on success.
+ */
+KHAOZ_API khaoz_result khaoz_frame_sorted_keys(const khaoz_frame* frame, uint64_t* out_keys, uint32_t capacity,
+                                               uint32_t* out_count);
+KHAOZ_API void khaoz_frame_destroy(khaoz_frame* frame);
+
 #ifdef __cplusplus
 }
 #endif

@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <IsPackable>false</IsPackable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <OutputType>Exe</OutputType>
     <GenerateProgramFile>false</GenerateProgramFile>
     <RootNamespace>KhaozEngine.Tests.GpuCore</RootNamespace>

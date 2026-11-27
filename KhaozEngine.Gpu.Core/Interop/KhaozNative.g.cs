@@ -1,6 +1,7 @@
 using System;
 using System.CodeDom.Compiler;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace KhaozEngine.Gpu.Core.Interop;
@@ -18,6 +19,33 @@ internal enum khaoz_result
 }
 
 [GeneratedCode("ClangSharp", "23.1.5.0")]
+public partial struct khaoz_draw_record
+{
+    [NativeTypeName("float[12]")]
+    public _world_e__FixedBuffer world;
+
+    [NativeTypeName("uint32_t")]
+    public uint mesh_id;
+
+    [NativeTypeName("uint32_t")]
+    public uint material_id;
+
+    [NativeTypeName("uint64_t")]
+    public ulong sort_key;
+
+    [InlineArray(12)]
+    public partial struct _world_e__FixedBuffer
+    {
+        public float e0;
+    }
+}
+
+[GeneratedCode("ClangSharp", "23.1.5.0")]
+internal partial struct khaoz_frame
+{
+}
+
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 internal static unsafe partial class KhaozNative
 {
     [DllImport("khaoz_native", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
@@ -27,6 +55,18 @@ internal static unsafe partial class KhaozNative
     [DllImport("khaoz_native", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     [return: NativeTypeName("size_t")]
     public static extern nuint khaoz_last_error_message([NativeTypeName("char *")] sbyte* buffer, [NativeTypeName("size_t")] nuint capacity);
+
+    [DllImport("khaoz_native", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern khaoz_result khaoz_frame_create([NativeTypeName("uint32_t")] uint capacity, khaoz_frame** out_frame);
+
+    [DllImport("khaoz_native", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern khaoz_result khaoz_frame_submit(khaoz_frame* frame, [NativeTypeName("const khaoz_draw_record *")] khaoz_draw_record* records, [NativeTypeName("uint32_t")] uint count);
+
+    [DllImport("khaoz_native", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern khaoz_result khaoz_frame_sorted_keys([NativeTypeName("const khaoz_frame *")] khaoz_frame* frame, [NativeTypeName("uint64_t *")] ulong* out_keys, [NativeTypeName("uint32_t")] uint capacity, [NativeTypeName("uint32_t *")] uint* out_count);
+
+    [DllImport("khaoz_native", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern void khaoz_frame_destroy(khaoz_frame* frame);
 
     [NativeTypeName("#define KHAOZ_NATIVE_ABI_VERSION 1u")]
     public const uint KHAOZ_NATIVE_ABI_VERSION = 1U;

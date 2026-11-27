@@ -15,5 +15,5 @@ dotnet tool run ClangSharpPInvokeGenerator -- \
     --namespace KhaozEngine.Gpu.Core.Interop --method-class-name KhaozNative \
     --library-path khaoz_native --config types=windows \
     --include 'khaoz_*' KHAOZ_NATIVE_ABI_VERSION \
-    --with-access-specifier '*=Internal' --with-type khaoz_result=int \
+    --with-access-specifier '*=Internal' khaoz_draw_record=Public --with-type khaoz_result=int \
     --generate macro-bindings file-scoped-namespaces helper-types generated-code=type

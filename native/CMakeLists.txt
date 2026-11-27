@@ -49,6 +49,7 @@ find_package(Threads REQUIRED)
 add_library(khaoz_native_objects OBJECT
     src/abi/abi_version.cpp
     src/abi/last_error.cpp
+    src/frame/frame.cpp
 )
 set_target_properties(khaoz_native_objects PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_compile_definitions(khaoz_native_objects PRIVATE KHAOZ_NATIVE_BUILD)

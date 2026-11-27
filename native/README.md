@@ -169,8 +169,10 @@ successful queue wait, after each destroy, at the next Begin and at device teard
 RID: `osx-arm64/libkhaoz_native.dylib`, `win-x64/khaoz_native.dll`, `linux-x64/libkhaoz_native.so`
 and `linux-arm64/libkhaoz_native.so`. Each present library lands in `runtimes/<rid>/native/`, so a
 partial stage packs only those RIDs and a build without a stage still compiles. Stage stripped
-libraries, since game repositories vendor every engine version into git. The test fixture
-libraries never go in the package. The spike packs only to a run-local folder, never to
+libraries, since game repositories vendor every engine version into git.
+[scripts/stage-library.sh](scripts/stage-library.sh) copies a preset's build into that layout under
+`<out>/lib`, with its debug information under `<out>/symbols` and the test fixture libraries under
+`<out>/fixtures`. The fixtures never go in the package. The spike packs only to a run-local folder, never to
 `local-feed`.
 
 [smoke/NativeSmoke.csproj](smoke/NativeSmoke.csproj) consumes the package as a game would. It links
@@ -186,11 +188,9 @@ From the repository root, after building the macOS preset:
 
 ```sh
 work=/tmp/khaozengine-native
-mkdir -p "$work/stage/osx-arm64"
-cp native/out/build/macos-arm64/libkhaoz_native.dylib "$work/stage/osx-arm64/"
-strip -x "$work/stage/osx-arm64/libkhaoz_native.dylib"
+sh native/scripts/stage-library.sh native/out/build/macos-arm64 osx-arm64 "$work/stage"
 dotnet pack native/pack/KhaozEngine.Native.csproj -c Release \
-  -p:KhaozNativeStage="$work/stage" -p:Version=0.0.0-spike.0 -o "$work/feed"
+  -p:KhaozNativeStage="$work/stage/lib" -p:Version=0.0.0-spike.0 -o "$work/feed"
 KHAOZ_NATIVE_FEED="$work/feed" NUGET_PACKAGES="$work/packages" \
   dotnet run --project native/smoke/NativeSmoke.csproj -c Release -p:KhaozNativeVersion=0.0.0-spike.0
 ```

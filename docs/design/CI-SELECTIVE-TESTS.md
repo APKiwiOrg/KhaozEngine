@@ -134,10 +134,11 @@ selects the rest. Each device test project has exactly one owner. Foliage select
 `render`, terrain selects `tile-world-physics`, and Windows console selects its two probe compile
 roots. The native core workflow selects `gpu-core` and the pack and smoke compile roots. The pack
 project sits at the root of `native/` because the C++ sources there are its package's inputs, so
-its closure row routes a C++ change to the native core workflow alone, never to a full scope. Every
-full scope selects all five workflows. Shared assets, the GPU build scripts and the Windows console
-smoke script are full overrides. So are the golden scene and grid the native core tests read from
-`KhaozEngine.Render.Tests`, because they are linked across projects.
+its closure row routes a C++ change to the native core workflow alone, never to a full scope. A
+Markdown edit under `native/` runs that workflow too, because a closure row takes precedence over the
+README ignore. Every full scope selects all five workflows. Shared assets, the GPU build scripts and
+the Windows console smoke script are full overrides. So are the golden scene and grid the native
+core tests read from `KhaozEngine.Render.Tests`, because they are linked across projects.
 
 The Product CI tooling fixture derives the GPU project roster and checks each workflow's actual
 segment inputs, the foliage build list and the projects the native core workflow builds, packs

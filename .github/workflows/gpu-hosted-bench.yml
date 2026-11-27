@@ -180,7 +180,10 @@ jobs:
           elif [ -n "$COVERAGE_PERF_MANIFEST_SHA256$COVERAGE_PERF_WORKLOAD_SHA" ]; then
             echo "::error::coverage performance hashes require a selected unit"; exit 1
           fi
-          all='[{"leg":"windows-d3d11","runner":"gpu-t4-windows","backend":"direct3d11-native"},{"leg":"windows-vulkan","runner":"gpu-t4-windows","backend":"vulkan-native"},{"leg":"linux-vulkan","runner":"gpu-t4-linux","backend":"vulkan-native"}]'
+          # machine.dev registers each runner under the exact label its job asked for, so a run-unique id keeps
+          # any other queued job from taking the runner.
+          linux_runner="machine/gpu=t4/cpu=4/tenancy=on_demand/id=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-linux-vulkan"
+          all=$(jq -cn --arg linux "$linux_runner" '[{"leg":"windows-d3d11","runner":"gpu-t4-windows","backend":"direct3d11-native"},{"leg":"windows-vulkan","runner":"gpu-t4-windows","backend":"vulkan-native"},{"leg":"linux-vulkan","runner":$linux,"backend":"vulkan-native"}]')
           if [ "$LEGS" = "all" ]; then picked="$all"; else picked=$(echo "$all" | jq -c --arg l "$LEGS" '[.[] | select(.leg == $l)]'); fi
           echo "matrix={\"include\":$picked}" >> "$GITHUB_OUTPUT"
 
@@ -317,6 +320,20 @@ jobs:
           sudo apt-get install -y -qq libvulkan1 vulkan-tools
           ls -la /usr/share/vulkan/icd.d /etc/vulkan/icd.d 2>/dev/null || true
           vulkaninfo --summary 2>&1 | head -60 || true
+
+      - name: Probe machine.dev host (temporary)
+        if: runner.os == 'Linux'
+        continue-on-error: true
+        shell: bash
+        run: |
+          lscpu | grep -E 'Model name|^CPU\(s\)' || true
+          free -g | head -2 || true
+          . /etc/os-release && echo "$PRETTY_NAME"
+          tok=$(curl -s -X PUT -H 'X-aws-ec2-metadata-token-ttl-seconds: 60' http://169.254.169.254/latest/api/token || true)
+          for k in instance-type placement/region placement/availability-zone; do echo "$k: $(curl -s -H "X-aws-ec2-metadata-token: $tok" "http://169.254.169.254/latest/meta-data/$k" || true)"; done
+          nvidia-smi --query-gpu=name,driver_version,clocks.max.graphics,clocks.max.memory --format=csv || true
+          max=$(nvidia-smi --query-gpu=clocks.max.graphics --format=csv,noheader,nounits | head -1 | tr -d ' ')
+          if sudo nvidia-smi -lgc "$max,$max"; then nvidia-smi --query-gpu=clocks.gr --format=csv; sudo nvidia-smi -rgc; else echo "graphics clock lock refused"; fi
 
       # The runner also carries Mesa's llvmpipe, and a Vulkan device request that cannot be honoured falls back to
       # it without failing (#1200): late in one run the T4 stopped being chosen and two cost facts ran on llvmpipe.

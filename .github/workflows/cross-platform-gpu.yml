@@ -431,7 +431,7 @@ jobs:
         if: github.event_name == 'push' || github.event_name == 'pull_request'
         uses: ./.github/actions/native-ci-scope
         with:
-          segments: '["map-editor", "render", "tile-edit", "world-map-gui"]'
+          segments: '["gpu-core", "map-editor", "render", "tile-edit", "world-map-gui"]'
           base-events: push schedule
 
       # Only the shard plan is needed on the full schedule and dispatch paths.

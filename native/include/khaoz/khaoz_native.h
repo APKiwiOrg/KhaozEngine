@@ -64,6 +64,7 @@ KHAOZ_API void khaoz_frame_destroy(khaoz_frame* frame);
 
 /* Calls on a device and its children must be serialized by the caller.
  * Keep referenced resources alive and unmapped from recording through GPU completion.
+ * Child destruction consumes the handle. An inconclusive drain defers its Vulkan cleanup to the device.
  */
 typedef struct khaoz_gpu_device khaoz_gpu_device;
 typedef struct khaoz_gpu_buffer khaoz_gpu_buffer;
@@ -74,8 +75,31 @@ typedef struct khaoz_gpu_command_list khaoz_gpu_command_list;
 
 typedef struct khaoz_gpu_device_desc {
     uint32_t enable_validation;
-    const char* device_name_contains;
+    const char* device_name_contains; /* Standalone ASCII substring fallback when no selector is supplied. */
 } khaoz_gpu_device_desc;
+
+typedef struct khaoz_gpu_adapter_info {
+    char device_name[256];
+    uint32_t device_type;
+    uint32_t device_id;
+    uint32_t mesa_llvmpipe;
+    const char* rejection_reason;
+} khaoz_gpu_adapter_info;
+
+/* The candidates are in Vulkan enumeration order and are valid during the callback.
+ * Return the index of an eligible candidate, or -1 to decline. Do not re-enter the Vulkan ABI.
+ */
+typedef int32_t (*khaoz_gpu_select_adapter)(const khaoz_gpu_adapter_info* candidates, uint32_t count, void* context);
+
+typedef struct khaoz_gpu_device_selection {
+    khaoz_gpu_select_adapter select;
+    void* context;
+} khaoz_gpu_device_selection;
+
+typedef enum khaoz_gpu_startup_status {
+    KHAOZ_GPU_STARTUP_DEFAULT = 0,
+    KHAOZ_GPU_STARTUP_NO_DRIVER = 1
+} khaoz_gpu_startup_status;
 
 typedef struct khaoz_gpu_capabilities {
     uint32_t clip_space_y_inverted;
@@ -104,11 +128,21 @@ KHAOZ_API khaoz_result khaoz_gpu_device_create_headless(const khaoz_gpu_device_d
 KHAOZ_API khaoz_result khaoz_gpu_device_create_headless_with_loader(const khaoz_gpu_device_desc* desc,
                                                                     const char* loader_path,
                                                                     khaoz_gpu_device** out_device);
+/* Selects from the same adapter enumeration used to create the logical device.
+ * out_startup_status may be null. When supplied, it refines a Vulkan-unavailable result.
+ */
+KHAOZ_API khaoz_result khaoz_gpu_device_create_headless_with_selection(const khaoz_gpu_device_desc* desc,
+                                                                       const char* loader_path,
+                                                                       const khaoz_gpu_device_selection* selection,
+                                                                       uint32_t* out_startup_status,
+                                                                       khaoz_gpu_device** out_device);
 KHAOZ_API khaoz_result khaoz_gpu_device_probe(const char* loader_path);
 KHAOZ_API khaoz_result khaoz_gpu_device_capabilities(const khaoz_gpu_device* device, khaoz_gpu_capabilities* out_caps);
 KHAOZ_API uint32_t khaoz_gpu_device_validation_errors(const khaoz_gpu_device* device);
 /* Releases the device and its children. Live children count as a validation error when validation is enabled.
  * out_validation_errors may be null. The returned count includes errors issued during teardown.
+ * If waiting fails without confirmed device loss, the device remains owned by the caller for a later destroy.
+ * A return of KHAOZ_OK or KHAOZ_ERROR_DEVICE_LOST consumes the handle.
  */
 KHAOZ_API khaoz_result khaoz_gpu_device_destroy(khaoz_gpu_device* device, uint32_t* out_validation_errors);
 KHAOZ_API khaoz_result khaoz_gpu_device_wait_for_idle(khaoz_gpu_device* device);
@@ -172,7 +206,7 @@ typedef struct khaoz_gpu_texture_desc {
     uint32_t width;
     uint32_t height;
     uint32_t mip_levels;
-    uint32_t array_layers;
+    uint32_t array_layers; /* Logical cubes when KHAOZ_GPU_TEXTURE_CUBEMAP is set. */
     uint32_t format;
     uint32_t usage;
     uint32_t sample_count;

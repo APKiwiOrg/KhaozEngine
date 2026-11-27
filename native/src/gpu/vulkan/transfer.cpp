@@ -172,6 +172,10 @@ khaoz_result khaoz_gpu_command_list_copy_buffer(khaoz_gpu_command_list* commands
             return error(KHAOZ_ERROR_INVALID_ARGUMENT,
                          "A recording and two unmapped buffers from its device are required");
         }
+        const auto usable = commands->device.require_usable();
+        if (usable != KHAOZ_OK) {
+            return usable;
+        }
         if ((src_offset % 4) != 0 || (dst_offset % 4) != 0 || !fits(src->size, src_offset, size) ||
             !fits(dst->size, dst_offset, size) ||
             (src == dst && std::max(src_offset, dst_offset) - std::min(src_offset, dst_offset) < size)) {
@@ -193,6 +197,10 @@ khaoz_result khaoz_gpu_command_list_copy_texture(khaoz_gpu_command_list* command
             src->staging.mapped || dst->staging.mapped) {
             return error(KHAOZ_ERROR_INVALID_ARGUMENT,
                          "A recording and two unmapped textures from its device are required");
+        }
+        const auto usable = commands->device.require_usable();
+        if (usable != KHAOZ_OK) {
+            return usable;
         }
         if (src->desc.format != dst->desc.format || src->desc.sample_count != dst->desc.sample_count) {
             return error(KHAOZ_ERROR_INVALID_ARGUMENT, "Texture copies require matching formats and sample counts");
@@ -238,27 +246,20 @@ khaoz_result khaoz_gpu_texture_update(khaoz_gpu_texture* texture, const khaoz_gp
         if (required > size) {
             return error(KHAOZ_ERROR_INVALID_ARGUMENT, "The upload data is smaller than the texture region");
         }
+        auto& device = texture->device;
+        const auto usable = device.require_usable();
+        if (usable != KHAOZ_OK) {
+            return usable;
+        }
         if (texture->is_staging()) {
             return write_staging(*texture, *region, data);
         }
-
-        auto& device = texture->device;
-        allocated_buffer upload;
-        auto result = upload.create(device.allocator, {required, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                                                       VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT});
-        if (result != KHAOZ_OK) {
-            return result;
-        }
-        result = upload.write(0, data, static_cast<size_t>(required));
-        if (result != KHAOZ_OK) {
-            return result;
-        }
-        return transfer_now(device, [&](VkCommandBuffer commands) {
-            const auto copy = buffer_image_region({0, 0}, *region);
-            before_transfer(device, commands);
-            device.api.vkCmdCopyBufferToImage(commands, upload.handle, texture->image, VK_IMAGE_LAYOUT_GENERAL, 1,
-                                              &copy);
-            after_transfer(device, commands);
-        });
+        return transfer_upload(
+            device, data, static_cast<size_t>(required), [&](VkCommandBuffer commands, VkBuffer upload) {
+                const auto copy = buffer_image_region({0, 0}, *region);
+                before_transfer(device, commands);
+                device.api.vkCmdCopyBufferToImage(commands, upload, texture->image, VK_IMAGE_LAYOUT_GENERAL, 1, &copy);
+                after_transfer(device, commands);
+            });
     });
 }

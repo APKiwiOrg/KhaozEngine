@@ -1,6 +1,5 @@
 #include "device.hpp"
 
-#include <charconv>
 #include <span>
 #include <string_view>
 
@@ -15,15 +14,12 @@ bool contains(std::string_view text, std::string_view part) {
     return part.empty() || !matching.empty();
 }
 
-bool equals(std::string_view text, std::string_view expected) {
-    return text.size() == expected.size() && contains(text, expected);
-}
-
 adapter inspect(const VolkInstanceTable& api, VkPhysicalDevice handle) {
     adapter read{};
     read.handle = handle;
     api.vkGetPhysicalDeviceProperties(handle, &read.properties);
-    if (read.properties.apiVersion < api_version || read.properties.limits.maxDescriptorSetUniformBuffersDynamic < 8) {
+    if (read.properties.apiVersion < api_version) {
+        read.rejection_reason = "Vulkan 1.3 is required";
         return read;
     }
 
@@ -38,7 +34,7 @@ adapter inspect(const VolkInstanceTable& api, VkPhysicalDevice handle) {
     auto properties = info<VkPhysicalDeviceProperties2>(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2);
     properties.pNext = &driver;
     api.vkGetPhysicalDeviceProperties2(handle, &properties);
-    read.llvmpipe = driver.driverID == VK_DRIVER_ID_MESA_LLVMPIPE || contains(read.properties.deviceName, "llvmpipe");
+    read.llvmpipe = driver.driverID == VK_DRIVER_ID_MESA_LLVMPIPE;
 
     auto features13 = info<VkPhysicalDeviceVulkan13Features>(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES);
     auto features12 = info<VkPhysicalDeviceVulkan12Features>(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES);
@@ -48,6 +44,11 @@ adapter inspect(const VolkInstanceTable& api, VkPhysicalDevice handle) {
     api.vkGetPhysicalDeviceFeatures2(handle, &features);
     read.features = features.features;
     if (!features13.dynamicRendering || !features13.synchronization2 || !features12.timelineSemaphore) {
+        read.rejection_reason = "Dynamic rendering, synchronization2 and timeline semaphores are required";
+        return read;
+    }
+    if (read.properties.limits.maxDescriptorSetUniformBuffersDynamic < 8) {
+        read.rejection_reason = "At least eight dynamic uniform buffer descriptors are required";
         return read;
     }
 
@@ -57,6 +58,7 @@ adapter inspect(const VolkInstanceTable& api, VkPhysicalDevice handle) {
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
     const auto types = std::span{memory.memoryTypes}.first(memory.memoryTypeCount);
     if (std::ranges::none_of(types, [](const auto& type) { return (type.propertyFlags & required) == required; })) {
+        read.rejection_reason = "Host-visible coherent memory is required";
         return read;
     }
 
@@ -69,78 +71,82 @@ adapter inspect(const VolkInstanceTable& api, VkPhysicalDevice handle) {
         return queue.queueCount > 0 && (queue.queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0;
     });
     if (graphics != queues.end()) {
-        read.eligible = true;
         read.queue = *graphics;
         read.queue_family = static_cast<uint32_t>(graphics - queues.begin());
+    } else {
+        read.rejection_reason = "A graphics queue family is required";
     }
     return read;
 }
 
-std::string_view trim(std::string_view request) {
-    constexpr std::string_view whitespace = " \t\r\n\f\v";
-    const auto first = request.find_first_not_of(whitespace);
-    if (first == std::string_view::npos) {
-        return {};
+const adapter* choose_by_name(const std::vector<adapter>& candidates, const char* name) {
+    const auto eligible = [](const adapter& entry) { return entry.rejection_reason == nullptr; };
+    if (name != nullptr && *name != '\0') {
+        const auto matching = std::ranges::find_if(candidates, [&](const adapter& entry) {
+            return eligible(entry) && contains(entry.properties.deviceName, name);
+        });
+        if (matching != candidates.end()) {
+            return &*matching;
+        }
     }
-    return request.substr(first, request.find_last_not_of(whitespace) - first + 1);
+
+    const auto first = std::ranges::find_if(candidates, eligible);
+    return first != candidates.end() ? &*first : nullptr;
 }
 
-bool requested(const adapter& candidate, size_t index, std::string_view request) {
-    if (request.empty()) {
-        return true;
+const adapter* choose_by_callback(const std::vector<adapter>& candidates, const khaoz_gpu_device_selection& selection) {
+    std::vector<khaoz_gpu_adapter_info> infos;
+    infos.reserve(candidates.size());
+    for (const auto& entry : candidates) {
+        khaoz_gpu_adapter_info info{};
+        std::memcpy(info.device_name, entry.properties.deviceName, sizeof(info.device_name));
+        info.device_name[sizeof(info.device_name) - 1] = '\0';
+        info.device_type = static_cast<uint32_t>(entry.properties.deviceType);
+        info.device_id = entry.properties.deviceID;
+        info.mesa_llvmpipe = entry.llvmpipe ? 1U : 0U;
+        info.rejection_reason = entry.rejection_reason;
+        infos.push_back(info);
     }
-    if (equals(request, "llvmpipe")) {
-        return candidate.llvmpipe;
+
+    const auto selected = selection.select(infos.data(), static_cast<uint32_t>(infos.size()), selection.context);
+    if (selected < 0 || static_cast<size_t>(selected) >= candidates.size()) {
+        return nullptr;
     }
-    if (equals(request, "discrete")) {
-        return candidate.properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU;
-    }
-    if (equals(request, "integrated")) {
-        return candidate.properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU;
-    }
-    if (equals(request, "cpu")) {
-        return candidate.properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU;
-    }
-    auto number = request;
-    if (number.starts_with('+')) {
-        number.remove_prefix(1);
-    }
-    int selected = 0;
-    const auto parsed = std::from_chars(number.data(), number.data() + number.size(), selected);
-    if (parsed.ec == std::errc{} && parsed.ptr == number.data() + number.size()) {
-        return selected >= 0 && static_cast<size_t>(selected) == index;
-    }
-    return contains(candidate.properties.deviceName, request);
+    return &candidates.at(static_cast<size_t>(selected));
 }
 
 } // namespace
 
-khaoz_result select_adapter(khaoz_gpu_device& device, const char* requested_name) {
+khaoz_result select_adapter(khaoz_gpu_device& device, const char* requested_name,
+                            const khaoz_gpu_device_selection* selection, uint32_t& startup_status) {
     std::vector<VkPhysicalDevice> physical;
     const auto result = enumerate(physical, [&device](auto* count, auto* devices) {
         return device.instance_api.vkEnumeratePhysicalDevices(device.instance, count, devices);
     });
     if (result != VK_SUCCESS) {
-        return check(result, "Could not enumerate Vulkan physical devices", KHAOZ_ERROR_VULKAN_UNAVAILABLE);
+        return check(result, "Could not enumerate Vulkan physical devices");
+    }
+    if (physical.empty()) {
+        startup_status = KHAOZ_GPU_STARTUP_NO_DRIVER;
+        return error(KHAOZ_ERROR_VULKAN_UNAVAILABLE, "The Vulkan loader found no physical devices");
     }
 
-    const auto request = requested_name == nullptr ? std::string_view{} : trim(requested_name);
-    for (size_t index = 0; index < physical.size(); ++index) {
-        const auto candidate = inspect(device.instance_api, physical.at(index));
-        if (!candidate.eligible) {
-            continue;
-        }
-        if (requested(candidate, index, request)) {
-            device.adapter = candidate;
-            return KHAOZ_OK;
-        }
-        if (!device.adapter.eligible) {
-            device.adapter = candidate;
-        }
+    std::vector<adapter> candidates;
+    candidates.reserve(physical.size());
+    for (const auto handle : physical) {
+        candidates.push_back(inspect(device.instance_api, handle));
     }
-    return device.adapter.eligible
-               ? KHAOZ_OK
-               : error(KHAOZ_ERROR_VULKAN_UNAVAILABLE, "No physical device meets the Vulkan 1.3 backend requirements");
+    if (std::ranges::none_of(candidates, [](const auto& entry) { return entry.rejection_reason == nullptr; })) {
+        return error(KHAOZ_ERROR_VULKAN_UNAVAILABLE, "No physical device meets the Vulkan 1.3 backend requirements");
+    }
+
+    const auto* chosen =
+        selection != nullptr ? choose_by_callback(candidates, *selection) : choose_by_name(candidates, requested_name);
+    if (chosen == nullptr || chosen->rejection_reason != nullptr) {
+        return error(KHAOZ_ERROR_INVALID_ARGUMENT, "The selector must return an eligible Vulkan adapter index");
+    }
+    device.adapter = *chosen;
+    return KHAOZ_OK;
 }
 
 } // namespace khaoz::vulkan

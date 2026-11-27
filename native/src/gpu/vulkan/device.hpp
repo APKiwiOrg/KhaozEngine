@@ -14,12 +14,13 @@ struct adapter {
     VkPhysicalDeviceFeatures features{};
     VkQueueFamilyProperties queue{};
     uint32_t queue_family{};
-    bool eligible{};
+    const char* rejection_reason{};
     bool llvmpipe{};
 };
 
-khaoz_result create_instance(khaoz_gpu_device& device, bool enable_validation);
-khaoz_result select_adapter(khaoz_gpu_device& device, const char* requested_name);
+khaoz_result create_instance(khaoz_gpu_device& device, bool enable_validation, uint32_t& startup_status);
+khaoz_result select_adapter(khaoz_gpu_device& device, const char* requested_name,
+                            const khaoz_gpu_device_selection* selection, uint32_t& startup_status);
 khaoz_gpu_capabilities read_capabilities(const khaoz_gpu_device& device);
 khaoz_result create_allocator(khaoz_gpu_device& device);
 } // namespace khaoz::vulkan
@@ -39,9 +40,14 @@ struct khaoz_gpu_device {
     VmaAllocator allocator{};
     khaoz_gpu_capabilities capabilities{};
     khaoz::vulkan::device_child* children{};
+    bool work_pending{};
+    khaoz_result queue_failure{KHAOZ_OK};
+
+    [[nodiscard]] bool sampler_lod_bias() const noexcept { return !portability_subset; }
 
     ~khaoz_gpu_device();
-    khaoz_result wait_for_idle() const noexcept;
+    khaoz_result require_usable() const noexcept;
+    khaoz_result wait_for_idle() noexcept;
     khaoz_result close() noexcept;
 };
 
@@ -51,6 +57,7 @@ struct device_child {
     khaoz_gpu_device& device;
     device_child* next{};
     device_child* previous{};
+    bool retired{};
 
     explicit device_child(khaoz_gpu_device& owner) noexcept;
     virtual ~device_child();
@@ -58,12 +65,19 @@ struct device_child {
     device_child& operator=(const device_child&) = delete;
 };
 
+// The child stays on the device's list and is no longer owned by the caller.
+inline void retain_for_teardown(device_child* child) noexcept { child->retired = true; }
+
 template <class T> khaoz_result destroy(T* child) noexcept {
     if (child == nullptr) {
         return KHAOZ_OK;
     }
     const khaoz_result result = child->device.wait_for_idle();
-    delete child;
+    if (child->device.work_pending) {
+        retain_for_teardown(child);
+    } else {
+        delete child;
+    }
     return result;
 }
 

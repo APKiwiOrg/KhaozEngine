@@ -40,7 +40,7 @@ VkSamplerCreateInfo sampler_info(const khaoz_gpu_device& device, const khaoz_gpu
         desc.maximum_anisotropy == 0 ? limits.maxSamplerAnisotropy : static_cast<float>(desc.maximum_anisotropy);
     info.maxAnisotropy = info.anisotropyEnable ? std::clamp(anisotropy, 1.0F, limits.maxSamplerAnisotropy) : 1.0F;
     // Portability devices need a separate feature for nonzero bias. The spike enables the extension's baseline.
-    if (!device.portability_subset) {
+    if (device.sampler_lod_bias()) {
         info.mipLodBias =
             std::clamp(static_cast<float>(desc.mip_lod_bias), -limits.maxSamplerLodBias, limits.maxSamplerLodBias);
     }
@@ -60,10 +60,17 @@ khaoz_result khaoz_gpu_sampler_create(khaoz_gpu_device* device, const khaoz_gpu_
             !valid_address(desc->address_u) || !valid_address(desc->address_v) || !valid_address(desc->address_w)) {
             return error(KHAOZ_ERROR_INVALID_ARGUMENT, "A device and valid sampler description are required");
         }
+        const auto usable = device->require_usable();
+        if (usable != KHAOZ_OK) {
+            return usable;
+        }
         auto sampler = std::make_unique<khaoz_gpu_sampler>(*device);
         const auto vk_desc = sampler_info(*device, *desc);
-        const auto result = check(device->api.vkCreateSampler(device->handle, &vk_desc, nullptr, &sampler->handle),
-                                  "Could not create a Vulkan sampler");
+        const auto result =
+            check(create_handle(
+                      sampler->handle,
+                      [&](auto* out) { return device->api.vkCreateSampler(device->handle, &vk_desc, nullptr, out); }),
+                  "Could not create a Vulkan sampler");
         if (result == KHAOZ_OK) {
             *out_sampler = sampler.release();
         }

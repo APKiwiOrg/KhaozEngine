@@ -90,6 +90,51 @@ public sealed class CoreDeviceTests
             Assert.True(fence.Signaled);
         });
 
+    [NativeGpuFact]
+    public void Logical_cube_can_upload_and_read_back_its_last_face()
+        => WithCoreDevice(device =>
+        {
+            using var cube = device.Factory.CreateTexture(GpuTextureDescription.Texture2D(
+                1, 1, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled | GpuTextureUsage.Cubemap));
+            byte[] pixel = [27, 89, 156, 255];
+            device.UpdateTexture(cube, pixel, 0, 0, 1, 1, mipLevel: 0, arrayLayer: 5);
+            Assert.Equal(pixel, GpuReadback.ToRgbaMip(device, cube, 0, 5, 1, 1));
+        });
+
+    [NativeGpuFact]
+    public void Upload_refusal_reports_the_requested_layer_and_texture_bound()
+        => WithCoreDevice(device =>
+        {
+            using var texture = device.Factory.CreateTexture(GpuTextureDescription.Texture2D(
+                1, 1, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled));
+            var refusal = Assert.Throws<GpuTextureTransferRangeException>(
+                () => device.UpdateTexture(texture, new byte[4], 0, 0, 1, 1, mipLevel: 0, arrayLayer: 1));
+            Assert.Equal(GpuTextureTransferRefusal.SubresourceOutOfRange, refusal.Reason);
+            Assert.Equal("arrayLayer", refusal.ParamName);
+            Assert.Equal(1u, refusal.ArrayLayer);
+            Assert.Equal(1u, refusal.ArrayLayers);
+        });
+
+    [NativeGpuFact]
+    public void Subresource_copy_refusal_reports_the_destination_mip_and_bound()
+        => WithCoreDevice(device =>
+        {
+            var description = GpuTextureDescription.Texture2D(1, 1, GpuPixelFormat.R8G8B8A8UNorm,
+                GpuTextureUsage.Sampled);
+            using var source = device.Factory.CreateTexture(description);
+            using var destination = device.Factory.CreateTexture(description);
+            using var commands = device.Factory.CreateCommandList();
+            commands.Begin();
+            var refusal = Assert.Throws<GpuTextureTransferRangeException>(
+                () => commands.CopyTextureSubresource(source, 0, 0, destination, 1, 0, 1, 1));
+            Assert.Equal(GpuTextureTransferRefusal.SubresourceOutOfRange, refusal.Reason);
+            Assert.Equal("dstMipLevel", refusal.ParamName);
+            Assert.Equal("destination", refusal.Side);
+            Assert.Equal(1u, refusal.MipLevel);
+            Assert.Equal(1u, refusal.MipLevels);
+            commands.End();
+        });
+
     [NativeFact]
     public void Create_headless_refuses_when_the_vulkan_loader_is_missing()
     {

@@ -51,7 +51,9 @@ khaoz_result create_logical_device(khaoz_gpu_device& device) {
         desc.enabledExtensionCount = 1;
         desc.ppEnabledExtensionNames = &portability_subset;
     }
-    const auto result = device.instance_api.vkCreateDevice(adapter.handle, &desc, nullptr, &device.handle);
+    const auto result = create_handle(device.handle, [&](auto* out) {
+        return device.instance_api.vkCreateDevice(adapter.handle, &desc, nullptr, out);
+    });
     if (result != VK_SUCCESS) {
         return check(result, "Could not create the Vulkan logical device");
     }
@@ -61,13 +63,23 @@ khaoz_result create_logical_device(khaoz_gpu_device& device) {
     auto pool = info<VkCommandPoolCreateInfo>(VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO);
     pool.queueFamilyIndex = adapter.queue_family;
     pool.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-    return check(device.api.vkCreateCommandPool(device.handle, &pool, nullptr, &device.command_pool),
-                 "Could not create the Vulkan command pool");
+    return check(
+        create_handle(device.command_pool,
+                      [&](auto* out) { return device.api.vkCreateCommandPool(device.handle, &pool, nullptr, out); }),
+        "Could not create the Vulkan command pool");
 }
 
-khaoz_result bootstrap(khaoz_gpu_device& device, const khaoz_gpu_device_desc& desc, const char* loader_path,
+struct startup_options {
+    const char* loader_path{};
+    const khaoz_gpu_device_selection* selection{};
+    uint32_t* status{};
+};
+
+khaoz_result bootstrap(khaoz_gpu_device& device, const khaoz_gpu_device_desc& desc, const startup_options& options,
                        bool probe_only) {
-    device.get_instance_proc = device.loader.open(loader_path);
+    uint32_t ignored_status{};
+    auto& status = options.status != nullptr ? *options.status : ignored_status;
+    device.get_instance_proc = device.loader.open(options.loader_path);
     if (device.get_instance_proc == nullptr) {
         return error(KHAOZ_ERROR_VULKAN_UNAVAILABLE, "Could not load the Vulkan loader or its vkGetInstanceProcAddr");
     }
@@ -75,28 +87,31 @@ khaoz_result bootstrap(khaoz_gpu_device& device, const khaoz_gpu_device_desc& de
     const std::lock_guard lock(bootstrap_gate);
     volkInitializeCustom(device.get_instance_proc);
     const reset_volk reset;
-    auto result = create_instance(device, desc.enable_validation != 0);
+    auto result = create_instance(device, desc.enable_validation != 0, status);
     if (result != KHAOZ_OK) {
         return result;
     }
-    result = select_adapter(device, desc.device_name_contains);
+    result = select_adapter(device, desc.device_name_contains, options.selection, status);
     if (result != KHAOZ_OK || probe_only) {
         return result;
     }
     return create_logical_device(device);
 }
 
-khaoz_result create(const khaoz_gpu_device_desc* desc, const char* loader_path, khaoz_gpu_device** out_device) {
+khaoz_result create(const khaoz_gpu_device_desc* desc, const startup_options& options, khaoz_gpu_device** out_device) {
+    if (options.status != nullptr) {
+        *options.status = KHAOZ_GPU_STARTUP_DEFAULT;
+    }
     if (out_device == nullptr) {
         return error(KHAOZ_ERROR_INVALID_ARGUMENT, "An output device pointer is required");
     }
     *out_device = nullptr;
-    if (desc == nullptr) {
-        return error(KHAOZ_ERROR_INVALID_ARGUMENT, "A device description is required");
+    if (desc == nullptr || (options.selection != nullptr && options.selection->select == nullptr)) {
+        return error(KHAOZ_ERROR_INVALID_ARGUMENT, "A device description and a valid optional selector are required");
     }
 
     auto device = std::make_unique<khaoz_gpu_device>();
-    auto result = bootstrap(*device, *desc, loader_path, false);
+    auto result = bootstrap(*device, *desc, options, false);
     if (result != KHAOZ_OK) {
         return result;
     }
@@ -111,16 +126,45 @@ khaoz_result create(const khaoz_gpu_device_desc* desc, const char* loader_path, 
 
 } // namespace
 
-khaoz_gpu_device::~khaoz_gpu_device() { close(); }
+khaoz_gpu_device::~khaoz_gpu_device() {
+    if (instance != VK_NULL_HANDLE) {
+        close();
+    }
+}
 
-khaoz_result khaoz_gpu_device::wait_for_idle() const noexcept {
-    return queue == VK_NULL_HANDLE ? KHAOZ_OK : check(api.vkQueueWaitIdle(queue), "Could not drain the Vulkan queue");
+khaoz_result khaoz_gpu_device::require_usable() const noexcept {
+    return queue_failure == KHAOZ_OK ? KHAOZ_OK
+                                     : error(queue_failure, "The Vulkan device is unusable after a queue failure");
+}
+
+khaoz_result khaoz_gpu_device::wait_for_idle() noexcept {
+    if (queue_failure == KHAOZ_ERROR_DEVICE_LOST) {
+        return require_usable();
+    }
+    if (!work_pending) {
+        return KHAOZ_OK;
+    }
+
+    const auto result = check(api.vkQueueWaitIdle(queue), "Could not drain the Vulkan queue");
+    if (result != KHAOZ_OK) {
+        queue_failure = result;
+    }
+    work_pending = result != KHAOZ_OK && result != KHAOZ_ERROR_DEVICE_LOST;
+    return result;
 }
 
 khaoz_result khaoz_gpu_device::close() noexcept {
     const auto drained = wait_for_idle();
-    if (children != nullptr && validation.messenger != VK_NULL_HANDLE) {
-        validation.record_error("Vulkan device closed with live GPU resources");
+    if (work_pending) {
+        return drained;
+    }
+    if (validation.messenger != VK_NULL_HANDLE) {
+        for (auto* child = children; child != nullptr; child = child->next) {
+            if (!child->retired) {
+                validation.record_error("Vulkan device closed with live GPU resources");
+                break;
+            }
+        }
     }
     while (children != nullptr) {
         delete children;
@@ -170,19 +214,29 @@ device_child::~device_child() {
 khaoz_result khaoz_gpu_device_create_headless(const khaoz_gpu_device_desc* desc, khaoz_gpu_device** out_device) {
     return khaoz::abi::guard([&] {
         const auto path = loader_environment();
-        return create(desc, path ? path->c_str() : nullptr, out_device);
+        return create(desc, {.loader_path = path ? path->c_str() : nullptr}, out_device);
     });
 }
 
 khaoz_result khaoz_gpu_device_create_headless_with_loader(const khaoz_gpu_device_desc* desc, const char* loader_path,
                                                           khaoz_gpu_device** out_device) {
-    return khaoz::abi::guard([&] { return create(desc, loader_path, out_device); });
+    return khaoz::abi::guard([&] { return create(desc, {.loader_path = loader_path}, out_device); });
+}
+
+khaoz_result khaoz_gpu_device_create_headless_with_selection(const khaoz_gpu_device_desc* desc, const char* loader_path,
+                                                             const khaoz_gpu_device_selection* selection,
+                                                             uint32_t* out_startup_status,
+                                                             khaoz_gpu_device** out_device) {
+    return khaoz::abi::guard([&] {
+        return create(desc, {.loader_path = loader_path, .selection = selection, .status = out_startup_status},
+                      out_device);
+    });
 }
 
 khaoz_result khaoz_gpu_device_probe(const char* loader_path) {
     return khaoz::abi::guard([&] {
         const auto device = std::make_unique<khaoz_gpu_device>();
-        return bootstrap(*device, {}, loader_path, true);
+        return bootstrap(*device, {}, {.loader_path = loader_path}, true);
     });
 }
 
@@ -202,10 +256,12 @@ uint32_t khaoz_gpu_device_validation_errors(const khaoz_gpu_device* device) {
 
 khaoz_result khaoz_gpu_device_destroy(khaoz_gpu_device* device, uint32_t* out_validation_errors) {
     return khaoz::abi::guard([&] {
-        const std::unique_ptr<khaoz_gpu_device> owned(device);
         const auto result = device != nullptr ? device->close() : KHAOZ_OK;
         if (out_validation_errors != nullptr) {
             *out_validation_errors = khaoz_gpu_device_validation_errors(device);
+        }
+        if (device != nullptr && !device->work_pending) {
+            delete device;
         }
         return result;
     });

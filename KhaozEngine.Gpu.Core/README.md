@@ -35,7 +35,9 @@ also use the shared `KE_GPU_TESTS` gate.
 Keep `khaoz_native_stale_abi_fixture` from the native test build beside the library passed to
 `KhaozNativeLibPath`. The managed test copies the fixture into a fresh process's application
 directory under the platform's production library filename. Native test jobs need both files.
-The fixture is for the managed loader test and stays out of the runtime package.
+The fixture is for the managed loader test. Keep the `khaoz_native_vulkan_startup_fixture`
+beside it for the managed startup refusal tests. Both fixtures stay out of the runtime
+package.
 
 The report-only frame probe requires `KE_NATIVE_FRAME_TIMING=1` in addition to
 `KE_NATIVE_TESTS=1`. It times submit for the 3,335-record random and frame-coherent workloads and
@@ -51,7 +53,8 @@ exception and reason for an unavailable machine.
 The core supports buffers, textures, samplers, transfer command lists and completion fences.
 `GpuReadback` can copy data into staging memory and map it through the usual GPU interfaces.
 Drawing, shader and pipeline creation, and presentation are outside the transfer subset.
-`KE_VULKAN_DEVICE` selects an eligible adapter using the managed provider's request syntax.
+`KE_VULKAN_DEVICE` uses the managed Vulkan selection policy, including its warning and
+fallback when the request cannot be honored.
 `KHAOZ_NATIVE_VULKAN_LOADER` selects a loader file and `KHAOZ_NATIVE_VALIDATION=1` enables
 Vulkan validation with an error count that includes device teardown.
 

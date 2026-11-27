@@ -35,6 +35,7 @@
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.Gpu.Core" />
     <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
     <InternalsVisibleTo Include="Renderer.Perf.Tooling.Tests" />
     <!-- The uniform ring's SEMANTIC tests are shared with the Direct3D 11 backend (decisions V-P5, V-T6): one

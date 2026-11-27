@@ -38,6 +38,16 @@ inline khaoz_result check(VkResult result, const char* operation,
     }
 }
 
+// A failed create call may write an undefined handle. Only publish the result on success.
+template <class T, class Create> VkResult create_handle(T& owned, Create create) {
+    T pending{};
+    const auto result = create(&pending);
+    if (result == VK_SUCCESS) {
+        owned = pending;
+    }
+    return result;
+}
+
 template <class T, class Query> VkResult enumerate(std::vector<T>& values, Query query) {
     VkResult result{};
     do {

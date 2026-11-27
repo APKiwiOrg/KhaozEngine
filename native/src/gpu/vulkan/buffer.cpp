@@ -37,6 +37,10 @@ khaoz_result khaoz_gpu_buffer_create(khaoz_gpu_device* device, uint32_t size_in_
             return error(KHAOZ_ERROR_INVALID_ARGUMENT, "A device, nonzero buffer size and known usage are required");
         }
 
+        const auto usable = device->require_usable();
+        if (usable != KHAOZ_OK) {
+            return usable;
+        }
         auto buffer = std::make_unique<khaoz_gpu_buffer>(*device);
         buffer->size = size_in_bytes;
         buffer->staging = (usage & KHAOZ_GPU_BUFFER_STAGING) != 0;
@@ -68,25 +72,18 @@ khaoz_result khaoz_gpu_buffer_update(khaoz_gpu_buffer* buffer, uint32_t offset, 
         }
 
         auto& device = buffer->device;
+        const auto usable = device.require_usable();
+        if (usable != KHAOZ_OK) {
+            return usable;
+        }
         if (buffer->storage.host_visible) {
             const auto drained = device.wait_for_idle();
             return drained == KHAOZ_OK ? buffer->storage.write(offset, data, size) : drained;
         }
 
-        allocated_buffer upload;
-        auto result = upload.create(device.allocator, {size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                                                       VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT});
-        if (result != KHAOZ_OK) {
-            return result;
-        }
-        result = upload.write(0, data, size);
-        if (result != KHAOZ_OK) {
-            return result;
-        }
-
-        return transfer_now(device, [&](VkCommandBuffer commands) {
+        return transfer_upload(device, data, size, [&](VkCommandBuffer commands, VkBuffer upload) {
             const VkBufferCopy copy{0, offset, size};
-            record_buffer_copy(device, commands, upload.handle, buffer->storage.handle, copy);
+            record_buffer_copy(device, commands, upload, buffer->storage.handle, copy);
         });
     });
 }
@@ -95,6 +92,10 @@ khaoz_result khaoz_gpu_buffer_map(khaoz_gpu_buffer* buffer, uint32_t mode, khaoz
     return khaoz::abi::guard([&] {
         if (buffer == nullptr || !buffer->staging || out_data == nullptr) {
             return error(KHAOZ_ERROR_INVALID_ARGUMENT, "A staging buffer and mapping output are required");
+        }
+        const auto usable = buffer->device.require_usable();
+        if (usable != KHAOZ_OK) {
+            return usable;
         }
         const auto drained = buffer->device.wait_for_idle();
         return drained == KHAOZ_OK ? buffer->storage.map({.offset = 0, .size = buffer->size, .row_pitch = buffer->size},

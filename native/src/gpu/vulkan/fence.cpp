@@ -19,10 +19,16 @@ khaoz_result khaoz_gpu_fence_create(khaoz_gpu_device* device, khaoz_gpu_fence** 
         if (device == nullptr) {
             return error(KHAOZ_ERROR_INVALID_ARGUMENT, "A device is required");
         }
+        const auto usable = device->require_usable();
+        if (usable != KHAOZ_OK) {
+            return usable;
+        }
         auto fence = std::make_unique<khaoz_gpu_fence>(*device);
         const auto desc = info<VkFenceCreateInfo>(VK_STRUCTURE_TYPE_FENCE_CREATE_INFO);
-        const auto created = check(device->api.vkCreateFence(device->handle, &desc, nullptr, &fence->handle),
-                                   "Could not create a Vulkan fence");
+        const auto created = check(
+            create_handle(fence->handle,
+                          [&](auto* out) { return device->api.vkCreateFence(device->handle, &desc, nullptr, out); }),
+            "Could not create a Vulkan fence");
         if (created == KHAOZ_OK) {
             *out_fence = fence.release();
         }

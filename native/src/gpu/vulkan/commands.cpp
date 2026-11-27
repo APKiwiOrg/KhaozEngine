@@ -8,15 +8,25 @@ using namespace khaoz::vulkan;
 namespace khaoz::vulkan {
 
 khaoz_result allocate_commands(khaoz_gpu_device& device, VkCommandBuffer& out) {
+    const auto usable = device.require_usable();
+    if (usable != KHAOZ_OK) {
+        return usable;
+    }
     auto desc = info<VkCommandBufferAllocateInfo>(VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO);
     desc.commandPool = device.command_pool;
     desc.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     desc.commandBufferCount = 1;
-    return check(device.api.vkAllocateCommandBuffers(device.handle, &desc, &out),
-                 "Could not allocate a Vulkan command buffer");
+    return check(
+        create_handle(
+            out, [&](auto* pending) { return device.api.vkAllocateCommandBuffers(device.handle, &desc, pending); }),
+        "Could not allocate a Vulkan command buffer");
 }
 
 khaoz_result begin_commands(khaoz_gpu_device& device, VkCommandBuffer commands) {
+    const auto usable = device.require_usable();
+    if (usable != KHAOZ_OK) {
+        return usable;
+    }
     auto desc = info<VkCommandBufferBeginInfo>(VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO);
     desc.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     return check(device.api.vkBeginCommandBuffer(commands, &desc), "Could not begin Vulkan recording");
@@ -27,10 +37,22 @@ khaoz_result end_commands(khaoz_gpu_device& device, VkCommandBuffer commands) {
 }
 
 khaoz_result submit(khaoz_gpu_device& device, VkCommandBuffer commands, VkFence fence) {
+    const auto usable = device.require_usable();
+    if (usable != KHAOZ_OK) {
+        return usable;
+    }
     auto desc = info<VkSubmitInfo>(VK_STRUCTURE_TYPE_SUBMIT_INFO);
     desc.commandBufferCount = 1;
     desc.pCommandBuffers = &commands;
-    return check(device.api.vkQueueSubmit(device.queue, 1, &desc, fence), "Could not submit Vulkan commands");
+    const auto result =
+        check(device.api.vkQueueSubmit(device.queue, 1, &desc, fence), "Could not submit Vulkan commands");
+    if (result == KHAOZ_OK) {
+        device.work_pending = true;
+    } else if (result == KHAOZ_ERROR_DEVICE_LOST) {
+        device.queue_failure = result;
+        device.work_pending = false;
+    }
+    return result;
 }
 
 } // namespace khaoz::vulkan

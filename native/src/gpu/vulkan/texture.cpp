@@ -96,8 +96,8 @@ khaoz_result create_image(khaoz_gpu_texture& texture) {
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
     };
     if ((desc.usage & KHAOZ_GPU_TEXTURE_CUBEMAP) != 0) {
-        if (desc.width != desc.height || desc.array_layers != 6 || desc.sample_count != 1) {
-            return error(KHAOZ_ERROR_INVALID_ARGUMENT, "A cube texture needs six square single-sample faces");
+        if (desc.width != desc.height || desc.sample_count != 1) {
+            return error(KHAOZ_ERROR_INVALID_ARGUMENT, "Cube textures require square single-sample faces");
         }
         image.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
     }
@@ -114,16 +114,21 @@ khaoz_result create_image(khaoz_gpu_texture& texture) {
 
     VmaAllocationCreateInfo allocation{};
     allocation.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+    VkImage pending_image{};
+    VmaAllocation pending_memory{};
     const auto result =
-        check(vmaCreateImage(device.allocator, &image, &allocation, &texture.image, &texture.image_memory, nullptr),
+        check(vmaCreateImage(device.allocator, &image, &allocation, &pending_image, &pending_memory, nullptr),
               "Could not allocate a Vulkan image");
     if (result != KHAOZ_OK) {
         return result;
     }
 
+    texture.image = pending_image;
+    texture.image_memory = pending_memory;
+
     // Establish a resting layout before the image can be recorded in any list. Abandoning or reordering lists
     // then cannot leave a transfer using the wrong old layout.
-    return transfer_now(device, [&](VkCommandBuffer commands) {
+    return transfer_now(std::make_unique<khaoz_gpu_command_list>(device), [&](VkCommandBuffer commands) {
         auto barrier = info<VkImageMemoryBarrier2>(VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2);
         barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
         barrier.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
@@ -175,17 +180,23 @@ khaoz_result khaoz_gpu_texture_create(khaoz_gpu_device* device, const khaoz_gpu_
         }
         const auto& limits = device->adapter.properties.limits;
         const auto max_axis = std::max(desc->width, desc->height);
+        const uint32_t faces = (desc->usage & KHAOZ_GPU_TEXTURE_CUBEMAP) != 0 ? 6U : 1U;
         constexpr uint32_t all_usage = (KHAOZ_GPU_TEXTURE_STORAGE << 1U) - 1U;
         if (desc->width == 0 || desc->height == 0 || max_axis > limits.maxImageDimension2D || desc->mip_levels == 0 ||
             desc->mip_levels > static_cast<uint32_t>(std::bit_width(max_axis)) || desc->array_layers == 0 ||
-            desc->array_layers > limits.maxImageArrayLayers || (desc->usage & ~all_usage) != 0 ||
+            desc->array_layers > limits.maxImageArrayLayers / faces || (desc->usage & ~all_usage) != 0 ||
             !std::has_single_bit(desc->sample_count) || desc->sample_count > 64 ||
             (desc->sample_count > 1 && (desc->mip_levels > 1 || desc->array_layers > 1 || desc->is_array))) {
             return error(KHAOZ_ERROR_INVALID_ARGUMENT, "The Vulkan texture description has an invalid shape or usage");
         }
 
+        const auto usable = device->require_usable();
+        if (usable != KHAOZ_OK) {
+            return usable;
+        }
         auto texture = std::make_unique<khaoz_gpu_texture>(*device);
         texture->desc = *desc;
+        texture->desc.array_layers *= faces;
         texture->format = image_format(desc->format);
         if (texture->format.vk == VK_FORMAT_UNDEFINED) {
             return error(KHAOZ_ERROR_UNSUPPORTED, "The texture format is unknown to the native Vulkan backend");
@@ -193,6 +204,9 @@ khaoz_result khaoz_gpu_texture_create(khaoz_gpu_device* device, const khaoz_gpu_
         const auto result = texture->is_staging() ? create_staging(*texture) : create_image(*texture);
         if (result == KHAOZ_OK) {
             *out_texture = texture.release();
+        } else if (device->work_pending && device->queue_failure != KHAOZ_OK) {
+            // The first layout transition may still reference this image.
+            retain_for_teardown(texture.release());
         }
         return result;
     });
@@ -206,6 +220,10 @@ khaoz_result khaoz_gpu_texture_map(khaoz_gpu_texture* texture, uint32_t mode, kh
     return khaoz::abi::guard([&] {
         if (texture == nullptr || !texture->is_staging() || out_data == nullptr) {
             return error(KHAOZ_ERROR_INVALID_ARGUMENT, "A staging texture and mapping output are required");
+        }
+        const auto usable = texture->device.require_usable();
+        if (usable != KHAOZ_OK) {
+            return usable;
         }
         const auto result = texture->device.wait_for_idle();
         if (result != KHAOZ_OK) {

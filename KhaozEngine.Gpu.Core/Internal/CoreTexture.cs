@@ -2,7 +2,8 @@ using KhaozEngine.Gpu.Core.Interop;
 
 namespace KhaozEngine.Gpu.Core.Internal;
 
-internal sealed unsafe class CoreTexture(CoreGpuDevice owner, khaoz_gpu_texture* handle, GpuTextureDescription desc)
+internal sealed unsafe class CoreTexture(CoreGpuDevice owner, khaoz_gpu_texture* handle, GpuTextureDescription desc,
+    uint actualArrayLayers)
     : CoreMappableResource(owner, handle), IGpuTexture
 {
     public uint Width => desc.Width;
@@ -10,7 +11,7 @@ internal sealed unsafe class CoreTexture(CoreGpuDevice owner, khaoz_gpu_texture*
     public uint MipLevels => desc.MipLevels;
     public uint SampleCount => desc.SampleCount;
     public GpuPixelFormat Format => desc.Format;
-    internal uint ArrayLayers => desc.ArrayLayers;
+    internal uint ArrayLayers => actualArrayLayers;
     internal bool IsStaging => (desc.Usage & GpuTextureUsage.Staging) != 0;
     internal khaoz_gpu_texture* Handle => (khaoz_gpu_texture*)NativeHandle;
 

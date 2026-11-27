@@ -35,11 +35,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// </summary>
         /// <param name="arrayLayer">The destination array layer the caller asked for.</param>
         /// <param name="arrayLayers">How many layers the destination actually has, cubemap faces expanded.</param>
-        internal static void RequireArrayLayer(uint arrayLayer, uint arrayLayers)
+        /// <param name="parameterName">The public parameter carrying the layer.</param>
+        /// <param name="side">The copy side, when used for a copy.</param>
+        internal static void RequireArrayLayer(uint arrayLayer, uint arrayLayers,
+            string? parameterName = null, string? side = null)
         {
             if (arrayLayer < arrayLayers) return;
 
-            throw new GpuTextureTransferRangeException(GpuTextureTransferRefusal.SubresourceOutOfRange, nameof(arrayLayer), arrayLayer,
+            throw new GpuTextureTransferRangeException(GpuTextureTransferRefusal.SubresourceOutOfRange, parameterName ?? nameof(arrayLayer), arrayLayer,
                 "Array layer "
                 + arrayLayer.ToString(CultureInfo.InvariantCulture)
                 + " is outside a native Vulkan texture with "
@@ -51,6 +54,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             {
                 ArrayLayer = arrayLayer,
                 ArrayLayers = arrayLayers,
+                Side = side,
             };
         }
 
@@ -62,11 +66,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// </summary>
         /// <param name="mipLevel">The destination mip level the caller asked for.</param>
         /// <param name="mipLevels">How many levels the destination actually has.</param>
-        internal static void RequireMipLevel(uint mipLevel, uint mipLevels)
+        /// <param name="parameterName">The public parameter carrying the mip level.</param>
+        /// <param name="side">The copy side, when used for a copy.</param>
+        internal static void RequireMipLevel(uint mipLevel, uint mipLevels,
+            string? parameterName = null, string? side = null)
         {
             if (mipLevel < mipLevels) return;
 
-            throw new GpuTextureTransferRangeException(GpuTextureTransferRefusal.SubresourceOutOfRange, nameof(mipLevel), mipLevel,
+            throw new GpuTextureTransferRangeException(GpuTextureTransferRefusal.SubresourceOutOfRange, parameterName ?? nameof(mipLevel), mipLevel,
                 "Mip level "
                 + mipLevel.ToString(CultureInfo.InvariantCulture)
                 + " is outside a native Vulkan texture with "
@@ -78,6 +85,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             {
                 MipLevel = mipLevel,
                 MipLevels = mipLevels,
+                Side = side,
             };
         }
 

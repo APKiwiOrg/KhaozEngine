@@ -86,6 +86,47 @@ internal unsafe partial struct khaoz_gpu_device_desc
 }
 
 [GeneratedCode("ClangSharp", "23.1.5.0")]
+internal unsafe partial struct khaoz_gpu_adapter_info
+{
+    [NativeTypeName("char[256]")]
+    public _device_name_e__FixedBuffer device_name;
+
+    [NativeTypeName("uint32_t")]
+    public uint device_type;
+
+    [NativeTypeName("uint32_t")]
+    public uint device_id;
+
+    [NativeTypeName("uint32_t")]
+    public uint mesa_llvmpipe;
+
+    [NativeTypeName("const char *")]
+    public sbyte* rejection_reason;
+
+    [InlineArray(256)]
+    public partial struct _device_name_e__FixedBuffer
+    {
+        public sbyte e0;
+    }
+}
+
+[GeneratedCode("ClangSharp", "23.1.5.0")]
+internal unsafe partial struct khaoz_gpu_device_selection
+{
+    [NativeTypeName("khaoz_gpu_select_adapter")]
+    public delegate* unmanaged[Cdecl]<khaoz_gpu_adapter_info*, uint, void*, int> select;
+
+    public void* context;
+}
+
+[GeneratedCode("ClangSharp", "23.1.5.0")]
+internal enum khaoz_gpu_startup_status
+{
+    KHAOZ_GPU_STARTUP_DEFAULT = 0,
+    KHAOZ_GPU_STARTUP_NO_DRIVER = 1,
+}
+
+[GeneratedCode("ClangSharp", "23.1.5.0")]
 internal partial struct khaoz_gpu_capabilities
 {
     [NativeTypeName("uint32_t")]
@@ -341,6 +382,9 @@ internal static unsafe partial class KhaozNative
 
     [DllImport("khaoz_native", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     public static extern khaoz_result khaoz_gpu_device_create_headless_with_loader([NativeTypeName("const khaoz_gpu_device_desc *")] khaoz_gpu_device_desc* desc, [NativeTypeName("const char *")] sbyte* loader_path, khaoz_gpu_device** out_device);
+
+    [DllImport("khaoz_native", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern khaoz_result khaoz_gpu_device_create_headless_with_selection([NativeTypeName("const khaoz_gpu_device_desc *")] khaoz_gpu_device_desc* desc, [NativeTypeName("const char *")] sbyte* loader_path, [NativeTypeName("const khaoz_gpu_device_selection *")] khaoz_gpu_device_selection* selection, [NativeTypeName("uint32_t *")] uint* out_startup_status, khaoz_gpu_device** out_device);
 
     [DllImport("khaoz_native", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     public static extern khaoz_result khaoz_gpu_device_probe([NativeTypeName("const char *")] sbyte* loader_path);

@@ -22,5 +22,7 @@
   <ItemGroup Condition="'$(KhaozNativeLibPath)' != ''">
     <None Include="$([System.IO.Path]::GetDirectoryName('$(KhaozNativeLibPath)'))/*khaoz_native_stale_abi_fixture$([System.IO.Path]::GetExtension('$(KhaozNativeLibPath)'))"
           CopyToOutputDirectory="PreserveNewest" />
+    <None Include="$([System.IO.Path]::GetDirectoryName('$(KhaozNativeLibPath)'))/*khaoz_native_vulkan_startup_fixture$([System.IO.Path]::GetExtension('$(KhaozNativeLibPath)'))"
+          CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

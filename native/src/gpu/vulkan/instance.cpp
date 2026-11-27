@@ -4,9 +4,18 @@
 
 namespace khaoz::vulkan {
 
-khaoz_result create_instance(khaoz_gpu_device& device, bool enable_validation) {
-    if (volkGetInstanceVersion() < api_version || vkCreateInstance == nullptr ||
-        vkEnumerateInstanceExtensionProperties == nullptr) {
+khaoz_result create_instance(khaoz_gpu_device& device, bool enable_validation, uint32_t& startup_status) {
+    if (vkCreateInstance == nullptr || vkEnumerateInstanceExtensionProperties == nullptr) {
+        return error(KHAOZ_ERROR_VULKAN_UNAVAILABLE, "The Vulkan loader is missing required instance entry points");
+    }
+    uint32_t supported_version = VK_API_VERSION_1_0;
+    if (vkEnumerateInstanceVersion != nullptr) {
+        const auto version_result = vkEnumerateInstanceVersion(&supported_version);
+        if (version_result != VK_SUCCESS) {
+            return check(version_result, "Could not query the Vulkan loader version");
+        }
+    }
+    if (supported_version < api_version) {
         return error(KHAOZ_ERROR_VULKAN_UNAVAILABLE, "The Vulkan loader does not expose Vulkan 1.3");
     }
 
@@ -15,7 +24,7 @@ khaoz_result create_instance(khaoz_gpu_device& device, bool enable_validation) {
         return vkEnumerateInstanceExtensionProperties(nullptr, count, extensions);
     });
     if (enumerated != VK_SUCCESS) {
-        return check(enumerated, "Could not enumerate Vulkan instance extensions", KHAOZ_ERROR_VULKAN_UNAVAILABLE);
+        return check(enumerated, "Could not enumerate Vulkan instance extensions");
     }
 
     std::array<const char*, 2> extensions{};
@@ -28,6 +37,9 @@ khaoz_result create_instance(khaoz_gpu_device& device, bool enable_validation) {
 
     auto debug = device.validation.create_info();
     if (enable_validation) {
+        if (vkEnumerateInstanceLayerProperties == nullptr) {
+            return error(KHAOZ_ERROR_INTERNAL, "The Vulkan loader cannot enumerate validation layers");
+        }
         std::vector<VkLayerProperties> layers;
         const VkResult layer_result = enumerate(layers, vkEnumerateInstanceLayerProperties);
         if (layer_result != VK_SUCCESS) {
@@ -51,15 +63,31 @@ khaoz_result create_instance(khaoz_gpu_device& device, bool enable_validation) {
     desc.pApplicationInfo = &application;
     desc.enabledExtensionCount = extension_count;
     desc.ppEnabledExtensionNames = extensions.data();
-    const VkResult created = vkCreateInstance(&desc, nullptr, &device.instance);
+    const VkResult created =
+        create_handle(device.instance, [&](auto* out) { return vkCreateInstance(&desc, nullptr, out); });
+    if (created == VK_ERROR_INCOMPATIBLE_DRIVER) {
+        if (!enable_validation) {
+            startup_status = KHAOZ_GPU_STARTUP_NO_DRIVER;
+            return error(KHAOZ_ERROR_VULKAN_UNAVAILABLE, "No compatible Vulkan driver is installed");
+        }
+
+        // A layer can also reject creation. Confirm the no-driver result without the requested layer.
+        const auto probed = create_instance(device, false, startup_status);
+        if (probed == KHAOZ_ERROR_VULKAN_UNAVAILABLE) {
+            return probed;
+        }
+    }
     if (created != VK_SUCCESS) {
-        return check(created, "Could not create a Vulkan 1.3 instance", KHAOZ_ERROR_VULKAN_UNAVAILABLE);
+        return check(created, "Could not create a Vulkan 1.3 instance with the requested configuration");
     }
 
     volkLoadInstanceTable(&device.instance_api, device.instance);
     if (enable_validation) {
-        return check(device.instance_api.vkCreateDebugUtilsMessengerEXT(device.instance, &debug, nullptr,
-                                                                        &device.validation.messenger),
+        return check(create_handle(device.validation.messenger,
+                                   [&](auto* out) {
+                                       return device.instance_api.vkCreateDebugUtilsMessengerEXT(device.instance,
+                                                                                                 &debug, nullptr, out);
+                                   }),
                      "Could not create a Vulkan validation messenger");
     }
     return KHAOZ_OK;

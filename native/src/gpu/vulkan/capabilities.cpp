@@ -53,7 +53,7 @@ khaoz_gpu_capabilities read_capabilities(const khaoz_gpu_device& device) {
     caps.clip_space_y_inverted = 0;
     caps.depth_range_zero_to_one = 1;
     caps.sampler_anisotropy = adapter.features.samplerAnisotropy;
-    caps.sampler_lod_bias = 1;
+    caps.sampler_lod_bias = device.sampler_lod_bias() ? 1U : 0U;
     caps.supported_msaa_sample_counts = sample_counts(device);
     caps.max_msaa_sample_count = std::bit_floor(caps.supported_msaa_sample_counts);
     caps.supports_shadow_maps = (shadow.optimalTilingFeatures & shadow_flags) == shadow_flags;

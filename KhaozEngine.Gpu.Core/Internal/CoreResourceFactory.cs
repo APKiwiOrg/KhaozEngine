@@ -1,5 +1,6 @@
 using System;
 using KhaozEngine.Gpu.Core.Interop;
+using KhaozEngine.Gpu.Vulkan.Internal;
 
 namespace KhaozEngine.Gpu.Core.Internal;
 
@@ -18,6 +19,7 @@ internal sealed unsafe class CoreResourceFactory(CoreGpuDevice device) : IGpuRes
 
     public IGpuTexture CreateTexture(in GpuTextureDescription d)
     {
+        var view = VulkanViewPolicy.ForTexture(d.Usage);
         var desc = new khaoz_gpu_texture_desc
         {
             width = d.Width,
@@ -34,7 +36,7 @@ internal sealed unsafe class CoreResourceFactory(CoreGpuDevice device) : IGpuRes
             khaoz_gpu_texture* texture;
             NativeResult.ThrowIfFailed(KhaozNative.khaoz_gpu_texture_create(
                 device.Handle, &desc, &texture), nameof(CreateTexture));
-            return new CoreTexture(device, texture, d);
+            return new CoreTexture(device, texture, d, view.ActualArrayLayers(d.ArrayLayers));
         }
     }
 

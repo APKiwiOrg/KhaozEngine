@@ -2,17 +2,19 @@ using System;
 using System.Runtime.InteropServices;
 using System.Threading;
 using KhaozEngine.Gpu.Core.Interop;
+using KhaozEngine.Gpu.Vulkan.Internal;
 
 namespace KhaozEngine.Gpu.Core.Internal;
 
 internal sealed unsafe class CoreGpuDevice : IGpuDevice
 {
     private khaoz_gpu_device* _handle;
+    private bool _disposeRequested;
     private IGpuSampler? _pointSampler;
     private IGpuSampler? _linearSampler;
 
     internal Lock Gate { get; } = new();
-    internal bool IsDisposed => _handle == null;
+    internal bool IsDisposed => _disposeRequested;
     internal khaoz_gpu_device* Handle
     {
         get
@@ -135,9 +137,15 @@ internal sealed unsafe class CoreGpuDevice : IGpuDevice
             x = x, y = y, width = width, height = height, mip_level = mipLevel, array_layer = arrayLayer,
         };
         lock (Gate)
-        fixed (byte* source = data)
-            NativeResult.ThrowIfFailed(KhaozNative.khaoz_gpu_texture_update(
-                target.Handle, &region, source, (uint)data.Length), nameof(UpdateTexture));
+        {
+            var handle = target.Handle;
+            VulkanUploadBounds.RequireArrayLayer(arrayLayer, target.ArrayLayers);
+            VulkanUploadBounds.RequireMipLevel(mipLevel, target.MipLevels);
+            VulkanUploadBounds.RequireRegionFits(mipLevel, x, y, width, height, target.Width, target.Height);
+            fixed (byte* source = data)
+                NativeResult.ThrowIfFailed(KhaozNative.khaoz_gpu_texture_update(
+                    handle, &region, source, (uint)data.Length), nameof(UpdateTexture));
+        }
     }
 
     public MappedData Map(IGpuTexture staging, GpuMapMode mode)
@@ -202,20 +210,28 @@ internal sealed unsafe class CoreGpuDevice : IGpuDevice
     {
         lock (Gate)
         {
-            if (IsDisposed)
+            if (_handle == null)
                 return;
 
             try
             {
-                _pointSampler?.Dispose();
-                _linearSampler?.Dispose();
+                try
+                {
+                    _pointSampler?.Dispose();
+                }
+                finally
+                {
+                    _linearSampler?.Dispose();
+                }
             }
             finally
             {
+                // A failed drain retains the native device. Dispose can retry, while callers cannot start work.
+                _disposeRequested = true;
                 uint errors;
-                var handle = _handle;
-                _handle = null;
-                var result = KhaozNative.khaoz_gpu_device_destroy(handle, &errors);
+                var result = KhaozNative.khaoz_gpu_device_destroy(_handle, &errors);
+                if (result is khaoz_result.KHAOZ_OK or khaoz_result.KHAOZ_ERROR_DEVICE_LOST)
+                    _handle = null;
                 DisposeValidationErrors = errors;
                 LastDisposedValidationErrors = errors;
                 NativeResult.ThrowIfFailed(result, nameof(Dispose));

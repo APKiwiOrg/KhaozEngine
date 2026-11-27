@@ -13,7 +13,8 @@ khaoz_result create_allocator(khaoz_gpu_device& device) {
     desc.physicalDevice = device.adapter.handle;
     desc.vulkanApiVersion = api_version;
     desc.pVulkanFunctions = &functions;
-    return check(vmaCreateAllocator(&desc, &device.allocator), "Could not create the Vulkan memory allocator");
+    return check(create_handle(device.allocator, [&](auto* out) { return vmaCreateAllocator(&desc, out); }),
+                 "Could not create the Vulkan memory allocator");
 }
 
 allocated_buffer::~allocated_buffer() {
@@ -34,8 +35,16 @@ khaoz_result allocated_buffer::create(VmaAllocator owner, const buffer_allocatio
     VmaAllocationCreateInfo allocation{};
     allocation.usage = host_visible ? VMA_MEMORY_USAGE_AUTO_PREFER_HOST : VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
     allocation.flags = desc.access;
-    return check(vmaCreateBuffer(allocator, &buffer, &allocation, &handle, &memory, nullptr),
-                 "Could not allocate a Vulkan buffer");
+    VkBuffer pending_buffer{};
+    VmaAllocation pending_memory{};
+    const auto result =
+        check(vmaCreateBuffer(allocator, &buffer, &allocation, &pending_buffer, &pending_memory, nullptr),
+              "Could not allocate a Vulkan buffer");
+    if (result == KHAOZ_OK) {
+        handle = pending_buffer;
+        memory = pending_memory;
+    }
+    return result;
 }
 
 khaoz_result allocated_buffer::write(VkDeviceSize offset, const void* data, size_t size) const {

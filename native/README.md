@@ -88,17 +88,25 @@ scripts/refresh-third-party.sh --check
 
 The C ABI can probe for and create a headless Vulkan 1.3 device. The default creation function
 reads `KHAOZ_NATIVE_VULKAN_LOADER`. The explicit loader function accepts a path from callers
-that manage their own environment. Devices use per-instance and per-device dispatch tables.
+that manage their own environment. The selector entry point passes adapter metadata in
+enumeration order to its callback, then uses that same enumeration to open the chosen
+device. Its startup status distinguishes a missing driver from other availability failures.
+Devices use per-instance and per-device dispatch tables.
 Portability enumeration and the portability subset are enabled when exposed. The sampler uses
 zero mip LOD bias when the portability subset is enabled, since the spike does not enable
-the optional portability feature for sampler bias.
+the optional portability feature for sampler bias. The capability reports the bias mode
+used to create samplers.
 
 Buffers and images are allocated through VMA. Staging textures use host-visible buffers with
-a layout for each mip and array layer. Off-timeline uploads finish before returning. Transfer
+a layout for each mip and array layer. A logical cubemap layer allocates six faces, and
+transfer indices address those physical faces. Off-timeline uploads wait for completion. Transfer
 lists submit asynchronously and can signal a fence. Images rest in `GENERAL` so abandoning or
 reordering lists leaves their layout valid. Release children before destroying the device and
 serialize calls on each device. Validation catches a device closed with live children and the
 ABI returns the total count after releasing the children, the device and the instance.
+An inconclusive queue wait refuses new work and retains submitted resources for teardown.
+A device destroy that cannot confirm either queue completion or device loss retains the
+handle for a later retry.
 
 Set `KHAOZ_NATIVE_GPU_TESTS=1` to run the GPU doctests. These require an available Vulkan device
 and `VK_LAYER_KHRONOS_validation`. On macOS use the MoltenVK ICD and expose the validation

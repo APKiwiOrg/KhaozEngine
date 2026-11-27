@@ -2,6 +2,7 @@ using System;
 using System.Runtime.CompilerServices;
 using KhaozEngine.Gpu.Core.Interop;
 using KhaozEngine.Gpu.Vulkan;
+using KhaozEngine.Gpu.Vulkan.Internal;
 using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Gpu.Core.Internal;
@@ -103,8 +104,14 @@ internal sealed unsafe class CoreCommandList(CoreGpuDevice owner, khaoz_gpu_comm
             var commands = RequireRecording();
             var source = Require<CoreTexture>(Owner, src, nameof(src), "texture");
             var destination = Require<CoreTexture>(Owner, dst, nameof(dst), "texture");
+            var sourceHandle = source.Handle;
+            var destinationHandle = destination.Handle;
+            VulkanUploadBounds.RequireMipLevel(srcMipLevel, source.MipLevels, nameof(srcMipLevel), "source");
+            VulkanUploadBounds.RequireArrayLayer(srcArrayLayer, source.ArrayLayers, nameof(srcArrayLayer), "source");
+            VulkanUploadBounds.RequireMipLevel(dstMipLevel, destination.MipLevels, nameof(dstMipLevel), "destination");
+            VulkanUploadBounds.RequireArrayLayer(dstArrayLayer, destination.ArrayLayers, nameof(dstArrayLayer), "destination");
             NativeResult.ThrowIfFailed(KhaozNative.khaoz_gpu_command_list_copy_texture(
-                commands, source.Handle, destination.Handle, &copy), nameof(CopyTextureSubresource));
+                commands, sourceHandle, destinationHandle, &copy), nameof(CopyTextureSubresource));
         }
     }
 

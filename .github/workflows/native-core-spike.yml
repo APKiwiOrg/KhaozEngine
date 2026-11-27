@@ -413,10 +413,23 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: '10.0.x'
+      # Only the four shipped libraries, not the symbols or fixtures.
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: khaoz-native-*
-          path: ${{ runner.temp }}/artifacts
+          name: khaoz-native-linux-x64
+          path: ${{ runner.temp }}/artifacts/khaoz-native-linux-x64
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: khaoz-native-linux-arm64
+          path: ${{ runner.temp }}/artifacts/khaoz-native-linux-arm64
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: khaoz-native-osx-arm64
+          path: ${{ runner.temp }}/artifacts/khaoz-native-osx-arm64
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: khaoz-native-win-x64
+          path: ${{ runner.temp }}/artifacts/khaoz-native-win-x64
       - name: Stage and pack KhaozEngine.Native
         id: pack
         env:

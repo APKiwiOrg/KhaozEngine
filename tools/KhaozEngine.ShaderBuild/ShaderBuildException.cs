@@ -12,6 +12,7 @@ public enum ShaderBuildFailure
     CompileFailed,
     ManifestInvalid,
     MetalIndexInStreamRange,
+    ToolTimedOut,
 }
 
 /// <summary>A shader build refusal carrying its reason and the identifiers a person needs to fix it.</summary>

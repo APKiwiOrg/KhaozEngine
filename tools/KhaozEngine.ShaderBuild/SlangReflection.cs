@@ -11,6 +11,13 @@ public static class SlangReflection
     /// <summary>The highest Metal buffer index a resource may take, because vertex streams count down from buffer 30.</summary>
     public const int MaxMetalBufferIndex = 15;
 
+    // Slang reports array and multisample as separate flags, and a sampled-image binding fits every one of these
+    // shapes on Vulkan, Metal and D3D11. textureBuffer is a texel buffer and needs a kind of its own.
+    private static readonly HashSet<string> SampledTextureShapes = new(StringComparer.Ordinal)
+    {
+        "texture1D", "texture2D", "texture3D", "textureCube",
+    };
+
     /// <summary>Returns the bindings sorted by set, then binding.</summary>
     public static IReadOnlyList<BundleBinding> Join(string spirvJson, string metalJson, string hlslJson)
     {
@@ -75,7 +82,7 @@ public static class SlangReflection
 
     private static bool IsReadOnlyTexture(JsonElement type)
         => type.TryGetProperty("kind", out var kind) && kind.GetString() == "resource"
-            && type.TryGetProperty("baseShape", out var shape) && shape.GetString()!.StartsWith("texture", StringComparison.Ordinal)
+            && type.TryGetProperty("baseShape", out var shape) && SampledTextureShapes.Contains(shape.GetString()!)
             && (!type.TryGetProperty("access", out var access) || access.GetString() == "read");
 
     private static Dictionary<string, JsonElement> ByName(JsonDocument reflection)

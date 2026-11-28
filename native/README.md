@@ -206,3 +206,33 @@ The `native-core-spike` workflow builds every RID, packs all four and runs the s
 hosted platform and inside the `mcr.microsoft.com/dotnet/sdk:10.0` image on Linux arm64. Its Scope
 job selects it through the Product CI rules, and it owns the device tests in
 `KhaozEngine.Gpu.Core.Tests`, which skip on the GPU workflow's legs without the native library.
+
+## Slang trial
+
+[shaders-slang/sprite.slang](shaders-slang/sprite.slang) ports the sprite shaders in `SpriteBatch.cs` to Slang with
+the same math, vertex locations, varyings and `set` and `binding` numbers.
+[shaders-slang/build-slang.sh](shaders-slang/build-slang.sh) compiles each stage to SPIR-V 1.3 into
+`KhaozEngine.Gpu.Core/SlangTrial/`, where the files are checked in and embedded, and runs `spirv-val` on both. It
+takes the compiler from `SLANGC` and refuses any slangc other than 2026.23. `--check` compiles into a temporary
+folder and fails when a checked-in file differs. The macOS and Linux builds of slangc produce byte-identical SPIR-V.
+
+The script also emits MSL into `/tmp/khaozengine-native-core/slang/`, or `SLANG_MSL_DIR`. On macOS
+[shaders-slang/compile-msl.swift](shaders-slang/compile-msl.swift) compiles it through the Metal framework at runtime
+with the options `KhaozEngine.Gpu.Metal` pins in `MslCompilePin.cs`, because the engine compiles MSL that way and never
+uses the offline Metal compiler. The runtime compiler reports no warnings for a library it builds, so the script
+raises the `-Wall` and `-Wextra` groups to errors in the source. Other default warnings still pass.
+
+`CoreGoldenTests.Scene2d_primitives_matches_with_slang_sprite_shaders` substitutes the Slang SPIR-V for the sprite
+pair through `CoreShaderOverrides` and renders the `scene2d_primitives` golden within 0.01 with zero validation
+errors. `Test: native-slang` downloads the Linux build of slangc 2026.23, verifies its SHA-256 before unpacking and
+runs `build-slang.sh --check`.
+
+Moving more shaders to Slang needs three things this module shows:
+
+- Pass `-matrix-layout-column-major`, or mark matrices `column_major`. Slang's default does not match the
+  column-major buffers the engine writes.
+- slangc 2026.23 crashes when emitting Metal for a vertex output that nests a struct of two or more varyings, the
+  crash tracked in https://github.com/shader-slang/slang/issues/8183. The module declares its varyings flat.
+- Slang numbers Metal buffers, textures and samplers in declaration order and ignores `[[vk::binding]]` for Metal.
+  Declare resources in ascending `(set, binding)` order, pin them with `register()`, or cross-compile Metal from the
+  Slang SPIR-V through the engine's SPIRV-Cross path.

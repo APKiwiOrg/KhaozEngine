@@ -25,11 +25,8 @@ internal sealed record VulkanShaderIdentity(string Source, string Artifact, stri
             Stage("fragment", fragment, fragmentArtifact)], label);
     static VulkanShaderIdentity Create(ImmutableArray<GpuPipelineStageIdentity> stages, string label)
     {
-        int bytes = checked(GpuDiagnosticIdentityEncoding.Utf8.GetByteCount(SpirvFrontEndPin.Identity) + 7
-            + GpuDiagnosticIdentityEncoding.Utf8.GetByteCount(label));
-        if (bytes > 16384)
-            throw new GpuDiagnosticFailureException([new("vulkan.shader-evidence",
-                new InvalidOperationException("CompilerFlags exceeds 16384 UTF-8 bytes before retention."))]);
+        RequireRetainable(checked(GpuDiagnosticIdentityEncoding.Utf8.GetByteCount(SpirvFrontEndPin.Identity) + 7
+            + GpuDiagnosticIdentityEncoding.Utf8.GetByteCount(label)));
         return new(GpuDiagnosticIdentityEncoding.Stages("source", stages).Sha256 ?? "",
             GpuDiagnosticIdentityEncoding.Stages("artifact", stages).Sha256 ?? "", SpirvFrontEnd.OptionsIdentity(label), stages, Options());
     }
@@ -40,12 +37,17 @@ internal sealed record VulkanShaderIdentity(string Source, string Artifact, stri
         ImmutableArray<GpuPipelineStageIdentity> stages =
             [Bundled("vertex", program.Vertex.Spirv.Span), Bundled("fragment", program.Fragment.Spirv.Span)];
         string flags = $"khaozengine.shader-bundle/1,program={program.Id},variant={program.Variant}";
-        if (GpuDiagnosticIdentityEncoding.Utf8.GetByteCount(flags) > 16384)
-            throw new GpuDiagnosticFailureException([new("vulkan.shader-evidence",
-                new InvalidOperationException("CompilerFlags exceeds 16384 UTF-8 bytes before retention."))]);
+        RequireRetainable(GpuDiagnosticIdentityEncoding.Utf8.GetByteCount(flags));
         return new(GpuDiagnosticIdentityEncoding.Stages("source", stages).Sha256 ?? "",
             GpuDiagnosticIdentityEncoding.Stages("artifact", stages).Sha256 ?? "", flags, stages,
             GpuDiagnosticIdentityEncoding.CodeGeneration(GpuBackendKind.VulkanNative, [new("frontend", "khaozengine.shader-bundle/1")]));
+    }
+
+    static void RequireRetainable(int compilerFlagsBytes)
+    {
+        if (compilerFlagsBytes > 16384)
+            throw new GpuDiagnosticFailureException([new("vulkan.shader-evidence",
+                new InvalidOperationException("CompilerFlags exceeds 16384 UTF-8 bytes before retention."))]);
     }
 
     static GpuPipelineStageIdentity Bundled(string stage, ReadOnlySpan<byte> spirv)

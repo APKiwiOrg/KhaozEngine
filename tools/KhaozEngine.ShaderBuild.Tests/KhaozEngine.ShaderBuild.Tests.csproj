@@ -11,8 +11,10 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.ShaderBuild/KhaozEngine.ShaderBuild.csproj" />
+    <ProjectReference Include="../../KhaozEngine.Gpu/KhaozEngine.Gpu.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Include="../../build/slangc.pins.json" Link="slangc.pins.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Fixtures/**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

@@ -1,0 +1,6 @@
+{
+  "programs": [
+    { "id": "sprite", "source": "sprite.slang", "vertex": "vertexMain", "fragment": "fragmentMain" },
+    { "id": "line-endings", "source": "line-endings.slang", "vertex": "vertexMain", "fragment": "fragmentMain" }
+  ]
+}

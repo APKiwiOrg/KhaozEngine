@@ -37,4 +37,10 @@ public sealed class ShaderBuildException : Exception
 
     /// <summary>The environment variable that supplies a local toolchain instead, when that is the way out.</summary>
     public string? OverrideVariable { get; }
+
+    /// <summary>The manifest program the refusal concerns, when there is one.</summary>
+    public string? ProgramId { get; init; }
+
+    /// <summary>The shader parameter the refusal concerns, when there is one.</summary>
+    public string? Parameter { get; init; }
 }

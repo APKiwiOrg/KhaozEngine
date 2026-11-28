@@ -55,6 +55,7 @@
   "pixel-lab-sheet-assembler": {"role": "test", "roots": ["tools/PixelLabSheetAssembler.Tests/PixelLabSheetAssembler.Tests.csproj"]},
   "render": {"role": "test", "roots": ["KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj"]},
   "server": {"role": "test", "roots": ["KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj"]},
+  "shader-build": {"role": "test", "roots": ["tools/KhaozEngine.ShaderBuild.Tests/KhaozEngine.ShaderBuild.Tests.csproj"]},
   "showcase": {"role": "test", "roots": ["KhaozEngine.Showcase.Tests/KhaozEngine.Showcase.Tests.csproj"]},
   "simulation": {"role": "test", "roots": ["KhaozEngine.Simulation.Tests/KhaozEngine.Simulation.Tests.csproj"]},
   "sql-accounts": {"role": "overlay", "roots": ["KhaozEngine.Accounts.Tests/KhaozEngine.Accounts.Tests.csproj"]},

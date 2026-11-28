@@ -1,0 +1,25 @@
+{
+  "version": "2026.23",
+  "assets": {
+    "osx-arm64": {
+      "url": "https://github.com/shader-slang/slang/releases/download/v2026.23/slang-2026.23-macos-aarch64.tar.gz",
+      "sha256": "74cf600026e89e714540d07e200d59c9496be773b95fc39fe2495e8684216d88",
+      "executable": "bin/slangc"
+    },
+    "linux-x64": {
+      "url": "https://github.com/shader-slang/slang/releases/download/v2026.23/slang-2026.23-linux-x86_64-glibc-2.28.tar.gz",
+      "sha256": "4ae4dd4a045ed65e8cff7ab81dc9d1eee60674e927627b360276f21b155c8a81",
+      "executable": "bin/slangc"
+    },
+    "linux-arm64": {
+      "url": "https://github.com/shader-slang/slang/releases/download/v2026.23/slang-2026.23-linux-aarch64-glibc-2.28.tar.gz",
+      "sha256": "c2a2e1ce89f94e6567f50f93102411db18ccc54c1046a63785cbf1d28b85a962",
+      "executable": "bin/slangc"
+    },
+    "win-x64": {
+      "url": "https://github.com/shader-slang/slang/releases/download/v2026.23/slang-2026.23-windows-x86_64.tar.gz",
+      "sha256": "27c4cd0f28f93e08e83aa6d454a6fa31feaf4a68bc01fa975373baa295d9331b",
+      "executable": "bin/slangc.exe"
+    }
+  }
+}

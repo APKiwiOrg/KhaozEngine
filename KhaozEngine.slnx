@@ -169,6 +169,8 @@
   <Project Path="tools/PixelLabSheetAssembler.Tests/PixelLabSheetAssembler.Tests.csproj" />
   <Project Path="tools/KeDungeon/KeDungeon.csproj" />
   <Project Path="tools/KeDungeon.Tests/KeDungeon.Tests.csproj" />
+  <Project Path="tools/KhaozEngine.ShaderBuild/KhaozEngine.ShaderBuild.csproj" />
+  <Project Path="tools/KhaozEngine.ShaderBuild.Tests/KhaozEngine.ShaderBuild.Tests.csproj" />
   <Project Path="tools/DungeonKitGen/DungeonKitGen.csproj" />
   <Project Path="tools/TestModelGen/TestModelGen.csproj" />
   <Project Path="tools/GestureInputProbe/GestureInputProbe.csproj" />

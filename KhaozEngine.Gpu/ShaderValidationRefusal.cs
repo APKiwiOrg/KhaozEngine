@@ -158,4 +158,7 @@ public enum ShaderValidationRefusal
 
     /// <summary>Refuses a compiled program whose HLSL register differs from the one its layout position gives.</summary>
     D3D11RegisterMismatch,
+
+    /// <summary>Refuses an assembly that embeds no shader bundle resource.</summary>
+    BundleMissing,
 }

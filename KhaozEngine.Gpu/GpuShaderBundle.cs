@@ -38,7 +38,7 @@ public sealed class GpuShaderBundle : IGpuShaderProgramSource
         ArgumentNullException.ThrowIfNull(assembly);
         var resource = assembly.GetName().Name + ".khaoz.shaders.json";
         using var stream = assembly.GetManifestResourceStream(resource)
-            ?? throw new ShaderValidationException(ShaderValidationRefusal.BundleCorrupt,
+            ?? throw new ShaderValidationException(ShaderValidationRefusal.BundleMissing,
                 $"Assembly '{assembly.GetName().Name}' embeds no shader bundle resource '{resource}'.")
             { Label = resource };
         return Load(stream, resource);
@@ -97,7 +97,7 @@ public sealed class GpuShaderBundle : IGpuShaderProgramSource
         if (format != Format || version != FormatVersion)
             throw new ShaderValidationException(ShaderValidationRefusal.BundleFormatUnsupported,
                 $"Shader bundle '{origin}' is format '{format}' version {version?.ToString() ?? "unknown"}, but this reader accepts only '{Format}' version {FormatVersion}.")
-            { Label = origin };
+            { Label = origin, FormatVersion = version };
     }
 
     static GpuShaderProgram ReadProgram(JsonElement element)

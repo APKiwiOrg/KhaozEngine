@@ -195,6 +195,9 @@ public sealed partial class ShaderValidationException : Exception
     /// <summary>The expected magic identifying this refusal, when applicable.</summary>
     public uint? ExpectedMagic { get; init; }
 
+    /// <summary>The refused shader bundle format version, when applicable.</summary>
+    public int? FormatVersion { get; init; }
+
     /// <summary>The HRESULT, populated from FXC for D3D11FxcRejected and otherwise retaining Exception's value.</summary>
     public new int HResult { get => base.HResult; init => base.HResult = value; }
 }

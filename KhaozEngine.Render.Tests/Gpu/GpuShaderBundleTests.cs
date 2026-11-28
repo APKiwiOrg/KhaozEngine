@@ -44,14 +44,15 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [Theory]
-        [InlineData("\"version\": 1", "\"version\": 2")]
-        [InlineData("\"format\": \"khaoz-shader-bundle\"", "\"format\": \"other-bundle\"")]
-        public void Refuses_another_format_or_version(string field, string replacement)
+        [InlineData("\"version\": 1", "\"version\": 2", 2)]
+        [InlineData("\"format\": \"khaoz-shader-bundle\"", "\"format\": \"other-bundle\"", 1)]
+        public void Refuses_another_format_or_version(string field, string replacement, int foundVersion)
         {
             var ex = Assert.Throws<ShaderValidationException>(
                 () => GpuShaderBundle.Load(Utf8(ValidBundleJson.Replace(field, replacement)), "test"));
             Assert.Equal(ShaderValidationRefusal.BundleFormatUnsupported, ex.Reason);
             Assert.Equal("test", ex.Label);
+            Assert.Equal(foundVersion, ex.FormatVersion);
         }
 
         [Theory]
@@ -89,7 +90,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             var assembly = typeof(GpuShaderBundleTests).Assembly;
             var ex = Assert.Throws<ShaderValidationException>(() => GpuShaderBundle.FromAssembly(assembly));
-            Assert.Equal(ShaderValidationRefusal.BundleCorrupt, ex.Reason);
+            Assert.Equal(ShaderValidationRefusal.BundleMissing, ex.Reason);
             Assert.Equal(assembly.GetName().Name + ".khaoz.shaders.json", ex.Label);
         }
 

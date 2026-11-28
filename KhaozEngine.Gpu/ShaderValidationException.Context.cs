@@ -63,6 +63,7 @@ public sealed partial class ShaderValidationException
             WordBytes = WordBytes,
             ActualMagic = ActualMagic,
             ExpectedMagic = ExpectedMagic,
+            FormatVersion = FormatVersion,
             HResult = HResult,
         };
 }

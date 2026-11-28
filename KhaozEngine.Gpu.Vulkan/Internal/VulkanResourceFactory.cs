@@ -284,6 +284,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         }
 
         /// <inheritdoc/>
+        public IGpuShaderSet CreateShaders(GpuShaderProgram program)
+        {
+            ArgumentNullException.ThrowIfNull(program);
+            RequirePrecise(new GpuShaderCompileOptions(program.VertexPreciseMath), GpuShaderStages.Vertex);
+            return VulkanShaderSet.FromSpirv(_modules, program);
+        }
+
+        /// <inheritdoc/>
         /// <remarks>The compute twin, with the workgroup size read out of the module itself rather than taken
         /// from a caller. There is no capability gate in front of it, because this backend's
         /// <see cref="GpuCapabilities.SupportsCompute"/> is unconditionally true, for the same reason

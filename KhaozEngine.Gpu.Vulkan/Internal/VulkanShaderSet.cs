@@ -61,7 +61,29 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             FragmentModule = modules.GetOrCreate(fragmentSpirv);
         }
 
+        VulkanShaderSet(ulong vertexModule, ulong fragmentModule, VulkanShaderIdentity identity, GpuShaderProgram program)
+        {
+            VertexModule = vertexModule;
+            FragmentModule = fragmentModule;
+            DiagnosticIdentity = identity;
+            Program = program;
+        }
+
+        /// <summary>A shader set over a compiled program's SPIR-V, whose entry point slangc names <c>main</c>.</summary>
+        internal static VulkanShaderSet FromSpirv(VulkanShaderModuleCache modules, GpuShaderProgram program)
+        {
+            ArgumentNullException.ThrowIfNull(modules);
+            ArgumentNullException.ThrowIfNull(program);
+            VulkanShaderIdentity identity = VulkanShaderIdentity.Program(program);
+            ulong vertex = modules.GetOrCreate(program.Vertex.Spirv.Span);
+            ulong fragment = modules.GetOrCreate(program.Fragment.Spirv.Span);
+            return new VulkanShaderSet(vertex, fragment, identity, program);
+        }
+
         internal VulkanShaderIdentity DiagnosticIdentity { get; }
+
+        /// <summary>The compiled program this set was loaded from, or null for a GLSL pair.</summary>
+        internal GpuShaderProgram? Program { get; }
 
         static byte[] Compile(string glsl, GpuShaderStages stage, string tag, SpirvBytesCache? cache, SpirvCompileCache? compileCache, GpuShaderCompileOptions options = default)
             => cache?.GetOrCompile(SpirvFrontEnd.OptionsIdentity(tag, options), stage, glsl,

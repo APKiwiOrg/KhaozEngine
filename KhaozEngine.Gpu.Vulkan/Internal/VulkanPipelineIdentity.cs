@@ -33,6 +33,24 @@ internal sealed record VulkanShaderIdentity(string Source, string Artifact, stri
         return new(GpuDiagnosticIdentityEncoding.Stages("source", stages).Sha256 ?? "",
             GpuDiagnosticIdentityEncoding.Stages("artifact", stages).Sha256 ?? "", SpirvFrontEnd.OptionsIdentity(label), stages, Options());
     }
+
+    // A bundled program's SPIR-V is both what the engine was handed and what the driver compiles.
+    internal static VulkanShaderIdentity Program(GpuShaderProgram program)
+    {
+        ImmutableArray<GpuPipelineStageIdentity> stages =
+            [Bundled("vertex", program.Vertex.Spirv.Span), Bundled("fragment", program.Fragment.Spirv.Span)];
+        string flags = $"khaozengine.shader-bundle/1,program={program.Id},variant={program.Variant}";
+        if (GpuDiagnosticIdentityEncoding.Utf8.GetByteCount(flags) > 16384)
+            throw new GpuDiagnosticFailureException([new("vulkan.shader-evidence",
+                new InvalidOperationException("CompilerFlags exceeds 16384 UTF-8 bytes before retention."))]);
+        return new(GpuDiagnosticIdentityEncoding.Stages("source", stages).Sha256 ?? "",
+            GpuDiagnosticIdentityEncoding.Stages("artifact", stages).Sha256 ?? "", flags, stages,
+            GpuDiagnosticIdentityEncoding.CodeGeneration(GpuBackendKind.VulkanNative, [new("frontend", "khaozengine.shader-bundle/1")]));
+    }
+
+    static GpuPipelineStageIdentity Bundled(string stage, ReadOnlySpan<byte> spirv)
+        => new(stage, "main", GpuDiagnosticIdentityEncoding.Bytes(spirv, "khaozengine.bundle-spirv/1"), null,
+            GpuDiagnosticIdentityEncoding.Bytes(spirv, "spirv.bytes/1"));
 }
 
 /// <summary>Content identity. Never hashes native handles, which vary between equivalent device lifetimes.</summary>

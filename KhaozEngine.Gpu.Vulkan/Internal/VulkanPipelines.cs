@@ -103,6 +103,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             VulkanShaderSet shaders = VulkanShaderSet.Require(description.ShaderSet, what);
             VulkanResourceLayout[] layouts = RequireLayouts(description.ResourceLayouts, what);
+            if (shaders.Program is { } program)
+                GpuShaderBindingCheck.RequireMatches(program, Array.ConvertAll(layouts, layout => new GpuResourceLayoutDescription(layout.Elements.ToArray())));
 
             ulong pipelineLayout = _layouts.GetOrCreate(layouts);
             VulkanGraphicsPipelineSpec spec = VulkanGraphicsPipelineSpec.For(

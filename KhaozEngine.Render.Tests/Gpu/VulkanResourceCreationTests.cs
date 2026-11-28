@@ -542,6 +542,7 @@ namespace KhaozEngine.Tests.Gpu
                 // front end plus vkCreateShaderModule over the bytes verbatim.
                 nameof(IGpuResourceFactory.CreateShadersFromSpirv),
                 nameof(IGpuResourceFactory.CreateComputeShaderFromSpirv),
+                nameof(IGpuResourceFactory.CreateShaders),
 
                 // And row 13 (https://github.com/APKiwiOrg/KhaozEngine/issues/523) took the last two, which is
                 // what empties the refusal list below. See VulkanPipelineCreationTests for what they build.

@@ -30,9 +30,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// </summary>
     internal sealed unsafe class VulkanPipelineApi : IVulkanPipelineApi, IVulkanPipelineDiagnosticsSource
     {
-        // Every shipped stage is compiled from GLSL by the engine's own front end, and glslang names the entry
-        // point of a GLSL module "main" with no way to ask for another. A UTF-8 literal so no marshalling
-        // allocation happens per pipeline.
+        // glslang names a GLSL module's entry point "main", and slangc does the same for SPIR-V because the shader
+        // build never passes -fvk-use-entrypoint-name. A UTF-8 literal so no marshalling happens per pipeline.
         static ReadOnlySpan<byte> EntryPoint => "main\0"u8;
 
         const ColorComponentFlags AllChannels =

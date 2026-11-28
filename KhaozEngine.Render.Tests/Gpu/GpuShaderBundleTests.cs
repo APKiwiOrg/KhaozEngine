@@ -89,7 +89,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void Refuses_an_assembly_without_an_embedded_bundle_by_resource_name()
         {
-            var assembly = typeof(GpuShaderBundleTests).Assembly;
+            var assembly = typeof(Assert).Assembly;
             var ex = Assert.Throws<ShaderValidationException>(() => GpuShaderBundle.FromAssembly(assembly));
             Assert.Equal(ShaderValidationRefusal.BundleMissing, ex.Reason);
             Assert.Equal(assembly.GetName().Name + ".khaoz.shaders.json", ex.Label);

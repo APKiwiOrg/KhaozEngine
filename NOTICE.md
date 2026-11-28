@@ -1,9 +1,8 @@
 # Third-party notices
 
-KhaozEngine itself is proprietary (see [LICENSE](LICENSE)). This file records the third-party work its own
-source is DERIVED from: approaches followed, algorithms reproduced, or code adapted. Runtime package
-dependencies are not listed here (they are declared in `Directory.Packages.props` and carry their own licences
-through NuGet); this is only for material that shaped engine source.
+KhaozEngine itself is proprietary (see [LICENSE](LICENSE)). This file records third-party work used
+in engine source or vendored with it. NuGet dependencies are declared in `Directory.Packages.props`
+and carry their own licences.
 
 Add an entry whenever engine code follows a specific third-party implementation closely enough that the
 resemblance is the point rather than a coincidence, even when nothing is copied verbatim. Name what was
@@ -100,3 +99,33 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+---
+
+## doctest
+
+- **Project:** [doctest/doctest](https://github.com/doctest/doctest)
+- **Licence:** [MIT](native/third_party/doctest/LICENSE.txt)
+- **Copyright:** Copyright (c) 2016-2023 Viktor Kirilov
+- **Used by:** The native ABI tests. The vendored header includes the upstream Catch and lest attributions.
+
+## volk
+
+- **Project:** [zeux/volk](https://github.com/zeux/volk)
+- **Licence:** [MIT](native/third_party/volk/LICENSE.md)
+- **Copyright:** Copyright (c) 2018-2026 Arseny Kapoulkine
+- **Used by:** The native build's Vulkan loader target.
+
+## Vulkan-Headers
+
+- **Project:** [KhronosGroup/Vulkan-Headers](https://github.com/KhronosGroup/Vulkan-Headers)
+- **Licence:** [Apache-2.0 OR MIT](native/third_party/vulkan-headers/LICENSE.md)
+- **Copyright:** Copyright 2015-2026 The Khronos Group Inc.
+- **Used by:** The native build's Vulkan loader and allocator targets.
+
+## Vulkan Memory Allocator
+
+- **Project:** [GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator)
+- **Licence:** [MIT](native/third_party/vma/LICENSE.txt)
+- **Copyright:** Copyright (c) 2017-2026 Advanced Micro Devices, Inc. All rights reserved.
+- **Used by:** The native build's Vulkan allocator target.

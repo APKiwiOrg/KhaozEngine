@@ -1,0 +1,563 @@
+name: native-core-spike
+
+# The C++ native core spike (native/). Builds each package RID from the vendored sources, lints, runs the
+# sanitizers and the lavapipe golden, packs KhaozEngine.Native into a run-local feed and loads that package
+# on every hosted platform. Product CI owns the one required check, so this workflow has no CI passed job.
+#
+# Linux libraries build inside the manylinux_2_28 images (glibc 2.28) with the image's gcc-toolset, never on
+# the runner, so they load on ubuntu-24.04, the dotnet/sdk:10.0 image game repositories run CI in and
+# players' distributions. The images and every action are pinned by digest or commit.
+
+# The Scope job selects the run with the Product CI rules in .github/ci-scope.txt, as the other native
+# correctness workflows do. The segments cover the adapter's project closure (gpu-core) and the pack and
+# smoke projects. The pack project sits at the root of native/, so its row covers the C++ sources and a
+# C++ change selects this workflow alone. The golden scene and grid read from KhaozEngine.Render.Tests are
+# linked across projects, so they are full overrides there, and a full scope selects this workflow.
+# Schedule and dispatch run everything.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '43 18 * * 0'
+  workflow_dispatch:
+
+concurrency:
+  group: >-
+    ${{ github.event_name == 'pull_request' && github.run_attempt == 1 &&
+        format('native-core-spike-pr-{0}', github.event.pull_request.number) ||
+        format('native-core-spike-{0}-{1}', github.event_name, github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.run_attempt == 1 }}
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: '1'
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1'
+
+jobs:
+  scope:
+    name: Scope
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      selected: ${{ steps.scope.outputs.selected }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          sparse-checkout: |
+            /.github/actions/native-ci-scope/
+            /.github/ci-scope.txt
+          sparse-checkout-cone-mode: false
+      - id: scope
+        uses: ./.github/actions/native-ci-scope
+        with:
+          segments: '["compile-native-pack", "compile-native-smoke", "gpu-core"]'
+
+  native-build:
+    name: 'Build: native-${{ matrix.rid }}'
+    needs: scope
+    if: needs.scope.outputs.selected == 'true'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: linux-x64
+            runner: ubuntu-24.04
+            preset: linux-x64
+            image: quay.io/pypa/manylinux_2_28_x86_64@sha256:55a36963bc0504cdf004011001c1072306402f0b8b83be5a5eba7068f93eec53
+          - rid: linux-arm64
+            runner: ubuntu-24.04-arm
+            preset: linux-arm64
+            image: quay.io/pypa/manylinux_2_28_aarch64@sha256:126d9eea9d6b1717f3e17b2b3ac51da04ef159a5f935dac36fe92d621dc8f246
+          - rid: osx-arm64
+            runner: macos-26
+            preset: macos-arm64
+            image: ''
+          - rid: win-x64
+            runner: windows-2025
+            preset: windows-x64
+            image: ''
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # docker run, not a job container: the checkout and upload actions stay on the host on both
+      # architectures, and the container only sees the source tree.
+      - name: Build inside manylinux_2_28
+        if: matrix.image != ''
+        shell: bash
+        env:
+          IMAGE: ${{ matrix.image }}
+          PRESET: ${{ matrix.preset }}
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src/native -e PRESET "$IMAGE" bash -euxo pipefail -c '
+            gcc --version | head -1
+            command -v cmake >/dev/null && command -v ninja >/dev/null || pipx install cmake ninja
+            export PATH="$PATH:/root/.local/bin"
+            cmake --version | head -1
+            cmake --preset "$PRESET"
+            cmake --build --preset "$PRESET"
+          '
+      - name: 'Test: native-ctest'
+        if: matrix.image != ''
+        shell: bash
+        env:
+          IMAGE: ${{ matrix.image }}
+          PRESET: ${{ matrix.preset }}
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src/native -e PRESET "$IMAGE" bash -euxo pipefail -c '
+            command -v ctest >/dev/null || pipx install cmake
+            export PATH="$PATH:/root/.local/bin"
+            ctest --preset "$PRESET"
+          '
+      # The stripped library must need nothing newer than glibc 2.28 and carry the C++ runtime statically.
+      - name: Stage and check the library inside manylinux_2_28
+        if: matrix.image != ''
+        shell: bash
+        env:
+          IMAGE: ${{ matrix.image }}
+          PRESET: ${{ matrix.preset }}
+          RID: ${{ matrix.rid }}
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src -e PRESET -e RID "$IMAGE" bash -euxo pipefail -c '
+            sh native/scripts/stage-library.sh "native/out/build/$PRESET" "$RID" /src/stage
+            lib="/src/stage/lib/$RID/libkhaoz_native.so"
+            readelf -d "$lib" | grep NEEDED
+            if readelf -d "$lib" | grep -q "libstdc++\|libgcc_s"; then
+              echo "::error::$lib links the C++ runtime dynamically"; exit 1
+            fi
+            newest=$(objdump -T "$lib" | sed -n "s/.*GLIBC_\([0-9.]*\).*/\1/p" | sort -uV | tail -1)
+            echo "newest glibc symbol version: $newest"
+            if [ "$(printf "%s\n2.28\n" "$newest" | sort -V | tail -1)" != 2.28 ]; then
+              echo "::error::$lib needs glibc $newest, above the 2.28 floor"; exit 1
+            fi
+          '
+
+      - name: Build (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          PRESET: ${{ matrix.preset }}
+        working-directory: native
+        run: |
+          set -euxo pipefail
+          command -v ninja >/dev/null || brew install ninja
+          cmake --preset "$PRESET"
+          cmake --build --preset "$PRESET"
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          PRESET: ${{ matrix.preset }}
+          CC: cl
+          CXX: cl
+        working-directory: native
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * `
+            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          & "$vs\Common7\Tools\Launch-VsDevShell.ps1" -Arch amd64 -HostArch amd64 -SkipAutomaticLocation
+          cmake --preset $env:PRESET
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cmake --build --preset $env:PRESET
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: 'Test: native-ctest'
+        if: matrix.image == ''
+        shell: bash
+        env:
+          PRESET: ${{ matrix.preset }}
+        working-directory: native
+        run: ctest --preset "$PRESET"
+
+      - name: Stage the library, symbols and fixtures
+        if: matrix.image == ''
+        shell: bash
+        env:
+          PRESET: ${{ matrix.preset }}
+          RID: ${{ matrix.rid }}
+        run: sh native/scripts/stage-library.sh "native/out/build/$PRESET" "$RID" stage
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: khaoz-native-${{ matrix.rid }}
+          path: stage/lib/${{ matrix.rid }}/
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: khaoz-native-symbols-${{ matrix.rid }}
+          path: stage/symbols/${{ matrix.rid }}/
+          if-no-files-found: error
+          retention-days: 7
+      # Test-only libraries for the managed loader tests on the lavapipe leg. Never packaged.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: matrix.rid == 'linux-x64'
+        with:
+          name: khaoz-native-fixtures-${{ matrix.rid }}
+          path: stage/fixtures/${{ matrix.rid }}/
+          if-no-files-found: error
+          retention-days: 7
+
+  native-lint:
+    name: 'Test: native-lint'
+    needs: scope
+    if: needs.scope.outputs.selected == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The bindings generator, ClangSharpPInvokeGenerator 23.1.5, runs on .NET 11.
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: |
+            10.0.x
+            11.0.x
+      # The formatter and linter match the LLVM 23 release the native sources are checked with locally.
+      - name: Install the LLVM tools
+        run: |
+          set -eux
+          command -v ninja >/dev/null || { sudo apt-get update; sudo apt-get install -y ninja-build; }
+          pipx install clang-format==23.1.5
+          pipx install clang-tidy==23.1.4
+          clang-format --version
+          clang-tidy --version
+          clang --version | head -1
+      - name: Configure the Linux presets with Clang
+        working-directory: native
+        env:
+          CC: clang
+          CXX: clang++
+        run: |
+          set -eux
+          cmake --preset linux-x64
+          cmake --preset linux-x64-asan
+      - name: clang-format
+        working-directory: native
+        run: |
+          git ls-files -z --cached --others --exclude-standard -- \
+            '*.[cChH]' '*.cc' '*.cp' '*.cpp' '*.cxx' '*.c++' '*.hh' '*.hpp' '*.hxx' '*.h++' \
+            '*.inc' '*.inl' '*.ipp' '*.tcc' '*.tpp' '*.ccm' '*.cppm' '*.cxxm' '*.c++m' '*.ixx' \
+            ':(exclude)third_party/**' | xargs -0 clang-format --dry-run --Werror --
+      - name: Vendored dependency hashes
+        run: sh native/scripts/refresh-third-party.sh --check
+      - name: Vendored includes stay system includes
+        run: |
+          set -eux
+          python3 native/scripts/check-vendored-includes.py -p native/out/build/linux-x64
+          python3 native/scripts/check-vendored-includes.py -p native/out/build/linux-x64-asan
+      - name: clang-tidy
+        working-directory: native
+        run: |
+          set -euo pipefail
+          python3 -c '
+          import json, pathlib, sys
+          root = pathlib.Path.cwd().resolve()
+          for entry in json.load(open(sys.argv[1])):
+              path = (pathlib.Path(entry["directory"]) / entry["file"]).resolve()
+              if path.is_relative_to(root) and not path.is_relative_to(root / "third_party"):
+                  print(path)
+          ' out/build/linux-x64/compile_commands.json | sort -u \
+            | xargs -n 1 -P 4 clang-tidy -quiet -p out/build/linux-x64 --config-file="$PWD/.clang-tidy"
+      - name: Generated bindings match the header
+        run: |
+          set -eux
+          dotnet tool restore
+          sh native/scripts/generate-bindings.sh
+          git diff --exit-code -- KhaozEngine.Gpu.Core/Interop/KhaozNative.g.cs
+
+  native-slang:
+    name: 'Test: native-slang'
+    needs: scope
+    if: needs.scope.outputs.selected == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    env:
+      SLANG_VERSION: '2026.23'
+      SLANG_SHA256: 4ae4dd4a045ed65e8cff7ab81dc9d1eee60674e927627b360276f21b155c8a81
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the pinned slangc and SPIRV-Tools
+        run: |
+          set -eux
+          archive="$RUNNER_TEMP/slang.tar.gz"
+          curl -fsSL -o "$archive" \
+            "https://github.com/shader-slang/slang/releases/download/v$SLANG_VERSION/slang-$SLANG_VERSION-linux-x86_64-glibc-2.28.tar.gz"
+          echo "$SLANG_SHA256  $archive" | sha256sum -c -
+          mkdir "$RUNNER_TEMP/slang"
+          tar -xzf "$archive" -C "$RUNNER_TEMP/slang"
+          slangc=$(find "$RUNNER_TEMP/slang" -path '*/bin/slangc' -type f | head -1)
+          test -n "$slangc"
+          echo "SLANGC=$slangc" >> "$GITHUB_ENV"
+          command -v spirv-val >/dev/null || { sudo apt-get update; sudo apt-get install -y spirv-tools; }
+          spirv-val --version | head -1
+      # Linux has no Metal compiler, so the trial's MSL compile runs on the Mac only.
+      - name: Checked-in Slang SPIR-V matches a fresh compile
+        env:
+          SLANG_MSL_DIR: ${{ runner.temp }}/slang-msl
+        run: sh native/shaders-slang/build-slang.sh --check
+
+  # The test project is built once per run. The test jobs place their own libkhaoz_native.so and the two
+  # fixture libraries into this output and run the tests from it.
+  native-tests-build:
+    name: 'Build: native-tests'
+    needs: scope
+    if: needs.scope.outputs.selected == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build
+        run: dotnet build KhaozEngine.Gpu.Core.Tests/KhaozEngine.Gpu.Core.Tests.csproj -c Release
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: khaoz-native-tests
+          path: KhaozEngine.Gpu.Core.Tests/bin/Release/net10.0/
+          if-no-files-found: error
+          retention-days: 7
+
+  native-asan:
+    name: 'Test: native-asan'
+    needs: [scope, native-tests-build]
+    if: needs.scope.outputs.selected == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    env:
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+      - name: Install software Vulkan (lavapipe) and the validation layer
+        run: sh native/scripts/ci-install-lavapipe.sh
+      - name: Build and test with address and undefined behavior sanitizers
+        working-directory: native
+        env:
+          CC: clang
+          CXX: clang++
+        run: |
+          set -eux
+          clang --version | head -1
+          cmake --preset linux-x64-asan
+          cmake --build --preset linux-x64-asan
+          ctest --preset linux-x64-asan
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: khaoz-native-tests
+          path: KhaozEngine.Gpu.Core.Tests/bin/Release/net10.0
+      - name: Place the sanitized library and fixtures in the test output
+        run: |
+          set -eux
+          for name in libkhaoz_native libkhaoz_native_stale_abi_fixture libkhaoz_native_vulkan_startup_fixture; do
+            cp "native/out/build/linux-x64-asan/$name.so" KhaozEngine.Gpu.Core.Tests/bin/Release/net10.0/
+          done
+      # The golden repeat with the sanitized library runs here, beside the build that produced it, so the
+      # preloaded runtime is the same Clang release that instrumented the library. The script preloads the
+      # runtime into the test host only, proves it ran there and checks the required facts.
+      - name: Native C# tests and the golden on lavapipe under the sanitizer runtime
+        env:
+          KE_GPU_TESTS: '1'
+          KE_NATIVE_TESTS: '1'
+          KE_GRAPHICS_BACKEND: vulkan-native
+          KE_VULKAN_DEVICE: llvmpipe
+          KHAOZ_NATIVE_VALIDATION: '1'
+        run: sh native/scripts/ci-asan-dotnet-test.sh "$RUNNER_TEMP/results"
+
+  native-golden:
+    name: 'Test: native-golden'
+    needs: [scope, native-build, native-tests-build]
+    if: needs.scope.outputs.selected == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      KE_GPU_TESTS: '1'
+      KE_NATIVE_TESTS: '1'
+      KE_GRAPHICS_BACKEND: vulkan-native
+      KE_VULKAN_DEVICE: llvmpipe
+      KHAOZ_NATIVE_VALIDATION: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+      - name: Install software Vulkan (lavapipe) and the validation layer
+        run: sh native/scripts/ci-install-lavapipe.sh
+      # The shipped library and the fixtures land in the built test output, where the tests load them.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: khaoz-native-tests
+          path: KhaozEngine.Gpu.Core.Tests/bin/Release/net10.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: khaoz-native-linux-x64
+          path: KhaozEngine.Gpu.Core.Tests/bin/Release/net10.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: khaoz-native-fixtures-linux-x64
+          path: KhaozEngine.Gpu.Core.Tests/bin/Release/net10.0
+      - name: Golden and native tests on lavapipe
+        run: |
+          set -eux
+          lib=KhaozEngine.Gpu.Core.Tests/bin/Release/net10.0/libkhaoz_native.so
+          if nm -D --undefined-only "$lib" | grep -q ' __asan_'; then
+            echo "::error::$lib is a sanitized build, not the shipped library"; exit 1
+          fi
+          dotnet test KhaozEngine.Gpu.Core.Tests/bin/Release/net10.0/KhaozEngine.Gpu.Core.Tests.dll \
+            --filter "Category!=Diagnostic&Category!=LiveSocket" \
+            --logger "trx;LogFileName=golden.trx" --results-directory "$RUNNER_TEMP/results"
+          python3 native/scripts/check-required-tests.py "$RUNNER_TEMP/results/golden.trx"
+
+  native-pack:
+    name: 'Package: native'
+    needs: [scope, native-build]
+    if: needs.scope.outputs.selected == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.pack.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+      # Only the four shipped libraries, not the symbols or fixtures.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: khaoz-native-linux-x64
+          path: ${{ runner.temp }}/artifacts/khaoz-native-linux-x64
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: khaoz-native-linux-arm64
+          path: ${{ runner.temp }}/artifacts/khaoz-native-linux-arm64
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: khaoz-native-osx-arm64
+          path: ${{ runner.temp }}/artifacts/khaoz-native-osx-arm64
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: khaoz-native-win-x64
+          path: ${{ runner.temp }}/artifacts/khaoz-native-win-x64
+      - name: Stage and pack KhaozEngine.Native
+        id: pack
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          stage="$RUNNER_TEMP/stage"
+          feed="$RUNNER_TEMP/feed"
+          for pair in osx-arm64:libkhaoz_native.dylib win-x64:khaoz_native.dll \
+                      linux-x64:libkhaoz_native.so linux-arm64:libkhaoz_native.so; do
+            rid=${pair%%:*}
+            file=${pair#*:}
+            mkdir -p "$stage/$rid"
+            cp "$RUNNER_TEMP/artifacts/khaoz-native-$rid/$file" "$stage/$rid/"
+          done
+          engine=$(dotnet msbuild native/KhaozEngine.Native.csproj -getProperty:KhaozEngineVersion)
+          version="$engine-spike.$RUN_NUMBER"
+          dotnet pack native/KhaozEngine.Native.csproj -c Release -p:KhaozNativeStage="$stage" \
+            -p:Version="$version" -o "$feed"
+          package="$feed/KhaozEngine.Native.$version.nupkg"
+          entries=$(unzip -Z1 "$package" | grep '^runtimes/' | sort)
+          echo "$entries"
+          expected=$(printf '%s\n' runtimes/linux-arm64/native/libkhaoz_native.so \
+            runtimes/linux-x64/native/libkhaoz_native.so runtimes/osx-arm64/native/libkhaoz_native.dylib \
+            runtimes/win-x64/native/khaoz_native.dll | sort)
+          if [ "$entries" != "$expected" ]; then
+            echo "::error::the package does not carry exactly the four RID libraries"; exit 1
+          fi
+          size=$(stat -c %s "$package")
+          echo "KhaozEngine.Native $version: $size bytes" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: khaoz-native-feed
+          path: ${{ runner.temp }}/feed/
+          if-no-files-found: error
+          retention-days: 7
+
+  native-smoke:
+    name: 'Test: native-smoke-${{ matrix.target }}'
+    needs: [scope, native-pack]
+    if: needs.scope.outputs.selected == 'true'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            runner: ubuntu-24.04
+            image: ''
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+            image: ''
+          # The image game repositories run CI in, so a pass proves their CI can load the library.
+          - target: linux-arm64-dotnet-sdk
+            runner: ubuntu-24.04-arm
+            image: mcr.microsoft.com/dotnet/sdk:10.0@sha256:8c6edfb26c85153f236d26efebd9ad349aec403583f343f201ee67838b23658d
+          - target: osx-arm64
+            runner: macos-26
+            image: ''
+          - target: win-x64
+            runner: windows-2025
+            image: ''
+    env:
+      KHAOZ_NATIVE_VERSION: ${{ needs.native-pack.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: khaoz-native-feed
+          path: ${{ runner.temp }}/feed
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        if: matrix.image == ''
+        with:
+          dotnet-version: '10.0.x'
+      # The package cache is a fresh folder, so the run restores the package from the feed alone.
+      - name: Smoke run on the runner
+        if: matrix.image == ''
+        shell: bash
+        env:
+          KHAOZ_NATIVE_FEED: ${{ runner.temp }}/feed
+          NUGET_PACKAGES: ${{ runner.temp }}/nuget-packages
+        run: >-
+          dotnet run --project native/smoke/NativeSmoke.csproj -c Release
+          -p:KhaozNativeVersion="$KHAOZ_NATIVE_VERSION"
+      - name: Smoke run inside the dotnet/sdk image
+        if: matrix.image != ''
+        env:
+          IMAGE: ${{ matrix.image }}
+        run: >-
+          docker run --rm -v "$PWD:/src" -v "$RUNNER_TEMP/feed:/feed:ro" -w /src
+          -e KHAOZ_NATIVE_FEED=/feed -e NUGET_PACKAGES=/tmp/nuget-packages -e KHAOZ_NATIVE_VERSION
+          -e DOTNET_NOLOGO -e DOTNET_CLI_TELEMETRY_OPTOUT "$IMAGE"
+          dotnet run --project native/smoke/NativeSmoke.csproj -c Release -p:KhaozNativeVersion="$KHAOZ_NATIVE_VERSION"

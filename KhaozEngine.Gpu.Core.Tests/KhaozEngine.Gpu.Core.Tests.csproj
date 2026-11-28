@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <OutputType>Exe</OutputType>
+    <GenerateProgramFile>false</GenerateProgramFile>
+    <RootNamespace>KhaozEngine.Tests.GpuCore</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Gpu.Core/KhaozEngine.Gpu.Core.csproj" />
+    <ProjectReference Include="../KhaozEngine.Gpu/KhaozEngine.Gpu.csproj" />
+    <ProjectReference Include="../KhaozEngine.Gpu.Vulkan/KhaozEngine.Gpu.Vulkan.csproj" />
+    <ProjectReference Include="../KhaozEngine.Render2D/KhaozEngine.Render2D.csproj" />
+    <ProjectReference Include="../KhaozEngine.Imaging/KhaozEngine.Imaging.csproj" />
+    <ProjectReference Include="../KhaozEngine.TestSupport.Gpu/KhaozEngine.TestSupport.Gpu.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../KhaozEngine.Render.Tests/Gpu/Scene2DPrimitivesScene.cs" Link="Scene2DPrimitivesScene.cs" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(KhaozNativeLibPath)' != ''">
+    <None Include="$([System.IO.Path]::GetDirectoryName('$(KhaozNativeLibPath)'))/*khaoz_native_stale_abi_fixture$([System.IO.Path]::GetExtension('$(KhaozNativeLibPath)'))"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="$([System.IO.Path]::GetDirectoryName('$(KhaozNativeLibPath)'))/*khaoz_native_vulkan_startup_fixture$([System.IO.Path]::GetExtension('$(KhaozNativeLibPath)'))"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

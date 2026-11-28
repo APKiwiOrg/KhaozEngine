@@ -171,10 +171,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// line, so this never returns null or empty. NOT the capability answer: that is
         /// <see cref="ReadReportedDeviceName"/>.</summary>
         internal static string ReadDeviceName(PhysicalDeviceProperties* properties)
+            => ReadDeviceDisplayName((nint)properties->DeviceName, properties->DeviceID);
+
+        /// <summary>Decodes the Vulkan UTF-8 display name and supplies an identifier for a blank name.</summary>
+        internal static string ReadDeviceDisplayName(nint deviceName, uint deviceId)
         {
-            string? name = SilkMarshal.PtrToString((nint)properties->DeviceName);
+            string? name = SilkMarshal.PtrToString(deviceName, NativeStringEncoding.UTF8);
             return string.IsNullOrWhiteSpace(name)
-                ? "unnamed device 0x" + properties->DeviceID.ToString("x8", CultureInfo.InvariantCulture)
+                ? "unnamed device 0x" + deviceId.ToString("x8", CultureInfo.InvariantCulture)
                 : name;
         }
 

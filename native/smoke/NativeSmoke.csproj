@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Consumes the packed KhaozEngine.Native like a game. Outside the solution, so Product CI compiles it
+       without a version, and the package reference applies only when KhaozNativeVersion names a feed build.
+       nuget.config beside this file resolves the package from the folder in KHAOZ_NATIVE_FEED. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>KhaozEngine.NativeSmoke</RootNamespace>
+    <!-- The version arrives on the command line per CI run, so it cannot be pinned centrally. -->
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(KhaozNativeVersion)' != ''">
+    <PackageReference Include="KhaozEngine.Native" Version="$(KhaozNativeVersion)" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../../KhaozEngine.Gpu.Core/Interop/KhaozNative.g.cs" Link="Interop/KhaozNative.g.cs" />
+    <Compile Include="../../KhaozEngine.Gpu.Core/Interop/NativeLibraryGate.cs" Link="Interop/NativeLibraryGate.cs" />
+  </ItemGroup>
+</Project>

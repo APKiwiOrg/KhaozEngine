@@ -126,14 +126,23 @@ The build helper checks the segment inventory and rules against the actual graph
 conditional references. A valid rule set with a stale project mapping fails the check. Files known
 to be prose may skip compilation and still run whole-tree convention guards.
 
-Native correctness uses the same scope rules on pull requests and main pushes. GPU selects
-the dependency closures of canonical-solution test projects with device-gated tests. Foliage
-selects `map-doc` and `render`, terrain selects `tile-world-physics`, and Windows console selects
-its two probe compile roots. Every full scope selects all four workflows. Shared assets,
-the GPU build scripts and the Windows console smoke script are full overrides.
+Native correctness uses the same scope rules on pull requests and main pushes. The dependency
+closures of canonical-solution test projects with device-gated tests are split between two owners.
+The native core workflow owns `gpu-core`, because every device fact in `KhaozEngine.Gpu.Core.Tests`
+needs the native library that only that workflow builds, so those facts skip on every GPU leg. GPU
+selects the rest. Each device test project has exactly one owner. Foliage selects `map-doc` and
+`render`, terrain selects `tile-world-physics`, and Windows console selects its two probe compile
+roots. The native core workflow selects `gpu-core` and the pack and smoke compile roots. The pack
+project sits at the root of `native/` because the C++ sources there are its package's inputs, so
+its closure row routes a C++ change to the native core workflow alone, never to a full scope. A
+Markdown edit under `native/` runs that workflow too, because a closure row takes precedence over the
+README ignore. Every full scope selects all five workflows. Shared assets, the GPU build scripts and
+the Windows console smoke script are full overrides. So are the golden scene and grid the native
+core tests read from `KhaozEngine.Render.Tests`, because they are linked across projects.
 
 The Product CI tooling fixture derives the GPU project roster and checks each workflow's actual
-segment inputs and foliage build list. The build helper audits closure rows against the project
+segment inputs, the foliage build list and the projects the native core workflow builds, packs
+and runs. The build helper audits closure rows against the project
 graph, so an added reference with a stale row fails validation. Pull requests compare with
 their own base. On a main push, Scope reads workflow history with a read-only token to find the
 last passing ancestor. For GPU, only a passing push or schedule can be the comparison base,

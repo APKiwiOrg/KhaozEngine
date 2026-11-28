@@ -21,6 +21,8 @@ PROBE = 'tools/Probe/Probe.csproj'
 # fact by name, and adding it here is the moment its author learns ordinary CI now compiles it.
 ROSTER = [
     'KhaozEngine.MapDoc.OracleHarness.Tests/KhaozEngine.MapDoc.OracleHarness.Tests.csproj',
+    'native/KhaozEngine.Native.csproj',
+    'native/smoke/NativeSmoke.csproj',
     'tools/Coverage.Verify.Tests/Coverage.Verify.Tests.csproj',
     'tools/Coverage.Verify/Coverage.Verify.csproj',
     'tools/Items.Benchmark.Tests/Items.Benchmark.Tests.csproj',

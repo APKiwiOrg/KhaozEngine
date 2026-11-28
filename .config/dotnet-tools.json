@@ -8,6 +8,13 @@
         "dotnet-affected"
       ],
       "rollForward": false
+    },
+    "clangsharppinvokegenerator": {
+      "version": "23.1.5",
+      "commands": [
+        "ClangSharpPInvokeGenerator"
+      ],
+      "rollForward": false
     }
   }
 }

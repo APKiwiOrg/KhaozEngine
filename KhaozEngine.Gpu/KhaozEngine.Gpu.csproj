@@ -59,6 +59,7 @@
          and decision V-S3 split the two halves apart so that stays true. VulkanShaderFrontEndOnlyTests asserts it
          over the built IL. -->
     <InternalsVisibleTo Include="KhaozEngine.Gpu.Vulkan" />
+    <InternalsVisibleTo Include="KhaozEngine.Gpu.Core" />
     <!-- The native Metal backend package (decision M-P2, M-S1). It reads BOTH halves of the shader toolchain,
          which is the Direct3D 11 shape rather than the Vulkan one: the front end (Internal/SpirvFrontEnd plus its
          pin) because its sources are GLSL, and Internal/SpirvCrossCompile's MSL half because Metal consumes MSL.

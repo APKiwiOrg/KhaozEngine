@@ -260,7 +260,12 @@ def check_gpu_scope(matcher, rules, manifest, canonical, scratch):
     gpu_roots, use = device_tests(canonical, manifest)
     assert all(manifest[segment]['role'] == 'test' for segment in requested), requested
     selected = {path for segment in requested for path in manifest[segment]['roots']}
-    assert selected == gpu_roots, f'GPU segment roots differ from device tests: {sorted(selected ^ gpu_roots)}'
+    # Device tests that need the native core library skip on every GPU leg, so the native core
+    # workflow owns them. Each device test project belongs to exactly one of the two workflows.
+    native = check_native_core_scope(matcher, rules, manifest)
+    assert not selected & native, f'Device tests owned by both workflows: {sorted(selected & native)}'
+    owned = selected | native
+    assert owned == gpu_roots, f'Device test owners differ from device tests: {sorted(owned ^ gpu_roots)}'
     outside = 'tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf/RendererPerfWaterOpticsRecipeTests.cs'
     assert use.search(source_code(outside)) and not any(
         outside.startswith(str(Path(project).parent) + '/') for project in canonical
@@ -294,6 +299,49 @@ def check_gpu_scope(matcher, rules, manifest, canonical, scratch):
     assert sorted(row['backend'] for row in rows) == ['direct3d11-native', 'metal-native', 'vulkan-native']
     assert all(row['shard'] == '' and row['primary'] == '1' for row in rows)
     assert values['sharded'] == '[]' and values['vulkan_native'] == 'true'
+
+
+def check_native_core_scope(matcher, rules, manifest):
+    """The native core workflow's segments match the projects it builds, and its inputs outside them run it."""
+    workflow = (ROOT / '.github/workflows/native-core-spike.yml').read_text()
+    requested, base_events = scope_inputs(workflow, rules)
+    assert not base_events, base_events
+
+    def roots(role):
+        return {path for segment in requested if manifest[segment]['role'] == role
+                for path in manifest[segment]['roots']}
+
+    assert {manifest[segment]['role'] for segment in requested} == {'test', 'compile'}, requested
+    tests = roots('test')
+    built = set(re.findall(r'\bdotnet (?:build|test) ([\w./-]+\.csproj)\b', workflow))
+    assert tests and tests == built, (tests, built)
+    consumed = set(re.findall(r'\bdotnet (?:pack|run --project) ([\w./-]+\.csproj)\b', workflow))
+    assert roots('compile') == consumed == {
+        'native/KhaozEngine.Native.csproj', 'native/smoke/NativeSmoke.csproj'}, consumed
+    scripts = set(re.findall(r'\b(native/scripts/[\w.-]+\.(?:sh|py))\b', workflow))
+    assert scripts, 'Expected native scripts in the workflow'
+    # The C++ sources are the package's inputs. They reach this workflow through the pack project's
+    # closure row, never as a full scope, and reach no other native correctness workflow.
+    others = set()
+    for name in ('cross-platform-gpu', 'foliage-conformance', 'terrain-format', 'windows-console'):
+        others.update(scope_inputs((ROOT / f'.github/workflows/{name}.yml').read_text(), rules)[0])
+    for path in (*sorted(scripts), 'native/CMakeLists.txt', 'native/CMakePresets.json', 'native/.clang-tidy',
+                 'native/include/khaoz/khaoz_native.h', 'native/src/frame/frame.cpp', 'native/tests/test_frame.cpp',
+                 'native/third_party/volk/volk.c'):
+        full, segments, _ = matcher.select(rules, [path])
+        assert not full and 'compile-native-pack' in segments, (path, full, segments)
+        assert not others.intersection(segments), (path, segments)
+    golden = ('KhaozEngine.Render.Tests/Gpu/Scene2DPrimitivesScene.cs',
+              'KhaozEngine.Render.Tests/Gpu/goldens/scene2d_primitives.vulkan-native.txt')
+    assert all(matcher.select(rules, [path])[0] for path in golden), golden
+    assert_external_routes(matcher, rules, requested, workflow, (
+        *scripts, 'Directory.Build.props', 'Directory.Build.targets', 'Directory.Packages.props', 'nuget.config',
+        '.editorconfig', '.config/dotnet-tools.json', 'native/CMakeLists.txt', 'native/CMakePresets.json',
+        'native/include/khaoz/khaoz_native.h', 'native/src/frame/frame.cpp', 'native/tests/test_frame.cpp',
+        'native/third_party/volk/volk.c', 'native/smoke/Program.cs', 'native/smoke/nuget.config',
+        'KhaozEngine.Gpu.Core/Interop/KhaozNative.g.cs', *golden,
+    ))
+    return tests
 
 
 def check_native_call_sites(matcher, rules, manifest, scratch):
@@ -377,7 +425,7 @@ def main():
         tests = projects(scratch / 'tests.slnx')
         assert sorted(roots) == sorted(canonical + outside)
         assert len(roots) == len(set(roots))
-        assert len(tests) == 44 and len(outside) == 11
+        assert len(tests) == 45 and len(outside) == 13
         assert sum(item['role'] == 'compile' for item in manifest.values()) - len(outside) == 12
         assert set(tests) == set(full['test_roots'])
         assert not set(tests) & set(outside)

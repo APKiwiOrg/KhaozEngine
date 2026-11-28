@@ -1,0 +1,24 @@
+name: slangc cache
+description: Restore the pinned slangc download keyed on build/slangc.pins.json and point KHAOZ_SLANGC_CACHE at it.
+inputs:
+  save:
+    description: "'false' restores only, for a job whose sibling shard saves the same key."
+    default: 'true'
+runs:
+  using: composite
+  steps:
+    - name: Point KHAOZ_SLANGC_CACHE at the cached folder
+      shell: bash
+      run: echo "KHAOZ_SLANGC_CACHE=$RUNNER_TEMP/khaozengine-slangc" >> "$GITHUB_ENV"
+    - name: Restore and save the slangc cache
+      if: inputs.save == 'true'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/khaozengine-slangc
+        key: slangc-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('build/slangc.pins.json') }}
+    - name: Restore the slangc cache
+      if: inputs.save != 'true'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/khaozengine-slangc
+        key: slangc-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('build/slangc.pins.json') }}

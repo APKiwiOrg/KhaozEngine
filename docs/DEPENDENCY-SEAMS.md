@@ -401,6 +401,22 @@ without its baseline. KETEST rules also require an xunit reference. The edge is 
 runtime dependency. All four umbrellas carry it because these ratchets apply across engine areas. The
 [analyzer README](../KhaozEngine.CodeHealth.Analyzers/README.md) owns rule and adoption details.
 
+## Shader build tool: a build-only edge
+
+A project that sets `KhaozShaderManifest` gains one edge, added by `build/KhaozEngine.Shaders.targets`:
+
+```
+<shader-owning project> -> tools/KhaozEngine.ShaderBuild   (build-only, ReferenceOutputAssembly="false",
+                                                            PrivateAssets="all")
+```
+
+The tool builds before the owning project, and the build runs it with `dotnet exec` to produce the embedded
+shader bundle. No owning assembly references it and no package lists it as a dependency, so game repos and
+players never need it. The targets file adds the edge, not the csproj, so the csproj-reading architecture tests
+and the Product CI scope graph do not see it. `.github/ci-scope.txt` lists `tools/KhaozEngine.ShaderBuild/**`
+under `full:` for that reason, since a tool change can change every bundle. [SHADERS.md](SHADERS.md) describes
+the build step.
+
 ## Self-relaunch seam: process control
 
 Cooperative self-restart (`KhaozEngine.App.AppRelaunch`) adds one edge, acyclic:

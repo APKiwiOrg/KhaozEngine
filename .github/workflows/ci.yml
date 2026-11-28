@@ -137,6 +137,8 @@ jobs:
       # 'true' only on a v* tag whose commit already passed the hosted gate (see prior-gate above).
       REUSED_GATE: ${{ startsWith(github.ref, 'refs/tags/v') && needs.prior-gate.outputs.reuse == 'true' }}
       REUSED_GATE_URL: ${{ needs.prior-gate.outputs.run_url }}
+      # The shader build tool tests run here, so a missing spirv-val fails them instead of skipping validation.
+      KHAOZ_REQUIRE_SPIRV_VAL: '1'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         # fetch-depth: 0 (full history) is required by the selective path: scripts/ci-selective-test.sh
@@ -201,6 +203,11 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: '10.0.x'
+      - name: Install spirv-val
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq spirv-tools
+      - uses: ./.github/actions/slangc-cache
       - name: Check water census build isolation and golden tooling
         run: |
           python3 scripts/tests/water-prism-census-build.test.py --artifact-proof

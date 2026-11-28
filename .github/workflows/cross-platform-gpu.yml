@@ -786,6 +786,12 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      # Shader-owning projects resolve the pinned slangc during the build. Only the leg's primary entry saves it, so
+      # a leg's shards never race to write the same key.
+      - uses: ./.github/actions/slangc-cache
+        with:
+          save: ${{ matrix.primary == '1' }}
+
       # local-feed is git-ignored (dev inner-loop); create it so the nuget.config 'local' source resolves.
       - run: mkdir -p local-feed
         shell: bash
@@ -1838,6 +1844,8 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: '10.0.x'
+
+      - uses: ./.github/actions/slangc-cache
 
       # local-feed is git-ignored (dev inner-loop), so create it for the nuget.config 'local' source to resolve.
       - run: mkdir -p local-feed

@@ -2,6 +2,8 @@
   <Import Project="$(MSBuildThisFileDirectory)build/WaterPrismCensus.targets" />
   <!-- The internal FloatUlp steps, for a project that sets KhaozFloatUlp to true. -->
   <Import Project="$(MSBuildThisFileDirectory)build/FloatUlp.targets" />
+  <!-- The Slang shader build, for a project that sets KhaozShaderManifest. -->
+  <Import Project="$(MSBuildThisFileDirectory)build/KhaozEngine.Shaders.targets" />
   <!-- Relativize the source/PDB paths embedded in packed (Release) DLLs so no absolute build-box
        home path (e.g. /Users/&lt;name&gt;/KhaozEngine/...) ships in the shipped DLL's PE debug directory,
        regardless of which machine packs the release. The embedded path is recoverable via `strings`

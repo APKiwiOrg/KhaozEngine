@@ -1,0 +1,51 @@
+<Project>
+  <!-- Compiles a project's Slang manifest into a bundle and embeds it, for a project that sets KhaozShaderManifest.
+       docs/SHADERS.md describes the inputs, the slangc cache and the environment variables. -->
+  <PropertyGroup Condition="'$(KhaozShaderManifest)' != ''">
+    <KhaozShaderBuildProject>$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)', '..', 'tools', 'KhaozEngine.ShaderBuild', 'KhaozEngine.ShaderBuild.csproj'))</KhaozShaderBuildProject>
+    <KhaozShaderPins Condition="'$(KhaozShaderPins)' == ''">$(MSBuildThisFileDirectory)slangc.pins.json</KhaozShaderPins>
+    <KhaozShaderBundle>$(IntermediateOutputPath)khaoz.shaders.json</KhaozShaderBundle>
+    <KhaozShaderDotnet>$(DOTNET_HOST_PATH)</KhaozShaderDotnet>
+    <KhaozShaderDotnet Condition="'$(KhaozShaderDotnet)' == ''">dotnet</KhaozShaderDotnet>
+    <PrepareResourcesDependsOn>KhaozBuildShaders;$(PrepareResourcesDependsOn)</PrepareResourcesDependsOn>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(KhaozShaderManifest)' != ''">
+    <!-- Build-only: the tool builds first, its path arrives in KhaozShaderBuildTool, and it never becomes a package dependency. -->
+    <ProjectReference Include="$(KhaozShaderBuildProject)"
+                      ReferenceOutputAssembly="false"
+                      PrivateAssets="all"
+                      Private="false"
+                      OutputItemType="KhaozShaderBuildTool" />
+    <KhaozShaderSource Include="$([System.IO.Path]::GetDirectoryName('$(KhaozShaderManifest)'))/**/*.slang" />
+  </ItemGroup>
+
+  <Target Name="KhaozBuildShaders"
+          Condition="'$(KhaozShaderManifest)' != '' and '$(DesignTimeBuild)' != 'true'"
+          DependsOnTargets="ResolveProjectReferences"
+          Inputs="$(KhaozShaderManifest);@(KhaozShaderSource);$(KhaozShaderPins);@(KhaozShaderBuildTool)"
+          Outputs="$(KhaozShaderBundle)">
+    <Error Condition="'@(KhaozShaderBuildTool)' == ''" Text="KhaozEngine.ShaderBuild did not report its assembly path, so $(KhaozShaderManifest) cannot be compiled." />
+    <PropertyGroup>
+      <_KhaozShaderSlangcArgument Condition="'$(SLANGC)' != ''"> --slangc &quot;$(SLANGC)&quot;</_KhaozShaderSlangcArgument>
+    </PropertyGroup>
+    <Exec Command="&quot;$(KhaozShaderDotnet)&quot; exec &quot;@(KhaozShaderBuildTool->'%(FullPath)')&quot; --manifest &quot;$([System.IO.Path]::GetFullPath('$(KhaozShaderManifest)'))&quot; --out &quot;$([System.IO.Path]::GetFullPath('$(KhaozShaderBundle)'))&quot; --pins &quot;$(KhaozShaderPins)&quot;$(_KhaozShaderSlangcArgument)"
+          StandardOutputImportance="low" />
+    <ItemGroup>
+      <FileWrites Include="$(KhaozShaderBundle)" />
+    </ItemGroup>
+  </Target>
+
+  <!-- Separate from KhaozBuildShaders so the resource is declared on an up-to-date build too. Explicit culture
+       metadata keeps it in the compiler's resource inputs whichever order the resource targets ran in. -->
+  <Target Name="_KhaozEmbedShaderBundle"
+          AfterTargets="KhaozBuildShaders"
+          Condition="'$(KhaozShaderManifest)' != '' and '$(DesignTimeBuild)' != 'true'">
+    <ItemGroup>
+      <EmbeddedResource Include="$(KhaozShaderBundle)"
+                        LogicalName="$(AssemblyName).khaoz.shaders.json"
+                        WithCulture="false"
+                        Type="Non-Resx" />
+    </ItemGroup>
+  </Target>
+</Project>

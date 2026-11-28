@@ -130,7 +130,9 @@ Native correctness uses the same scope rules on pull requests and main pushes. G
 the dependency closures of canonical-solution test projects with device-gated tests. Foliage
 selects `map-doc` and `render`, terrain selects `tile-world-physics`, and Windows console selects
 its two probe compile roots. Every full scope selects all four workflows. Shared assets,
-the GPU build scripts and the Windows console smoke script are full overrides.
+the GPU build scripts, the Windows console smoke script and the shader build tool are full overrides. The tool
+reaches shader-owning projects through a build-only reference in a targets file, which the scope graph does not
+read, and a tool change can change every embedded bundle.
 
 The Product CI tooling fixture derives the GPU project roster and checks each workflow's actual
 segment inputs and foliage build list. The build helper audits closure rows against the project

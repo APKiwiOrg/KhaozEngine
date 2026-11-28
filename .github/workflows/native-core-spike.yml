@@ -279,8 +279,6 @@ jobs:
           sh native/scripts/generate-bindings.sh
           git diff --exit-code -- KhaozEngine.Gpu.Core/Interop/KhaozNative.g.cs
 
-  # The test project is built once per run. The test jobs place their own libkhaoz_native.so and the two
-  # fixture libraries into this output and run the tests from it.
   native-slang:
     name: 'Test: native-slang'
     needs: scope
@@ -294,8 +292,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # The archive is verified before it is unpacked. Linux emits the MSL but has no Metal compiler, so the
-      # Metal compile of the trial runs on the Mac only.
       - name: Install the pinned slangc and SPIRV-Tools
         run: |
           set -eux
@@ -310,11 +306,14 @@ jobs:
           echo "SLANGC=$slangc" >> "$GITHUB_ENV"
           command -v spirv-val >/dev/null || { sudo apt-get update; sudo apt-get install -y spirv-tools; }
           spirv-val --version | head -1
+      # Linux has no Metal compiler, so the trial's MSL compile runs on the Mac only.
       - name: Checked-in Slang SPIR-V matches a fresh compile
         env:
           SLANG_MSL_DIR: ${{ runner.temp }}/slang-msl
         run: sh native/shaders-slang/build-slang.sh --check
 
+  # The test project is built once per run. The test jobs place their own libkhaoz_native.so and the two
+  # fixture libraries into this output and run the tests from it.
   native-tests-build:
     name: 'Build: native-tests'
     needs: scope

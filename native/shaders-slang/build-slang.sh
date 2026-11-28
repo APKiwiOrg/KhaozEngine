@@ -41,7 +41,8 @@ if [ "$check" = 1 ]; then
 else
     spv_dir="$checked_in"
 fi
-mkdir -p "$spv_dir" "$msl_dir"
+mkdir -p "$spv_dir"
+(umask 077 && mkdir -p "$msl_dir")
 chmod 700 "$msl_dir"
 
 # Run from this folder so the source path slangc sees is the same on every machine.

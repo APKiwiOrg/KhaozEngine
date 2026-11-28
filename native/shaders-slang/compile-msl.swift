@@ -17,10 +17,14 @@ options.setValue(true, forKey: "fastMathEnabled")
 options.preserveInvariance = false
 
 var failed = false
+func fail(_ message: String) {
+    FileHandle.standardError.write(Data("error: \(message)\n".utf8))
+    failed = true
+}
+
 for path in CommandLine.arguments.dropFirst() {
     guard let text = try? String(contentsOfFile: path, encoding: .utf8) else {
-        print("error: cannot read \(path)")
-        failed = true
+        fail("cannot read \(path)")
         continue
     }
     let source = "#pragma clang diagnostic error \"-Wall\"\n#pragma clang diagnostic error \"-Wextra\"\n" + text
@@ -34,13 +38,11 @@ for path in CommandLine.arguments.dropFirst() {
     }
     done.wait()
     if let diagnostic {
-        print("error: \(path): \(diagnostic.localizedDescription)")
-        failed = true
+        fail("\(path): \(diagnostic.localizedDescription)")
     } else if let library {
         print("ok: \(path): \(library.functionNames.sorted().joined(separator: ", "))")
     } else {
-        print("error: \(path): no library and no diagnostic")
-        failed = true
+        fail("\(path): no library and no diagnostic")
     }
 }
 exit(failed ? 1 : 0)

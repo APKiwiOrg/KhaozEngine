@@ -66,7 +66,7 @@ float4 fragmentMain(FragmentInput input) : SV_Target0
     float d = min(max(q.x, q.y), 0.0) + length(max(q, float2(0.0))) - r;
     float dStroke = abs(d) - stroke * 0.5;
     d = stroke > 0.0 ? dStroke : d;
-    // fwidth runs outside the select so the derivative stays in uniform control flow, as in the GLSL.
+    // Slang lowers a scalar ?: to a branch, so fwidth is hoisted out of the select to stay in uniform control flow.
     float derivative = max(fwidth(d), 1e-4);
     float aa = soft > 0.0 ? soft : derivative;
     float cov = clamp(0.5 - d / aa, 0.0, 1.0);

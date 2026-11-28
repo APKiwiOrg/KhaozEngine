@@ -31,12 +31,13 @@ internal sealed record VulkanShaderIdentity(string Source, string Artifact, stri
             GpuDiagnosticIdentityEncoding.Stages("artifact", stages).Sha256 ?? "", SpirvFrontEnd.OptionsIdentity(label), stages, Options());
     }
 
-    // A bundled program's SPIR-V is both what the engine was handed and what the driver compiles.
-    internal static VulkanShaderIdentity Program(GpuShaderProgram program)
+    internal static VulkanShaderIdentity Program(GpuShaderProgram program, ReadOnlySpan<byte> vertexArtifact)
     {
         ImmutableArray<GpuPipelineStageIdentity> stages =
-            [Bundled("vertex", program.Vertex.Spirv.Span), Bundled("fragment", program.Fragment.Spirv.Span)];
-        string flags = $"khaozengine.shader-bundle/1,program={program.Id},variant={program.Variant}";
+            [Bundled("vertex", program.Vertex.Spirv.Span, vertexArtifact),
+                Bundled("fragment", program.Fragment.Spirv.Span, program.Fragment.Spirv.Span)];
+        string flags = $"khaozengine.shader-bundle/1,program={program.Id},variant={program.Variant}"
+            + (program.VertexPreciseMath ? ",precise=1" : "");
         RequireRetainable(GpuDiagnosticIdentityEncoding.Utf8.GetByteCount(flags));
         return new(GpuDiagnosticIdentityEncoding.Stages("source", stages).Sha256 ?? "",
             GpuDiagnosticIdentityEncoding.Stages("artifact", stages).Sha256 ?? "", flags, stages,
@@ -50,9 +51,9 @@ internal sealed record VulkanShaderIdentity(string Source, string Artifact, stri
                 new InvalidOperationException("CompilerFlags exceeds 16384 UTF-8 bytes before retention."))]);
     }
 
-    static GpuPipelineStageIdentity Bundled(string stage, ReadOnlySpan<byte> spirv)
-        => new(stage, "main", GpuDiagnosticIdentityEncoding.Bytes(spirv, "khaozengine.bundle-spirv/1"), null,
-            GpuDiagnosticIdentityEncoding.Bytes(spirv, "spirv.bytes/1"));
+    static GpuPipelineStageIdentity Bundled(string stage, ReadOnlySpan<byte> bundled, ReadOnlySpan<byte> artifact)
+        => new(stage, "main", GpuDiagnosticIdentityEncoding.Bytes(bundled, "khaozengine.bundle-spirv/1"), null,
+            GpuDiagnosticIdentityEncoding.Bytes(artifact, "spirv.bytes/1"));
 }
 
 /// <summary>Content identity. Never hashes native handles, which vary between equivalent device lifetimes.</summary>

@@ -1,6 +1,7 @@
 {
   "programs": [
     { "id": "sprite", "source": "sprite.slang", "vertex": "vertexMain", "fragment": "fragmentMain" },
+    { "id": "sprite-precise", "source": "sprite.slang", "vertex": "vertexMain", "fragment": "fragmentMain", "vertexPreciseMath": true },
     { "id": "line-endings", "source": "line-endings.slang", "vertex": "vertexMain", "fragment": "fragmentMain" }
   ]
 }

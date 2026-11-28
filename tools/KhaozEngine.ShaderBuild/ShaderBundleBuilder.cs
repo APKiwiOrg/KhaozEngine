@@ -35,8 +35,8 @@ public static class ShaderBundleBuilder
     {
         try
         {
-            var (vertex, bindings) = BuildStage(compiler, validator, program.Source, program.Vertex, "vertex", variant);
-            var (fragment, fragmentBindings) = BuildStage(compiler, validator, program.Source, program.Fragment, "fragment", variant);
+            var (vertex, bindings) = BuildStage(compiler, validator, program.Source, program.Vertex, "vertex", variant, program.VertexPreciseMath);
+            var (fragment, fragmentBindings) = BuildStage(compiler, validator, program.Source, program.Fragment, "fragment", variant, preciseMath: false);
             if (!bindings.SequenceEqual(fragmentBindings))
                 throw new ShaderBuildException(
                     ShaderBuildFailure.ManifestInvalid, "The vertex and fragment reflection give different bindings.");
@@ -55,13 +55,13 @@ public static class ShaderBundleBuilder
     }
 
     private static (BundleStage Stage, IReadOnlyList<BundleBinding> Bindings) BuildStage(
-        SlangCompiler compiler, string? validator, string source, string entryPoint, string stage, ManifestVariant variant)
+        SlangCompiler compiler, string? validator, string source, string entryPoint, string stage, ManifestVariant variant, bool preciseMath)
     {
-        var spirv = compiler.Compile(source, entryPoint, stage, SlangTarget.Spirv, variant.Defines);
+        var spirv = compiler.Compile(source, entryPoint, stage, SlangTarget.Spirv, variant.Defines, preciseMath);
         if (validator is not null)
             SpirvValidator.Validate(validator, spirv.OutputPath);
-        var metal = compiler.Compile(source, entryPoint, stage, SlangTarget.Metal, variant.Defines);
-        var hlsl = compiler.Compile(source, entryPoint, stage, SlangTarget.Hlsl, variant.Defines);
+        var metal = compiler.Compile(source, entryPoint, stage, SlangTarget.Metal, variant.Defines, preciseMath);
+        var hlsl = compiler.Compile(source, entryPoint, stage, SlangTarget.Hlsl, variant.Defines, preciseMath);
         var msl = RequireEntryPoint(entryPoint, SlangTarget.Metal, metal.Text);
         var hlslText = RequireEntryPoint(entryPoint, SlangTarget.Hlsl, hlsl.Text);
         return (new BundleStage(entryPoint, spirv.Code, msl, hlslText), SlangReflection.Join(spirv.Reflection, metal.Reflection, hlsl.Reflection));

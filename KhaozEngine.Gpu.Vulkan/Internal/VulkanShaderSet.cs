@@ -74,8 +74,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             ArgumentNullException.ThrowIfNull(modules);
             ArgumentNullException.ThrowIfNull(program);
-            VulkanShaderIdentity identity = VulkanShaderIdentity.Program(program);
-            ulong vertex = modules.GetOrCreate(program.Vertex.Spirv.Span);
+            // slangc cannot emit the float-controls mode, so a precise vertex stage gains it here as the GLSL path does.
+            ReadOnlySpan<byte> vertexSpirv = program.VertexPreciseMath
+                ? SpirvPreciseMath.Declare(program.Vertex.Spirv.ToArray())
+                : program.Vertex.Spirv.Span;
+            VulkanShaderIdentity identity = VulkanShaderIdentity.Program(program, vertexSpirv);
+            ulong vertex = modules.GetOrCreate(vertexSpirv);
             ulong fragment = modules.GetOrCreate(program.Fragment.Spirv.Span);
             return new VulkanShaderSet(vertex, fragment, identity, program);
         }

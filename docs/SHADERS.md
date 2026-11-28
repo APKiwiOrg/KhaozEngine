@@ -98,5 +98,17 @@ pipeline names like any other.
 Graphics pipeline creation checks the program's bindings against the pipeline's resource layouts before any
 native work. Every binding needs a layout at its set with an element of the same `GpuResourceKind` at its
 binding index. Otherwise creation throws `ShaderValidationException` with reason `BundleLayoutMismatch`, the
-program id as `Label`, and the offending `Set` and `Binding`. A program whose vertex stage asks for precise
-arithmetic is refused on a Vulkan device without float controls, as a precise GLSL pair is.
+program id as `Label`, and the offending `Set` and `Binding`.
+
+A manifest program with `"vertexPreciseMath": true` gets the same precise policy as a precise GLSL pair:
+
+- The build step compiles that program's vertex stage with `-fp-mode precise -O0` for every target, so no
+  optimizer pass reorders or folds its arithmetic. Every other stage and program compiles without those flags,
+  so adding a precise program leaves every other program's bytes unchanged.
+- slangc 2026.23 emits no float-controls execution mode for `-fp-mode precise`, and its SPIR-V is otherwise
+  identical to the default. Vulkan therefore declares `SignedZeroInfNanPreserve 32` on the vertex entry point
+  before module creation, through the same `SpirvPreciseMath.Declare` the GLSL path uses. The pipeline's
+  construction identity digests those declared bytes as the stage artifact, since they are what the driver
+  compiles, and keeps the bundled bytes as the stage source.
+- A Vulkan device without float controls refuses the program with `GpuShaderPolicyUnsupportedException` and
+  reason `FloatControlsUnavailable`.

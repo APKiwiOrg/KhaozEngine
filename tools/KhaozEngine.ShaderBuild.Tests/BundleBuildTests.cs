@@ -47,6 +47,13 @@ public sealed class BundleBuildTests : IDisposable
             Assert.Contains(entryPoint + "(", stage.Msl);
             Assert.Contains(entryPoint + "(", stage.Hlsl);
         }
+
+        var precise = bundle.Get("sprite-precise");
+        Assert.False(sprite.VertexPreciseMath);
+        Assert.True(precise.VertexPreciseMath);
+        Assert.False(precise.Vertex.Spirv.Span.SequenceEqual(sprite.Vertex.Spirv.Span));
+        Assert.True(precise.Fragment.Spirv.Span.SequenceEqual(sprite.Fragment.Spirv.Span));
+        Assert.Equal((sprite.Fragment.Msl, sprite.Fragment.Hlsl), (precise.Fragment.Msl, precise.Fragment.Hlsl));
     }
 
     [Fact]

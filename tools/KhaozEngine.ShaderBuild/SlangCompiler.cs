@@ -44,7 +44,8 @@ public sealed class SlangCompiler
     }
 
     /// <summary>Compiles one entry point for one target, returning the code and its reflection JSON.</summary>
-    public SlangOutput Compile(string source, string entryPoint, string stage, SlangTarget target, IReadOnlyDictionary<string, string> defines)
+    public SlangOutput Compile(
+        string source, string entryPoint, string stage, SlangTarget target, IReadOnlyDictionary<string, string> defines, bool preciseMath)
     {
         var number = _next++;
         var output = Path.Combine(_outputs, number + target switch { SlangTarget.Spirv => ".spv", SlangTarget.Metal => ".metal", _ => ".hlsl" });
@@ -56,6 +57,9 @@ public sealed class SlangCompiler
             SlangTarget.Metal => ["-target", "metal"],
             _ => ["-target", "hlsl", "-profile", "sm_5_0"],
         });
+        // slangc 2026.23 emits no float-controls mode for precise, so the Vulkan loader declares it on the unoptimized module.
+        if (preciseMath)
+            arguments.AddRange(["-fp-mode", "precise", "-O0"]);
         arguments.AddRange(["-matrix-layout-column-major", "-line-directive-mode", "none"]);
         // Visual Studio diagnostics are the file(line,col): error form MSBuild and IDEs recognise.
         arguments.AddRange(["-diagnostic-format", "vs", "-diagnostic-color", "never"]);

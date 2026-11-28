@@ -25,18 +25,28 @@ namespace KhaozEngine.Tests.Gpu
             public Vector2 Mode;
         }
 
-        static GpuShaderProgram SpriteProgram()
-            => GpuShaderBundle.FromAssembly(typeof(CompiledShaderProgramGpuTests).Assembly).Get("sprite");
+        static GpuShaderProgram SpriteProgram(string id = "sprite")
+            => GpuShaderBundle.FromAssembly(typeof(CompiledShaderProgramGpuTests).Assembly).Get(id);
 
-        [GpuFact]
-        public void A_compiled_sprite_program_draws_the_same_pixels_as_the_glsl_pair()
+        [GpuTheory]
+        [InlineData("sprite")]
+        [InlineData("sprite-precise")]
+        public void A_compiled_sprite_program_draws_the_same_pixels_as_the_glsl_pair(string id)
         {
             using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
             IGpuDevice dev = gpu.GpuDevice;
             IGpuResourceFactory f = dev.Factory;
+            GpuShaderProgram program = SpriteProgram(id);
 
-            using IGpuShaderSet glsl = f.CreateShadersFromSpirv(SpriteBatch.VertSrc, SpriteBatch.FragSrc);
-            using IGpuShaderSet compiled = f.CreateShaders(SpriteProgram());
+            if (program.VertexPreciseMath && dev.Backend == GpuBackendKind.VulkanNative && !dev.Capabilities.SupportsShaderFloatControls)
+            {
+                Assert.Equal(GpuShaderPolicyRefusal.FloatControlsUnavailable,
+                    Assert.Throws<GpuShaderPolicyUnsupportedException>(() => f.CreateShaders(program)).Reason);
+                return;
+            }
+            using IGpuShaderSet glsl = f.CreateShadersFromSpirv(
+                SpriteBatch.VertSrc, SpriteBatch.FragSrc, new GpuShaderCompileOptions(program.VertexPreciseMath));
+            using IGpuShaderSet compiled = f.CreateShaders(program);
 
             using var scene = new SpriteScene(dev);
             byte[] expected = scene.Draw(glsl);

@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.D3D11.Internal;
 using KhaozEngine.Gpu.Internal;
@@ -195,21 +197,46 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [Fact]
-        public void VulkanFactoryRefusesPreciseShadersWithoutFloatControls()
+        public void VulkanFactoryRefusesPreciseShadersWithoutFloatControlsAndHandsCompiledOnesToTheDriverDeclared()
         {
+            GpuShaderBundle bundle = GpuShaderBundle.FromAssembly(typeof(PreciseShaderCompileTests).Assembly);
             var fixture = new VulkanResourceFixture();
             Assert.Equal(GpuShaderPolicyRefusal.FloatControlsUnavailable, Assert.Throws<GpuShaderPolicyUnsupportedException>(
                 () => fixture.Factory.CreateComputeShaderFromSpirv(PreciseMathShaders.Compute, Precise)).Reason);
             Assert.Equal(GpuShaderPolicyRefusal.FloatControlsUnavailable, Assert.Throws<GpuShaderPolicyUnsupportedException>(
                 () => fixture.Factory.CreateShadersFromSpirv(PreciseMathShaders.Vertex, PreciseMathShaders.Fragment, Precise)).Reason);
+            Assert.Equal(GpuShaderPolicyRefusal.FloatControlsUnavailable, Assert.Throws<GpuShaderPolicyUnsupportedException>(
+                () => fixture.Factory.CreateShaders(bundle.Get("sprite-precise"))).Reason);
             using IGpuComputeShader ordinary = fixture.Factory.CreateComputeShaderFromSpirv(PreciseMathShaders.Compute);
             var supported = new VulkanResourceFixture(shaderFloatControls: true);
             using IGpuComputeShader precise = supported.Factory.CreateComputeShaderFromSpirv(PreciseMathShaders.Compute, Precise);
             using IGpuShaderSet pair = supported.Factory.CreateShadersFromSpirv(PreciseMathShaders.Vertex, PreciseMathShaders.Fragment, Precise);
             Assert.Equal(1u, precise.ThreadGroupSizeX);
+
+            using IGpuShaderSet preciseProgram = supported.Factory.CreateShaders(bundle.Get("sprite-precise"));
+            using IGpuShaderSet ordinaryProgram = supported.Factory.CreateShaders(bundle.Get("sprite"));
+            AssertSignedZeroMode(DriverModule(supported, preciseProgram, "vertex"));
+            Assert.False(SignedZeroDeclaration(DriverModule(supported, preciseProgram, "fragment")).Mode);
+            Assert.False(SignedZeroDeclaration(DriverModule(supported, ordinaryProgram, "vertex")).Mode);
+        }
+
+        // The module whose bytes the set's artifact digest names, so a digest over anything else finds none.
+        static byte[] DriverModule(VulkanResourceFixture fixture, IGpuShaderSet set, string stage)
+        {
+            string? artifact = ((VulkanShaderSet)set).DiagnosticIdentity.Stages.Single(s => s.Stage == stage).ShaderArtifactSha256.Sha256;
+            return Assert.Single(fixture.ShaderApi.Created, bytes => Convert.ToHexStringLower(SHA256.HashData(bytes)) == artifact);
         }
 
         static void AssertSignedZeroMode(byte[] spirv)
+        {
+            ReadOnlySpan<uint> words = MemoryMarshal.Cast<byte, uint>(spirv);
+            (bool capability, bool extension, bool mode) = SignedZeroDeclaration(spirv);
+            Assert.True(capability, "Missing SignedZeroInfNanPreserve capability");
+            Assert.True(extension || words[1] >= 0x00010400u, "Float controls need their SPIR-V extension before 1.4");
+            Assert.True(mode, "Missing SignedZeroInfNanPreserve 32 execution mode on entry point");
+        }
+
+        static (bool Capability, bool Extension, bool Mode) SignedZeroDeclaration(byte[] spirv)
         {
             ReadOnlySpan<uint> words = MemoryMarshal.Cast<byte, uint>(spirv);
             uint entry = 0;
@@ -227,9 +254,7 @@ namespace KhaozEngine.Tests.Gpu
                     && words[offset + 2] == 4461u && words[offset + 3] == 32u) mode = true;
                 offset += length;
             }
-            Assert.True(capability, "Missing SignedZeroInfNanPreserve capability");
-            Assert.True(extension || words[1] >= 0x00010400u, "Float controls need their SPIR-V extension before 1.4");
-            Assert.True(mode, "Missing SignedZeroInfNanPreserve 32 execution mode on entry point");
+            return (capability, extension, mode);
         }
 
         static HashSet<uint> NoContractionResults(byte[] spirv)

@@ -140,4 +140,22 @@ public enum ShaderValidationRefusal
 
     /// <summary>Refuses an unfamiliar precise MSL multiplication helper. Operation names the helper.</summary>
     PreciseMslHelperUnsupported,
+
+    /// <summary>Refuses a shader bundle of another format name or version.</summary>
+    BundleFormatUnsupported,
+
+    /// <summary>Refuses a shader bundle that is missing, unreadable or has a malformed field.</summary>
+    BundleCorrupt,
+
+    /// <summary>Refuses a lookup of a program id the bundle does not contain.</summary>
+    BundleProgramUnknown,
+
+    /// <summary>Refuses a lookup of a variant the program does not have.</summary>
+    BundleVariantUnknown,
+
+    /// <summary>Refuses a compiled program binding with no layout element of its kind at its set and position.</summary>
+    BundleLayoutMismatch,
+
+    /// <summary>Refuses a compiled program whose HLSL register differs from the one its layout position gives.</summary>
+    D3D11RegisterMismatch,
 }

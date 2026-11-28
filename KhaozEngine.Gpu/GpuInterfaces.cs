@@ -165,6 +165,9 @@ namespace KhaozEngine.Gpu
             => vertexOptions.PreciseMath
                 ? throw new GpuShaderPolicyUnsupportedException(GpuShaderPolicyRefusal.PreciseMathUnavailable, GpuShaderStages.Vertex)
                 : CreateShadersFromSpirv(vertGlsl, fragGlsl);
+        /// <summary>Create a backend shader set from a compiled program, such as one read from a <see cref="GpuShaderBundle"/>.</summary>
+        IGpuShaderSet CreateShaders(GpuShaderProgram program)
+            => throw new NotSupportedException($"{GetType().Name} does not create shaders from compiled programs.");
         /// <summary>Cross-compile a GLSL 450 SPIR-V COMPUTE source (entry point <c>main</c>) into a backend compute
         /// shader, by the same front end and cross-compile path as the graphics pair. The workgroup size is read
         /// back off the compiled module and surfaced on <see cref="IGpuComputeShader.ThreadGroupSizeX"/>, which is

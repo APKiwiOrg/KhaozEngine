@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text;
+using System.Text.Json.Nodes;
 using KhaozEngine.Gpu;
 using Xunit;
 
@@ -78,7 +79,7 @@ namespace KhaozEngine.Tests.Gpu
                 "truncated" => ValidBundleJson[..(ValidBundleJson.Length / 2)],
                 "kind spelled in another case" => ValidBundleJson.Replace("\"Sampler\"", "\"sampler\""),
                 "spirv not base64" => ValidBundleJson.Replace("\"AwIjBw==\"", "\"not base64!\""),
-                _ => ValidBundleJson.Replace("\"programs\": [", "\"programs\": [" + ProgramObject() + ","),
+                _ => WithFirstProgramRepeated(),
             };
             var ex = Assert.Throws<ShaderValidationException>(() => GpuShaderBundle.Load(Utf8(json), "test"));
             Assert.Equal(ShaderValidationRefusal.BundleCorrupt, ex.Reason);
@@ -94,11 +95,12 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(assembly.GetName().Name + ".khaoz.shaders.json", ex.Label);
         }
 
-        static string ProgramObject()
+        static string WithFirstProgramRepeated()
         {
-            var start = ValidBundleJson.IndexOf("{\n      \"id\"", System.StringComparison.Ordinal);
-            var end = ValidBundleJson.LastIndexOf("\n  ]", System.StringComparison.Ordinal);
-            return ValidBundleJson[start..end];
+            var bundle = JsonNode.Parse(ValidBundleJson)!;
+            var programs = bundle["programs"]!.AsArray();
+            programs.Add(programs[0]!.DeepClone());
+            return bundle.ToJsonString();
         }
     }
 }

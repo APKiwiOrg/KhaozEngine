@@ -84,3 +84,19 @@ under the runner's temp directory and caches it keyed on the runner OS, architec
 `build/slangc.pins.json`, so a pin change starts a fresh cache. In a sharded GPU leg only the primary shard
 saves the cache, so a leg's shards never race to write one key. The tool tests resolve the real slangc
 inside the default test filter, so those jobs need network on a cache miss.
+
+## Loading a program
+
+`IGpuResourceFactory.CreateShaders(GpuShaderProgram)` turns a bundled program into a shader set that a graphics
+pipeline names like any other.
+
+- Vulkan hands each stage's SPIR-V to `vkCreateShaderModule` through the device's shared module cache, so two
+  programs with the same stage bytes share one module. The entry point is `main` because slangc names every
+  SPIR-V entry point `main` unless `-fvk-use-entrypoint-name` is passed, and the build step never passes it.
+- Metal and Direct3D 11 do not load compiled programs yet and throw `NotSupportedException`.
+
+Graphics pipeline creation checks the program's bindings against the pipeline's resource layouts before any
+native work. Every binding needs a layout at its set with an element of the same `GpuResourceKind` at its
+binding index. Otherwise creation throws `ShaderValidationException` with reason `BundleLayoutMismatch`, the
+program id as `Label`, and the offending `Set` and `Binding`. A program whose vertex stage asks for precise
+arithmetic is refused on a Vulkan device without float controls, as a precise GLSL pair is.

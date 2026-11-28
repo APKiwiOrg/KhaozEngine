@@ -47,17 +47,28 @@ public sealed class SlangcResolverTests : IDisposable
     }
 
     [Fact]
-    public void A_damaged_cache_folder_is_replaced_by_a_fresh_download()
+    public void A_damaged_cache_folder_is_replaced_only_under_the_publish_lock()
     {
         var archive = Archive();
+        var pins = Pins(archive);
         var damaged = Path.Combine(_cacheRoot, Version, Rid);
         Directory.CreateDirectory(Path.Combine(damaged, "lib"));
 
-        var path = Resolve(Pins(archive), new ServingHandler(archive));
+        using (new FileStream(Path.Combine(_cacheRoot, SlangcCacheLock.FileName), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
+        {
+            var refusal = Assert.Throws<ShaderBuildException>(
+                () => SlangcResolver.Resolve(pins, null, _cacheRoot, new ServingHandler(archive), _ => Version, Rid, TimeSpan.Zero));
+
+            Assert.Equal(ShaderBuildFailure.ToolchainMissing, refusal.Failure);
+            Assert.True(Directory.Exists(Path.Combine(damaged, "lib")));
+            Assert.False(File.Exists(Path.Combine(damaged, "bin", "slangc")));
+        }
+
+        var path = Resolve(pins, new ServingHandler(archive));
 
         Assert.True(File.Exists(path));
         Assert.False(Directory.Exists(Path.Combine(damaged, "lib")));
-        Assert.Equal([Path.Combine(_cacheRoot, Version)], Directory.GetFileSystemEntries(_cacheRoot));
+        AssertCacheHoldsOnlyThePublishedFolder();
     }
 
     [Fact]
@@ -98,8 +109,7 @@ public sealed class SlangcResolverTests : IDisposable
 
         Assert.Equal(paths[0], paths[1]);
         Assert.True(File.Exists(paths[0]));
-        Assert.Equal([Path.Combine(_cacheRoot, Version)], Directory.GetFileSystemEntries(_cacheRoot));
-        Assert.Equal([Path.Combine(_cacheRoot, Version, Rid)], Directory.GetFileSystemEntries(Path.Combine(_cacheRoot, Version)));
+        AssertCacheHoldsOnlyThePublishedFolder();
     }
 
     [Fact]
@@ -135,7 +145,7 @@ public sealed class SlangcResolverTests : IDisposable
         });
 
         var refusal = Assert.Throws<ShaderBuildException>(
-            () => SlangcResolver.Resolve(pins, null, _cacheRoot, new FailingHandler(), _ => Version, hostRid));
+            () => SlangcResolver.Resolve(pins, null, _cacheRoot, new FailingHandler(), _ => Version, hostRid, SlangcCacheLock.DefaultTimeout));
 
         Assert.Equal(ShaderBuildFailure.ToolchainMissing, refusal.Failure);
         Assert.Equal("SLANGC", refusal.OverrideVariable);
@@ -178,7 +188,15 @@ public sealed class SlangcResolverTests : IDisposable
 
     private string Resolve(
         SlangcPins pins, HttpMessageHandler handler, string? slangcOverride = null, Func<string, string>? probe = null)
-        => SlangcResolver.Resolve(pins, slangcOverride, _cacheRoot, handler, probe ?? (_ => Version), Rid);
+        => SlangcResolver.Resolve(pins, slangcOverride, _cacheRoot, handler, probe ?? (_ => Version), Rid, SlangcCacheLock.DefaultTimeout);
+
+    private void AssertCacheHoldsOnlyThePublishedFolder()
+    {
+        Assert.Equal(
+            [Path.Combine(_cacheRoot, SlangcCacheLock.FileName), Path.Combine(_cacheRoot, Version)],
+            Directory.GetFileSystemEntries(_cacheRoot).Order(StringComparer.Ordinal));
+        Assert.Equal([Path.Combine(_cacheRoot, Version, Rid)], Directory.GetFileSystemEntries(Path.Combine(_cacheRoot, Version)));
+    }
 
     private void AssertNothingCached()
     {

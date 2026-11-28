@@ -33,7 +33,7 @@ public static class SlangcResolver
         string cacheRoot,
         HttpMessageHandler? handler = null,
         Func<string, string>? versionProbe = null)
-        => Resolve(pins, slangcOverride, cacheRoot, handler, versionProbe, HostRid());
+        => Resolve(pins, slangcOverride, cacheRoot, handler, versionProbe, HostRid(), SlangcCacheLock.DefaultTimeout);
 
     internal static string Resolve(
         SlangcPins pins,
@@ -41,7 +41,8 @@ public static class SlangcResolver
         string cacheRoot,
         HttpMessageHandler? handler,
         Func<string, string>? versionProbe,
-        string? hostRid)
+        string? hostRid,
+        TimeSpan lockTimeout)
     {
         var probe = versionProbe ?? ProbeVersion;
         if (!string.IsNullOrEmpty(slangcOverride))
@@ -59,46 +60,23 @@ public static class SlangcResolver
 
         var folder = Path.Combine(cacheRoot, pins.Version, hostRid);
         var executable = Path.Combine(folder, asset.Executable);
-        // Publishing is an atomic rename, so a folder seen before its executable is checked is complete unless damaged.
-        if (Directory.Exists(folder))
-        {
-            if (File.Exists(executable))
-                return executable;
-            RemoveDamaged(cacheRoot, folder, asset.Executable);
-        }
+        // Only the lock holder moves a cache folder, and only after finding no executable, so a seen one stays put.
+        if (File.Exists(executable))
+            return executable;
 
-        Install(pins, hostRid, asset, cacheRoot, folder, handler, probe);
+        Install(pins, hostRid, asset, cacheRoot, folder, handler, probe, lockTimeout);
         return executable;
     }
 
-    private static void RemoveDamaged(string cacheRoot, string folder, string executable)
-    {
-        var stale = Path.Combine(cacheRoot, $".stale-{Guid.NewGuid():N}");
-        try
-        {
-            Directory.Move(folder, stale);
-        }
-        catch (DirectoryNotFoundException)
-        {
-            return;
-        }
-        // A concurrent repair may have republished between the check and the move, so a complete folder goes back.
-        if (File.Exists(Path.Combine(stale, executable)))
-        {
-            try
-            {
-                Directory.Move(stale, folder);
-                return;
-            }
-            catch (IOException)
-            {
-            }
-        }
-        Directory.Delete(stale, recursive: true);
-    }
-
     private static void Install(
-        SlangcPins pins, string rid, SlangcAsset asset, string cacheRoot, string folder, HttpMessageHandler? handler, Func<string, string> probe)
+        SlangcPins pins,
+        string rid,
+        SlangcAsset asset,
+        string cacheRoot,
+        string folder,
+        HttpMessageHandler? handler,
+        Func<string, string> probe,
+        TimeSpan lockTimeout)
     {
         var staging = Path.Combine(cacheRoot, $".staging-{Guid.NewGuid():N}");
         var archive = Path.Combine(staging, "slang.tar.gz");
@@ -123,7 +101,7 @@ public static class SlangcResolver
                     stagedExecutable,
                     File.GetUnixFileMode(stagedExecutable) | UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute);
             RequireVersion(pins, stagedExecutable, probe);
-            Publish(extracted, folder, asset.Executable);
+            Publish(cacheRoot, extracted, folder, asset.Executable, Path.Combine(staging, "stale"), lockTimeout);
         }
         finally
         {
@@ -188,16 +166,15 @@ public static class SlangcResolver
     }
 
     // Directory.Move is a rename on one volume, so a reader only ever sees a missing folder or a complete one.
-    private static void Publish(string extracted, string folder, string executable)
+    private static void Publish(string cacheRoot, string extracted, string folder, string executable, string stale, TimeSpan lockTimeout)
     {
+        using var publishLock = SlangcCacheLock.Acquire(cacheRoot, lockTimeout);
+        if (File.Exists(Path.Combine(folder, executable)))
+            return;
+        if (Directory.Exists(folder))
+            Directory.Move(folder, stale);
         Directory.CreateDirectory(Path.GetDirectoryName(folder)!);
-        try
-        {
-            Directory.Move(extracted, folder);
-        }
-        catch (Exception lost) when ((lost is IOException or UnauthorizedAccessException) && File.Exists(Path.Combine(folder, executable)))
-        {
-        }
+        Directory.Move(extracted, folder);
     }
 
     private static void RequireVersion(SlangcPins pins, string slangc, Func<string, string> probe)

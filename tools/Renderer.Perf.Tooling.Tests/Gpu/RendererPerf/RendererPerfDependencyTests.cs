@@ -53,7 +53,7 @@ public sealed class RendererPerfDependencyTests
                 : pass.DeviceOnly ? new(null, "ns", "real trace", RendererPerfMetricStatus.Unsupported, "CPU-only owner.")
                 : duration, pass.DeviceOnly)).ToImmutableArray();
         var frame = new RendererPerfFrameSample(0, 0, 0, 1, 1, null, null, duration, passes, [],
-            ImmutableDictionary<string, RendererPerfMetric>.Empty, []);
+            RendererPerfFrameMetrics.Empty, []);
         var models = RendererPerfWorkModels.ForFrame(frame, "resource dependency fixture");
         int checkedEdges = 0;
         foreach (var model in models.Where(m => graph.Executed.Contains(m.PassId)))
@@ -81,7 +81,7 @@ public sealed class RendererPerfDependencyTests
             [new(consumer, 0, null, null, 1, 2, null, duration, false),
                 new(producer, 0, null, null, 3, 4, null, executed ? duration
                     : new(null, "ns", "explicit skipped producer", RendererPerfMetricStatus.NotExecuted, "Disabled in this frame."), false)],
-            [], ImmutableDictionary<string, RendererPerfMetric>.Empty, []);
+            [], RendererPerfFrameMetrics.Empty, []);
         var model = Assert.Single(RendererPerfWorkModels.ForFrame(frame, "optional dependency fixture"), m => m.PassId == consumer);
         Assert.Equal(executed, model.SerialDependencies.Contains(producer));
         Assert.Contains(other, model.SerialDependencies);
@@ -98,7 +98,7 @@ public sealed class RendererPerfDependencyTests
             [new("ocean.mips", 0, null, null, 1, 2, null, duration, false),
                 new("ocean.mip-copy", 0, null, null, 3, 4, null, skipped, false),
                 new("ocean.mip-copy", 1, null, null, 5, 6, null, secondExecuted ? duration : skipped, false)],
-            [], ImmutableDictionary<string, RendererPerfMetric>.Empty, []);
+            [], RendererPerfFrameMetrics.Empty, []);
         var model = Assert.Single(RendererPerfWorkModels.ForFrame(frame, "mixed occurrence fixture"), m => m.PassId == "ocean.mips");
         Assert.Equal(secondExecuted, model.SerialDependencies.Contains("ocean.mip-copy"));
     }

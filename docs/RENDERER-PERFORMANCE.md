@@ -290,6 +290,17 @@ pilot has its own frozen schedule and 1,260 frames. Warm-up and conditioning rem
 measured distributions. A three-frame batch has one completion drain and one harvest, including
 the final short batch. No frame trimming, fastest-iteration selection or adaptive warm-up is allowed.
 
+The measurement process holds every frame until the unit's report is written, so each frame keeps its named
+metrics in the in-memory form of `metric-vectors/2` (`RendererPerfFrameMetrics`). Frames with one key and
+descriptor set share one interned layout, and a frame stores only a presence bitmap and its nonzero values.
+Reads materialize metrics from a shared cache, so equal values return one instance. A per-entry dictionary
+node, key string and metric object retained about 2.8 MB for a 200-pass frame and 14.34 GB of managed memory
+in a Windows full unit (`memory.peaks.managed.live.bytes`), enough for a 16 GB Linux runner to kill the process.
+The compact frame retains about 34 KB of metrics and 88 KB in total for the same 200-pass frame, measured by
+`RendererPerfFrameMetricRetentionTests`, whose bound is the 2 GiB unit budget divided by 16,944 frames.
+The recorder builds its metric keys once per recorder, and the codec encodes each layout's sorted order once,
+so report bytes are identical to encoding the same metrics as a map.
+
 Shader identities hash exact UTF-8 source bytes, including composed programs and shared fragments.
 Multiline C# literals retain their source file's checkout line endings when compiled. The shader
 providers, ocean templates, temporal uniform declarations, sprite shaders and scaled-copy shaders

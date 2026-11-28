@@ -228,7 +228,7 @@ internal static class RendererPerfReportJson
             "Metric", "Normalized counts/bytes must be nonnegative integers. Achieved occupancy must be a ratio from 0 to 1.");
     }
 
-    static void Metrics(ImmutableDictionary<string, RendererPerfMetric> metrics)
+    static void Metrics(IEnumerable<KeyValuePair<string, RendererPerfMetric>> metrics)
     {
         foreach (var pair in metrics)
         {

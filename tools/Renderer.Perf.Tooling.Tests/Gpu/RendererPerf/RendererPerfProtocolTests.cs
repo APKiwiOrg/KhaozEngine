@@ -509,7 +509,7 @@ public sealed class RendererPerfProtocolTests
         RendererPerfMetric available = new(10, "ns", "outer timestamp pair", RendererPerfMetricStatus.Available, null);
         ImmutableArray<RendererPerfFrameSample> Frames(int count, int sequenceStart, int idStart) => Enumerable.Range(0, count)
             .Select(i => new RendererPerfFrameSample(idStart + i, (sequenceStart + i) % 256, i * 10, i * 10 + 5, 1000,
-                10, 1, available, [], [], ImmutableDictionary<string, RendererPerfMetric>.Empty, [])).ToImmutableArray();
+                10, 1, available, [], [], RendererPerfFrameMetrics.Empty, [])).ToImmutableArray();
         report = report with
         {
             Compiler = RendererPerfCompilerFixture.Complete,

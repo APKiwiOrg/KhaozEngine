@@ -48,7 +48,7 @@ public sealed class RendererPerfRawValidationTests
             .Add("a", new(2, "count", "test counter", RendererPerfMetricStatus.Available, null))
             .Add("b", new(0, "bytes", "test payload", RendererPerfMetricStatus.Available, null))
             .Add("c", new(null, "count", "optional counter", RendererPerfMetricStatus.Unsupported, "no counter"));
-        report = report with { Conditioning = report.Conditioning.SetItem(0, report.Conditioning[0] with { Metrics = metrics }) };
+        report = report with { Conditioning = report.Conditioning.SetItem(0, report.Conditioning[0] with { Metrics = RendererPerfFrameMetrics.From(metrics) }) };
         var json = JsonNode.Parse(RendererPerfReportJson.Serialize(report))!.AsObject();
         var raw = json["raw"]!.AsObject();
         var schemas = raw["metrics"]!.AsArray();
@@ -114,7 +114,7 @@ public sealed class RendererPerfRawValidationTests
             .Add("zero", new(0, "count", "signed delta", RendererPerfMetricStatus.Available, null))
             .Add("missing", new(null, "count", "optional", RendererPerfMetricStatus.Unsupported, "counter absent"))
             .Add("invalid", new(null, "count", "optional", RendererPerfMetricStatus.Invalid, "counter lost"));
-        report = report with { Conditioning = report.Conditioning.SetItem(0, report.Conditioning[0] with { Metrics = metrics }) };
+        report = report with { Conditioning = report.Conditioning.SetItem(0, report.Conditioning[0] with { Metrics = RendererPerfFrameMetrics.From(metrics) }) };
         var restored = RendererPerfReportJson.Parse(RendererPerfReportJson.Serialize(report)).Conditioning[0].Metrics;
         Assert.Equal(-5, restored["negative"].Value);
         Assert.Equal(long.MinValue, BitConverter.DoubleToInt64Bits(restored["negative-zero"].Value!.Value));
@@ -131,8 +131,8 @@ public sealed class RendererPerfRawValidationTests
             .Add("signed", new(-0d, "count", "signed delta", RendererPerfMetricStatus.Available, null));
         report = report with
         {
-            Conditioning = report.Conditioning.SetItem(0, report.Conditioning[0] with { Metrics = metrics })
-                .SetItem(1, report.Conditioning[1] with { Metrics = metrics })
+            Conditioning = report.Conditioning.SetItem(0, report.Conditioning[0] with { Metrics = RendererPerfFrameMetrics.From(metrics) })
+                .SetItem(1, report.Conditioning[1] with { Metrics = RendererPerfFrameMetrics.From(metrics) })
         };
         var json = JsonNode.Parse(RendererPerfReportJson.Serialize(report))!;
         json["conditioning"]![1]!["metrics"]!["values"]![0] = 0d;

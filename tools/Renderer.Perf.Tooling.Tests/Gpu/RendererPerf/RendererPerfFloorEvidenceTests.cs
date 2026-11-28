@@ -46,7 +46,7 @@ public sealed class RendererPerfFloorEvidenceTests
     {
         var definition = RendererPerfControls.Definition(7);
         var duration = new RendererPerfMetric(1000000, "ns", "synthetic hardware duration", RendererPerfMetricStatus.Available, null);
-        var frame = new RendererPerfFrameSample(0, 0, 0, 1, 1, 1, 1, duration, [], [], ImmutableDictionary<string, RendererPerfMetric>.Empty, []);
+        var frame = new RendererPerfFrameSample(0, 0, 0, 1, 1, 1, 1, duration, [], [], RendererPerfFrameMetrics.Empty, []);
         var report = new RendererPerfControlReport(new(7, "1", definition.WorkSha256, 64, 128), new string('a', 64),
             [.. Enumerable.Repeat(frame, 64)], [.. Enumerable.Repeat(frame, 128)],
             ImmutableDictionary<string, RendererPerfMetric>.Empty.Add("control.outputValidated", new(1, "count", "all outputs checked", RendererPerfMetricStatus.Available, null)));

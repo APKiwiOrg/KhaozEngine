@@ -130,7 +130,7 @@ internal sealed class RendererPerfNativeSession : IRendererPerfSession
             }
             sample = new(_next, RendererPerfRecipe.SequenceIndex(frameIndex), start, start, _clock.Frequency,
                 null, null, new(null, "ns", "native timestamp ring", RendererPerfMetricStatus.Unsupported,
-                    "Awaiting the one batch completion harvest."), [], [], ImmutableDictionary<string, RendererPerfMetric>.Empty,
+                    "Awaiting the one batch completion harvest."), [], [], RendererPerfFrameMetrics.Empty,
                 []);
             try
             {
@@ -155,7 +155,7 @@ internal sealed class RendererPerfNativeSession : IRendererPerfSession
                 string? error = _recorder.FrameFailure(_next);
                 sample = new(_next, RendererPerfRecipe.SequenceIndex(frameIndex), start, _clock.Now(), _clock.Frequency,
                     null, null, new(null, "ns", "native timestamp ring", RendererPerfMetricStatus.Unsupported,
-                        "Awaiting the one batch completion harvest."), [], [], ImmutableDictionary<string, RendererPerfMetric>.Empty,
+                        "Awaiting the one batch completion harvest."), [], [], RendererPerfFrameMetrics.Empty,
                         error is null ? [] : [error]);
             }
             catch (Exception error) { RendererPerfFailures.Add(ref failures, "renderer.frame.finalize", error); }

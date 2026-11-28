@@ -41,6 +41,8 @@ internal sealed partial class RendererPerfRecorder
     readonly string[] _cpuStack;
     readonly object?[] _resources;
     readonly ResourceFacts[] _facts;
+    readonly RendererPerfHarvestKeys _keys;
+    readonly RendererPerfFrameMetricsBuilder _metrics = new(new());
     int _resourceCount, _frame = -1, _passDepth, _cpuDepth, _uploadDepth, _recordings;
     long _segmentStart;
     uint _nextMarker;
@@ -71,6 +73,7 @@ internal sealed partial class RendererPerfRecorder
         _resources = new object[resourceCapacity];
         _facts = new ResourceFacts[resourceCapacity];
         _layout = layout; _now = now; _frequency = frequency; _timestamps = timestamps;
+        _keys = new(_metrics.Table, layout == RendererPerfLayout.PerPass ? _passes : []);
         _nativeStateCalls = nativeStateCalls; Enabled = enabled;
     }
 
@@ -303,48 +306,42 @@ internal sealed partial class RendererPerfRecorder
         if (!frame.Ended) throw new InvalidOperationException("The frame has not ended.");
         bool validTiming = timing is { Valid: true } && timing.Ticks.Length == MarkerCount
             && timing.Period is { } period && double.IsFinite(period) && period > 0;
-        var metrics = ImmutableDictionary.CreateBuilder<string, RendererPerfMetric>(StringComparer.Ordinal);
+        var metrics = _metrics;
+        metrics.Reset();
         for (int owner = 0; owner <= (_layout == RendererPerfLayout.PerPass ? _passes.Length : 0); owner++)
-        {
-            string key = owner == 0 ? "unattributed" : $"pass.{_passes[owner - 1].Id}.{_passes[owner - 1].Occurrence}";
-            foreach (var counter in Enum.GetValues<RendererPerfCounter>())
-                AddLogical(metrics, sampleId, owner, $"logical.{key}.{counter}", counter);
-        }
-        foreach (var counter in Enum.GetValues<RendererPerfCounter>())
-            AddLogical(metrics, sampleId, -1, $"logical.total.{counter}", counter);
+            foreach (var counter in Enum.GetValues<RendererPerfCounter>()) AddLogical(sampleId, owner, owner, counter);
+        foreach (var counter in Enum.GetValues<RendererPerfCounter>()) AddLogical(sampleId, -1, _keys.TotalOwner, counter);
         metrics.Add("allocation.currentThread.bytes", frame.ThreadChanged ? Missing("bytes", "current-thread managed allocation", "The recording thread changed.")
             : Value(frame.ThreadBytes, "bytes", "current-thread managed allocation, exact delta, excludes native allocation"));
         metrics.Add("allocation.process.bytes", Value(frame.ProcessBytes, "bytes", "process managed allocation, approximate delta (precise=false), includes workers, overlaps current-thread"));
-        for (int i = 0; i < 3; i++) metrics.Add($"gc.gen{i}.collections", Value(frame.GcDelta[i], "count", "process GC.CollectionCount delta"));
+        for (int i = 0; i < 3; i++) metrics.Add(RendererPerfHarvestKeys.GcCollections[i], Value(frame.GcDelta[i], "count", "process GC.CollectionCount delta"));
         metrics.Add("native.stateCalls", NativeDelta(frame.NativeStart, frame.NativeEnd, "count", "supplied native emitted state-call counter"));
         AddDeviceMetrics(metrics, frame);
         for (int i = 0; i < frame.DispatchCount; i++)
         {
             var dispatch = frame.Dispatches[i];
-            string key = $"dispatch.{i}";
-            metrics.Add($"{key}.owner", Value(dispatch.Owner, "owner-index", "zero is unattributed, otherwise pass index plus one"));
-            metrics.Add($"{key}.groupX", Value(dispatch.X, "groups", "raw dispatch argument"));
-            metrics.Add($"{key}.groupY", Value(dispatch.Y, "groups", "raw dispatch argument"));
-            metrics.Add($"{key}.groupZ", Value(dispatch.Z, "groups", "raw dispatch argument"));
+            metrics.Add(_keys.Dispatch(i, RendererPerfHarvestKeys.DispatchOwner), Value(dispatch.Owner, "owner-index", "zero is unattributed, otherwise pass index plus one"));
+            metrics.Add(_keys.Dispatch(i, RendererPerfHarvestKeys.DispatchGroup), Value(dispatch.X, "groups", "raw dispatch argument"));
+            metrics.Add(_keys.Dispatch(i, RendererPerfHarvestKeys.DispatchGroup + 1), Value(dispatch.Y, "groups", "raw dispatch argument"));
+            metrics.Add(_keys.Dispatch(i, RendererPerfHarvestKeys.DispatchGroup + 2), Value(dispatch.Z, "groups", "raw dispatch argument"));
             uint[] local = [dispatch.Facts.LocalX, dispatch.Facts.LocalY, dispatch.Facts.LocalZ];
-            for (int axis = 0; axis < 3; axis++) metrics.Add($"{key}.local{axis}", local[axis] == 0
+            for (int axis = 0; axis < 3; axis++) metrics.Add(_keys.Dispatch(i, RendererPerfHarvestKeys.DispatchLocal + axis), local[axis] == 0
                 ? Missing("threads", "compiled compute shader local size", "The bound pipeline metadata is unavailable.")
                 : Value(local[axis], "threads", "compiled compute shader local size"));
         }
         for (int i = 0; i < frame.TargetCount; i++)
         {
             var target = frame.Targets[i];
-            string key = $"target.{i}";
-            metrics.Add($"{key}.owner", Value(target.Owner, "owner-index", "zero is unattributed, otherwise pass index plus one"));
-            metrics.Add($"{key}.width", Value(target.Width, "pixels", "requested framebuffer"));
-            metrics.Add($"{key}.height", Value(target.Height, "pixels", "requested framebuffer"));
-            metrics.Add($"{key}.samples", Value(target.Samples, "samples", "requested framebuffer"));
+            metrics.Add(_keys.Target(i, RendererPerfHarvestKeys.TargetOwner), Value(target.Owner, "owner-index", "zero is unattributed, otherwise pass index plus one"));
+            metrics.Add(_keys.Target(i, RendererPerfHarvestKeys.TargetWidth), Value(target.Width, "pixels", "requested framebuffer"));
+            metrics.Add(_keys.Target(i, RendererPerfHarvestKeys.TargetHeight), Value(target.Height, "pixels", "requested framebuffer"));
+            metrics.Add(_keys.Target(i, RendererPerfHarvestKeys.TargetSamples), Value(target.Samples, "samples", "requested framebuffer"));
             for (int colour = 0; colour < target.Colours; colour++)
             {
                 var format = frame.TargetFormats[i * 8 + colour];
-                metrics.Add($"{key}.colour{colour}", Value((int)format, "format-id", format.ToString()));
+                metrics.Add(_keys.Target(i, RendererPerfHarvestKeys.TargetColour + colour), Value((int)format, "format-id", format.ToString()));
             }
-            metrics.Add($"{key}.depth", target.Depth is { } depth ? Value((int)depth, "format-id", depth.ToString())
+            metrics.Add(_keys.Target(i, RendererPerfHarvestKeys.TargetDepth), target.Depth is { } depth ? Value((int)depth, "format-id", depth.ToString())
                 : new(null, "format-id", "requested framebuffer", RendererPerfMetricStatus.NotExecuted, "No depth attachment."));
         }
         var cpu = ImmutableArray.CreateBuilder<RendererPerfCpuSpan>(frame.CpuCount);
@@ -368,11 +365,11 @@ internal sealed partial class RendererPerfRecorder
         return new(frame.FrameId, frame.SequenceIndex, frame.Start, frame.End, _frequency, totalTicks, timing?.Period,
             totalTicks is { } total ? Duration(total, timing!.Period!.Value, "native completed-frame outer timestamp pair")
                 : Missing("ns", "native GPU timestamps", timing?.Reason ?? "No GPU timestamp result was supplied."),
-            passes.MoveToImmutable(), cpu.MoveToImmutable(), metrics.ToImmutable(),
+            passes.MoveToImmutable(), cpu.MoveToImmutable(), metrics.ToMetrics(),
             frame.Error is { } error ? [error] : _timestamps?.Failure is { } ringError ? [ringError] : []);
     }
 
-    void AddLogical(ImmutableDictionary<string, RendererPerfMetric>.Builder metrics, int sampleId, int owner, string key, RendererPerfCounter counter)
+    void AddLogical(int sampleId, int owner, int keyOwner, RendererPerfCounter counter)
     {
         var unknown = counter switch
         {
@@ -384,24 +381,21 @@ internal sealed partial class RendererPerfRecorder
         double value = ReadCounter(sampleId, counter, owner);
         if (unknown is { } missing && ReadCounter(sampleId, missing, owner) > 0)
         {
-            metrics.Add(key, new(null, Unit(counter), "logical requested seam commands", RendererPerfMetricStatus.ModelIncomplete, "Some commands have no resource or pipeline metadata."));
-            metrics.Add($"{key}.known", Value(value, Unit(counter), "known logical portion only"));
+            _metrics.Add(_keys.Logical(keyOwner, counter), _keys.Incomplete(counter));
+            _metrics.Add(_keys.Known(keyOwner, counter), _keys.KnownValue(counter), value);
         }
-        else metrics.Add(key, Value(value, Unit(counter), "logical requested seam commands"));
+        else _metrics.Add(_keys.Logical(keyOwner, counter), _keys.Value(counter), value);
     }
     static RendererPerfMetric Duration(ulong ticks, double period, string source)
         => ticks == 0 ? new(null, "ns", source, RendererPerfMetricStatus.BelowResolution, "The interval is below the timer resolution.")
             : Value(ticks * period, "ns", source);
-    static string Unit(RendererPerfCounter counter) => counter is RendererPerfCounter.BufferUploadBytes or RendererPerfCounter.TextureUploadBytes
-        or RendererPerfCounter.RequestedBufferBytes or RendererPerfCounter.RequestedTextureBytes or RendererPerfCounter.CopyBytes
-        or RendererPerfCounter.ResolveReadBytes or RendererPerfCounter.ResolveWriteBytes ? "bytes" : "count";
     static RendererPerfMetric Value(double value, string unit, string source) => new(value, unit, source, RendererPerfMetricStatus.Available, null);
     static RendererPerfMetric Missing(string unit, string source, string reason) => new(null, unit, source, RendererPerfMetricStatus.Unsupported, reason);
     static RendererPerfMetric NativeDelta(long? start, long? end, string unit, string source)
         => start is null || end is null ? Missing(unit, source, "The native counter is not supplied.")
             : end < start ? new(null, unit, source, RendererPerfMetricStatus.Invalid, "The cumulative native counter decreased.")
             : Value((end - start).Value, unit, source);
-    static void AddDeviceMetrics(ImmutableDictionary<string, RendererPerfMetric>.Builder metrics, Frame frame)
+    static void AddDeviceMetrics(RendererPerfFrameMetricsBuilder metrics, Frame frame)
     {
         var start = frame.DeviceStart; var end = frame.DeviceEnd;
         bool supported = start.HasValue && end.HasValue;

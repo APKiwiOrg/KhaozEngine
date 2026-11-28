@@ -45,7 +45,7 @@ public sealed class RendererPerfFloorPublicationTests
             .Add("logical.pass.post.tonemap.0.UnknownCopyBytes", value with { Value = 0 })
             .Add("dispatch.0.owner", value).Add("dispatch.0.local0", value with { Value = 256, Unit = "threads" });
         var sample = new RendererPerfFrameSample(0, 0, 0, 1, 1, null, null, value,
-            [new("post.tonemap", 0, null, null, 1, 2, null, value, false)], [], metrics, []);
+            [new("post.tonemap", 0, null, null, 1, 2, null, value, false)], [], RendererPerfFrameMetrics.From(metrics), []);
         var model = Assert.Single(RendererPerfWorkModels.ForFrame(sample, "synthetic recipe"));
         Assert.Equal(1024, model.Components["target.0.payloadBytes"].Minimum);
         Assert.Equal(4, model.Components["target.0.samples"].Minimum);

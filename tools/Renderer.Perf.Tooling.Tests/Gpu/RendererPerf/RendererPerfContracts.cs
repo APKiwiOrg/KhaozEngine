@@ -43,7 +43,7 @@ internal sealed record RendererPerfRecipeReport(RendererPerfRecipeIdentity Ident
 internal readonly record struct RendererPerfFrameSample(int FrameId, int SequenceIndex, long CpuStartTicks,
     long CpuEndTicks, long CpuFrequency, ulong? GpuElapsedTicks, double? GpuPeriodNs, RendererPerfMetric GpuFrame,
     ImmutableArray<RendererPerfPassSample> Passes, ImmutableArray<RendererPerfCpuSpan> CpuPhases,
-    ImmutableDictionary<string, RendererPerfMetric> Metrics, ImmutableArray<string> Errors);
+    RendererPerfFrameMetrics Metrics, ImmutableArray<string> Errors);
 internal sealed record RendererPerfCpuSpan(string Id, string? ParentId, long StartTicks, long EndTicks);
 internal sealed record RendererPerfPassSample(string Id, int Occurrence, string? ParentId, int? ParentOccurrence,
     uint BeginMarker, uint EndMarker, ulong? ElapsedTicks, RendererPerfMetric Duration, bool DeviceOnly);

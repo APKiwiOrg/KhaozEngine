@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu.RendererPerf;
@@ -54,6 +56,35 @@ public sealed class RendererPerfCompactReportTests
         Assert.Contains(after.SelectMany(f => f.Passes), p => p.DeviceOnly && p.Duration.Status == RendererPerfMetricStatus.Unsupported);
         Assert.Contains(after.SelectMany(f => f.Metrics), p => p.Value.Status == RendererPerfMetricStatus.ModelIncomplete);
         Assert.Contains(after.SelectMany(f => f.Errors), e => e == "held recorder failure retained");
+    }
+
+    [Fact]
+    public void Frame_metrics_encode_to_the_vector_the_metric_map_encoder_writes()
+    {
+        var report = RendererPerfProtocolTests.CompleteReport();
+        Assert.True(report.Conditioning.Length >= 2 && report.Controls.Length >= 3 && !report.Blocks[0].Measured.IsEmpty);
+        var harvested = RendererPerfFrameMetricRetentionTests.Harvest(4, 2);
+        var native = new RendererPerfNativeSizeFixture().Replay(report.Blocks[0].Measured[0], true);
+        native = native with { Metrics = native.Metrics.Add("signed", RendererPerfDriver.Value(-0d, "count", "signed delta")) };
+        RendererPerfFrameSample[] frames = [report.Conditioning[0] with { Metrics = harvested[0].Metrics },
+            report.Conditioning[1] with { Metrics = harvested[1].Metrics }, native];
+        report = report with
+        {
+            Conditioning = report.Conditioning.SetItem(0, frames[0]).SetItem(1, frames[1]),
+            Blocks = report.Blocks.SetItem(0, report.Blocks[0] with { Measured = report.Blocks[0].Measured.SetItem(0, frames[2]) }),
+            Controls = [.. report.Controls.Select((control, i) => i < frames.Length
+                ? control with { Metrics = frames[i].Metrics.ToImmutableDictionary(StringComparer.Ordinal) } : control)]
+        };
+        byte[] bytes = RendererPerfRawJson.Serialize(report, RendererPerfReportJson.MaximumBytes);
+        var json = JsonNode.Parse(bytes)!;
+        JsonNode?[] encoded = [json["conditioning"]![0]!["metrics"], json["conditioning"]![1]!["metrics"],
+            json["blocks"]![0]!["measured"]![0]!["metrics"]];
+        for (int i = 0; i < frames.Length; i++)
+            Assert.True(JsonNode.DeepEquals(json["controls"]![i]!["metrics"], encoded[i]), $"Frame {i} encodes differently.");
+        Assert.Equal(encoded[0]!["layout"]!.GetValue<int>(), encoded[1]!["layout"]!.GetValue<int>());
+        Assert.False(JsonNode.DeepEquals(encoded[0]!["values"], encoded[1]!["values"]));
+        var restored = RendererPerfRawJson.Parse(bytes, RendererPerfReportJson.MaximumBytes).Blocks[0].Measured[0].Metrics;
+        Assert.Equal(frames[2].Metrics.OrderBy(p => p.Key, StringComparer.Ordinal), restored.OrderBy(p => p.Key, StringComparer.Ordinal));
     }
 
     internal static IEnumerable<RendererPerfFrameSample> Frames(RendererPerfReport report) => report.Conditioning

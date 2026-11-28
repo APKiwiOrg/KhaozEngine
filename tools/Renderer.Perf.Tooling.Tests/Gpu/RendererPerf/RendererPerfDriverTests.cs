@@ -264,7 +264,7 @@ public sealed class RendererPerfDriverTests
                     duration, 1, Value(duration, "ns"), block.Layout == RendererPerfLayout.PerPass
                         ? [new("device.scene.begin", 0, null, null, 0, 0, null,
                             new(null, "ns", "CPU-only device owner", RendererPerfMetricStatus.Unsupported, "no GPU interval"), true)] : [], [],
-                    ImmutableDictionary<string, RendererPerfMetric>.Empty.Add("gc.gen2.collections", Value(slow ? 1 : 0, "count")), rig.Fault == "sample-failure" ? ["known frame failed"] : []);
+                    RendererPerfFrameMetrics.Empty.Add("gc.gen2.collections", Value(slow ? 1 : 0, "count")), rig.Fault == "sample-failure" ? ["known frame failed"] : []);
                 if (rig.Fault is "frame-failure" or "frame-and-drain-failure") throw new InvalidOperationException("frame failed");
             }
             public void CompleteBatch(Span<RendererPerfFrameSample> samples)

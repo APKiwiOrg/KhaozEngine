@@ -94,6 +94,11 @@ internal static class RendererPerfRawJson
         readonly Dictionary<PassSchema, int> _passes = [];
         readonly Dictionary<CpuSchema, int> _cpuSpans = [];
         readonly Dictionary<PassKey, RendererPerfPassSample> _decodedPasses = [];
+        readonly Dictionary<RendererPerfFrameMetrics, Vector> _encodedFrames = new(ReferenceEqualityComparer.Instance);
+        readonly Dictionary<RendererPerfFrameMetricLayout, FramePlan> _framePlans = new(ReferenceEqualityComparer.Instance);
+        readonly Dictionary<Vector, RendererPerfFrameMetrics> _decodedFrames = new(new VectorComparer());
+        readonly Dictionary<int, RendererPerfFrameMetricLayout> _frameLayouts = [];
+        readonly RendererPerfFrameMetricTable _frameTable = new();
         internal Tables(Schema schema)
         {
             Schema = schema;
@@ -106,6 +111,7 @@ internal static class RendererPerfRawJson
             };
             Options.Converters.Add(new MetricConverter(this));
             Options.Converters.Add(new MapConverter(this));
+            Options.Converters.Add(new FrameMetricsConverter(this));
             Options.Converters.Add(new PassConverter(this));
             Options.Converters.Add(new CpuConverter(this));
             Options.Converters.Add(new CpuIntervalsConverter(this));
@@ -197,7 +203,7 @@ internal static class RendererPerfRawJson
             _encoded.Add(metrics, vector);
             return vector;
         }
-        internal ImmutableDictionary<string, RendererPerfMetric> Decode(Vector vector)
+        int[] Validated(Vector vector)
         {
             if ((uint)vector.Layout >= (uint)Schema.Layouts.Count) throw new JsonException("Metric layout reference is outside the table.");
             if ((uint)vector.ZeroRuns >= (uint)Schema.ZeroRuns.Count) throw new JsonException("Zero-run reference is outside the table.");
@@ -210,23 +216,90 @@ internal static class RendererPerfRawJson
             foreach (int run in runs) count += run;
             if (count != layout.Count(id => Get(id).Status == RendererPerfMetricStatus.Available))
                 throw new JsonException("A metric vector has missing or extra values.");
-            if (_decoded.TryGetValue(vector, out var cached)) return cached;
+            return layout;
+        }
+        IEnumerable<(int Id, double? Value)> Expand(Vector vector, int[] layout)
+        {
+            int[] runs = Schema.ZeroRuns[vector.ZeroRuns];
             int offset = 0, zeros = runs[0];
-            var metrics = ImmutableDictionary.CreateBuilder<string, RendererPerfMetric>(StringComparer.Ordinal);
             foreach (int id in layout)
             {
-                var schema = Get(id);
                 double? value = null;
-                if (schema.Status == RendererPerfMetricStatus.Available)
+                if (Get(id).Status == RendererPerfMetricStatus.Available)
                 {
                     if (zeros > 0) { value = 0; zeros--; }
                     else { value = vector.Values[offset++]; zeros = runs[offset]; }
                 }
-                metrics.Add(schema.Name!, Decode(id, value));
+                yield return (id, value);
             }
             if (offset != vector.Values.Length) throw new JsonException("A metric vector has extra values.");
+        }
+        internal ImmutableDictionary<string, RendererPerfMetric> Decode(Vector vector)
+        {
+            int[] layout = Validated(vector);
+            if (_decoded.TryGetValue(vector, out var cached)) return cached;
+            var metrics = ImmutableDictionary.CreateBuilder<string, RendererPerfMetric>(StringComparer.Ordinal);
+            foreach (var (id, value) in Expand(vector, layout)) metrics.Add(Get(id).Name!, Decode(id, value));
             var result = metrics.ToImmutable();
             _decoded.Add(vector, result);
+            return result;
+        }
+        // A frame layout's sorted slot order and wire layout are fixed, so later frames only encode values.
+        sealed record FramePlan(int Layout, int[] Slots);
+        internal Vector Encode(RendererPerfFrameMetrics metrics)
+        {
+            if (_encodedFrames.TryGetValue(metrics, out var vector)) return vector;
+            if (!_framePlans.TryGetValue(metrics.Layout, out var plan)) _framePlans.Add(metrics.Layout, plan = Plan(metrics));
+            var values = ImmutableArray.CreateBuilder<double>();
+            var zeros = ImmutableArray.CreateBuilder<int>();
+            int run = 0;
+            foreach (int slot in plan.Slots)
+            {
+                if (metrics.Layout.Descriptor(slot).Status != RendererPerfMetricStatus.Available) continue;
+                double number = metrics.Value(slot);
+                if (!double.IsFinite(number)) RendererPerfReportJson.Metric(metrics.Metric(slot));
+                if (BitConverter.DoubleToInt64Bits(number) == 0) run++;
+                else { zeros.Add(run); run = 0; values.Add(number); }
+            }
+            zeros.Add(run);
+            string pattern = string.Join(',', zeros);
+            if (!_zeroRuns.TryGetValue(pattern, out int zeroRuns))
+            { zeroRuns = Schema.ZeroRuns.Count; _zeroRuns.Add(pattern, zeroRuns); Schema.ZeroRuns.Add([.. zeros]); }
+            vector = new(plan.Layout, values.ToImmutable(), zeroRuns);
+            _encodedFrames.Add(metrics, vector);
+            return vector;
+        }
+        FramePlan Plan(RendererPerfFrameMetrics metrics)
+        {
+            var keys = metrics.Layout.Keys;
+            int[] slots = [.. Enumerable.Range(0, keys.Length).OrderBy(slot => keys[slot], StringComparer.Ordinal)];
+            var ids = new List<int>(slots.Length);
+            foreach (int slot in slots)
+            {
+                if (!RendererPerfManifest.Text(keys[slot])) throw new RendererPerfProtocolException("Metric", "Missing metric name.");
+                ids.Add(Register(keys[slot], metrics.Metric(slot)));
+            }
+            string key = string.Join(',', ids);
+            if (!_layouts.TryGetValue(key, out int layout))
+            { layout = Schema.Layouts.Count; _layouts.Add(key, layout); Schema.Layouts.Add([.. ids]); }
+            return new(layout, slots);
+        }
+        internal RendererPerfFrameMetrics DecodeFrame(Vector vector)
+        {
+            int[] layout = Validated(vector);
+            if (_decodedFrames.TryGetValue(vector, out var cached)) return cached;
+            if (!_frameLayouts.TryGetValue(vector.Layout, out var frameLayout))
+            {
+                var schemas = layout.Select(Get).ToArray();
+                _frameLayouts.Add(vector.Layout, frameLayout = _frameTable.Layout([.. schemas.Select(schema => schema.Name!)],
+                    [.. schemas.Select(schema => _frameTable.Descriptor(schema.Unit, schema.Source, schema.Status, schema.Reason,
+                        schema.Status == RendererPerfMetricStatus.Available))]));
+            }
+            var values = new double[layout.Length];
+            int slot = 0;
+            foreach (var (_, value) in Expand(vector, layout)) values[slot++] = value ?? 0;
+            var result = RendererPerfFrameMetrics.Create(frameLayout, values);
+            _decodedFrames.Add(vector, result);
             return result;
         }
         static int Intern<T>(T key, List<T> values, Dictionary<T, int> indices) where T : notnull
@@ -348,6 +421,14 @@ internal static class RendererPerfRawJson
             }
             public override void Write(Utf8JsonWriter writer, RendererPerfMetric value, JsonSerializerOptions options)
                 => JsonSerializer.Serialize(writer, new Scalar(tables.Register(null, value), value.Value), RendererPerfManifest.JsonOptions);
+        }
+        sealed class FrameMetricsConverter(Tables tables) : JsonConverter<RendererPerfFrameMetrics>
+        {
+            public override bool HandleNull => true;
+            public override RendererPerfFrameMetrics Read(ref Utf8JsonReader reader, Type type, JsonSerializerOptions options)
+                => tables.DecodeFrame(JsonSerializer.Deserialize<Vector>(ref reader, RendererPerfManifest.JsonOptions) ?? throw new JsonException("Null vector."));
+            public override void Write(Utf8JsonWriter writer, RendererPerfFrameMetrics value, JsonSerializerOptions options)
+                => JsonSerializer.Serialize(writer, tables.Encode(value), RendererPerfManifest.JsonOptions);
         }
         sealed class MapConverter(Tables tables) : JsonConverter<ImmutableDictionary<string, RendererPerfMetric>>
         {

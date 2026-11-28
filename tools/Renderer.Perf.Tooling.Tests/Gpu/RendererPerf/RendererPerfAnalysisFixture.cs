@@ -17,7 +17,7 @@ internal static class RendererPerfAnalysisFixture
         var manifest = RendererPerfManifest.Parse(Encoding.UTF8.GetBytes(RendererPerfProtocolTests.ManifestJson(full ? "full" : "pilot").ToJsonString()));
         ImmutableArray<RendererPerfFrameSample> Frames(int count, int sequence, int id) => [.. Enumerable.Range(0, count)
             .Select(i => new RendererPerfFrameSample(id + i, (sequence + i) % 256, 0, 100, 1000,
-                100, 1, Value(100), [], [], ImmutableDictionary<string, RendererPerfMetric>.Empty, []))];
+                100, 1, Value(100), [], [], RendererPerfFrameMetrics.Empty, []))];
         report = report with
         {
             Manifest = manifest,

@@ -64,7 +64,7 @@ public sealed class RendererPerfWorkModelTests
         var frame = new RendererPerfFrameSample(0, 0, 0, 1, 1, null, null, metric,
             [new("copy.opaque-temporal", 0, null, null, 1, 2, null, metric, false),
              new("post.tonemap", 0, null, null, 3, 4, null, metric, false)], [],
-            ImmutableDictionary<string, RendererPerfMetric>.Empty.Add("logical.pass.copy.opaque-temporal.0.CopyBytes", metric), []);
+            RendererPerfFrameMetrics.Empty.Add("logical.pass.copy.opaque-temporal.0.CopyBytes", metric), []);
         var models = RendererPerfWorkModels.ForFrame(frame, "synthetic recipe");
         Assert.Equal(4096, models[0].Components["readBytes"].Minimum);
         Assert.Equal(4096, models[0].Components["writeBytes"].Minimum);

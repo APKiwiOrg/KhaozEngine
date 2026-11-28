@@ -12,6 +12,8 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- Keep architecture helper paths canonical so their test-health exemptions match. -->
     <ArchitectureTestSourceRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../test-shared'))</ArchitectureTestSourceRoot>
+    <!-- Gpu/CompiledShaderProgramGpuTests.cs loads its sprite program from this project's own bundle. -->
+    <KhaozShaderManifest>Gpu/Shaders/programs.json</KhaozShaderManifest>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />

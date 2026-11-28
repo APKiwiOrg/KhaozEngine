@@ -166,7 +166,10 @@ from USD 18 after the locked
 attempts count against it. A second v1 campaign on workload `faccc53b8` with a USD 9 envelope certified its Windows
 pilot and full unit, but both Linux full attempts on 16 GB machine.dev runners ran out of memory as the test process
 grew to about 14.6 GB ([#1912](https://github.com/APKiwiOrg/KhaozEngine/issues/1912)), so it published no pair. Linux paid units run on
-`gpu-t4-linux` again, and a new pair needs its own workload and campaign approval. Implementation approval never authorizes a dispatch, pilot, retry, profiler capture or follow-up
+`gpu-t4-linux` again. A third v1 campaign on workload `4b72a73f9` with a USD 9 envelope published the
+[current pair](performance/renderer/index-full-linux-t4-baseline-full-windows-t4-baseline.md) for USD 2.36 of GitHub billing:
+a 4-minute Linux pilot and 10- and 16-minute Linux and Windows full units, reusing the Windows pilot from `faccc53b8`, whose
+renderer code is identical. Implementation approval never authorizes a dispatch, pilot, retry, profiler capture or follow-up
 measurement. Software Vulkan and WARP can establish
 correctness only. They cannot establish a hardware floor or a T4 result.
 
@@ -1010,9 +1013,11 @@ which remains evidence of that failed publication rather than permission to over
 
 Store reviewed summaries under `docs/performance/renderer/`, and profile publications under
 `docs/performance/water-optics/`, with the original received artifacts retained in their workflow run. The publisher does not commit files or dispatch follow-up work.
-The first eligible pair is published in [docs/performance/renderer/](performance/renderer/index-full-linux-full-windows.md):
-Tesla T4 Linux Vulkan and Windows D3D11 full units at workload `2243d40a7`, with the graphics clock locked at 1,095 MHz.
-The [verification record](verification/2026-10-21-renderer-performance-baseline.md) lists every attempt that led to it.
+The current pair is [index-full-linux-t4-baseline-full-windows-t4-baseline](performance/renderer/index-full-linux-t4-baseline-full-windows-t4-baseline.md):
+Tesla T4 Linux Vulkan and Windows D3D11 full units at workload `4b72a73f9` on `gpu-t4-linux` and `gpu-t4-windows`, with the
+graphics clock locked at 1,095 MHz. The first pair, at workload `2243d40a7`, stays in
+[docs/performance/renderer/](performance/renderer/index-full-linux-full-windows.md), and its
+[verification record](verification/2026-10-21-renderer-performance-baseline.md) lists every attempt that led to it.
 
 For a received `water-optics-v2` or `water-optics-v3` pair, use the same offline verifier with the profile request schema
 `khaozengine.renderer-profile-request/1` and the same request fields:

@@ -59,13 +59,42 @@ public static class SlangcResolver
 
         var folder = Path.Combine(cacheRoot, pins.Version, hostRid);
         var executable = Path.Combine(folder, asset.Executable);
-        if (File.Exists(executable))
-            return executable;
+        // Publishing is an atomic rename, so a folder seen before its executable is checked is complete unless damaged.
         if (Directory.Exists(folder))
-            Directory.Delete(folder, recursive: true);
+        {
+            if (File.Exists(executable))
+                return executable;
+            RemoveDamaged(cacheRoot, folder, asset.Executable);
+        }
 
         Install(pins, hostRid, asset, cacheRoot, folder, handler, probe);
         return executable;
+    }
+
+    private static void RemoveDamaged(string cacheRoot, string folder, string executable)
+    {
+        var stale = Path.Combine(cacheRoot, $".stale-{Guid.NewGuid():N}");
+        try
+        {
+            Directory.Move(folder, stale);
+        }
+        catch (DirectoryNotFoundException)
+        {
+            return;
+        }
+        // A concurrent repair may have republished between the check and the move, so a complete folder goes back.
+        if (File.Exists(Path.Combine(stale, executable)))
+        {
+            try
+            {
+                Directory.Move(stale, folder);
+                return;
+            }
+            catch (IOException)
+            {
+            }
+        }
+        Directory.Delete(stale, recursive: true);
     }
 
     private static void Install(

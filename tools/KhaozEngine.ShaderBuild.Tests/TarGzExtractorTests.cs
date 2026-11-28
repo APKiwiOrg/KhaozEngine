@@ -55,15 +55,30 @@ public sealed class TarGzExtractorTests : IDisposable
     [InlineData("rooted-path")]
     [InlineData("escaping-symlink")]
     [InlineData("hard-link")]
+    [InlineData("through-extracted-symlink")]
     public void Refuses_an_entry_it_cannot_place_inside_the_destination(string entry)
     {
-        var archive = Archive((tar, _) => tar.WriteEntry(entry switch
+        // Windows needs a privilege to create the first link, and no pinned Windows archive holds links.
+        if (entry == "through-extracted-symlink" && OperatingSystem.IsWindows())
+            return;
+        TarEntry[] entries = entry switch
         {
-            "parent-path" => new PaxTarEntry(TarEntryType.RegularFile, "../escape") { DataStream = Text("x") },
-            "rooted-path" => new PaxTarEntry(TarEntryType.RegularFile, "/escape") { DataStream = Text("x") },
-            "escaping-symlink" => new PaxTarEntry(TarEntryType.SymbolicLink, "lib/escape") { LinkName = "../../escape" },
-            _ => new PaxTarEntry(TarEntryType.HardLink, "bin/escape") { LinkName = "../escape" },
-        }));
+            "parent-path" => [new PaxTarEntry(TarEntryType.RegularFile, "../escape") { DataStream = Text("x") }],
+            "rooted-path" => [new PaxTarEntry(TarEntryType.RegularFile, "/escape") { DataStream = Text("x") }],
+            "escaping-symlink" => [new PaxTarEntry(TarEntryType.SymbolicLink, "lib/escape") { LinkName = "../../escape" }],
+            "hard-link" => [new PaxTarEntry(TarEntryType.HardLink, "bin/escape") { LinkName = "../escape" }],
+            _ =>
+            [
+                new PaxTarEntry(TarEntryType.SymbolicLink, "a") { LinkName = "." },
+                new PaxTarEntry(TarEntryType.SymbolicLink, "a/b") { LinkName = ".." },
+                new PaxTarEntry(TarEntryType.RegularFile, "a/b/escape") { DataStream = Text("x") },
+            ],
+        };
+        var archive = Archive((tar, _) =>
+        {
+            foreach (var item in entries)
+                tar.WriteEntry(item);
+        });
 
         Assert.Throws<InvalidDataException>(() => Extract(archive));
         Assert.Equal([Destination], Directory.GetFileSystemEntries(_work));

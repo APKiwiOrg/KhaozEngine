@@ -8,7 +8,7 @@ namespace KhaozEngine.ShaderBuild;
 
 // System.Formats.Tar splits PAX records on newline instead of honouring their length prefix, so it rejects
 // the binary SCHILY.xattr code-signature values in the macOS slang release.
-/// <summary>Extracts a .tar.gz of regular files, directories and symlinks, refusing any entry that leaves the destination.</summary>
+/// <summary>Extracts a .tar.gz of regular files, directories and symlinks, refusing any entry that leaves the destination or passes through an extracted link.</summary>
 internal static class TarGzExtractor
 {
     private const int BlockSize = 512;
@@ -93,18 +93,37 @@ internal static class TarGzExtractor
     {
         if (target.Length == 0 || Path.IsPathRooted(target))
             throw new InvalidDataException($"The archive symlink {path} has target '{target}', which is not relative.");
-        Contained(root, Path.GetRelativePath(root, Path.Combine(Path.GetDirectoryName(path)!, target)));
+        Contained(root, Path.GetRelativePath(root, Path.Combine(Path.GetDirectoryName(path)!, target)), includeLeaf: false);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.CreateSymbolicLink(path, target);
     }
 
-    private static string Contained(string root, string entryName)
+    private static string Contained(string root, string entryName, bool includeLeaf = true)
     {
         var relative = entryName.Replace('\\', '/');
         var full = Path.GetFullPath(Path.Combine(root, relative));
         if (Path.IsPathRooted(relative) || !(full + Path.DirectorySeparatorChar).StartsWith(root, StringComparison.Ordinal))
             throw new InvalidDataException($"The archive entry {entryName} lies outside the extraction folder.");
+        RefuseExtractedLinks(root, full, entryName, includeLeaf);
         return full;
+    }
+
+    // Path.GetFullPath is lexical, so a path through an already extracted symlink could land outside the root.
+    private static void RefuseExtractedLinks(string root, string full, string entryName, bool includeLeaf)
+    {
+        var current = Path.TrimEndingDirectorySeparator(root);
+        var end = includeLeaf ? full : Path.GetDirectoryName(full)!;
+        var relative = Path.GetRelativePath(current, end);
+        if (relative == ".")
+            return;
+        foreach (var part in relative.Split(Path.DirectorySeparatorChar))
+        {
+            current = Path.Combine(current, part);
+            if (new FileInfo(current).LinkTarget is not null)
+                throw new InvalidDataException($"The archive entry {entryName} passes through the extracted link {current}.");
+            if (!Directory.Exists(current))
+                return;
+        }
     }
 
     // PAX records are "<length> <key>=<value>\n" where length counts the whole record, so values may hold any byte.

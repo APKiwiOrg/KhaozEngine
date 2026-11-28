@@ -47,6 +47,20 @@ public sealed class SlangcResolverTests : IDisposable
     }
 
     [Fact]
+    public void A_damaged_cache_folder_is_replaced_by_a_fresh_download()
+    {
+        var archive = Archive();
+        var damaged = Path.Combine(_cacheRoot, Version, Rid);
+        Directory.CreateDirectory(Path.Combine(damaged, "lib"));
+
+        var path = Resolve(Pins(archive), new ServingHandler(archive));
+
+        Assert.True(File.Exists(path));
+        Assert.False(Directory.Exists(Path.Combine(damaged, "lib")));
+        Assert.Equal([Path.Combine(_cacheRoot, Version)], Directory.GetFileSystemEntries(_cacheRoot));
+    }
+
+    [Fact]
     public void Refuses_an_archive_whose_digest_differs_and_caches_nothing()
     {
         var pins = Pins(Archive());

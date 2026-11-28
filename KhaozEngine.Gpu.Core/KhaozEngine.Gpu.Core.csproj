@@ -15,4 +15,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.Gpu.Core.Tests" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="SlangTrial/*.spv" LogicalName="SlangTrial/%(Filename)%(Extension)" />
+  </ItemGroup>
 </Project>

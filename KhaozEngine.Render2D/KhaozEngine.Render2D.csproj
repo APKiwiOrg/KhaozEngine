@@ -31,5 +31,6 @@
     <InternalsVisibleTo Include="KhaozEngine.WorldMap.Gui.Tests" />
     <InternalsVisibleTo Include="Renderer.Perf.Tooling.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.Gui.Tests" />
+    <InternalsVisibleTo Include="KhaozEngine.Gpu.Core.Tests" />
   </ItemGroup>
 </Project>

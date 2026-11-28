@@ -14,8 +14,9 @@ internal sealed unsafe class CoreShaderSet(CoreGpuDevice owner, khaoz_gpu_shader
         ArgumentNullException.ThrowIfNull(vertGlsl, "vertexGlsl");
         ArgumentNullException.ThrowIfNull(fragGlsl, "fragmentGlsl");
         const string label = "shader pair";
-        byte[] vertex = SpirvFrontEnd.ToSpirv(vertGlsl, GpuShaderStages.Vertex, label);
-        byte[] fragment = SpirvFrontEnd.ToSpirv(fragGlsl, GpuShaderStages.Fragment, label);
+        var replacement = CoreShaderOverrides.Override?.Invoke(vertGlsl, fragGlsl);
+        byte[] vertex = replacement?.Vertex ?? SpirvFrontEnd.ToSpirv(vertGlsl, GpuShaderStages.Vertex, label);
+        byte[] fragment = replacement?.Fragment ?? SpirvFrontEnd.ToSpirv(fragGlsl, GpuShaderStages.Fragment, label);
         lock (device.Gate)
         fixed (byte* vertexBytes = vertex, fragmentBytes = fragment)
         {

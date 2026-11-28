@@ -295,9 +295,10 @@ refs and attempts after one. This public repository uses hosted runners exclusiv
 The dispatch-only workflow uses GitHub's T4 larger runners, `gpu-t4-linux` for Linux Vulkan and
 `gpu-t4-windows` for Windows Direct3D 11 and Vulkan. The organization runner group `gpu-bench` admits this
 workflow on main only. A machine.dev on-demand T4 offers the same GPU at about a third of the Linux rate,
-but machine.dev shut its runners down about 10.5 minutes after each job started (runs 46086499101 and
-46092538748), so the Linux leg stays on GitHub until machine.dev lifts that stop
-([#1907](https://github.com/APKiwiOrg/KhaozEngine/issues/1907)). StarSling's consumer-GPU runners are
+but its g4dn.xlarge has 16 GB of RAM, and a v1 full unit's test process grows to about 14.6 GB, so the
+kernel killed both Linux full attempts there (runs 46086499101 and 46092538748). The Linux leg stays on
+GitHub until that retention is fixed ([#1912](https://github.com/APKiwiOrg/KhaozEngine/issues/1912)) or the
+32 GB g4dn.2xlarge is adopted ([#1907](https://github.com/APKiwiOrg/KhaozEngine/issues/1907)). StarSling's consumer-GPU runners are
 not an option, because its GPU beta admits only accounts with more than 300,000 runner minutes
 ([#1557](https://github.com/APKiwiOrg/KhaozEngine/issues/1557)). Software rehearsals and free admission use
 standard GitHub-hosted runners.

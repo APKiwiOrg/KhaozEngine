@@ -164,8 +164,8 @@ from USD 18 after the locked
 [Linux full unit](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40599806485) refused and the locked
 [Windows full unit](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40599810511) was cancelled, and both
 attempts count against it. A second v1 campaign on workload `faccc53b8` with a USD 9 envelope certified its Windows
-pilot and full unit, but both Linux full attempts on machine.dev runners stopped about 10.5 minutes into the job
-([#1907](https://github.com/APKiwiOrg/KhaozEngine/issues/1907)), so it published no pair. Linux paid units run on
+pilot and full unit, but both Linux full attempts on 16 GB machine.dev runners ran out of memory as the test process
+grew to about 14.6 GB ([#1912](https://github.com/APKiwiOrg/KhaozEngine/issues/1912)), so it published no pair. Linux paid units run on
 `gpu-t4-linux` again, and a new pair needs its own workload and campaign approval. Implementation approval never authorizes a dispatch, pilot, retry, profiler capture or follow-up
 measurement. Software Vulkan and WARP can establish
 correctness only. They cannot establish a hardware floor or a T4 result.

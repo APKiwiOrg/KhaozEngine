@@ -10,7 +10,7 @@ namespace KhaozEngine.Tests.Gpu.RendererPerf;
 [Collection("AllocSensitive")]
 public sealed class RendererPerfFrameMetricRetentionTests
 {
-    // A full unit holds 16,944 frames until its report is written and must stay within 2 GiB (#1912).
+    // A full unit holds 16,944 frames until its report is written and must stay within 2 GiB.
     const long UnitBudgetBytes = 2L << 30;
     const int UnitFrames = 16_944;
 
@@ -31,7 +31,6 @@ public sealed class RendererPerfFrameMetricRetentionTests
     {
         var samples = Harvest(4, 2);
         Assert.Same(samples[0].Metrics.Layout, samples[1].Metrics.Layout);
-        Assert.Equal(samples[0].Metrics["logical.pass.pass0.0.Draws"], samples[0].Metrics["logical.pass.pass1.0.Draws"]);
         Assert.Same(samples[0].Metrics["logical.pass.pass0.0.Draws"], samples[0].Metrics["logical.pass.pass1.0.Draws"]);
         Assert.Same(samples[0].Metrics["logical.pass.pass0.0.Draws"], samples[1].Metrics["logical.pass.pass0.0.Draws"]);
         Assert.NotEqual(samples[0].Metrics["logical.total.Vertices"], samples[1].Metrics["logical.total.Vertices"]);

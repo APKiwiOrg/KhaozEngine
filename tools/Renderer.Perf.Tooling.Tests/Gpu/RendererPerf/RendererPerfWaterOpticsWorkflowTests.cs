@@ -11,8 +11,8 @@ namespace KhaozEngine.Tests.Gpu.RendererPerf;
 public sealed class RendererPerfWaterOpticsWorkflowTests
 {
     [Theory]
-    [InlineData("water-optics-v2", "linux-vulkan", "machine-t4-linux", "vulkan-native", 35)]
-    [InlineData("water-optics-v3", "linux-vulkan", "machine-t4-linux", "vulkan-native", 35)]
+    [InlineData("water-optics-v2", "linux-vulkan", "gpu-t4-linux", "vulkan-native", 35)]
+    [InlineData("water-optics-v3", "linux-vulkan", "gpu-t4-linux", "vulkan-native", 35)]
     [InlineData("water-optics-v2", "windows-d3d11", "gpu-t4-windows", "direct3d11-native", 50)]
     [InlineData("water-optics-v3", "windows-d3d11", "gpu-t4-windows", "direct3d11-native", 50)]
     public void Select_routes_the_paid_water_legs(string preset, string leg, string runner, string backend, int minutes)
@@ -93,23 +93,23 @@ public sealed class RendererPerfWaterOpticsWorkflowTests
 
     // The last three caps differ from a boundary only past double precision, so the selector must compare exact decimals.
     [Theory]
-    [InlineData("water-optics-v2", "linux-vulkan", "6.07314")]
-    [InlineData("water-optics-v3", "linux-vulkan", "6.07314")]
-    [InlineData("water-optics-v2", "windows-d3d11", "6.07314")]
-    [InlineData("water-optics-v3", "windows-d3d11", "6.07314")]
-    [InlineData("water-optics-v2", "linux-vulkan", "0.66514")]
-    [InlineData("water-optics-v3", "linux-vulkan", "0.66514")]
+    [InlineData("water-optics-v2", "linux-vulkan", "7.383")]
+    [InlineData("water-optics-v3", "linux-vulkan", "7.383")]
+    [InlineData("water-optics-v2", "windows-d3d11", "7.383")]
+    [InlineData("water-optics-v3", "windows-d3d11", "7.383")]
+    [InlineData("water-optics-v2", "linux-vulkan", "1.975")]
+    [InlineData("water-optics-v3", "linux-vulkan", "1.975")]
     [InlineData("water-optics-v2", "windows-d3d11", "5.405")]
     [InlineData("water-optics-v3", "windows-d3d11", "5.405")]
     [InlineData("full", "linux-vulkan", "22.001")]
     [InlineData("full", "windows-d3d11", "22.001")]
     [InlineData("pilot", "linux-vulkan", "22.001")]
     [InlineData("pilot", "windows-d3d11", "22.001")]
-    [InlineData("water-optics-v2", "linux-vulkan", "6.07214000000000001")]
-    [InlineData("water-optics-v3", "linux-vulkan", "6.07214000000000001")]
+    [InlineData("water-optics-v2", "linux-vulkan", "7.382000000000001")]
+    [InlineData("water-optics-v3", "linux-vulkan", "7.382000000000001")]
     [InlineData("full", "windows-d3d11", "22.000000000000001")]
-    [InlineData("water-optics-v2", "linux-vulkan", "0.66613999999999999")]
-    [InlineData("water-optics-v3", "linux-vulkan", "0.66613999999999999")]
+    [InlineData("water-optics-v2", "linux-vulkan", "1.9759999999999999")]
+    [InlineData("water-optics-v3", "linux-vulkan", "1.9759999999999999")]
     public void Select_refuses_campaign_overruns(string preset, string leg, string cap)
     {
         using var workspace = new RendererPerfWorkflowTrustTests.AdmissionWorkspace();
@@ -153,7 +153,7 @@ public sealed class RendererPerfWaterOpticsWorkflowTests
         fixture.Manifest["approval"]!["campaignMaximumUsd"] = fixture.Manifest["budget"]!["maximumCostUsd"]!.DeepClone();
         fixture.SaveManifest();
         fixture.Accept("Select", "matrix=");
-        fixture.Manifest["approval"]!["campaignMaximumUsd"] = preset.StartsWith("water-optics-", StringComparison.Ordinal) ? 6.07214m : 22m;
+        fixture.Manifest["approval"]!["campaignMaximumUsd"] = preset.StartsWith("water-optics-", StringComparison.Ordinal) ? 7.382m : 22m;
         fixture.SaveManifest();
         fixture.Accept("Select", "matrix=");
     }

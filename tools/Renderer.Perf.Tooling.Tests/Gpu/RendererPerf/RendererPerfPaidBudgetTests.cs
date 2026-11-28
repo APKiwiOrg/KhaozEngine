@@ -9,9 +9,9 @@ namespace KhaozEngine.Tests.Gpu.RendererPerf;
 public sealed class RendererPerfPaidBudgetTests
 {
     [Theory]
-    [InlineData("pilot", "linux-vulkan", 600, 12, 15, 0.01753, 0.26295)]
+    [InlineData("pilot", "linux-vulkan", 600, 12, 15, 0.052, 0.780)]
     [InlineData("pilot", "windows-d3d11", 600, 20, 23, 0.102, 2.346)]
-    [InlineData("full", "linux-vulkan", 1500, 35, 38, 0.01753, 0.66614)]
+    [InlineData("full", "linux-vulkan", 1500, 35, 38, 0.052, 1.976)]
     [InlineData("full", "windows-d3d11", 1500, 50, 53, 0.102, 5.406)]
     [InlineData("full", "windows-vulkan", 1500, 50, 53, 0.102, 5.406)]
     public void Paid_caps_include_cleanup_without_extending_unit_or_frame_deadlines(string preset, string leg,
@@ -33,14 +33,14 @@ public sealed class RendererPerfPaidBudgetTests
         var line = result.Output.Split('\n').Single(s => s.StartsWith("matrix=", StringComparison.Ordinal));
         var row = Assert.Single(JsonNode.Parse(line[7..])!["include"]!.AsArray())!;
         Assert.Equal(minutes, row["jobMinutes"]!.GetValue<int>());
-        Assert.Equal(leg == "linux-vulkan" ? "machine-t4-linux" : "gpu-t4-windows", row["runner"]!.GetValue<string>());
+        Assert.Equal(leg == "linux-vulkan" ? "gpu-t4-linux" : "gpu-t4-windows", row["runner"]!.GetValue<string>());
         Assert.Equal("performance", row["executionClass"]!.GetValue<string>());
     }
 
     [Theory]
-    [InlineData("pilot", "linux-vulkan", 12, 15, 0.26295)]
+    [InlineData("pilot", "linux-vulkan", 12, 15, 0.780)]
     [InlineData("pilot", "windows-d3d11", 20, 23, 2.346)]
-    [InlineData("full", "linux-vulkan", 35, 38, 0.66614)]
+    [InlineData("full", "linux-vulkan", 35, 38, 1.976)]
     [InlineData("full", "windows-d3d11", 50, 53, 5.406)]
     [InlineData("full", "windows-vulkan", 50, 53, 5.406)]
     public void Paid_validator_refuses_changed_caps_costs_and_approval(string preset, string leg, int minutes, int billed, double cost)

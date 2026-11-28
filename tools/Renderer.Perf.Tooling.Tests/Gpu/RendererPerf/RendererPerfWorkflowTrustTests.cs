@@ -39,12 +39,12 @@ public sealed class RendererPerfWorkflowTrustTests
         .SingleOrDefault(pair => pair.Length == 2 && pair[0] == name)?[1].Trim().Trim('\'', '"');
 
     [Theory]
-    [InlineData("pilot", "linux-vulkan", "machine-t4-linux", 12)]
-    [InlineData("full", "linux-vulkan", "machine-t4-linux", 35)]
+    [InlineData("pilot", "linux-vulkan", "gpu-t4-linux", 12)]
+    [InlineData("full", "linux-vulkan", "gpu-t4-linux", 35)]
     [InlineData("full", "windows-vulkan", "gpu-t4-windows", 50)]
     [InlineData("full", "windows-d3d11", "gpu-t4-windows", 50)]
     [InlineData("pilot", "windows-d3d11", "gpu-t4-windows", 20)]
-    [InlineData("water-optics-v2", "linux-vulkan", "machine-t4-linux", 35)]
+    [InlineData("water-optics-v2", "linux-vulkan", "gpu-t4-linux", 35)]
     [InlineData("water-optics-v2", "windows-d3d11", "gpu-t4-windows", 50)]
     public void Requested_admission_and_selector_cannot_change_allocation(string preset, string leg, string runner, int minutes)
     {
@@ -64,12 +64,6 @@ public sealed class RendererPerfWorkflowTrustTests
         var matrix = JsonNode.Parse(File.ReadAllLines(workspace.Output).Single(s => s.StartsWith("matrix=", StringComparison.Ordinal))[7..])!;
         var row = Assert.Single(matrix["include"]!.AsArray());
         Assert.Equal(runner, row!["runner"]!.GetValue<string>());
-        string runId = fixture.Environment["GITHUB_RUN_ID"];
-        string attempt = fixture.Environment["GITHUB_RUN_ATTEMPT"];
-        string runsOn = leg == "linux-vulkan"
-            ? $"machine/gpu=t4/cpu=4/tenancy=on_demand/regions=us-east-1/id={runId}-{attempt}-{leg}"
-            : runner;
-        Assert.Equal(runsOn, row["runsOn"]!.GetValue<string>());
         Assert.Equal(leg, row["leg"]!.GetValue<string>());
         Assert.Equal(minutes, row["jobMinutes"]!.GetValue<int>());
     }

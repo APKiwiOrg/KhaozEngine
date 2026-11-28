@@ -34,7 +34,7 @@ public sealed class RendererPerfWorkflowManifestAdmissionTests
                 fixture.Manifest["approval"]!["campaignMaximumUsd"] = 0;
                 break;
             case "rate": budget["ratePerMinute"] = 0.053m; break;
-            case "rate-precision": budget["ratePerMinute"] = leg == "linux-vulkan" ? 0.017530000000000001m : 0.102000000000000001m; break;
+            case "rate-precision": budget["ratePerMinute"] = leg == "linux-vulkan" ? 0.052000000000000001m : 0.102000000000000001m; break;
             case "currency": budget["currency"] = "NZD"; break;
             case "cost": budget["maximumCostUsd"] = budget["maximumCostUsd"]!.GetValue<decimal>() - 0.001m; break;
             case "billed-string": budget["maximumBilledMinutes"] = budget["maximumBilledMinutes"]!.ToJsonString(); break;
@@ -72,10 +72,10 @@ public sealed class RendererPerfWorkflowManifestAdmissionTests
         string text = fixture.Manifest.ToJsonString();
         text = fault switch
         {
-            "cap-high-first" => text.Replace("\"campaignMaximumUsd\":6.07214", "\"campaignMaximumUsd\":6.07314,\"campaignMaximumUsd\":6.07214", StringComparison.Ordinal),
-            "cap-low-first" => text.Replace("\"campaignMaximumUsd\":6.07214", "\"campaignMaximumUsd\":6.07214,\"campaignMaximumUsd\":6.07314", StringComparison.Ordinal),
-            "cost-high-first" => text.Replace("\"maximumCostUsd\":0.66614", "\"maximumCostUsd\":0.66714,\"maximumCostUsd\":0.66614", StringComparison.Ordinal),
-            "cost-low-first" => text.Replace("\"maximumCostUsd\":0.66614", "\"maximumCostUsd\":0.66614,\"maximumCostUsd\":0.66714", StringComparison.Ordinal),
+            "cap-high-first" => text.Replace("\"campaignMaximumUsd\":7.382", "\"campaignMaximumUsd\":7.383,\"campaignMaximumUsd\":7.382", StringComparison.Ordinal),
+            "cap-low-first" => text.Replace("\"campaignMaximumUsd\":7.382", "\"campaignMaximumUsd\":7.382,\"campaignMaximumUsd\":7.383", StringComparison.Ordinal),
+            "cost-high-first" => text.Replace("\"maximumCostUsd\":1.976", "\"maximumCostUsd\":1.977,\"maximumCostUsd\":1.976", StringComparison.Ordinal),
+            "cost-low-first" => text.Replace("\"maximumCostUsd\":1.976", "\"maximumCostUsd\":1.976,\"maximumCostUsd\":1.977", StringComparison.Ordinal),
             "nested" => text.Replace("\"id\":1,", "\"id\":1,\"id\":1,", StringComparison.Ordinal),
             _ => text.Replace($"\"{fault}\":", $"\"{fault}\":{fixture.Manifest[fault]!.ToJsonString()},\"{fault}\":", StringComparison.Ordinal)
         };

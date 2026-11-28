@@ -215,8 +215,8 @@ Require ($hash -ceq $env:RENDERER_PERF_MANIFEST_SHA256) 'Manifest byte hash diff
 $manifestText = Get-Content -LiteralPath $manifestPath -Raw
 $manifest = Read-Manifest $manifestText
 $campaignMaximumUsd = 22d
-$waterOpticsV2CampaignMaximumUsd = 6.07214d
-$waterOpticsV3CampaignMaximumUsd = 6.07214d
+$waterOpticsV2CampaignMaximumUsd = 7.382d
+$waterOpticsV3CampaignMaximumUsd = 7.382d
 $waterOpticsCampaigns = [System.Collections.Hashtable]::new([System.StringComparer]::Ordinal)
 $waterOpticsCampaigns.Add('water-optics-v2', $waterOpticsV2CampaignMaximumUsd)
 $waterOpticsCampaigns.Add('water-optics-v3', $waterOpticsV3CampaignMaximumUsd)
@@ -249,7 +249,7 @@ $rehearsalPolicy = if ($rehearsal) {
         }
     }
 } else { $null }
-$runner = if ($rehearsal) { $rehearsalPolicy.runner } elseif ($env:LEGS -ceq 'linux-vulkan') { 'machine-t4-linux' } else { 'gpu-t4-windows' }
+$runner = if ($rehearsal) { $rehearsalPolicy.runner } elseif ($env:LEGS -ceq 'linux-vulkan') { 'gpu-t4-linux' } else { 'gpu-t4-windows' }
 $backend = if ($env:LEGS -ceq 'windows-d3d11') { 'd3d11' } else { 'vulkan' }
 Require ($manifest.schema -ceq 'khaozengine.renderer-perf-unit/1' -and $manifest.unitId -ceq $env:RENDERER_PERF_UNIT -and $manifest.workloadSha -ceq $env:RENDERER_PERF_WORKLOAD_SHA) 'Manifest identity differs from the dispatch'
 Require ($manifest.execution.leg -ceq $env:LEGS -and $manifest.execution.runner -ceq $runner -and $manifest.execution.backend -ceq $backend -and $manifest.execution.workflow -ceq 'gpu-hosted-bench.yml') 'Manifest execution differs from the selected leg'
@@ -265,7 +265,7 @@ Require ($manifest.preset -cne 'pilot' -or $env:LEGS -cne 'windows-vulkan') 'Win
 if ($null -ne $waterOptics -and !$rehearsal) {
     Require ($env:LEGS -cin $waterOptics.legs) "Windows Vulkan is not an approved leg for the $($manifest.preset) campaign."
 }
-$linuxT4RatePerMinuteUsd = 0.01753d
+$linuxT4RatePerMinuteUsd = 0.052d
 $windowsT4RatePerMinuteUsd = 0.102d
 # Windows full allows for the slow GRID setup and clock query seen in run 40599810511.
 $minutes = if ($rehearsal) { $rehearsalPolicy.minutes } elseif ($manifest.preset -ceq 'pilot') { if ($env:LEGS -ceq 'linux-vulkan') { 12 } else { 20 } } elseif ($env:LEGS -ceq 'linux-vulkan') { 35 } else { 50 }
@@ -295,12 +295,7 @@ if ($Mode -ceq 'Select') {
     $class = if ($rehearsal) { 'rehearsal' } else { 'performance' }
     $device = if ($rehearsal) { if ($backend -ceq 'vulkan') { 'llvmpipe' } else { '' } } else { 'discrete' }
     $d3d = if ($rehearsal) { if ($backend -ceq 'd3d11') { 'warp' } else { '' } } else { 'NVIDIA' }
-    $runsOn = $runner
-    if ($runner -ceq 'machine-t4-linux') {
-        Require ($env:GITHUB_RUN_ID -cmatch '\A[0-9]+\z' -and $env:GITHUB_RUN_ATTEMPT -ceq $env:WORKFLOW_RUN_ATTEMPT) 'The machine.dev runner label requires the GitHub run ID and first attempt'
-        $runsOn = "machine/gpu=t4/cpu=4/tenancy=on_demand/regions=us-east-1/id=$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT-$env:LEGS"
-    }
-    $matrix = @{ include = @(@{ leg = $env:LEGS; runner = $runner; runsOn = $runsOn; backend = $nativeBackend; jobMinutes = $minutes; executionClass = $class; vulkanDevice = $device; d3dAdapter = $d3d; lockedGraphicsClockMHz = $lockedClock }) } | ConvertTo-Json -Compress -Depth 4
+    $matrix = @{ include = @(@{ leg = $env:LEGS; runner = $runner; backend = $nativeBackend; jobMinutes = $minutes; executionClass = $class; vulkanDevice = $device; d3dAdapter = $d3d; lockedGraphicsClockMHz = $lockedClock }) } | ConvertTo-Json -Compress -Depth 4
     "matrix=$matrix"
     "jobMinutes=$minutes"
     exit 0

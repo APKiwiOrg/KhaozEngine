@@ -45,7 +45,7 @@ internal sealed class RendererPerfColdLifecycleFixture : IDisposable
         var clock = unitClock ?? new RendererPerfClock(() => Now, 1000);
         var budget = new RendererPerfUnitBudget(clock, 100, 600100, Cancellation.Token);
         var authorization = new RendererPerfAuthorization(Template.Identity.ManifestSha256, Template.Identity.WorkloadSha,
-            Template.Identity.AuthorizationSha, Template.Identity.WorkloadSha, 1, [], 1, "linux-vulkan", "machine-t4-linux", "gpu-hosted-bench.yml");
+            Template.Identity.AuthorizationSha, Template.Identity.WorkloadSha, 1, [], 1, "linux-vulkan", "gpu-t4-linux", "gpu-hosted-bench.yml");
         return RendererPerfUnit.Run(Template.Manifest, authorization, budget, new Settings(new(false, false)),
             (backend, settings) => { var attempt = GpuDeviceContext.CreateHeadlessAttempt(backend, settings); Attempts.Add(attempt); return attempt; }, device =>
             {

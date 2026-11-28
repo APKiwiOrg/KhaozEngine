@@ -4,8 +4,7 @@ namespace KhaozEngine.Tests.Gpu.RendererPerf;
 /// <see cref="RendererPerfProtocolException"/> whose Code is "Entrypoint" carries one.</summary>
 public enum RendererPerfEntrypointRefusal
 {
-    /// <summary>The process is not the first attempt of a run with native GPU tests enabled, on the runner
-    /// environment its selected runner requires: self-hosted for the machine.dev Linux leg, GitHub-hosted otherwise.</summary>
+    /// <summary>The process is not the first attempt of a GitHub-hosted run with native GPU tests enabled.</summary>
     NotFirstHostedAttempt,
     /// <summary>The unit or report directory passed to the entrypoint differs from the workflow's explicit inputs.</summary>
     InputsDisagree,
@@ -22,8 +21,6 @@ public enum RendererPerfEntrypointRefusal
     AuthorizationNotManifestOnly,
     /// <summary>The authorized manifest names a different unit.</summary>
     ManifestUnitMismatch,
-    /// <summary>The authorized manifest names a different logical runner from the one the workflow selected.</summary>
-    ManifestRunnerMismatch,
     /// <summary>The observed configuration, runtime, GC mode, tiering or relevant environment differs from the
     /// manifest's approved runtime.</summary>
     RuntimeDiffers,

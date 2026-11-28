@@ -1,21 +1,26 @@
-# gpu-hosted-bench measures Windows Direct3D 11, Windows Vulkan and Linux Vulkan on NVIDIA T4 hardware.
-# Renderer rehearsals use standard GitHub-hosted runners with lavapipe or WARP. The software legs of
-# cross-platform-gpu.yml also use those adapters to prove output. Software durations are diagnostic only.
+# gpu-hosted-bench runs hardware benches on hosted NVIDIA T4 runners and the correctness-only renderer rehearsal
+# on standard Ubuntu lavapipe. The filtered hardware slice of KhaozEngine.Render.Tests shows
+# how the engine behaves and what it costs on real desktop hardware: Windows Direct3D 11, Windows Vulkan and Linux
+# Vulkan. The Windows and Linux legs of cross-platform-gpu.yml run on software rasterizers (WARP and lavapipe), so
+# they prove output and never speed.
 #
-# The Windows legs use GitHub's GPU larger runners. The org's gpu-bench runner group admits this workflow
-# on main only. Linux uses a machine.dev on-demand T4 in us-east-1, with the same GPU at a lower rate.
-# machine.dev registers a just-in-time self-hosted runner outside that group, so the dispatch-only trigger
-# and repository fork approval policy guard allocation. A dispatch names the ref to test separately.
+# BILLING: GPU runners are larger runners, billed per minute even on this public repo. So this workflow runs on
+# workflow_dispatch only, each runner is capped at one machine, and the org runner group `gpu-bench` admits this
+# file on main and nothing else. A dispatch names the ref to test, so the file never has to live on a branch.
 #
-# Direct3D 11 pins the "NVIDIA" substring of "NVIDIA Tesla T4". Vulkan reports "Tesla T4" without the vendor,
-# so it pins the discrete device type and requires Vulkan (KE_VULKAN_REQUIRED). The Linux hardware legs
-# load only the NVIDIA ICD to exclude llvmpipe. Both APIs can fall back after an unmet pin, so hardware
-# benches require the NVIDIA device report and renderer measurements require the approved native identity.
+# THE ADAPTER IS PINNED to the NVIDIA device on both APIs, and Vulkan is required on the Vulkan legs
+# (KE_VULKAN_REQUIRED). Direct3D 11 takes a name substring, and its adapter is named "NVIDIA Tesla T4". Vulkan's
+# device is named "Tesla T4" with no vendor in it, so a name pin of NVIDIA matched nothing and silently took the
+# first eligible device, and the Linux runner also carries llvmpipe. Vulkan is pinned by type (discrete) instead.
+# An unmet pin still falls back on both APIs, which on a machine without a graphics driver is the Microsoft Basic
+# Render Driver or llvmpipe, so every leg first runs the device report and fails unless it names the NVIDIA GPU.
+# Software rehearsal durations are diagnostic only and never performance evidence.
 #
-# The Windows larger runner ships the T4 in TCC, a compute-only driver model. The first probe (run 36380480461)
-# used datacenter driver 471.11, with Direct3D 11 on the Basic Render Driver and no Vulkan device. Both
-# APIs need WDDM, and that driver refuses the switch (run 36382124195). Windows hardware legs install
-# Microsoft's Azure GRID driver silently without rebooting. The device check confirms graphics is available.
+# THE WINDOWS IMAGE SHIPS THE T4 IN TCC, the driver model that offers compute only (first probe, run 36380480461:
+# datacenter driver 471.11, Direct3D 11 on the Basic Render Driver, no Vulkan device). Direct3D and Vulkan need
+# WDDM, and that driver refuses the switch (`nvidia-smi -dm 0` answers Not Supported, run 36382124195). So the
+# Windows legs install Microsoft's Azure GRID driver for the T4 silently, without the reboot its docs recommend,
+# and the device report says whether it took.
 #
 # Example: gh workflow run gpu-hosted-bench.yml -f ref=main -f filter=FullyQualifiedName~GpuCapabilitiesDiagTests
 name: gpu-hosted-bench
@@ -76,8 +81,8 @@ permissions:
   contents: read
 
 # No concurrency group. A group keeps one run pending and cancels any older pending run when a newer one queues,
-# which dropped a dispatched run (36553965942). Windows jobs queue for the capped GitHub runner and each
-# Linux job requests its own machine.dev runner.
+# which dropped a dispatched run (36553965942). Each GPU runner is capped at one machine, so jobs already queue for a
+# free runner, and every dispatch runs in turn.
 
 jobs:
   legs:
@@ -175,14 +180,7 @@ jobs:
           elif [ -n "$COVERAGE_PERF_MANIFEST_SHA256$COVERAGE_PERF_WORKLOAD_SHA" ]; then
             echo "::error::coverage performance hashes require a selected unit"; exit 1
           fi
-          # machine.dev registers each runner under the exact label its job asked for, so a run-unique id keeps
-          # any other queued job from taking the runner.
-          linux_label="machine/gpu=t4/cpu=4/tenancy=on_demand/regions=us-east-1/id=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-linux-vulkan"
-          all=$(jq -cn --arg linux "$linux_label" '[
-            {"leg":"windows-d3d11","runner":"gpu-t4-windows","runsOn":"gpu-t4-windows","backend":"direct3d11-native"},
-            {"leg":"windows-vulkan","runner":"gpu-t4-windows","runsOn":"gpu-t4-windows","backend":"vulkan-native"},
-            {"leg":"linux-vulkan","runner":"machine-t4-linux","runsOn":$linux,"backend":"vulkan-native"}
-          ]')
+          all='[{"leg":"windows-d3d11","runner":"gpu-t4-windows","backend":"direct3d11-native"},{"leg":"windows-vulkan","runner":"gpu-t4-windows","backend":"vulkan-native"},{"leg":"linux-vulkan","runner":"gpu-t4-linux","backend":"vulkan-native"}]'
           if [ "$LEGS" = "all" ]; then picked="$all"; else picked=$(echo "$all" | jq -c --arg l "$LEGS" '[.[] | select(.leg == $l)]'); fi
           echo "matrix={\"include\":$picked}" >> "$GITHUB_OUTPUT"
 
@@ -191,7 +189,7 @@ jobs:
     # Re-running only failed jobs reuses the legs result, so a measurement re-run is refused here, before a runner.
     if: inputs.renderer-perf-unit == '' && inputs.renderer-perf-manifest-sha256 == '' && inputs.renderer-perf-workload-sha == '' && (inputs.coverage-perf-unit == '' || github.run_attempt == 1)
     name: ${{ matrix.leg }}
-    runs-on: ${{ matrix.runsOn }}
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: ${{ inputs.coverage-perf-unit != '' && 30 || 60 }}
     strategy:
       fail-fast: false
@@ -462,7 +460,7 @@ jobs:
     if: inputs.renderer-perf-unit != '' && github.run_attempt == 1
     name: renderer / ${{ matrix.leg }}
     # The trusted matrix binds paid caps and every software rehearsal schedule, including all controls.
-    runs-on: ${{ matrix.runsOn }}
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: ${{ matrix.jobMinutes }}
     strategy:
       fail-fast: false
@@ -482,7 +480,6 @@ jobs:
       COVERAGE_PERF_WORKLOAD_SHA: ${{ inputs.coverage-perf-workload-sha }}
       TESTED_REF: ${{ inputs.ref }}
       LEGS: ${{ matrix.leg }}
-      RENDERER_PERF_RUNNER: ${{ matrix.runner }}
       FILTER: ${{ inputs.filter }}
       WORKFLOW_RUN_ATTEMPT: ${{ github.run_attempt }}
       DOTNET_TieredCompilation: '1'
@@ -544,8 +541,7 @@ jobs:
         env:
           KE_RENDERER_PERF_REPORTS: ${{ runner.temp }}/renderer-perf/${{ matrix.leg }}
         run: |
-          $environment = if ($env:RENDERER_PERF_RUNNER -ceq 'machine-t4-linux') { 'self-hosted' } else { 'github-hosted' }
-          if ($env:RUNNER_ENVIRONMENT -cne $environment) { throw 'Runner environment differs from the selected renderer leg' }
+          if ($env:RUNNER_ENVIRONMENT -cne 'github-hosted') { throw 'KhaozEngine is public, hosted runners are required' }
           "KE_RENDERER_PERF_REPORTS=$env:KE_RENDERER_PERF_REPORTS" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           & (Join-Path $env:GITHUB_WORKSPACE 'renderer-perf-trusted/scripts/renderer-perf-workflow.ps1') -Mode Authorize
           if ($LASTEXITCODE -ne 0) { throw 'Renderer authorization failed' }

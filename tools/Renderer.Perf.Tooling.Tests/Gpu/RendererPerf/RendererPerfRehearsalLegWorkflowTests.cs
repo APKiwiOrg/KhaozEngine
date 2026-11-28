@@ -31,9 +31,7 @@ public sealed class RendererPerfRehearsalLegWorkflowTests
         Assert.True(result.Code == 0, result.Output);
         var line = result.Output.Split('\n').Single(s => s.StartsWith("matrix=", StringComparison.Ordinal));
         var row = Assert.Single(JsonNode.Parse(line[7..])!["include"]!.AsArray())!;
-        string runner = leg == "linux-vulkan" ? "ubuntu-24.04" : "windows-2025-vs2026";
-        Assert.Equal(runner, row["runner"]!.GetValue<string>());
-        Assert.Equal(runner, row["runsOn"]!.GetValue<string>());
+        Assert.Equal(leg == "linux-vulkan" ? "ubuntu-24.04" : "windows-2025-vs2026", row["runner"]!.GetValue<string>());
         Assert.Equal("rehearsal", row["executionClass"]!.GetValue<string>());
         Assert.Equal(leg == "linux-vulkan" ? "vulkan-native" : "direct3d11-native", row["backend"]!.GetValue<string>());
         Assert.Equal(leg == "linux-vulkan" ? "llvmpipe" : "", row["vulkanDevice"]!.GetValue<string>());
@@ -47,7 +45,7 @@ public sealed class RendererPerfRehearsalLegWorkflowTests
     {
         using var fixture = Fixture(preset, leg);
         var original = fixture.Manifest.DeepClone().AsObject();
-        foreach (string runner in new[] { "machine-t4-linux", "gpu-t4-windows", "windows-latest", leg == "linux-vulkan" ? "windows-2025-vs2026" : "ubuntu-24.04" })
+        foreach (string runner in new[] { "gpu-t4-linux", "gpu-t4-windows", "windows-latest", leg == "linux-vulkan" ? "windows-2025-vs2026" : "ubuntu-24.04" })
         {
             fixture.Manifest = original.DeepClone().AsObject();
             fixture.Manifest["execution"]!["runner"] = runner;

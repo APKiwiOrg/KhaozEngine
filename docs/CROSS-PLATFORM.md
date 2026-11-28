@@ -290,37 +290,34 @@ compatibility, reference gaps and compact summaries. Native admission and execut
 coverage mode retain their jobs, device checks and artifact layout. Renderer mode accepts only
 `renderer-perf-unit`, `renderer-perf-manifest-sha256` and `renderer-perf-workload-sha`, with one named
 leg and the default filter. It refuses combined coverage inputs, `all`, free-form filters, mutable
-refs and attempts after one.
+refs and attempts after one. This public repository uses hosted runners exclusively.
 
-The dispatch-only workflow uses GitHub's T4 larger runners for Windows Direct3D 11 and Vulkan.
-The organization runner group `gpu-bench` admits this workflow on main only. Linux hardware uses
-a machine.dev on-demand T4 in AWS us-east-1, with the same GPU at a lower per-minute rate. Spot T4
-capacity costs about 60% less, but machine.dev does not resume or rerun a job whose spot instance is
-reclaimed, so a paid unit would fail after consuming its single approved attempt
-([machine.dev spot guide](https://machine.dev/docs/guides/spot/)). StarSling's consumer-GPU runners are
+The dispatch-only workflow uses GitHub's T4 larger runners, `gpu-t4-linux` for Linux Vulkan and
+`gpu-t4-windows` for Windows Direct3D 11 and Vulkan. The organization runner group `gpu-bench` admits this
+workflow on main only. A machine.dev on-demand T4 offers the same GPU at about a third of the Linux rate,
+but machine.dev shut its runners down about 10.5 minutes after each job started (runs 46086499101 and
+46092538748), so the Linux leg stays on GitHub until machine.dev lifts that stop
+([#1907](https://github.com/APKiwiOrg/KhaozEngine/issues/1907)). StarSling's consumer-GPU runners are
 not an option, because its GPU beta admits only accounts with more than 300,000 runner minutes
-([#1557](https://github.com/APKiwiOrg/KhaozEngine/issues/1557)). The Linux
-runner registers just in time outside that group. The dispatch-only trigger and repository fork
-approval policy guard its allocation. Software rehearsals and free admission use standard GitHub-hosted runners.
+([#1557](https://github.com/APKiwiOrg/KhaozEngine/issues/1557)). Software rehearsals and free admission use
+standard GitHub-hosted runners.
 
 An owner-approved manifest uses `khaozengine.renderer-perf-unit/1`. Authorization commit B has
 exactly one parent, measured workload A, and adds only
 `tools/Renderer.Perf.Tests/authorized/<unit>.json`. Pass B's full immutable SHA as `ref` and hash
 the exact UTF-8 manifest bytes. Hosted CPU admission runs from a separate checkout of the workflow's
-own SHA, treating the requested checkout only as manifest and git data. Its trusted selector binds
-one job to the allowed runner and validated preset cap before allocating a GPU runner.
+own SHA, treating the requested checkout only as manifest and git data. Its trusted fixed hosted
+runner allowlist selects one job with the validated preset cap before allocating a GPU runner.
 Partial renderer inputs also refuse ordinary and coverage allocation. Those modes otherwise retain
 their existing selection and execution. The renderer job uses the same trusted revision for repeated
 authorization and final evidence checks, applies the per-leg paid caps and cleanup-aware billing
 model in the [renderer reference](RENDERER-PERFORMANCE.md#evidence-and-authorization), and retains
 the existing pinned PowerShell bootstrap, GRID setup, NVIDIA adapter selection and NVIDIA-only Linux Vulkan ICD safeguards.
 
-The paid presets are `pilot`, `full`, `water-optics-v2` and `water-optics-v3`. Both water optics
-campaigns use the full T4 runner caps, 35 job minutes for `linux-vulkan` with logical runner ID
-`machine-t4-linux` and 50 for `windows-d3d11` with `gpu-t4-windows`. Both require the 1,095 MHz
-clock and emit the `performance` execution class. The Linux allocation label includes the GitHub
-run ID, attempt and leg so a different queued job cannot take its runner. The manifest and
-authorization record carry the logical ID. Windows Vulkan refuses water optics admission. Before any paid runner is allocated, the trusted `legs` job
+The paid presets are `pilot`, `full` and `water-optics-v2`. The v2 campaign uses the full T4 runner
+caps: `gpu-t4-linux` for `linux-vulkan` with 35 job minutes, or `gpu-t4-windows` for
+`windows-d3d11` with 50. Both require the 1,095 MHz clock and emit the `performance` execution class.
+Windows Vulkan refuses v2 admission. Before any paid runner is allocated, the trusted `legs` job
 reads manifests with exact property names, no duplicate fields or null array entries, and exact integer
 or decimal numbers. A field table verified against the managed record constructors checks every
 object's complete field set, value kinds and nullability, including record arrays and the string-valued
@@ -345,7 +342,7 @@ the selected runner, as described in the [renderer reference](RENDERER-PERFORMAN
 Every paid manifest's
 `approval.campaignMaximumUsd` must cover `budget.maximumCostUsd` without exceeding its campaign
 envelope. The [renderer reference](RENDERER-PERFORMANCE.md#water-optics-campaign)
-owns the water optics campaign maximums and exact schedules. The v1 `pilot` and `full` maximum stays USD 22.
+owns the v2 USD 7.382 maximum and exact schedules. The v1 `pilot` and `full` maximum stays USD 22.
 
 After the GPU and driver steps, paid renderer jobs invoke the trusted graphics-clock setup before
 building or measuring. Linux enables persistence and uses `sudo nvidia-smi`. Windows uses the elevated
@@ -468,10 +465,10 @@ rehearsals emit `rehearsal`, require a null graphics clock, and retain the full 
 19,800 unit seconds and 350 job minutes. Their budgets and campaign maximums remain exactly zero. The
 [water optics contract](RENDERER-PERFORMANCE.md#water-optics-campaign) owns their separate frame counts.
 
-`windows-vulkan` has no software rehearsal class. Paid presets retain their T4 hardware, NVIDIA ICD
-mapping and strict promotion verdict. Software rehearsals use the runner image family as both the
-logical ID and job label. An image-family pin still permits image revisions, so runtime inheritance
-must be established separately.
+`windows-vulkan` has no software rehearsal class. Paid presets retain their T4 runner labels,
+NVIDIA ICD mapping and strict promotion verdict. Software rehearsals use the runner image family as
+both the logical ID and job label. An image-family pin still permits image revisions, so runtime
+inheritance must be established separately.
 
 The owner must approve the exact rehearsal workload, leg, schedule, limits and zero-USD budget before
 a new authorization commit exists. A proposal or implementation is not permission to run.
@@ -500,9 +497,7 @@ Linux rehearsal installs Mesa Vulkan and looks up `/lvp_icd[^/]*\.json$` in
 at that discovered file, and `KE_VULKAN_REQUIRED=1` requires Vulkan. The D3D adapter variable is empty.
 The approved runtime map includes those effective values and the isolated .NET host/root values.
 The observed standard Ubuntu map also includes `DOTNET_MULTILEVEL_LOOKUP=0`, `DOTNET_NOLOGO=1` and
-`DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1`, which the T4 partner image lacked. The machine.dev T4 image exports
-the same three, so paid Linux manifests on `machine-t4-linux` declare them. A pilot that omitted them refused
-before native creation in [run 46072064589](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/46072064589).
+`DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1`, which the T4 partner image lacked.
 
 Windows needs its own exact testhost map. Standard-image Windows runs
 [40414697088](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40414697088) and

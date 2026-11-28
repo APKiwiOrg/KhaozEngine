@@ -163,11 +163,10 @@ USD 22 envelope with the [published pair](performance/renderer/index-full-linux-
 from USD 18 after the locked
 [Linux full unit](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40599806485) refused and the locked
 [Windows full unit](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40599810511) was cancelled, and both
-attempts count against it. The machine.dev rebaseline ([#1907](https://github.com/APKiwiOrg/KhaozEngine/issues/1907))
-is a separate v1 campaign on one workload with a USD 9 envelope for a Linux and a Windows pilot and full unit. Their
-unit caps total USD 8.68109. machine.dev also bills its default 100 GB EBS volume at USD 0.08 per GB-month, about
-USD 0.01 over the 53 Linux billed minutes, which no unit cap can carry because the cap is billed minutes times the
-leg rate. Implementation approval never authorizes a dispatch, pilot, retry, profiler capture or follow-up
+attempts count against it. A second v1 campaign on workload `faccc53b8` with a USD 9 envelope certified its Windows
+pilot and full unit, but both Linux full attempts on machine.dev runners stopped about 10.5 minutes into the job
+([#1907](https://github.com/APKiwiOrg/KhaozEngine/issues/1907)), so it published no pair. Linux paid units run on
+`gpu-t4-linux` again, and a new pair needs its own workload and campaign approval. Implementation approval never authorizes a dispatch, pilot, retry, profiler capture or follow-up
 measurement. Software Vulkan and WARP can establish
 correctness only. They cannot establish a hardware floor or a T4 result.
 
@@ -222,13 +221,10 @@ job cap also covers external setup and builds.
 
 | Paid unit | Unit seconds | Steady frame milliseconds | Cold frame milliseconds | Job minutes | Maximum billed minutes | USD per minute | Maximum USD |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Linux Vulkan pilot | 600 | 10,000 | 120,000 | 12 | 15 | 0.01753 | 0.26295 |
+| Linux Vulkan pilot | 600 | 10,000 | 120,000 | 12 | 15 | 0.052 | 0.780 |
 | Windows D3D11 pilot | 600 | 10,000 | 120,000 | 20 | 23 | 0.102 | 2.346 |
-| Linux Vulkan full | 1,500 | 10,000 | 120,000 | 35 | 38 | 0.01753 | 0.66614 |
+| Linux Vulkan full | 1,500 | 10,000 | 120,000 | 35 | 38 | 0.052 | 1.976 |
 | Windows D3D11 or Vulkan full | 1,500 | 10,000 | 120,000 | 50 | 53 | 0.102 | 5.406 |
-
-The Linux rate is for a four-vCPU machine.dev on-demand T4 in us-east-1. It lowers the Linux cost
-while retaining the NVIDIA T4 adapter policy and 1,095 MHz clock. Windows uses GitHub's T4 larger runner.
 
 The Windows full job cap is 50 minutes because external setup on that runner varies widely. In the
 [locked Windows full unit](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40599810511) the GRID
@@ -406,7 +402,7 @@ those proofs from outstanding native acceptance and diagnostic collection work.
 
 ## Water optics campaign
 
-`water-optics-v2` is a separate paid campaign with a maximum of USD 6.07214, beside the unchanged USD 22
+`water-optics-v2` is a separate paid campaign with a maximum of USD 7.382, beside the unchanged USD 22
 v1 envelope. It admits one Linux Vulkan T4 attempt and one Windows D3D11 T4 attempt. Windows Vulkan,
 software adapters and standard software runners refuse paid admission. Each attempt still needs the
 exact owner authorization described above. Implementation and a valid manifest grant no dispatch
@@ -438,8 +434,8 @@ The v1 full schedules retain 43 operations, pilots nine and all-controls rehears
 
 Paid v2 limits equal the full limits: 1,500 unit seconds, 10,000 steady-frame milliseconds,
 120,000 cold-frame milliseconds and a 1,095 MHz graphics clock. Linux has a 35-minute job cap and
-38 maximum billed minutes at USD 0.01753 per minute, or USD 0.66614. Windows has a 50-minute job cap and
-53 maximum billed minutes at USD 0.102 per minute, or USD 5.406. Their sum is the USD 6.07214 campaign
+38 maximum billed minutes at USD 0.052 per minute, or USD 1.976. Windows has a 50-minute job cap and
+53 maximum billed minutes at USD 0.102 per minute, or USD 5.406. Their sum is the USD 7.382 campaign
 maximum. A manifest cap must cover its unit budget and cannot exceed that campaign maximum.
 
 Both v2 rehearsals keep the existing zero-budget and zero-campaign-maximum rule, with full rehearsal
@@ -459,13 +455,12 @@ end to end. The campaign size gate scales the lavapipe rehearsal's measured byte
 
 The first campaign ran at workload `4d5914ea2`. Both rehearsals completed, and lavapipe's bytes scaled
 to about 95 MB against 256 MiB. Both paid units were promotable with the clock locked at 1,095 MHz,
-in 538 and 687 unit seconds, and billed 14 Linux and 21 Windows minutes, USD 2.870 at the historical
-GitHub larger runner rates. The published pair is [docs/performance/water-optics/](performance/water-optics/index-water-optics-v2-linux-water-optics-v2-windows.md),
-and its profile deltas are the measured M2 and M5 cost. A new Linux water optics baseline on
-machine.dev is pending ([#1907](https://github.com/APKiwiOrg/KhaozEngine/issues/1907)).
+in 538 and 687 unit seconds, and billed 14 Linux and 21 Windows minutes, USD 2.870 at list price. The
+published pair is [docs/performance/water-optics/](performance/water-optics/index-water-optics-v2-linux-water-optics-v2-windows.md),
+and its profile deltas are the measured M2 and M5 cost.
 
 
-`water-optics-v3` measures underwater caustics in its own USD 6.07214 campaign. Its six recipes live under
+`water-optics-v3` measures underwater caustics in its own USD 7.382 campaign. Its six recipes live under
 `water-optics-v3/{village,outdoors}/{off,m5-on,m3-on}`. S0 to S2 are village OFF, M5 ON and M3 ON,
 then S3 to S5 are outdoors in the same order. They retain the v2 color, clarity, penumbra and absorption.
 M3 ON is M5 ON plus `UnderwaterCaustics = true` and `CausticStrength = 4`, the owner's River pick.
@@ -501,8 +496,8 @@ Headless recorder traces require the M3 pool in the caustic window with `DrawnPl
 Implementation and frozen recipes grant no dispatch approval. Free tooling validation collects and
 checks platform-family digests without authorizing a rehearsal. Each free rehearsal needs explicit
 owner approval first. Paid runs need separate owner approval naming the exact workload and both
-proposal hashes, plus the renderer performance owner's admission review. The workflow routes paid
-runs to the assigned T4 hosts. There is no automatic retry or extra design budget. A proposal is the complete paid manifest
+proposal hashes, plus the renderer performance owner's admission review. Use GitHub-hosted runners
+only. There is no automatic retry or extra design budget. A proposal is the complete paid manifest
 whose `approval.reference` is a fixed not-yet-approved sentence, hashed over its exact bytes. The final
 manifest differs only in that reference, which cites the approval and the proposal hash.
 
@@ -1008,9 +1003,6 @@ Store reviewed summaries under `docs/performance/renderer/`, and profile publica
 The first eligible pair is published in [docs/performance/renderer/](performance/renderer/index-full-linux-full-windows.md):
 Tesla T4 Linux Vulkan and Windows D3D11 full units at workload `2243d40a7`, with the graphics clock locked at 1,095 MHz.
 The [verification record](verification/2026-10-21-renderer-performance-baseline.md) lists every attempt that led to it.
-A new Linux renderer baseline on machine.dev is pending ([#1907](https://github.com/APKiwiOrg/KhaozEngine/issues/1907)).
-Use the verifier revision from each historical run when rechecking its raw artifacts, because admission
-binds the runner ID and rates in the original manifest.
 
 For a received `water-optics-v2` or `water-optics-v3` pair, use the same offline verifier with the profile request schema
 `khaozengine.renderer-profile-request/1` and the same request fields:
@@ -1023,7 +1015,7 @@ Profile publication shares baseline directory verification, native identity admi
 checks. It accepts matching paid `water-optics-v2` or `water-optics-v3` presets, one Linux Vulkan and one Windows D3D11 leg
 with shared workload and baseline source. Rehearsals and v1 presets refuse. Supplied actual billed
 minutes must fit the preset's 38-minute Linux and 53-minute Windows caps. Cost checks use decimal USD
-and the preset's USD 6.07214 campaign maximum. The request remains bounded to 1 MiB. Publication does not
+and the preset's USD 7.382 campaign maximum. The request remains bounded to 1 MiB. Publication does not
 change the raw report's 256 MiB accounting or any operation, frame or byte limit.
 
 Each leg keeps its verified `<leg>-<unitId>.md` summary. The pair also writes

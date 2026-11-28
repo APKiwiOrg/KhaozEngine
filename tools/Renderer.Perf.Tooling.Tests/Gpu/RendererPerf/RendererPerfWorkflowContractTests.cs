@@ -164,7 +164,6 @@ public sealed class RendererPerfWorkflowContractTests
             Environment["COVERAGE_PERF_WORKLOAD_SHA"] = "";
             Environment["KE_RENDERER_PERF_REPORTS"] = Reports;
             Environment["GITHUB_RUN_ID"] = "123";
-            Environment["GITHUB_RUN_ATTEMPT"] = "1";
             Environment["GITHUB_WORKFLOW_SHA"] = new string('c', 40);
             SaveManifest();
             Git("add", "--", "tools/Renderer.Perf.Tests/authorized/pilot-linux.json");

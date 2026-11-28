@@ -69,10 +69,8 @@ public sealed class RendererPerfPublicationCompletionTests
         var rig = new RendererPerfDriverTests.DriverRig { Fault = "slow-final" };
         var report = rig.Run();
         Assert.True(report.Publication.FinalUnitPublished);
-        const int expectedElapsedMilliseconds = 6680;
-        Assert.Equal(expectedElapsedMilliseconds, report.Publication.ElapsedMilliseconds.Value);
-        Assert.Equal(expectedElapsedMilliseconds / 60000d * (double)rig.Template.Manifest.Budget.RatePerMinute,
-            report.Publication.EstimatedCostUsd.Value!.Value, 12);
+        Assert.Equal(6680, report.Publication.ElapsedMilliseconds.Value);
+        Assert.Equal(0.005789333333333333, report.Publication.EstimatedCostUsd.Value!.Value, 12);
         var persisted = rig.Writes.Last(w => w.Final).Report;
         Assert.Equal(report.Publication.ElapsedMilliseconds, persisted.Publication.ElapsedMilliseconds);
         Assert.Equal(report.Publication.EstimatedCostUsd, persisted.Publication.EstimatedCostUsd);

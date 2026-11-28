@@ -8028,8 +8028,7 @@ See [equipment coverage](EQUIPMENT-COVERAGE.md) and the exact
 [compiled consumer example](examples/EquipmentCoverageConsumer.cs) for configuration identity, the
 three fallback paths, slot ownership, partial-weight and whole-skin checks, allocation conditions and
 the blocking offline `verify` command. Sample verification is not a continuous proof. The native
-correctness and cost units have accepted evidence, which that guide records with its limits. The Linux
-Vulkan cost leg uses the same Tesla T4 on a lower-cost machine.dev runner.
+correctness and cost units have accepted evidence, which that guide records with its limits.
 A host map can end a core region inside a source triangle with child cell roles, described under
 [host coverage sidecars](../KhaozEngine.Render3D/README.md#host-coverage-sidecars) in the Render3D README.
 
